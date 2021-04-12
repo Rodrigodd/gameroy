@@ -1,3 +1,14 @@
+use std::fs::File;
+use std::io::Read;
+
+mod dissasembler;
+mod opcode;
+
 fn main() {
-    println!("Hello, world!");
+    let mut file = File::open("roms/Tetris (World) (Rev A).gb").unwrap();
+    let mut rom = Vec::new();
+    file.read_to_end(&mut rom).unwrap();
+    let mut dissas = String::new();
+    dissasembler::dissasembly(&rom, &mut dissas).unwrap();
+    println!("{}", dissas);
 }

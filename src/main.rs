@@ -8,7 +8,6 @@ fn main() {
     let mut file = File::open("roms/Tetris (World) (Rev A).gb").unwrap();
     let mut rom = Vec::new();
     file.read_to_end(&mut rom).unwrap();
-    let mut dissas = String::new();
-    dissasembler::dissasembly(&rom, &mut dissas).unwrap();
-    println!("{}", dissas);
+    let trace = dissasembler::Trace::from_rom(&rom);
+    println!("{}", trace);
 }

@@ -1,3 +1,4 @@
+use crate::memory::Memory;
 use crate::opcode;
 use std::fmt;
 use std::fmt::Write;
@@ -13,30 +14,103 @@ impl fmt::LowerHex for ReallySigned {
     }
 }
 
-pub struct Trace<'a> {
-    rom: &'a [u8],
+pub struct Trace {
     /// Ranges of memory where code are executed
     code_ranges: Vec<Range<u16>>,
     /// Andress in the memory where there is jumps pointing to
     labels: Vec<u16>,
 }
-impl<'a> Trace<'a> {
-    pub fn from_rom(rom: &'a [u8]) -> Self {
+impl Trace {
+    pub fn new(rom: &Memory) -> Self {
         let mut this = Self {
-            rom,
             code_ranges: Vec::new(),
             labels: Vec::new(),
         };
 
-        const ENTRY_POINT: u16 = 0x150;
-        let mut cursors = vec![ENTRY_POINT];
-        while !cursors.is_empty() {
-            this.trace_once(rom, &mut cursors);
-        }
+        const ENTRY_POINT: u16 = 0x100;
+        this.trace_starting_at(rom, ENTRY_POINT);
         eprintln!("&this.labels = {:04x?}", this.labels);
         dbg!(&this.code_ranges);
 
         this
+    }
+
+    /// Dissasembly some opcodes above and below, respecting code_ranges
+    pub fn print_around(&mut self, curr: u16, rom: &Memory, w: &mut impl Write) -> fmt::Result {
+        self.trace_starting_at(rom, curr);
+        let curr_range = self
+            .get_curr_code_range(curr)
+            .expect("This andress was add to the code_ranges at the start of the function!!");
+
+        const LOOK_ABOVE: u16 = 5;
+
+        let mut queue = [0; LOOK_ABOVE as usize];
+        let mut i = 0;
+        let mut c = 0;
+        let mut pc = curr_range.start;
+        while pc < curr {
+            queue[i] = pc;
+            i = (i + 1) % LOOK_ABOVE as usize;
+            c += 1;
+            pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+        }
+        if c < LOOK_ABOVE {
+            for _ in c..LOOK_ABOVE {
+                writeln!(w)?;
+            }
+            pc = curr_range.start;
+        } else {
+            pc = queue[i];
+        }
+        while pc < curr {
+            write!(w, "  {:04x}: ", pc)?;
+            dissasembly_opcode(rom, pc, w)?;
+            writeln!(w)?;
+            pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+        }
+
+        let mut pc = curr;
+        write!(w, ">>{:04x}: ", pc)?;
+        dissasembly_opcode(rom, pc, w)?;
+        writeln!(w)?;
+        pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+
+        for c in 0..LOOK_ABOVE {
+            if pc >= curr_range.end {
+                for _ in c..LOOK_ABOVE {
+                    writeln!(w)?;
+                }
+                break;
+            }
+            write!(w, "  {:04x}: ", pc)?;
+            dissasembly_opcode(rom, pc, w)?;
+            writeln!(w)?;
+            pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+        }
+        Ok(())
+    }
+
+    fn trace_starting_at(&mut self, rom: &Memory, start: u16) {
+        let mut cursors = vec![start];
+        while !cursors.is_empty() {
+            self.trace_once(rom, &mut cursors);
+        }
+    }
+
+    fn get_curr_code_range(&self, pc: u16) -> Option<Range<u16>> {
+        self.code_ranges
+            .binary_search_by(|range| {
+                use std::cmp::Ordering;
+                if pc < range.start {
+                    Ordering::Greater
+                } else if pc >= range.end {
+                    Ordering::Less
+                } else {
+                    Ordering::Equal
+                }
+            })
+            .map(|i| self.code_ranges[i].clone())
+            .ok()
     }
 
     /// Insert a opcode to Self::code_ranges.
@@ -56,13 +130,14 @@ impl<'a> Trace<'a> {
             Ok(_) => false,
             Err(i) => {
                 let merge_previous = i > 0 && self.code_ranges[i - 1].end == pc;
-                let merge_next = i + 1 < self.code_ranges.len() && self.code_ranges[i].start == pc + len;
+                let merge_next =
+                    i + 1 < self.code_ranges.len() && self.code_ranges[i].start == pc + len;
 
                 if merge_previous && merge_next {
                     self.code_ranges[i - 1].end = self.code_ranges[i].end;
                     self.code_ranges.remove(i);
                 } else if merge_previous {
-                    self.code_ranges[i - 1].end += len;
+                    self.code_ranges[i - 1].end = self.code_ranges[i - 1].end.saturating_add(len);
                 } else if merge_next {
                     self.code_ranges[i].start -= len;
                 } else {
@@ -81,7 +156,7 @@ impl<'a> Trace<'a> {
     }
 
     /// Pop a PC from 'cursors', compute next possible PC values, and push to 'cursors'
-    fn trace_once(&mut self, rom: &[u8], cursors: &mut Vec<u16>) {
+    fn trace_once(&mut self, rom: &Memory, cursors: &mut Vec<u16>) {
         let pc = cursors.pop().unwrap() as usize;
         if pc >= rom.len() {
             eprintln!("{:04x} is out of bounds!!", pc);
@@ -112,13 +187,13 @@ impl<'a> Trace<'a> {
             }
             0x18 => {
                 // JR $rr
-                let dest = (pc as i16 + op[1] as i8 as i16) as u16;
+                let dest = ((pc + len) as i16 + op[1] as i8 as i16) as u16;
                 self.add_label(dest);
                 cursors.push(dest);
             }
             x if x & 0b11100111 == 0b00100000 => {
                 // JR cc, $rr
-                let dest = (pc as i16 + op[1] as i8 as i16) as u16;
+                let dest = ((pc + len) as i16 + op[1] as i8 as i16) as u16;
                 self.add_label(dest);
                 cursors.push(dest);
                 cursors.push((pc + len) as u16);
@@ -149,23 +224,22 @@ impl<'a> Trace<'a> {
             }
         }
     }
-}
-impl<'a> fmt::Display for Trace<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+    pub fn fmt(&self, rom: &Memory, f: &mut impl Write) -> fmt::Result {
         for range in self.code_ranges.iter() {
             let mut pc = range.start as usize;
             loop {
                 if pc >= range.end as usize {
                     break;
                 }
-                let len = opcode::LEN[self.rom[pc] as usize] as usize;
+                let len = opcode::LEN[rom[pc] as usize] as usize;
                 if self.labels.binary_search(&(pc as u16)).is_ok() {
                     write!(f, "*")?;
                 } else {
                     write!(f, " ")?;
                 }
                 write!(f, "{:04x}: ", pc)?;
-                dissasembly_opcode(&self.rom[pc..pc + len], pc as u16, f)?;
+                dissasembly_opcode(rom, pc as u16, f)?;
                 writeln!(f)?;
                 pc += len;
             }
@@ -175,22 +249,9 @@ impl<'a> fmt::Display for Trace<'a> {
     }
 }
 
-pub fn dissasembly(rom: &[u8], w: &mut impl Write) -> fmt::Result {
-    let mut pc = 0x150;
-    loop {
-        let len = opcode::LEN[rom[pc] as usize] as usize;
-        if pc + len >= rom.len() {
-            break;
-        }
-        write!(w, "{:04x}: ", pc)?;
-        dissasembly_opcode(&rom[pc..pc + len], pc as u16, w)?;
-        writeln!(w)?;
-        pc += len;
-    }
-    Ok(())
-}
-
-pub fn dissasembly_opcode(op: &[u8], pc: u16, w: &mut impl Write) -> fmt::Result {
+pub fn dissasembly_opcode(rom: &Memory, pc: u16, w: &mut impl Write) -> fmt::Result {
+    let op = &rom[pc as usize..];
+    let len = opcode::LEN[op[0] as usize] as u16;
     match op[0] {
         0x00 => write!(w, "NOP  "),
         0x01 => write!(w, "LD   BC, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
@@ -216,7 +277,11 @@ pub fn dissasembly_opcode(op: &[u8], pc: u16, w: &mut impl Write) -> fmt::Result
         0x15 => write!(w, "DEC  D "),
         0x16 => write!(w, "LD   D, ${:02x} ", op[1]),
         0x17 => write!(w, "RLA  "),
-        0x18 => write!(w, "JR   ${:04x} ", (pc as i16 + op[1] as i8 as i16) as u16),
+        0x18 => write!(
+            w,
+            "JR   ${:04x} ",
+            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+        ),
         0x19 => write!(w, "ADD  HL, DE "),
         0x1a => write!(w, "LD   A, (DE) "),
         0x1b => write!(w, "DEC  DE "),
@@ -224,7 +289,11 @@ pub fn dissasembly_opcode(op: &[u8], pc: u16, w: &mut impl Write) -> fmt::Result
         0x1d => write!(w, "DEC  E "),
         0x1e => write!(w, "LD   E, ${:02x} ", op[1]),
         0x1f => write!(w, "RRA  "),
-        0x20 => write!(w, "JR   NZ, ${:04x} ", (pc as i16 + op[1] as i8 as i16) as u16),
+        0x20 => write!(
+            w,
+            "JR   NZ, ${:04x} ",
+            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+        ),
         0x21 => write!(w, "LD   HL, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
         0x22 => write!(w, "LD   (HL+), A "),
         0x23 => write!(w, "INC  HL "),
@@ -232,7 +301,11 @@ pub fn dissasembly_opcode(op: &[u8], pc: u16, w: &mut impl Write) -> fmt::Result
         0x25 => write!(w, "DEC  H "),
         0x26 => write!(w, "LD   H, ${:02x} ", op[1]),
         0x27 => write!(w, "DAA  "),
-        0x28 => write!(w, "JR   Z, ${:04x} ", (pc as i16 + op[1] as i8 as i16) as u16),
+        0x28 => write!(
+            w,
+            "JR   Z, ${:04x} ",
+            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+        ),
         0x29 => write!(w, "ADD  HL, HL "),
         0x2a => write!(w, "LD   A, (HL+) "),
         0x2b => write!(w, "DEC  HL "),
@@ -240,7 +313,11 @@ pub fn dissasembly_opcode(op: &[u8], pc: u16, w: &mut impl Write) -> fmt::Result
         0x2d => write!(w, "DEC  L "),
         0x2e => write!(w, "LD   L, ${:02x} ", op[1]),
         0x2f => write!(w, "CPL  "),
-        0x30 => write!(w, "JR   NC, ${:04x} ", (pc as i16 + op[1] as i8 as i16) as u16),
+        0x30 => write!(
+            w,
+            "JR   NC, ${:04x} ",
+            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+        ),
         0x31 => write!(w, "LD   SP, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
         0x32 => write!(w, "LD   (HL-), A "),
         0x33 => write!(w, "INC  SP "),
@@ -248,7 +325,11 @@ pub fn dissasembly_opcode(op: &[u8], pc: u16, w: &mut impl Write) -> fmt::Result
         0x35 => write!(w, "DEC  (HL) "),
         0x36 => write!(w, "LD   (HL), ${:02x} ", op[1]),
         0x37 => write!(w, "SCF  "),
-        0x38 => write!(w, "JR   C, ${:04x} ", (pc as i16 + op[1] as i8 as i16) as u16),
+        0x38 => write!(
+            w,
+            "JR   C, ${:04x} ",
+            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+        ),
         0x39 => write!(w, "ADD  HL, SP "),
         0x3a => write!(w, "LD   A, (HL-) "),
         0x3b => write!(w, "DEC  SP "),

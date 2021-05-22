@@ -1,5 +1,5 @@
-use crate::memory::Memory;
-use crate::opcode;
+use crate::consts;
+use crate::gameboy::GameBoy;
 use std::fmt;
 use std::fmt::Write;
 use std::ops::Range;
@@ -21,22 +21,22 @@ pub struct Trace {
     labels: Vec<u16>,
 }
 impl Trace {
-    pub fn new(rom: &Memory) -> Self {
-        let mut this = Self {
+    pub fn new() -> Self {
+        let this = Self {
             code_ranges: Vec::new(),
             labels: Vec::new(),
         };
 
-        const ENTRY_POINT: u16 = 0x100;
-        this.trace_starting_at(rom, ENTRY_POINT);
-        eprintln!("&this.labels = {:04x?}", this.labels);
-        dbg!(&this.code_ranges);
+        //         const ENTRY_POINT: u16 = 0x0;
+        //         this.trace_starting_at(rom, ENTRY_POINT);
+        //         eprintln!("&this.labels = {:04x?}", this.labels);
+        //         dbg!(&this.code_ranges);
 
         this
     }
 
     /// Dissasembly some opcodes above and below, respecting code_ranges
-    pub fn print_around(&mut self, curr: u16, rom: &Memory, w: &mut impl Write) -> fmt::Result {
+    pub fn print_around(&mut self, curr: u16, rom: &GameBoy, w: &mut impl Write) -> fmt::Result {
         self.trace_starting_at(rom, curr);
         let curr_range = self
             .get_curr_code_range(curr)
@@ -52,7 +52,7 @@ impl Trace {
             queue[i] = pc;
             i = (i + 1) % LOOK_ABOVE as usize;
             c += 1;
-            pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+            pc += consts::LEN[rom[pc as usize] as usize] as u16;
         }
         if c < LOOK_ABOVE {
             for _ in c..LOOK_ABOVE {
@@ -66,14 +66,14 @@ impl Trace {
             write!(w, "  {:04x}: ", pc)?;
             dissasembly_opcode(rom, pc, w)?;
             writeln!(w)?;
-            pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+            pc += consts::LEN[rom[pc as usize] as usize] as u16;
         }
 
         let mut pc = curr;
         write!(w, ">>{:04x}: ", pc)?;
         dissasembly_opcode(rom, pc, w)?;
         writeln!(w)?;
-        pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+        pc += consts::LEN[rom[pc as usize] as usize] as u16;
 
         for c in 0..LOOK_ABOVE {
             if pc >= curr_range.end {
@@ -85,12 +85,12 @@ impl Trace {
             write!(w, "  {:04x}: ", pc)?;
             dissasembly_opcode(rom, pc, w)?;
             writeln!(w)?;
-            pc += opcode::LEN[rom[pc as usize] as usize] as u16;
+            pc += consts::LEN[rom[pc as usize] as usize] as u16;
         }
         Ok(())
     }
 
-    fn trace_starting_at(&mut self, rom: &Memory, start: u16) {
+    fn trace_starting_at(&mut self, rom: &GameBoy, start: u16) {
         let mut cursors = vec![start];
         while !cursors.is_empty() {
             self.trace_once(rom, &mut cursors);
@@ -156,14 +156,14 @@ impl Trace {
     }
 
     /// Pop a PC from 'cursors', compute next possible PC values, and push to 'cursors'
-    fn trace_once(&mut self, rom: &Memory, cursors: &mut Vec<u16>) {
+    fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<u16>) {
         let pc = cursors.pop().unwrap() as usize;
         if pc >= rom.len() {
             eprintln!("{:04x} is out of bounds!!", pc);
             return;
         }
-        let len = opcode::LEN[rom[pc] as usize] as usize;
-        let op = &rom[pc..pc + len];
+        let len = consts::LEN[rom[pc] as usize] as usize;
+        let op = [rom[pc as usize], rom[pc as usize + 1], rom[pc as usize + 2]];
         if !self.add_opcode(pc as u16, len as u16) {
             return;
         }
@@ -225,14 +225,14 @@ impl Trace {
         }
     }
 
-    pub fn fmt(&self, rom: &Memory, f: &mut impl Write) -> fmt::Result {
+    pub fn fmt(&self, rom: &GameBoy, f: &mut impl Write) -> fmt::Result {
         for range in self.code_ranges.iter() {
             let mut pc = range.start as usize;
             loop {
                 if pc >= range.end as usize {
                     break;
                 }
-                let len = opcode::LEN[rom[pc] as usize] as usize;
+                let len = consts::LEN[rom[pc] as usize] as usize;
                 if self.labels.binary_search(&(pc as u16)).is_ok() {
                     write!(f, "*")?;
                 } else {
@@ -249,9 +249,9 @@ impl Trace {
     }
 }
 
-pub fn dissasembly_opcode(rom: &Memory, pc: u16, w: &mut impl Write) -> fmt::Result {
-    let op = &rom[pc as usize..];
-    let len = opcode::LEN[op[0] as usize] as u16;
+pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Result {
+    let op = [rom[pc as usize], rom[pc as usize + 1], rom[pc as usize + 2]];
+    let len = consts::LEN[op[0] as usize] as u16;
     match op[0] {
         0x00 => write!(w, "NOP  "),
         0x01 => write!(w, "LD   BC, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),

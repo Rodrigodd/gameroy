@@ -1,18 +1,34 @@
 use std::fmt;
 
+#[derive(PartialEq, Eq)]
 pub enum State {
     Running,
     Halt,
     Stopped,
 }
-
 impl Default for State {
     fn default() -> Self {
         Self::Running
     }
 }
 
+#[derive(PartialEq, Eq)]
+pub enum ImeState {
+    /// Interrupts are disable
+    Disabled,
+    /// Interrupts are enable
+    Enabled,
+    /// Interrupts will be enable after the next instruction
+    ToBeEnable,
+}
+impl Default for ImeState {
+    fn default() -> Self {
+        Self::Disabled
+    }
+}
+
 #[repr(C)]
+#[derive(Default)]
 pub struct Cpu {
     pub a: u8,
     pub f: Flags,
@@ -24,28 +40,27 @@ pub struct Cpu {
     pub l: u8,
     pub sp: u16,
     pub pc: u16,
-    pub ime: bool,
+    pub ime: ImeState,
     pub state: State,
 }
-
-impl Default for Cpu {
-    fn default() -> Self {
-        Self {
-            a: 0x01,
-            f: Flags(0xB0),
-            b: 0x00,
-            c: 0x13,
-            d: 0x00,
-            e: 0xd8,
-            h: 0x01,
-            l: 0x4d,
-            sp: 0xfffe,
-            pc: 0x100,
-            ime: false,
-            state: State::Running,
-        }
-    }
-}
+// impl Default for Cpu {
+//     fn default() -> Self {
+//         Self {
+//             a: 0x01,
+//             f: Flags(0xB0),
+//             b: 0x00,
+//             c: 0x13,
+//             d: 0x00,
+//             e: 0xd8,
+//             h: 0x01,
+//             l: 0x4d,
+//             sp: 0xfffe,
+//             pc: 0x000,
+//             ime: false,
+//             state: State::Running,
+//         }
+//     }
+// }
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "A {:02x} {:02x} F", self.a, self.f.0)?;

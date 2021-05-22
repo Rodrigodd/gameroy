@@ -1,8 +1,7 @@
 use crate::{
-    cpu::{Cpu, State},
-    dissasembler::Trace,
-    memory::Memory,
-    opcode,
+    consts,
+    cpu::{ImeState, State},
+    gameboy::GameBoy,
 };
 
 #[derive(PartialEq, Eq)]
@@ -62,12 +61,8 @@ fn add(a: u8, b: u8) -> u8 {
     a.wrapping_add(b)
 }
 
-pub struct Interpreter {
-    pub clock_count: u64,
-    pub cpu: Cpu,
-    pub memory: Memory,
-    pub trace: Trace,
-}
+/// A interpreter
+pub struct Interpreter(pub GameBoy);
 impl Interpreter {
     /// Interactive debug.
     /// Print the instruction around the current running instruction
@@ -78,16 +73,18 @@ impl Interpreter {
         loop {
             input.clear();
             use std::io::Write;
-            let pc = self.cpu.pc;
+            let pc = self.0.cpu.pc;
             let mut string = String::new();
             let std = std::io::stdout();
             let mut std = std.lock();
-            self.trace
-                .print_around(pc, &self.memory, &mut string)
+            self.0
+                .trace
+                .borrow_mut()
+                .print_around(pc, &self.0, &mut string)
                 .unwrap();
             writeln!(std, "{}", string).unwrap();
-            writeln!(std, "{}", self.cpu).unwrap();
-            writeln!(std, "clock: {}", self.clock_count).unwrap();
+            writeln!(std, "{}", self.0.cpu).unwrap();
+            writeln!(std, "clock: {}", self.0.clock_count).unwrap();
             std::io::stdin().read_line(&mut input).unwrap();
             let input = input.split_ascii_whitespace().collect::<Vec<_>>();
             dbg!(&input);
@@ -101,7 +98,7 @@ impl Interpreter {
                         Ok(x) => x,
                         Err(_) => continue,
                     };
-                    while self.cpu.pc != pc {
+                    while self.0.cpu.pc != pc {
                         self.interpret_op();
                     }
                 }
@@ -110,8 +107,8 @@ impl Interpreter {
                         Ok(x) => x,
                         Err(_) => continue,
                     };
-                    let target = self.clock_count + clocks;
-                    while self.clock_count < target {
+                    let target = self.0.clock_count + clocks;
+                    while self.0.clock_count < target {
                         self.interpret_op();
                     }
                 }
@@ -125,17 +122,19 @@ impl Interpreter {
         use Condition::*;
         let c = match c {
             None => true,
-            Z => self.cpu.f.z(),
-            NZ => !self.cpu.f.z(),
-            C => self.cpu.f.c(),
-            NC => !self.cpu.f.c(),
+            Z => self.0.cpu.f.z(),
+            NZ => !self.0.cpu.f.z(),
+            C => self.0.cpu.f.c(),
+            NC => !self.0.cpu.f.c(),
         };
         if c {
-            self.cpu.pc = address;
-            self.clock_count += 16;
+            self.0.cpu.pc = address;
+            let cycles = 16;
+            self.0.tick(cycles);
         } else {
-            self.cpu.pc = add16(self.cpu.pc, 3);
-            self.clock_count += 12;
+            self.0.cpu.pc = add16(self.0.cpu.pc, 3);
+            let cycles = 12;
+            self.0.tick(cycles);
         }
     }
 
@@ -144,64 +143,68 @@ impl Interpreter {
         use Condition::*;
         let c = match c {
             None => true,
-            Z => self.cpu.f.z(),
-            NZ => !self.cpu.f.z(),
-            C => self.cpu.f.c(),
-            NC => !self.cpu.f.c(),
+            Z => self.0.cpu.f.z(),
+            NZ => !self.0.cpu.f.z(),
+            C => self.0.cpu.f.c(),
+            NC => !self.0.cpu.f.c(),
         };
-        self.cpu.pc = add16(self.cpu.pc, 2);
+        self.0.cpu.pc = add16(self.0.cpu.pc, 2);
         if c {
-            let pc = (self.cpu.pc as i16 + address as i16) as u16;
-            self.cpu.pc = pc;
-            self.clock_count += 12;
+            let pc = (self.0.cpu.pc as i16 + address as i16) as u16;
+            self.0.cpu.pc = pc;
+            let cycles = 12;
+            self.0.tick(cycles);
         } else {
-            self.clock_count += 8;
+            let cycles = 8;
+            self.0.tick(cycles);
         }
     }
 
     fn pushr(&mut self, value: u16) {
         let [lsp, msp] = value.to_le_bytes();
-        self.memory.write(sub16(self.cpu.sp, 1), msp);
-        self.memory.write(sub16(self.cpu.sp, 2), lsp);
-        self.cpu.sp = sub16(self.cpu.sp, 2);
+        self.0.write(sub16(self.0.cpu.sp, 1), msp);
+        self.0.write(sub16(self.0.cpu.sp, 2), lsp);
+        self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
     }
 
     fn popr(&mut self) -> u16 {
-        self.cpu.sp = add16(self.cpu.sp, 2);
-        let lsp = self.memory.read(sub16(self.cpu.sp, 2));
-        let msp = self.memory.read(sub16(self.cpu.sp, 1));
+        self.0.cpu.sp = add16(self.0.cpu.sp, 2);
+        let lsp = self.0.read(sub16(self.0.cpu.sp, 2));
+        let msp = self.0.read(sub16(self.0.cpu.sp, 1));
         u16::from_be_bytes([msp, lsp])
     }
 
     fn push(&mut self, reg: Reg16) {
         let r = match reg {
-            Reg16::AF => self.cpu.af(),
-            Reg16::BC => self.cpu.bc(),
-            Reg16::DE => self.cpu.de(),
-            Reg16::HL => self.cpu.hl(),
+            Reg16::AF => self.0.cpu.af(),
+            Reg16::BC => self.0.cpu.bc(),
+            Reg16::DE => self.0.cpu.de(),
+            Reg16::HL => self.0.cpu.hl(),
             _ => unreachable!(),
         };
         self.pushr(r);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn pop(&mut self, reg: Reg16) {
         let r = self.popr();
         match reg {
-            Reg16::AF => self.cpu.set_af(r),
-            Reg16::BC => self.cpu.set_bc(r),
-            Reg16::DE => self.cpu.set_de(r),
-            Reg16::HL => self.cpu.set_hl(r),
+            Reg16::AF => self.0.cpu.set_af(r),
+            Reg16::BC => self.0.cpu.set_bc(r),
+            Reg16::DE => self.0.cpu.set_de(r),
+            Reg16::HL => self.0.cpu.set_hl(r),
             _ => unreachable!(),
         }
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
@@ -210,18 +213,20 @@ impl Interpreter {
         use Condition::*;
         let c = match c {
             None => true,
-            Z => self.cpu.f.z(),
-            NZ => !self.cpu.f.z(),
-            C => self.cpu.f.c(),
-            NC => !self.cpu.f.c(),
+            Z => self.0.cpu.f.z(),
+            NZ => !self.0.cpu.f.z(),
+            C => self.0.cpu.f.c(),
+            NC => !self.0.cpu.f.c(),
         };
-        self.cpu.pc += 3;
+        self.0.cpu.pc += 3;
         if c {
-            self.pushr(self.cpu.pc);
-            self.cpu.pc = address;
-            self.clock_count += 24;
+            self.pushr(self.0.cpu.pc);
+            self.0.cpu.pc = address;
+            let cycles = 24;
+            self.0.tick(cycles);
         } else {
-            self.clock_count += 12;
+            let cycles = 12;
+            self.0.tick(cycles);
         }
     }
 
@@ -230,45 +235,47 @@ impl Interpreter {
         use Condition::*;
         let c = match cond {
             None => true,
-            Z => self.cpu.f.z(),
-            NZ => !self.cpu.f.z(),
-            C => self.cpu.f.c(),
-            NC => !self.cpu.f.c(),
+            Z => self.0.cpu.f.z(),
+            NZ => !self.0.cpu.f.z(),
+            C => self.0.cpu.f.c(),
+            NC => !self.0.cpu.f.c(),
         };
-        self.cpu.pc = add16(self.cpu.pc, 1);
+        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
         if c {
-            self.cpu.pc = self.popr();
-            self.clock_count += if cond == None { 16 } else { 20 };
+            self.0.cpu.pc = self.popr();
+            let cycles = if cond == None { 16 } else { 20 };
+            self.0.tick(cycles);
         } else {
-            self.clock_count += 8;
+            let cycles = 8;
+            self.0.tick(cycles);
         }
     }
 
     fn read(&mut self, reg: Reg) -> u8 {
         match reg {
-            Reg::A => self.cpu.a,
-            Reg::B => self.cpu.b,
-            Reg::C => self.cpu.c,
-            Reg::D => self.cpu.d,
-            Reg::E => self.cpu.e,
-            Reg::H => self.cpu.h,
-            Reg::L => self.cpu.l,
-            Reg::Im8 => self.memory.read(add16(self.cpu.pc, 1)),
+            Reg::A => self.0.cpu.a,
+            Reg::B => self.0.cpu.b,
+            Reg::C => self.0.cpu.c,
+            Reg::D => self.0.cpu.d,
+            Reg::E => self.0.cpu.e,
+            Reg::H => self.0.cpu.h,
+            Reg::L => self.0.cpu.l,
+            Reg::Im8 => self.0.read(add16(self.0.cpu.pc, 1)),
             Reg::Im16 => {
-                let adress = self.memory.read16(add16(self.cpu.pc, 1));
-                self.memory.read(adress)
+                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
+                self.0.read(adress)
             }
-            Reg::BC => self.memory.read(self.cpu.bc()),
-            Reg::DE => self.memory.read(self.cpu.de()),
-            Reg::HL => self.memory.read(self.cpu.hl()),
+            Reg::BC => self.0.read(self.0.cpu.bc()),
+            Reg::DE => self.0.read(self.0.cpu.de()),
+            Reg::HL => self.0.read(self.0.cpu.hl()),
             Reg::HLI => {
-                let v = self.memory.read(self.cpu.hl());
-                self.cpu.set_hl(add16(self.cpu.hl(), 1));
+                let v = self.0.read(self.0.cpu.hl());
+                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
                 v
             }
             Reg::HLD => {
-                let v = self.memory.read(self.cpu.hl());
-                self.cpu.set_hl(sub16(self.cpu.hl(), 1));
+                let v = self.0.read(self.0.cpu.hl());
+                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
                 v
             }
             Reg::SP => unreachable!(),
@@ -277,28 +284,28 @@ impl Interpreter {
 
     fn write(&mut self, reg: Reg, value: u8) {
         match reg {
-            Reg::A => self.cpu.a = value,
-            Reg::B => self.cpu.b = value,
-            Reg::C => self.cpu.c = value,
-            Reg::D => self.cpu.d = value,
-            Reg::E => self.cpu.e = value,
-            Reg::H => self.cpu.h = value,
-            Reg::L => self.cpu.l = value,
-            Reg::Im8 => self.memory.write(add16(self.cpu.pc, 1), value),
+            Reg::A => self.0.cpu.a = value,
+            Reg::B => self.0.cpu.b = value,
+            Reg::C => self.0.cpu.c = value,
+            Reg::D => self.0.cpu.d = value,
+            Reg::E => self.0.cpu.e = value,
+            Reg::H => self.0.cpu.h = value,
+            Reg::L => self.0.cpu.l = value,
+            Reg::Im8 => self.0.write(add16(self.0.cpu.pc, 1), value),
             Reg::Im16 => {
-                let adress = self.memory.read16(add16(self.cpu.pc, 1));
-                self.memory.write(adress, value)
+                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
+                self.0.write(adress, value)
             }
-            Reg::BC => self.memory.write(self.cpu.bc(), value),
-            Reg::DE => self.memory.write(self.cpu.de(), value),
-            Reg::HL => self.memory.write(self.cpu.hl(), value),
+            Reg::BC => self.0.write(self.0.cpu.bc(), value),
+            Reg::DE => self.0.write(self.0.cpu.de(), value),
+            Reg::HL => self.0.write(self.0.cpu.hl(), value),
             Reg::HLI => {
-                self.memory.write(self.cpu.hl(), value);
-                self.cpu.set_hl(add16(self.cpu.hl(), 1));
+                self.0.write(self.0.cpu.hl(), value);
+                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
             }
             Reg::HLD => {
-                self.memory.write(self.cpu.hl(), value);
-                self.cpu.set_hl(sub16(self.cpu.hl(), 1));
+                self.0.write(self.0.cpu.hl(), value);
+                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
             }
             Reg::SP => unreachable!(),
         }
@@ -307,407 +314,438 @@ impl Interpreter {
     fn load(&mut self, dst: Reg, src: Reg) {
         let v = self.read(src);
         self.write(dst, v);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn loadh(&mut self, dst: Reg, src: Reg) {
         let src = match src {
-            Reg::A => self.cpu.a,
-            Reg::C => self.memory.read(0xFF00 | self.cpu.c as u16),
+            Reg::A => self.0.cpu.a,
+            Reg::C => self.0.read(0xFF00 | self.0.cpu.c as u16),
             Reg::Im8 => {
-                let r8 = self.memory.read(add16(self.cpu.pc, 1));
-                self.memory.read(0xFF00 | r8 as u16)
+                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
+                self.0.read(0xFF00 | r8 as u16)
             }
             _ => unreachable!(),
         };
 
         match dst {
-            Reg::A => self.cpu.a = src,
-            Reg::C => self.memory.write(0xFF00 | self.cpu.c as u16, src),
+            Reg::A => self.0.cpu.a = src,
+            Reg::C => self.0.write(0xFF00 | self.0.cpu.c as u16, src),
             Reg::Im8 => {
-                let r8 = self.memory.read(add16(self.cpu.pc, 1));
-                self.memory.write(0xFF00 | r8 as u16, src);
+                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
+                self.0.write(0xFF00 | r8 as u16, src);
             }
             _ => unreachable!(),
         }
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn load16(&mut self, dst: Reg16, src: Reg16) {
         let src = match src {
-            Reg16::BC => self.cpu.bc(),
-            Reg16::DE => self.cpu.de(),
-            Reg16::HL => self.cpu.hl(),
-            Reg16::SP => self.cpu.sp,
-            Reg16::Im16 => self.memory.read16(self.cpu.pc + 1),
+            Reg16::BC => self.0.cpu.bc(),
+            Reg16::DE => self.0.cpu.de(),
+            Reg16::HL => self.0.cpu.hl(),
+            Reg16::SP => self.0.cpu.sp,
+            Reg16::Im16 => self.0.read16(self.0.cpu.pc + 1),
             _ => unreachable!(),
         };
         match dst {
-            Reg16::BC => self.cpu.set_bc(src),
-            Reg16::DE => self.cpu.set_de(src),
-            Reg16::HL => self.cpu.set_hl(src),
-            Reg16::SP => self.cpu.sp = src,
+            Reg16::BC => self.0.cpu.set_bc(src),
+            Reg16::DE => self.0.cpu.set_de(src),
+            Reg16::HL => self.0.cpu.set_hl(src),
+            Reg16::SP => self.0.cpu.sp = src,
             Reg16::Im16 => {
-                let adress = self.memory.read16(self.cpu.pc + 1);
-                self.memory.write16(adress, src)
+                let adress = self.0.read16(self.0.cpu.pc + 1);
+                self.0.write16(adress, src)
             }
             _ => unreachable!(),
         }
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn inc(&mut self, reg: Reg) {
         let reg = match reg {
-            Reg::A => &mut self.cpu.a,
-            Reg::B => &mut self.cpu.b,
-            Reg::C => &mut self.cpu.c,
-            Reg::D => &mut self.cpu.d,
-            Reg::E => &mut self.cpu.e,
-            Reg::H => &mut self.cpu.h,
-            Reg::L => &mut self.cpu.l,
+            Reg::A => &mut self.0.cpu.a,
+            Reg::B => &mut self.0.cpu.b,
+            Reg::C => &mut self.0.cpu.c,
+            Reg::D => &mut self.0.cpu.d,
+            Reg::E => &mut self.0.cpu.e,
+            Reg::H => &mut self.0.cpu.h,
+            Reg::L => &mut self.0.cpu.l,
             Reg::BC => {
-                self.cpu.set_bc(add16(self.cpu.bc(), 1));
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.set_bc(add16(self.0.cpu.bc(), 1));
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             Reg::DE => {
-                self.cpu.set_de(add16(self.cpu.de(), 1));
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.set_de(add16(self.0.cpu.de(), 1));
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             Reg::HL => {
-                self.cpu.set_hl(add16(self.cpu.hl(), 1));
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             Reg::SP => {
-                self.cpu.sp = add16(self.cpu.sp, 1);
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.sp = add16(self.0.cpu.sp, 1);
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             _ => unreachable!(),
         };
         *reg = add(*reg, 1);
-        self.cpu.f.def_z(*reg == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.def_h(*reg & 0x0f == 0x0);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.f.def_z(*reg == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h(*reg & 0x0f == 0x0);
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn dec(&mut self, reg: Reg) {
         let reg = match reg {
-            Reg::A => &mut self.cpu.a,
-            Reg::B => &mut self.cpu.b,
-            Reg::C => &mut self.cpu.c,
-            Reg::D => &mut self.cpu.d,
-            Reg::E => &mut self.cpu.e,
-            Reg::H => &mut self.cpu.h,
-            Reg::L => &mut self.cpu.l,
+            Reg::A => &mut self.0.cpu.a,
+            Reg::B => &mut self.0.cpu.b,
+            Reg::C => &mut self.0.cpu.c,
+            Reg::D => &mut self.0.cpu.d,
+            Reg::E => &mut self.0.cpu.e,
+            Reg::H => &mut self.0.cpu.h,
+            Reg::L => &mut self.0.cpu.l,
             Reg::BC => {
-                self.cpu.set_bc(sub16(self.cpu.bc(), 1));
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.set_bc(sub16(self.0.cpu.bc(), 1));
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             Reg::DE => {
-                self.cpu.set_de(sub16(self.cpu.de(), 1));
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.set_de(sub16(self.0.cpu.de(), 1));
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             Reg::HL => {
-                self.cpu.set_hl(sub16(self.cpu.hl(), 1));
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             Reg::SP => {
-                self.cpu.sp = sub16(self.cpu.sp, 1);
-                self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-                self.cpu.pc = add16(
-                    self.cpu.pc,
-                    opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+                self.0.cpu.sp = sub16(self.0.cpu.sp, 1);
+                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+                self.0.tick(cycles);
+                self.0.cpu.pc = add16(
+                    self.0.cpu.pc,
+                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
                 );
                 return;
             }
             _ => unreachable!(),
         };
         *reg = sub(*reg, 1);
-        self.cpu.f.def_z(*reg == 0);
-        self.cpu.f.set_n();
-        self.cpu.f.def_h(*reg & 0x0f == 0xf);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.f.def_z(*reg == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h(*reg & 0x0f == 0xf);
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn add(&mut self, reg: Reg) {
         let v = self.read(reg);
-        let (r, o) = self.cpu.a.overflowing_add(v);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.def_c(o);
-        self.cpu.f.def_h((self.cpu.a & 0xF) + (v & 0xF) > 0xF);
-        self.cpu.a = r;
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let (r, o) = self.0.cpu.a.overflowing_add(v);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_c(o);
+        self.0.cpu.f.def_h((self.0.cpu.a & 0xF) + (v & 0xF) > 0xF);
+        self.0.cpu.a = r;
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn adc(&mut self, reg: Reg) {
-        let a = self.cpu.a as u16;
-        let c = self.cpu.f.c() as u16;
+        let a = self.0.cpu.a as u16;
+        let c = self.0.cpu.f.c() as u16;
         let v = self.read(reg) as u16;
         let r = a + v + c;
-        self.cpu.f.def_z(r & 0xFF == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.def_h((a & 0xF) + (v & 0xF) + c > 0xF);
-        self.cpu.f.def_c(r > 0xff);
-        self.cpu.a = (r & 0xff) as u8;
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.f.def_z(r & 0xFF == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h((a & 0xF) + (v & 0xF) + c > 0xF);
+        self.0.cpu.f.def_c(r > 0xff);
+        self.0.cpu.a = (r & 0xff) as u8;
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn sub(&mut self, reg: Reg) {
         let v = self.read(reg);
-        let (r, o) = self.cpu.a.overflowing_sub(v);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.set_n();
-        self.cpu.f.def_h((self.cpu.a & 0xF) < (v & 0xF));
-        self.cpu.f.def_c(o);
-        self.cpu.a = r;
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        let (r, o) = self.0.cpu.a.overflowing_sub(v);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h((self.0.cpu.a & 0xF) < (v & 0xF));
+        self.0.cpu.f.def_c(o);
+        self.0.cpu.a = r;
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn sbc(&mut self, reg: Reg) {
-        let a = self.cpu.a as i16;
-        let c = self.cpu.f.c() as i16;
+        let a = self.0.cpu.a as i16;
+        let c = self.0.cpu.f.c() as i16;
         let v = self.read(reg) as i16;
         let r = a - v - c;
-        self.cpu.f.def_z(r & 0xFF == 0);
-        self.cpu.f.set_n();
-        self.cpu.f.def_h((a & 0xF) < (v & 0xF) + c);
-        self.cpu.f.def_c(r < 0x0);
-        self.cpu.a = (r & 0xff) as u8;
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.f.def_z(r & 0xFF == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h((a & 0xF) < (v & 0xF) + c);
+        self.0.cpu.f.def_c(r < 0x0);
+        self.0.cpu.a = (r & 0xff) as u8;
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn and(&mut self, reg: Reg) {
         let v = self.read(reg);
-        self.cpu.a = self.cpu.a & v;
-        self.cpu.f.def_z(self.cpu.a == 0);
-        self.cpu.f.clr_c();
-        self.cpu.f.clr_n();
-        self.cpu.f.set_h();
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.a = self.0.cpu.a & v;
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_c();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.set_h();
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn or(&mut self, reg: Reg) {
         let v = self.read(reg);
-        self.cpu.a = self.cpu.a | v;
-        self.cpu.f.def_z(self.cpu.a == 0);
-        self.cpu.f.clr_c();
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.a = self.0.cpu.a | v;
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_c();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn xor(&mut self, reg: Reg) {
         let v = self.read(reg);
-        self.cpu.a = self.cpu.a ^ v;
-        self.cpu.f.def_z(self.cpu.a == 0);
-        self.cpu.f.clr_c();
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.a = self.0.cpu.a ^ v;
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_c();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn cp(&mut self, reg: Reg) {
         let v = self.read(reg);
-        self.cpu.f.def_z(self.cpu.a == v);
-        self.cpu.f.def_c(self.cpu.a < v);
-        self.cpu.f.set_n();
-        self.cpu.f.def_h(self.cpu.a & 0xF < v & 0xF);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.f.def_z(self.0.cpu.a == v);
+        self.0.cpu.f.def_c(self.0.cpu.a < v);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h(self.0.cpu.a & 0xF < v & 0xF);
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn add16(&mut self, b: Reg16) {
         let b = match b {
-            Reg16::BC => self.cpu.bc(),
-            Reg16::DE => self.cpu.de(),
-            Reg16::HL => self.cpu.hl(),
-            Reg16::SP => self.cpu.sp,
+            Reg16::BC => self.0.cpu.bc(),
+            Reg16::DE => self.0.cpu.de(),
+            Reg16::HL => self.0.cpu.hl(),
+            Reg16::SP => self.0.cpu.sp,
             Reg16::Im16 | Reg16::AF => unreachable!(),
         };
-        let (r, o) = self.cpu.hl().overflowing_add(b);
-        self.cpu.f.clr_n();
-        self.cpu
+        let (r, o) = self.0.cpu.hl().overflowing_add(b);
+        self.0.cpu.f.clr_n();
+        self.0
+            .cpu
             .f
-            .def_h((self.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF);
-        self.cpu.f.def_c(o);
-        self.cpu.set_hl(r);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+            .def_h((self.0.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF);
+        self.0.cpu.f.def_c(o);
+        self.0.cpu.set_hl(r);
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
     }
 
     fn rst(&mut self, address: u8) {
-        self.cpu.pc = add16(
-            self.cpu.pc,
-            opcode::LEN[self.memory.read(self.cpu.pc) as usize] as u16,
+        self.0.cpu.pc = add16(
+            self.0.cpu.pc,
+            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
         );
-        self.pushr(self.cpu.pc);
-        self.clock_count += opcode::CLOCK[self.memory.read(self.cpu.pc) as usize] as u64;
-        self.cpu.pc = address as u16;
+        self.pushr(self.0.cpu.pc);
+        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
+        self.0.tick(cycles);
+        self.0.cpu.pc = address as u16;
     }
 
     fn bit(&mut self, bit: u8, reg: Reg) {
         let r = self.read(reg);
-        self.cpu.f.def_z((r & (1 << bit)) == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.set_h();
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z((r & (1 << bit)) == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.set_h();
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn set(&mut self, bit: u8, reg: Reg) {
         let mut r = self.read(reg);
         r = r | (1 << bit);
         self.write(reg, r);
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn res(&mut self, bit: u8, reg: Reg) {
         let mut r = self.read(reg);
         r = r & !(1 << bit);
         self.write(reg, r);
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn rlc(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         r = r.rotate_left(1);
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.f.def_c(r & 0x1 != 0);
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(r & 0x1 != 0);
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn rl(&mut self, reg: Reg) {
-        let c = self.cpu.f.c() as u8;
+        let c = self.0.cpu.f.c() as u8;
         let mut r = self.read(reg);
-        self.cpu.f.def_c(r & 0x80 != 0);
+        self.0.cpu.f.def_c(r & 0x80 != 0);
         r = r << 1 | c;
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn rrc(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         r = r.rotate_right(1);
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.f.def_c(r & 0x80 != 0);
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(r & 0x80 != 0);
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn rr(&mut self, reg: Reg) {
         let mut r = self.read(reg);
-        let c = self.cpu.f.c() as u8;
-        self.cpu.f.def_c(r & 0x01 != 0);
+        let c = self.0.cpu.f.c() as u8;
+        self.0.cpu.f.def_c(r & 0x01 != 0);
         r = r >> 1 | c << 7;
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn sla(&mut self, reg: Reg) {
@@ -715,36 +753,39 @@ impl Interpreter {
         let c = r & 0x80 != 0;
         r = r << 1;
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.f.def_c(c);
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(c);
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn sra(&mut self, reg: Reg) {
         let mut r = self.read(reg);
-        self.cpu.f.def_c(r & 0x01 != 0);
+        self.0.cpu.f.def_c(r & 0x01 != 0);
         r = (r & 0x80) | (r >> 1);
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn swap(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         r = ((r & 0x0F) << 4) | ((r & 0xF0) >> 4);
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.f.clr_c();
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.clr_c();
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     fn srl(&mut self, reg: Reg) {
@@ -752,36 +793,61 @@ impl Interpreter {
         let c = r & 0x01 != 0;
         r = r >> 1;
         self.write(reg, r);
-        self.cpu.f.def_z(r == 0);
-        self.cpu.f.clr_n();
-        self.cpu.f.clr_h();
-        self.cpu.f.def_c(c);
-        self.cpu.pc += 2;
-        self.clock_count += if let Reg::HL = reg { 16 } else { 8 };
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(c);
+        self.0.cpu.pc += 2;
+        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        self.0.tick(cycles);
     }
 
     pub fn interpret_op(&mut self) {
+        let interrupts: u8 = self.0.memory[consts::IF] & self.0.memory[consts::IE];
+        if interrupts != 0 {
+            if self.0.cpu.ime == ImeState::Enabled {
+                self.0.cpu.ime = ImeState::Disabled;
+                self.0.memory[consts::IF] = 0;
+                let address = [0x40, 0x48, 0x50, 0x58, 0x60][interrupts.trailing_zeros() as usize];
+                self.pushr(self.0.cpu.pc);
+                self.0.cpu.pc = address;
+                self.0.tick(20);
+            }
+            if self.0.cpu.state == State::Halt {
+                self.0.tick(4);
+                self.0.cpu.state = State::Running;
+            }
+        }
+        if self.0.cpu.ime == ImeState::ToBeEnable {
+            self.0.cpu.ime = ImeState::Enabled;
+        }
+
+        if self.0.cpu.state != State::Running {
+            self.0.tick(4);
+            return;
+        }
+
         use Condition::*;
         let op = &[
-            self.memory.read(self.cpu.pc),
-            self.memory.read(add16(self.cpu.pc, 1)),
-            self.memory.read(add16(self.cpu.pc, 2)),
+            self.0.read(self.0.cpu.pc),
+            self.0.read(add16(self.0.cpu.pc, 1)),
+            self.0.read(add16(self.0.cpu.pc, 2)),
         ];
-        let trace = true;
-        if self.cpu.pc >= 0x100 && trace {
+        let trace = false;
+        if trace {
             println!(
                 "{:04x}: {:02x} {:04x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                self.cpu.pc,
+                self.0.cpu.pc,
                 op[0],
-                self.cpu.sp,
-                self.cpu.a,
-                self.cpu.f.0,
-                self.cpu.b,
-                self.cpu.c,
-                self.cpu.d,
-                self.cpu.e,
-                self.cpu.h,
-                self.cpu.l
+                self.0.cpu.sp,
+                self.0.cpu.a,
+                self.0.cpu.f.0,
+                self.0.cpu.b,
+                self.0.cpu.c,
+                self.0.cpu.d,
+                self.0.cpu.e,
+                self.0.cpu.h,
+                self.0.cpu.l,
             );
         }
         match op[0] {
@@ -814,11 +880,11 @@ impl Interpreter {
             }
             0x07 => {
                 // RLCA 1:4 0 0 0 C
-                self.cpu.f.clr_z();
-                self.cpu.f.clr_n();
-                self.cpu.f.clr_h();
-                self.cpu.f.def_c(self.cpu.a & 0x80 != 0);
-                self.cpu.a = self.cpu.a.rotate_left(1);
+                self.0.cpu.f.clr_z();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.clr_h();
+                self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+                self.0.cpu.a = self.0.cpu.a.rotate_left(1);
             }
             0x08 => {
                 // LD (a16),SP 3:20 - - - -
@@ -850,15 +916,15 @@ impl Interpreter {
             }
             0x0f => {
                 // RRCA 1:4 0 0 0 C
-                self.cpu.f.clr_z();
-                self.cpu.f.clr_n();
-                self.cpu.f.clr_h();
-                self.cpu.f.def_c(self.cpu.a & 0x01 != 0);
-                self.cpu.a = self.cpu.a.rotate_right(1);
+                self.0.cpu.f.clr_z();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.clr_h();
+                self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
+                self.0.cpu.a = self.0.cpu.a.rotate_right(1);
             }
             0x10 => {
                 // STOP 0 2:4 - - - -
-                self.cpu.state = State::Stopped;
+                self.0.cpu.state = State::Stopped;
             }
             0x11 => {
                 // LD DE,d16 3:12 - - - -
@@ -886,12 +952,12 @@ impl Interpreter {
             }
             0x17 => {
                 // RLA 1:4 0 0 0 C
-                let c = self.cpu.f.c() as u8;
-                self.cpu.f.def_c(self.cpu.a & 0x80 != 0);
-                self.cpu.a = self.cpu.a << 1 | c;
-                self.cpu.f.clr_z();
-                self.cpu.f.clr_n();
-                self.cpu.f.clr_h();
+                let c = self.0.cpu.f.c() as u8;
+                self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+                self.0.cpu.a = self.0.cpu.a << 1 | c;
+                self.0.cpu.f.clr_z();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.clr_h();
             }
             0x18 => {
                 // JR r8 2:12 - - - -
@@ -923,12 +989,12 @@ impl Interpreter {
             }
             0x1f => {
                 // RRA 1:4 0 0 0 C
-                let c = self.cpu.f.c() as u8;
-                self.cpu.f.def_c(self.cpu.a & 0x01 != 0);
-                self.cpu.a = self.cpu.a >> 1 | c << 7;
-                self.cpu.f.clr_z();
-                self.cpu.f.clr_n();
-                self.cpu.f.clr_h();
+                let c = self.0.cpu.f.c() as u8;
+                self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
+                self.0.cpu.a = self.0.cpu.a >> 1 | c << 7;
+                self.0.cpu.f.clr_z();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.clr_h();
             }
             0x20 => {
                 // JR NZ,r8 2:12/8 - - - -
@@ -960,24 +1026,24 @@ impl Interpreter {
             }
             0x27 => {
                 // DAA 1:4 Z - 0 C
-                if !self.cpu.f.n() {
-                    if self.cpu.f.c() || self.cpu.a > 0x99 {
-                        self.cpu.a = add(self.cpu.a, 0x60);
-                        self.cpu.f.set_c();
+                if !self.0.cpu.f.n() {
+                    if self.0.cpu.f.c() || self.0.cpu.a > 0x99 {
+                        self.0.cpu.a = add(self.0.cpu.a, 0x60);
+                        self.0.cpu.f.set_c();
                     }
-                    if self.cpu.f.h() || (self.cpu.a & 0x0F) > 0x09 {
-                        self.cpu.a = add(self.cpu.a, 0x6);
+                    if self.0.cpu.f.h() || (self.0.cpu.a & 0x0F) > 0x09 {
+                        self.0.cpu.a = add(self.0.cpu.a, 0x6);
                     }
                 } else {
-                    if self.cpu.f.c() {
-                        self.cpu.a = sub(self.cpu.a, 0x60);
+                    if self.0.cpu.f.c() {
+                        self.0.cpu.a = sub(self.0.cpu.a, 0x60);
                     }
-                    if self.cpu.f.h() {
-                        self.cpu.a = sub(self.cpu.a, 0x6);
+                    if self.0.cpu.f.h() {
+                        self.0.cpu.a = sub(self.0.cpu.a, 0x6);
                     }
                 }
-                self.cpu.f.def_z(self.cpu.a == 0);
-                self.cpu.f.clr_h();
+                self.0.cpu.f.def_z(self.0.cpu.a == 0);
+                self.0.cpu.f.clr_h();
             }
             0x28 => {
                 // JR Z,r8 2:12/8 - - - -
@@ -1009,9 +1075,9 @@ impl Interpreter {
             }
             0x2f => {
                 // CPL 1:4 - 1 1 -
-                self.cpu.a = !self.cpu.a;
-                self.cpu.f.set_n();
-                self.cpu.f.set_h();
+                self.0.cpu.a = !self.0.cpu.a;
+                self.0.cpu.f.set_n();
+                self.0.cpu.f.set_h();
             }
             0x30 => {
                 // JR NC,r8 2:12/8 - - - -
@@ -1031,21 +1097,21 @@ impl Interpreter {
             }
             0x34 => {
                 // INC (HL) 1:12 Z 0 H -
-                let mut reg = self.memory.read(self.cpu.hl());
+                let mut reg = self.0.read(self.0.cpu.hl());
                 reg = add(reg, 1);
-                self.memory.write(self.cpu.hl(), reg);
-                self.cpu.f.def_z(reg == 0);
-                self.cpu.f.clr_n();
-                self.cpu.f.def_h(reg & 0x0f == 0);
+                self.0.write(self.0.cpu.hl(), reg);
+                self.0.cpu.f.def_z(reg == 0);
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.def_h(reg & 0x0f == 0);
             }
             0x35 => {
                 // DEC (HL) 1:12 Z 1 H -
-                let mut reg = self.memory.read(self.cpu.hl());
+                let mut reg = self.0.read(self.0.cpu.hl());
                 reg = sub(reg, 1);
-                self.memory.write(self.cpu.hl(), reg);
-                self.cpu.f.def_z(reg == 0);
-                self.cpu.f.set_n();
-                self.cpu.f.def_h(reg & 0x0f == 0xf);
+                self.0.write(self.0.cpu.hl(), reg);
+                self.0.cpu.f.def_z(reg == 0);
+                self.0.cpu.f.set_n();
+                self.0.cpu.f.def_h(reg & 0x0f == 0xf);
             }
             0x36 => {
                 // LD (HL),d8 2:12 - - - -
@@ -1053,9 +1119,9 @@ impl Interpreter {
             }
             0x37 => {
                 // SCF 1:4 - 0 0 1
-                self.cpu.f.clr_h();
-                self.cpu.f.clr_n();
-                self.cpu.f.set_c();
+                self.0.cpu.f.clr_h();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.set_c();
             }
             0x38 => {
                 // JR C,r8 2:12/8 - - - -
@@ -1087,9 +1153,9 @@ impl Interpreter {
             }
             0x3f => {
                 // CCF 1:4 - 0 0 C
-                self.cpu.f.clr_n();
-                self.cpu.f.clr_h();
-                self.cpu.f.def_c(!self.cpu.f.c());
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.clr_h();
+                self.0.cpu.f.def_c(!self.0.cpu.f.c());
             }
             0x40 => {
                 // LD B,B 1:4 - - - -
@@ -1309,7 +1375,7 @@ impl Interpreter {
             }
             0x76 => {
                 // HALT 1:4 - - - -
-                self.cpu.state = State::Halt;
+                self.0.cpu.state = State::Halt;
             }
             0x77 => {
                 // LD (HL),A 1:8 - - - -
@@ -1705,7 +1771,7 @@ impl Interpreter {
             0xd9 => {
                 // RETI 1:16 - - - -
                 self.ret(None);
-                self.cpu.ime = true;
+                self.0.cpu.ime = ImeState::ToBeEnable;
                 return;
             }
             0xda => {
@@ -1766,24 +1832,25 @@ impl Interpreter {
                 let c;
                 let h;
                 if (op[1] as i8) >= 0 {
-                    c = ((self.cpu.sp & 0xFF) + op[1] as u16) > 0xFF;
-                    h = ((self.cpu.sp & 0x0F) as u8 + (op[1] & 0xF)) > 0x0F;
-                    r = add16(self.cpu.sp, op[1] as u16);
+                    c = ((self.0.cpu.sp & 0xFF) + op[1] as u16) > 0xFF;
+                    h = ((self.0.cpu.sp & 0x0F) as u8 + (op[1] & 0xF)) > 0x0F;
+                    r = add16(self.0.cpu.sp, op[1] as u16);
                 } else {
-                    r = sub16(self.cpu.sp, -(op[1] as i8) as u16);
-                    c = (r & 0xFF) <= (self.cpu.sp & 0xFF);
-                    h = (r & 0x0F) <= (self.cpu.sp & 0x0F);
+                    r = sub16(self.0.cpu.sp, -(op[1] as i8) as u16);
+                    c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
+                    h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
                 }
-                self.cpu.sp = r;
-                self.cpu.f.clr_z();
-                self.cpu.f.clr_n();
-                self.cpu.f.def_c(c);
-                self.cpu.f.def_h(h);
+                self.0.cpu.sp = r;
+                self.0.cpu.f.clr_z();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.def_c(c);
+                self.0.cpu.f.def_h(h);
             }
             0xe9 => {
                 // JP (HL) 1:4 - - - -
-                self.cpu.pc = self.cpu.hl();
-                self.clock_count += 4;
+                self.0.cpu.pc = self.0.cpu.hl();
+                let cycles = 4;
+                self.0.tick(cycles);
                 return;
             }
             0xea => {
@@ -1821,7 +1888,7 @@ impl Interpreter {
             }
             0xf3 => {
                 // DI 1:4 - - - -
-                self.cpu.ime = false;
+                self.0.cpu.ime = ImeState::Disabled;
             }
             0xf4 => {
                 //
@@ -1844,20 +1911,19 @@ impl Interpreter {
                 let c;
                 let h;
                 if (op[1] as i8) >= 0 {
-                    c = ((self.cpu.sp & 0xFF) + op[1] as u16) > 0xFF;
-                    h = ((self.cpu.sp & 0x0F) as u8 + (op[1] & 0xF)) > 0x0F;
-                    r = add16(self.cpu.sp, op[1] as u16);
+                    c = ((self.0.cpu.sp & 0xFF) + op[1] as u16) > 0xFF;
+                    h = ((self.0.cpu.sp & 0x0F) as u8 + (op[1] & 0xF)) > 0x0F;
+                    r = add16(self.0.cpu.sp, op[1] as u16);
                 } else {
-                    r = sub16(self.cpu.sp, -(op[1] as i8) as u16);
-                    c = (r & 0xFF) <= (self.cpu.sp & 0xFF);
-                    h = (r & 0x0F) <= (self.cpu.sp & 0x0F);
+                    r = sub16(self.0.cpu.sp, -(op[1] as i8) as u16);
+                    c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
+                    h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
                 }
-                self.cpu.set_hl(r);
-                self.cpu.f.clr_z();
-                self.cpu.f.clr_n();
-                self.cpu.f.def_c(c);
-                self.cpu.f.def_n((op[1] as i8) < 0);
-                self.cpu.f.def_h(h);
+                self.0.cpu.set_hl(r);
+                self.0.cpu.f.clr_z();
+                self.0.cpu.f.clr_n();
+                self.0.cpu.f.def_h(h);
+                self.0.cpu.f.def_c(c);
             }
             0xf9 => {
                 // LD SP,HL 1:8 - - - -
@@ -1869,7 +1935,8 @@ impl Interpreter {
             }
             0xfb => {
                 // EI 1:4 - - - -
-                self.cpu.ime = true;
+                // TODO: this need to be delayed by one instruction
+                self.0.cpu.ime = ImeState::ToBeEnable;
             }
             0xfc => {
                 //
@@ -1886,14 +1953,15 @@ impl Interpreter {
                 return self.rst(0x38);
             }
         }
-        self.cpu.pc = add16(self.cpu.pc, opcode::LEN[op[0] as usize] as u16);
-        self.clock_count += opcode::CLOCK[op[0] as usize] as u64;
+        self.0.cpu.pc = add16(self.0.cpu.pc, consts::LEN[op[0] as usize] as u16);
+        let cycles = consts::CLOCK[op[0] as usize];
+        self.0.tick(cycles);
     }
 
     fn interpret_op_cb(&mut self) {
         let op = &[
-            self.memory.read(self.cpu.pc + 1),
-            self.memory.read(self.cpu.pc + 2),
+            self.0.read(self.0.cpu.pc + 1),
+            self.0.read(self.0.cpu.pc + 2),
         ];
         match op[0] {
             0x00 => {

@@ -1,16 +1,15 @@
 use std::fs::File;
-use std::io::Read;
 
+mod consts;
 mod cpu;
 mod dissasembler;
+mod gameboy;
 mod interpreter;
-mod memory;
-mod opcode;
 
 fn main() {
     let mut diss = false;
     let mut debug = false;
-    let mut file_path = "roms/test.gb".to_string();
+    let mut rom_path = "roms/test.gb".to_string();
 
     for arg in std::env::args() {
         match arg.as_str() {
@@ -19,34 +18,30 @@ fn main() {
             _ if arg.starts_with("-") => {
                 eprintln!("unknown argument {}", arg);
                 return;
-            },
+            }
             _ => {
-                file_path = arg;
+                rom_path = arg;
             }
         }
     }
 
-    let mut file = File::open(file_path).unwrap();
-    let mut rom = Vec::new();
-    file.read_to_end(&mut rom).unwrap();
-    rom.resize(0x10000, 0);
-    let mut memory = memory::Memory::from_rom(&rom);
-    memory.write(0xff44, 0x90);
-    let trace = dissasembler::Trace::new(&memory);
+    let rom_file = File::open(rom_path).unwrap();
+    let boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
 
-    let cpu = cpu::Cpu::default();
-    let mut inter = interpreter::Interpreter {
-        clock_count: 0,
-        cpu,
-        memory,
-        trace,
-    };
+    let game_boy = gameboy::GameBoy::new(boot_rom_file, rom_file);
+
+    let mut inter = interpreter::Interpreter(game_boy);
 
     if diss {
         let mut string = String::new();
-        inter.trace.fmt(&inter.memory, &mut string).unwrap();
+        inter
+            .0
+            .trace
+            .borrow_mut()
+            .fmt(&inter.0, &mut string)
+            .unwrap();
         println!("{}", string);
-    }else if debug {
+    } else if debug {
         loop {
             inter.debug();
         }

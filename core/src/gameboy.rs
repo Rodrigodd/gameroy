@@ -1,4 +1,4 @@
-use crate::{consts, cpu::Cpu, dissasembler::Trace};
+use crate::{consts, cpu::Cpu, dissasembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::Read;
 
@@ -72,6 +72,10 @@ pub struct GameBoy {
     pub boot_rom_active: bool,
     pub clock_count: u64,
     pub timer: Timer,
+    pub ppu: Ppu,
+    /// JoyPad state. 0 bit means pressed.
+    /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
+    pub joypad: u8,
 }
 impl GameBoy {
     pub fn new(mut bootrom_file: impl Read, mut rom_file: impl Read) -> Self {
@@ -95,6 +99,15 @@ impl GameBoy {
                 tac: 0,
                 last_counter_bit: false,
             },
+            ppu: Ppu {
+                lcdc: 0,
+                stat: 0,
+                scy: 0,
+                scx: 0,
+                ly: 0,
+                lyc: 0,
+            },
+            joypad: 0,
         }
     }
 
@@ -138,6 +151,51 @@ impl GameBoy {
                 self.memory[consts::IF as usize] |= 1 << 2;
             }
         }
+        self.ppu.ly = ((self.clock_count / 456) % 153) as u8;
+        let lx = self.clock_count % 456;
+
+        let set_stat_int = |s: &mut Self, i: u8| {
+            if s.ppu.stat & (1 << i) != 0 {
+                s.memory[consts::IF as usize] |= 1 << 1;
+            }
+        };
+        let set_mode = |s: &mut Self, mode: u8| {
+            debug_assert!(mode <= 3);
+            s.ppu.stat = (s.ppu.stat & !0b11) | mode;
+        };
+
+        let mode = self.ppu.stat & 0b11;
+        match mode {
+            0 if self.ppu.ly >= 144 => {
+                set_mode(self, 1);
+                // V-Blank Interrupt
+                self.memory[consts::IF as usize] |= 1 << 0;
+                // Mode 1 STAT Interrupt
+                set_stat_int(self, 4);
+            }
+            0 | 1 => {
+                if mode == 0 && lx < 80 || mode == 1 && self.ppu.ly < 144 {
+                    set_mode(self, 2);
+                    // Mode 2 STAT Interrupt
+                    set_stat_int(self, 5);
+
+                    if self.ppu.ly == self.ppu.lyc {
+                        // STAT Coincidente Flag
+                        self.ppu.stat |= 1 << 2;
+                        // LY == LYC STAT Interrupt
+                        set_stat_int(self, 6)
+                    }
+                }
+            }
+            2 if lx >= 80 => set_mode(self, 0),
+            3 if lx >= 80 + 17 => {
+                set_mode(self, 0);
+                // Mode 0 STAT Interrupt
+                set_stat_int(self, 3);
+            }
+            4..=255 => unreachable!(),
+            _ => {}
+        }
     }
 
     pub fn read16(&mut self, address: u16) -> u16 {
@@ -152,24 +210,58 @@ impl GameBoy {
 
     fn write_io(&mut self, address: u8, value: u8) {
         match address {
+            0x00 => self.memory[0xFF00] = 0b1100_1111 | (value & 0x30), // JOYPAD
             0x04 => self.timer.write_div(value),
             0x05 => self.timer.write_tima(value),
             0x06 => self.timer.write_tma(value),
             0x07 => self.timer.write_tac(value),
-            // 0x44 => 0x90,
-            0x4d => {},
-            0x50 if value & 0b1 != 0 => self.boot_rom_active = false,
+            0x40 => self.ppu.set_lcdc(value),
+            0x41 => self.ppu.set_stat(value),
+            0x42 => self.ppu.set_scy(value),
+            0x43 => self.ppu.set_scx(value),
+            0x44 => self.ppu.set_ly(value),
+            0x45 => self.ppu.set_lyc(value),
+            0x46 => {
+                // DMA Transfer
+                // TODO: this is not the proper behavior, of course
+                let start = (value as usize) << 8;
+                for (i, j) in (0xFE00..=0xFE9F).zip(start..start + 0x9F) {
+                    self.memory[i] = self.memory[j];
+                }
+            }
+            0x4d => {}
+            0x50 if value & 0b1 != 0 => {
+                self.boot_rom_active = false;
+                self.cpu.pc = 0x100;
+            }
             _ => self.memory[0xFF00 | address as usize] = value,
         }
     }
 
     fn read_io(&mut self, address: u8) -> u8 {
         match address {
+            0x00 => {
+                // JOYPAD
+                let v = self.memory[0xFF00];
+                let mut r = (v & 0x30) | 0b1100_0000;
+                if v & 0x10 != 0 {
+                    r |= (self.joypad & 0xF0) >> 4;
+                }
+                if v & 0x20 != 0 {
+                    r |= self.joypad & 0x0F;
+                }
+                r
+            }
             0x04 => self.timer.read_div(),
             0x05 => self.timer.read_tima(),
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_tac(),
-            0x44 => 0x90,
+            0x41 => self.ppu.stat(),
+            0x42 => self.ppu.scy(),
+            0x43 => self.ppu.scx(),
+            0x44 => self.ppu.ly(),
+            0x45 => self.ppu.lyc(),
+            // 0x44 => ((self.clock_count / 456) % 153) as u8,
             0x4d => 0xff,
             _ => self.memory[0xFF00 | address as usize],
         }

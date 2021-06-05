@@ -90,7 +90,7 @@ impl Trace {
         Ok(())
     }
 
-    fn trace_starting_at(&mut self, rom: &GameBoy, start: u16) {
+    pub fn trace_starting_at(&mut self, rom: &GameBoy, start: u16) {
         let mut cursors = vec![start];
         while !cursors.is_empty() {
             self.trace_once(rom, &mut cursors);

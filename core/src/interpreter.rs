@@ -70,50 +70,48 @@ impl Interpreter {
     /// Wait for command in the stdin.
     pub fn debug(&mut self) {
         let mut input = String::new();
-        loop {
-            input.clear();
-            use std::io::Write;
-            let pc = self.0.cpu.pc;
-            let mut string = String::new();
-            let std = std::io::stdout();
-            let mut std = std.lock();
-            self.0
-                .trace
-                .borrow_mut()
-                .print_around(pc, &self.0, &mut string)
-                .unwrap();
-            writeln!(std, "{}", string).unwrap();
-            writeln!(std, "{}", self.0.cpu).unwrap();
-            writeln!(std, "clock: {}", self.0.clock_count).unwrap();
-            std::io::stdin().read_line(&mut input).unwrap();
-            let input = input.split_ascii_whitespace().collect::<Vec<_>>();
-            dbg!(&input);
-            if input.is_empty() {
-                self.interpret_op();
-                continue;
-            }
-            match input[0] {
-                "runto" => {
-                    let pc = match u16::from_str_radix(input[1], 16) {
-                        Ok(x) => x,
-                        Err(_) => continue,
-                    };
-                    while self.0.cpu.pc != pc {
-                        self.interpret_op();
-                    }
+        input.clear();
+        use std::io::Write;
+        let pc = self.0.cpu.pc;
+        let mut string = String::new();
+        let std = std::io::stdout();
+        let mut std = std.lock();
+        self.0
+            .trace
+            .borrow_mut()
+            .print_around(pc, &self.0, &mut string)
+            .unwrap();
+        writeln!(std, "{}", string).unwrap();
+        writeln!(std, "{}", self.0.cpu).unwrap();
+        writeln!(std, "clock: {}", self.0.clock_count).unwrap();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.split_ascii_whitespace().collect::<Vec<_>>();
+        dbg!(&input);
+        if input.is_empty() {
+            self.interpret_op();
+            return;
+        }
+        match input[0] {
+            "runto" => {
+                let pc = match u16::from_str_radix(input[1], 16) {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+                while self.0.cpu.pc != pc {
+                    self.interpret_op();
                 }
-                "run" => {
-                    let clocks = match u64::from_str_radix(input[1], 10) {
-                        Ok(x) => x,
-                        Err(_) => continue,
-                    };
-                    let target = self.0.clock_count + clocks;
-                    while self.0.clock_count < target {
-                        self.interpret_op();
-                    }
-                }
-                _ => writeln!(std, "unkown command").unwrap(),
             }
+            "run" => {
+                let clocks = match u64::from_str_radix(input[1], 10) {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+                let target = self.0.clock_count + clocks;
+                while self.0.clock_count < target {
+                    self.interpret_op();
+                }
+            }
+            _ => writeln!(std, "unkown command").unwrap(),
         }
     }
 

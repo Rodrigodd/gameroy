@@ -107,7 +107,7 @@ impl GameBoy {
                 ly: 0,
                 lyc: 0,
             },
-            joypad: 0,
+            joypad: 0xFF,
         }
     }
 

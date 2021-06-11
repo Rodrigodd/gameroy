@@ -12,4 +12,6 @@ edition = "2018"
 [dependencies]
 
 gameroy-core = { path = "core" }
-pixel-canvas = "0.2"
+crui = { path = "../crui" }
+sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
+winit = "0.24"

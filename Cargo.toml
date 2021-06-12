@@ -15,3 +15,7 @@ gameroy-core = { path = "core" }
 crui = { path = "../crui" }
 sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
 winit = "0.24"
+
+
+[profile.test]
+opt-level = 3

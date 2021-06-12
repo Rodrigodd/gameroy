@@ -76,6 +76,7 @@ pub struct GameBoy {
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     pub joypad: u8,
+    pub serial_transfer: Box<dyn FnMut(u8)>,
 }
 impl GameBoy {
     pub fn new(mut bootrom_file: impl Read, mut rom_file: impl Read) -> Self {
@@ -108,6 +109,9 @@ impl GameBoy {
                 lyc: 0,
             },
             joypad: 0xFF,
+            serial_transfer: Box::new(|c| {
+                eprint!("{}", c as char);
+            }),
         }
     }
 
@@ -133,7 +137,7 @@ impl GameBoy {
             address -= 0x2000;
         }
         if address == 0xFF02 && value == 0x81 {
-            eprint!("{}", self.memory[0xFF01] as char);
+            (self.serial_transfer)(self.memory[0xFF01]);
         }
 
         match address {

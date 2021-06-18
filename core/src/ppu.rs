@@ -11,6 +11,12 @@ pub struct Ppu {
     pub ly: u8,
     /// FF45: LY Compare
     pub lyc: u8,
+    /// FF47: BG & Window Pallete Data
+    pub bgp: u8,
+    /// FF4A: Window Y Position
+    pub wy: u8,
+    /// FF4B: Window X Position
+    pub wx: u8,
 }
 
 impl Ppu {
@@ -73,6 +79,37 @@ impl Ppu {
     pub fn lyc(&self) -> u8 {
         self.lyc
     }
+
+    /// Set the ppu's bgp.
+    pub fn set_bgp(&mut self, bgp: u8) {
+        eprintln!("{:02x}", bgp);
+        self.bgp = bgp;
+    }
+
+    /// Get a reference to the ppu's bgp.
+    pub fn bgp(&self) -> u8 {
+        self.bgp
+    }
+
+    /// Set the ppu's wx.
+    pub fn set_wx(&mut self, wx: u8) {
+        self.wx = wx;
+    }
+
+    /// Get a reference to the ppu's wx.
+    pub fn wx(&self) -> u8 {
+        self.wx
+    }
+
+    /// Set the ppu's wy.
+    pub fn set_wy(&mut self, wy: u8) {
+        self.wy = wy;
+    }
+
+    /// Get a reference to the ppu's wy.
+    pub fn wy(&self) -> u8 {
+        self.wy
+    }
 }
 
 pub fn draw_tile(
@@ -81,62 +118,50 @@ pub fn draw_tile(
     tx: i32,
     ty: i32,
     index: usize,
+    pallete: u8,
+    alpha: bool,
 ) {
     let i = index * 0x10 + 0x8000;
     for y in 0..8 {
         let a = rom[i + y as usize * 2];
         let b = rom[i + y as usize * 2 + 1];
         for x in 0..8 {
-            let color = (((a >> (7 - x)) << 1) & 0b10) | ((b >> (7 - x)) & 0b1);
+            let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
+            if alpha && color == 0 {
+                continue;
+            }
+            let color = (pallete >> (color * 2)) & 0b11;
             draw_pixel(tx + x, ty + y, color);
         }
     }
 }
 
-pub fn draw_tiles(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8)) {
+pub fn draw_tiles(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8), pallete: u8) {
     for i in 0..0x180 {
         let tx = 8 * (i % 16);
         let ty = 8 * (i / 16);
 
-        draw_tile(
-            rom,
-            draw_pixel,
-            tx,
-            ty,
-            i as usize,
-        );
+        draw_tile(rom, draw_pixel, tx, ty, i as usize, pallete, false);
     }
 }
 
-pub fn draw_background(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8)) {
+pub fn draw_background(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8), pallete: u8) {
     for i in 0..(32 * 32) {
         let t = rom[0x9800 + i as usize];
         let tx = 8 * (i % 32);
         let ty = 8 * (i / 32);
 
-        draw_tile(
-            rom,
-            draw_pixel,
-            tx,
-            ty,
-            t as usize,
-        );
+        draw_tile(rom, draw_pixel, tx, ty, t as usize, pallete, false);
     }
 }
 
-pub fn draw_window(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8)) {
+pub fn draw_window(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8), pallete: u8) {
     for i in 0..(32 * 32) {
         let t = rom[0x9C00 + i as usize];
         let tx = 8 * (i % 32);
         let ty = 8 * (i / 32);
 
-        draw_tile(
-            rom,
-            draw_pixel,
-            tx,
-            ty,
-            t as usize,
-        );
+        draw_tile(rom, draw_pixel, tx, ty, t as usize, pallete, false);
     }
 }
 
@@ -147,46 +172,83 @@ pub fn draw_sprites(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8)) {
         let sy = data[0] as i32 - 16;
         let sx = data[1] as i32 - 8;
         let t = data[2];
-        let _f = data[3];
+        let f = data[3];
+
+        let pallete = if f & 0x10 != 0 {
+            // OBP1
+            rom[0xFF49]
+        } else {
+            // OBP0
+            rom[0xFF48]
+        };
 
         if sy < 0 || sx < 0 {
             continue;
         }
-        draw_tile(
-            rom,
-            draw_pixel,
-            sx,
-            sy,
-            t as usize,
-        );
+        draw_tile(rom, draw_pixel, sx, sy, t as usize, pallete, true);
     }
 }
 
 pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
-    let scx = ppu.scx();
-    let scy = ppu.scy();
-    let xs = scx / 8;
-    let ys = scy / 8;
-    for y in ys..ys + 19 {
-        for x in xs..xs + 21 {
-            let tx = 8 * x as i32 - scx as i32;
-            let ty = 8 * y as i32 - scy as i32;
-            let x = x % 32;
-            let y = y % 32;
-            let i = x as usize + y as usize * 32;
-            let t = rom[0x9800 + i as usize];
+    // Draw Background
+    if true {
+        let scx = ppu.scx();
+        let scy = ppu.scy();
+        let xs = scx / 8;
+        let ys = scy / 8;
+        for y in ys..ys + 19 {
+            for x in xs..xs + 21 {
+                let tx = 8 * x as i32 - scx as i32;
+                let ty = 8 * y as i32 - scy as i32;
+                let x = x % 32;
+                let y = y % 32;
+                let i = x as usize + y as usize * 32;
+                // BG Tile Map Select
+                let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
+                let mut tile = rom[address + i as usize] as usize;
 
-            draw_tile(
-                rom,
-                draw_pixel,
-                tx,
-                ty,
-                t as usize
-            );
+                // if is using 8800 method
+                if ppu.lcdc & 0x10 == 0 {
+                    tile += 0x100;
+                    if tile >= 0x180 {
+                        tile -= 0x100;
+                    }
+                }
+
+                draw_tile(rom, draw_pixel, tx, ty, tile, ppu.bgp, false);
+            }
         }
     }
-    draw_sprites(rom, draw_pixel);
+    // Draw Window, if enabled
+    if ppu.lcdc & 0x20 != 0 {
+        let wx = ppu.wx();
+        let wy = ppu.wy();
+        println!("Draw Window!!! {} {}", wx, wy);
+        for y in 0..19 - wy / 8 {
+            for x in 0..21 - wx / 8 {
+                let tx = 8 * x as i32 + wx as i32;
+                let ty = 8 * y as i32 + wy as i32;
+                let x = x % 32;
+                let y = y % 32;
+                let i = x as usize + y as usize * 32;
+                // BG Tile Map Select
+                let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
+                let mut tile = rom[address + i as usize] as usize;
+
+                // if is using 8800 method
+                if ppu.lcdc & 0x10 == 0 {
+                    tile += 0x100;
+                    if tile >= 0x180 {
+                        tile -= 0x100;
+                    }
+                }
+
+                draw_tile(rom, draw_pixel, tx, ty, tile, ppu.bgp, false);
+            }
+        }
+    }
+    // Draw Sprites, if enabled
+    if ppu.lcdc & 0x02 != 0 {
+        draw_sprites(rom, draw_pixel);
+    }
 }
-
-
-

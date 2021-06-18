@@ -86,7 +86,7 @@ fn resize(
 fn create_window(mut inter: Interpreter, mut debug: bool) {
     // create winit's window and event_loop
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(400, 200));
+    let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
 
     // create the render and camera, and a texture for the glyphs rendering
     let (window, mut render) = GLSpriteRender::new(window, &event_loop, true);
@@ -207,7 +207,7 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                         return;
                     }
                     let i = (x + y * SCREEN_WIDTH as i32) as usize * 4;
-                    const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [200, 200, 200], [100, 100, 100], [0,0,0]];
+                    const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0,0,0]];
                     img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
                 });
 

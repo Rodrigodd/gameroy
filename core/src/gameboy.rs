@@ -107,6 +107,9 @@ impl GameBoy {
                 scx: 0,
                 ly: 0,
                 lyc: 0,
+                bgp: 0,
+                wy: 0,
+                wx: 0,
             },
             joypad: 0xFF,
             serial_transfer: Box::new(|c| {
@@ -233,7 +236,10 @@ impl GameBoy {
                     self.memory[i] = self.memory[j];
                 }
             }
+            0x47 => self.ppu.set_bgp(value),
             0x4d => {}
+            0x4a => self.ppu.set_wy(value),
+            0x4b => self.ppu.set_wx(value),
             0x50 if value & 0b1 != 0 => {
                 self.boot_rom_active = false;
                 self.cpu.pc = 0x100;
@@ -266,7 +272,10 @@ impl GameBoy {
             0x44 => self.ppu.ly(),
             0x45 => self.ppu.lyc(),
             // 0x44 => ((self.clock_count / 456) % 153) as u8,
+            0x47 => self.ppu.bgp(),
             0x4d => 0xff,
+            0x4a => self.ppu.wy(),
+            0x4b => self.ppu.wx(),
             _ => self.memory[0xFF00 | address as usize],
         }
     }

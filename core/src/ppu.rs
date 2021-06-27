@@ -1,4 +1,13 @@
 pub struct Ppu {
+    /// The current screen been render.
+    /// Each pixel is a shade of gray, from 0 to 3
+    pub screen: [u8; 144 * 160],
+    /// sprites that will be rendered in the next mode 3 scanline
+    pub sprite_buffer: [[u8; 4]; 10],
+    /// the length of the sprite_buffer
+    pub sprite_buffer_len: u8,
+    /// Window Internal Line Counter
+    pub wyc: u8,
     /// FF40: LCD Control Register
     pub lcdc: u8,
     /// FF41: LCD Status Register
@@ -82,7 +91,6 @@ impl Ppu {
 
     /// Set the ppu's bgp.
     pub fn set_bgp(&mut self, bgp: u8) {
-        eprintln!("{:02x}", bgp);
         self.bgp = bgp;
     }
 
@@ -109,6 +117,103 @@ impl Ppu {
     /// Get a reference to the ppu's wy.
     pub fn wy(&self) -> u8 {
         self.wy
+    }
+
+    fn search_objects(&mut self, memory: &mut [u8]) {
+        self.sprite_buffer_len = 0;
+        let sprite_height = if self.lcdc & 0x04 != 0 { 16 } else { 8 };
+        for i in 0..40 {
+            let i = 0xFE00 + i as usize * 4;
+            let data = &memory[i..i + 4];
+            let sy = data[0];
+            let sx = data[1];
+            let t = data[2];
+            let f = data[3];
+
+            if sx > 0
+                && self.ly as u16 + 16 >= sy as u16
+                && self.ly as u16 + 16 < sy as u16 + sprite_height
+            {
+                self.sprite_buffer[self.sprite_buffer_len as usize] = [sy, sx, t, f];
+                self.sprite_buffer_len += 1;
+            }
+            if self.sprite_buffer_len == 10 {
+                break;
+            }
+        }
+        // sort buffer by priority, in asce
+        self.sprite_buffer[0..self.sprite_buffer_len as usize].reverse();
+        self.sprite_buffer[0..self.sprite_buffer_len as usize].sort_by_key(|x| !x[1]);
+    }
+
+    pub fn update(
+        &mut self,
+        memory: &mut [u8],
+        clock_count: u64,
+        v_blank: &mut Box<dyn FnMut(&mut Ppu)>,
+    ) {
+        use crate::consts;
+        self.ly = ((clock_count / 456) % 153) as u8;
+        let lx = clock_count % 456;
+
+        let set_stat_int = |s: &mut Self, memory: &mut [u8], i: u8| {
+            if s.stat & (1 << i) != 0 {
+                memory[consts::IF as usize] |= 1 << 1;
+            }
+        };
+        let set_mode = |s: &mut Self, memory: &mut [u8], mode: u8| {
+            debug_assert!(mode <= 3);
+            s.stat = (s.stat & !0b11) | mode;
+            // object search at mode 2
+            if mode == 2 {
+                s.search_objects(memory);
+            }
+            if mode == 0 {
+                draw_scan_line(memory, s);
+            }
+        };
+
+        // LY==LYC Interrupt
+        let ly = self.ly;
+        let lyc = self.lyc;
+        if ly != 0 && (lx == 4 && ly == lyc || ly == 153 && lx == 12 && 0 == lyc) {
+            // STAT Coincidente Flag
+            self.stat |= 1 << 2;
+            // LY == LYC STAT Interrupt
+            set_stat_int(self, memory, 6)
+        }
+
+        let mode = self.stat & 0b11;
+        match mode {
+            0 if self.ly == 144 => {
+                set_mode(self, memory, 1);
+                // V-Blank Interrupt
+                (v_blank)(self);
+                memory[consts::IF as usize] |= 1 << 0;
+                // Mode 1 STAT Interrupt
+                set_stat_int(self, memory, 4);
+            }
+            0 | 1 => {
+                if mode == 0 && lx < 80 || mode == 1 && self.ly < 144 {
+                    if mode == 1 {
+                        self.wyc = 0;
+                    }
+                    set_mode(self, memory, 2);
+                    // Mode 2 STAT Interrupt
+                    set_stat_int(self, memory, 5);
+                }
+            }
+            2 if lx >= 80 => {
+                set_mode(self, memory, 3);
+            }
+            3 if lx >= 80 + 172 => {
+                set_mode(self, memory, 0);
+                // Mode 0 STAT Interrupt
+                set_stat_int(self, memory, 3);
+            }
+            4..=255 => unreachable!(),
+            _ => {}
+        }
     }
 }
 
@@ -223,7 +328,6 @@ pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, 
     if ppu.lcdc & 0x20 != 0 {
         let wx = ppu.wx();
         let wy = ppu.wy();
-        println!("Draw Window!!! {} {}", wx, wy);
         for y in 0..19 - wy / 8 {
             for x in 0..21 - wx / 8 {
                 let tx = 8 * x as i32 + wx as i32;
@@ -250,5 +354,152 @@ pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, 
     // Draw Sprites, if enabled
     if ppu.lcdc & 0x02 != 0 {
         draw_sprites(rom, draw_pixel);
+    }
+}
+
+pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
+    // Draw background
+    if ppu.lcdc & 0x01 != 0 {
+        // (py, px) is a pixel in the background map
+        // (lx, ly) is a pixel in the lcd screen
+        let ly = ppu.ly;
+        let py = ((ppu.scy as u16 + ppu.ly as u16) % 256) as u8;
+        for lx in 0..160 {
+            let px = ((lx as u16 + ppu.scx as u16) % 256) as u8;
+
+            let i = (px as usize / 8) + (py as usize / 8) * 32;
+
+            // BG Tile Map Select
+            let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
+            let mut tile = rom[address + i as usize] as usize;
+
+            // if is using 8800 method
+            if ppu.lcdc & 0x10 == 0 {
+                tile += 0x100;
+                if tile >= 0x180 {
+                    tile -= 0x100;
+                }
+            }
+
+            {
+                let pallete = ppu.bgp;
+                let alpha = false;
+                let i = tile * 0x10 + 0x8000;
+                let y = py % 8;
+                let a = rom[i + y as usize * 2];
+                let b = rom[i + y as usize * 2 + 1];
+                let x = px % 8;
+                let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
+                if alpha && color == 0 {
+                    continue;
+                }
+                let color = (pallete >> (color * 2)) & 0b11;
+                // draw_pixel(lx as i32, ly as i32, color);
+                ppu.screen[ly as usize * 160 + lx as usize] = color;
+            };
+        }
+    } else {
+        let ly = ppu.ly;
+        ppu.screen[ly as usize * 160..(ly as usize + 1) * 160].copy_from_slice(&[0; 160]);
+    }
+
+    // Draw window
+    if ppu.lcdc & 0x21 == 0x21 && ppu.ly >= ppu.wy && ppu.wx <= 166 {
+        // (py, px) is a pixel in the window map
+        // (lx, ly) is a pixel in the lcd screen
+        let ly = ppu.ly;
+        let py = ppu.wyc;
+        ppu.wyc += 1;
+        for lx in ppu.wx.saturating_sub(7)..160 {
+            let px = lx + 7 - ppu.wx;
+
+            let i = (px as usize / 8) + (py as usize / 8) * 32;
+
+            // BG Tile Map Select
+            let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
+            let mut tile = rom[address + i as usize] as usize;
+
+            // if is using 8800 method
+            if ppu.lcdc & 0x10 == 0 {
+                tile += 0x100;
+                if tile >= 0x180 {
+                    tile -= 0x100;
+                }
+            }
+
+            {
+                let pallete = ppu.bgp;
+                let alpha = false;
+                let i = tile * 0x10 + 0x8000;
+                let y = py % 8;
+                let a = rom[i + y as usize * 2];
+                let b = rom[i + y as usize * 2 + 1];
+                let x = px % 8;
+                let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
+                if alpha && color == 0 {
+                    continue;
+                }
+                let color = (pallete >> (color * 2)) & 0b11;
+                // draw_pixel(lx as i32, ly as i32, color);
+                ppu.screen[ly as usize * 160 + lx as usize] = color;
+            };
+        }
+    }
+
+    // Draw Sprites, if enabled
+    if ppu.lcdc & 0x02 != 0 {
+        for &[sy, sx, t, flags] in &ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize] {
+            let sy = sy as i32 - 16;
+            let sx = sx as i32 - 8;
+
+            // Y-Flip
+            let py = if flags & 0x40 != 0 {
+                let height = if ppu.lcdc & 0x04 != 0 { 16 } else { 8 };
+                height - 1 - (ppu.ly as i32 - sy)
+            } else {
+                ppu.ly as i32 - sy
+            };
+
+            let tile = if ppu.lcdc & 0x04 != 0 {
+                // sprite with 2 tiles of height
+                ((t & !1) + py as u8 / 8) as usize
+            } else {
+                t as usize
+            };
+
+            let pallete = if flags & 0x10 != 0 {
+                // OBP1
+                rom[0xFF49]
+            } else {
+                // OBP0
+                rom[0xFF48]
+            };
+
+            if sy < 0 || sx < 0 {
+                continue;
+            }
+            {
+                let y = py % 8;
+                let i = tile * 0x10 + 0x8000;
+                let a = rom[i + y as usize * 2];
+                let b = rom[i + y as usize * 2 + 1];
+                let ly = ppu.ly;
+                for x in 0..8 {
+                    let lx = sx + x;
+                    // X-Flip
+                    let x = if flags & 0x20 != 0 { x } else { 7 - x };
+                    let color = (((b >> x) << 1) & 0b10) | ((a >> x) & 0b1);
+                    if color == 0 {
+                        continue;
+                    }
+                    // Object to Background Priority
+                    if flags & 0x80 != 0 && ppu.screen[ly as usize * 160 + lx as usize] != 0 {
+                        continue;
+                    }
+                    let color = (pallete >> (color * 2)) & 0b11;
+                    ppu.screen[ly as usize * 160 + lx as usize] = color;
+                }
+            };
+        }
     }
 }

@@ -2,7 +2,11 @@ use gameroy::{interpreter::Interpreter, gameboy::GameBoy};
 use std::fs::File;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+
+    const SCREEN_HEIGHT: usize = 144;
+    const SCREEN_WIDTH: usize = 160;
 
 macro_rules! blargg {
     ($test:ident, $path:expr, $timeout:expr) => {
@@ -30,7 +34,7 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
     let rom_file = File::open(rom_path).unwrap();
     let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
 
-    let mut game_boy = GameBoy::new(boot_rom_file, rom_file);
+    let mut game_boy = GameBoy::new(boot_rom_file, rom_file).unwrap();
     // let mut game_boy = GameBoy::new(&vec![0; 256][..], rom_file);
     let string = Rc::new(RefCell::new(String::new()));
     let string_clone = string.clone();
@@ -58,4 +62,45 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
     } else {
         Err(format!("test rom failed: \n{}", string))
     }
+}
+
+fn lcd_to_rgba(screen: &[u8; 144*160], img_data: &mut [u8]) {
+        for y in 0..SCREEN_HEIGHT {
+            for x in 0..SCREEN_WIDTH {
+                let i = (x + y * SCREEN_WIDTH) as usize * 4;
+                let c = screen[i / 4];
+                const COLOR: [[u8; 3]; 4] =
+                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+            }
+        }
+}
+
+#[test]
+fn dmg_acid2() {
+    let rom_path = "../roms/dmg-acid2.gb";
+    let rom_file = File::open(rom_path).unwrap();
+    let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+
+    let mut game_boy = GameBoy::new(boot_rom_file, rom_file).unwrap();
+    let img_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
+    let img_data_clone = img_data.clone();
+    game_boy.v_blank = Box::new(move |ppu| {
+        let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();
+        lcd_to_rgba(&ppu.screen, img_data);
+    });
+
+    let mut inter = Interpreter(game_boy);
+    let timeout = 43000000;
+    while inter.0.clock_count < timeout {
+        inter.interpret_op();
+        if inter.0.read(inter.0.cpu.pc) == 0x40 {
+            break;
+        }
+    }
+
+    let img_data: &[u8] = &mut img_data.lock().unwrap();
+    let reference_img_data: &[u8] = &image::open("tests/reference-dmg.png").unwrap().to_rgba8();
+
+    assert_eq!(img_data, reference_img_data);
 }

@@ -1,9 +1,8 @@
-use std::fs::File;
+use std::{fs::File, sync::Arc, sync::Mutex};
 
 use gameroy::{
-    consts, cpu, dissasembler, gameboy,
+    gameboy,
     interpreter::{self, Interpreter},
-    ppu,
 };
 
 mod layout;
@@ -33,9 +32,9 @@ fn main() {
     let rom_file = File::open(rom_path).unwrap();
     let boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
 
-    let game_boy = gameboy::GameBoy::new(boot_rom_file, rom_file);
+    let game_boy = gameboy::GameBoy::new(boot_rom_file, rom_file).unwrap();
 
-    let mut inter = interpreter::Interpreter(game_boy);
+    let inter = interpreter::Interpreter(game_boy);
 
     if diss {
         let mut string = String::new();
@@ -51,8 +50,7 @@ fn main() {
 
 use crui::{
     font::{Font, Fonts},
-    graphics::{Text, TextStyle, Texture},
-    layouts::RatioLayout,
+    graphics::Texture,
     render::{GuiRender, GuiRenderer},
     Gui,
 };
@@ -102,7 +100,7 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
 
     // load a font
     let mut fonts = Fonts::new();
-    let my_font = {
+    let _my_font = {
         fonts.add(Font::new(include_bytes!(
             "../../crui/examples/NotoSans-Regular.ttf"
         )))
@@ -128,7 +126,23 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
         window.id(),
     );
 
-    let mut is_animating = true;
+    let img_data: Arc<Mutex<Vec<u8>>> =
+        Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
+    let img_data_clone = img_data.clone();
+    inter.0.v_blank = Box::new(move |ppu| {
+        let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();
+        for y in 0..SCREEN_HEIGHT {
+            for x in 0..SCREEN_WIDTH {
+                let i = (x + y * SCREEN_WIDTH) as usize * 4;
+                let c = ppu.screen[i / 4];
+                const COLOR: [[u8; 3]; 4] =
+                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+            }
+        }
+    });
+
+    let is_animating = true;
     let mut target_clock = 0;
 
     // winit event loop
@@ -201,17 +215,20 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                     }
                 }
 
-                let img_data: &mut [u8] = &mut vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
-                ppu::draw_screen(&inter.0.memory, &inter.0.ppu, &mut |x, y, c| {
-                    if x < 0 || x >= SCREEN_WIDTH as i32 || y < 0 || y as usize >= SCREEN_HEIGHT {
-                        return;
+                {
+                    let img_data: &mut [u8] = &mut img_data.lock().unwrap();
+                    for y in 0..SCREEN_HEIGHT {
+                        for x in 0..SCREEN_WIDTH {
+                            let i = (x + y * SCREEN_WIDTH) as usize * 4;
+                            let c = inter.0.ppu.screen[i / 4];
+                            const COLOR: [[u8; 3]; 4] =
+                                [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+                            img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+                        }
                     }
-                    let i = (x + y * SCREEN_WIDTH as i32) as usize * 4;
-                    const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0,0,0]];
-                    img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-                });
+                }
 
-                render.update_texture(screen_texture, &*img_data, None);
+                render.update_texture(screen_texture, &img_data.lock().unwrap(), None);
                 window.request_redraw();
             }
             Event::RedrawRequested(window_id) => {
@@ -240,7 +257,7 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                     }
                 }
                 let mut ctx = gui.get_render_context();
-                let (sprites, is_anim) = gui_render.render(&mut ctx, Render(&mut render));
+                let (sprites, _is_anim) = gui_render.render(&mut ctx, Render(&mut render));
                 // is_animating = is_anim;
                 let mut renderer = render.render(window_id);
                 renderer.clear_screen(&[0.0, 0.0, 0.0, 1.0]);

@@ -77,16 +77,17 @@ pub struct GameBoy {
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     pub joypad: u8,
     pub serial_transfer: Box<dyn FnMut(u8)>,
+    pub v_blank: Box<dyn FnMut(&mut Ppu)>,
 }
 impl GameBoy {
-    pub fn new(mut bootrom_file: impl Read, mut rom_file: impl Read) -> Self {
+    pub fn new(mut bootrom_file: impl Read, mut rom_file: impl Read) -> std::io::Result<Self> {
         let mut memory = [0; 0x10000];
         let mut boot_rom = [0; 0x100];
 
-        bootrom_file.read(&mut boot_rom).unwrap();
-        rom_file.read(&mut memory).unwrap();
+        bootrom_file.read(&mut boot_rom)?;
+        rom_file.read(&mut memory)?;
 
-        Self {
+        Ok(Self {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
             memory,
@@ -101,6 +102,10 @@ impl GameBoy {
                 last_counter_bit: false,
             },
             ppu: Ppu {
+                screen: [0; 144 * 160],
+                sprite_buffer: [[0; 4]; 10],
+                sprite_buffer_len: 0,
+                wyc: 0,
                 lcdc: 0,
                 stat: 0,
                 scy: 0,
@@ -115,7 +120,8 @@ impl GameBoy {
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
             }),
-        }
+            v_blank: Box::new(|_| {}),
+        })
     }
 
     pub fn len(&self) -> usize {
@@ -158,51 +164,8 @@ impl GameBoy {
                 self.memory[consts::IF as usize] |= 1 << 2;
             }
         }
-        self.ppu.ly = ((self.clock_count / 456) % 153) as u8;
-        let lx = self.clock_count % 456;
 
-        let set_stat_int = |s: &mut Self, i: u8| {
-            if s.ppu.stat & (1 << i) != 0 {
-                s.memory[consts::IF as usize] |= 1 << 1;
-            }
-        };
-        let set_mode = |s: &mut Self, mode: u8| {
-            debug_assert!(mode <= 3);
-            s.ppu.stat = (s.ppu.stat & !0b11) | mode;
-        };
-
-        let mode = self.ppu.stat & 0b11;
-        match mode {
-            0 if self.ppu.ly >= 144 => {
-                set_mode(self, 1);
-                // V-Blank Interrupt
-                self.memory[consts::IF as usize] |= 1 << 0;
-                // Mode 1 STAT Interrupt
-                set_stat_int(self, 4);
-            }
-            0 | 1 => {
-                if mode == 0 && lx < 80 || mode == 1 && self.ppu.ly < 144 {
-                    set_mode(self, 2);
-                    // Mode 2 STAT Interrupt
-                    set_stat_int(self, 5);
-
-                    if self.ppu.ly == self.ppu.lyc {
-                        // STAT Coincidente Flag
-                        self.ppu.stat |= 1 << 2;
-                        // LY == LYC STAT Interrupt
-                        set_stat_int(self, 6)
-                    }
-                }
-            }
-            2 if lx >= 80 => set_mode(self, 0),
-            3 if lx >= 80 + 17 => {
-                set_mode(self, 0);
-                // Mode 0 STAT Interrupt
-                set_stat_int(self, 3);
-            }
-            4..=255 => unreachable!(),
-            _ => {}
-        }
+        self.ppu.update(&mut self.memory, self.clock_count, &mut self.v_blank);
     }
 
     pub fn read16(&mut self, address: u16) -> u16 {
@@ -237,9 +200,9 @@ impl GameBoy {
                 }
             }
             0x47 => self.ppu.set_bgp(value),
-            0x4d => {}
             0x4a => self.ppu.set_wy(value),
             0x4b => self.ppu.set_wx(value),
+            0x4d => {}
             0x50 if value & 0b1 != 0 => {
                 self.boot_rom_active = false;
                 self.cpu.pc = 0x100;
@@ -266,6 +229,7 @@ impl GameBoy {
             0x05 => self.timer.read_tima(),
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_tac(),
+            0x40 => self.ppu.lcdc(),
             0x41 => self.ppu.stat(),
             0x42 => self.ppu.scy(),
             0x43 => self.ppu.scx(),
@@ -273,9 +237,9 @@ impl GameBoy {
             0x45 => self.ppu.lyc(),
             // 0x44 => ((self.clock_count / 456) % 153) as u8,
             0x47 => self.ppu.bgp(),
-            0x4d => 0xff,
             0x4a => self.ppu.wy(),
             0x4b => self.ppu.wx(),
+            0x4d => 0xff,
             _ => self.memory[0xFF00 | address as usize],
         }
     }

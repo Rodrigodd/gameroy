@@ -5,3 +5,4 @@ pub mod dissasembler;
 pub mod gameboy;
 pub mod interpreter;
 pub mod ppu;
+pub mod cartridge;

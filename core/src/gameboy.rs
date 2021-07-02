@@ -1,3 +1,4 @@
+use crate::cartridge::Cartridge;
 use crate::{consts, cpu::Cpu, dissasembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::Read;
@@ -67,6 +68,7 @@ impl Timer {
 pub struct GameBoy {
     pub trace: RefCell<Trace>,
     pub cpu: Cpu,
+    pub cartridge: Cartridge,
     pub memory: [u8; 0x10000],
     pub boot_rom: [u8; 0x100],
     pub boot_rom_active: bool,
@@ -80,17 +82,16 @@ pub struct GameBoy {
     pub v_blank: Box<dyn FnMut(&mut Ppu)>,
 }
 impl GameBoy {
-    pub fn new(mut bootrom_file: impl Read, mut rom_file: impl Read) -> std::io::Result<Self> {
-        let mut memory = [0; 0x10000];
+    pub fn new(mut bootrom_file: impl Read, cartridge: Cartridge) -> std::io::Result<Self> {
         let mut boot_rom = [0; 0x100];
 
-        bootrom_file.read(&mut boot_rom)?;
-        rom_file.read(&mut memory)?;
+        let _ = bootrom_file.read(&mut boot_rom)?;
 
         Ok(Self {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
-            memory,
+            cartridge,
+            memory: [0; 0x10000],
             boot_rom,
             boot_rom_active: true,
             clock_count: 0,
@@ -136,7 +137,12 @@ impl GameBoy {
             address -= 0x2000;
         }
         match address {
-            0x0000..=0xFEFF | 0xFF80..=0xFFFE => self.memory[address as usize],
+            // Cartridge ROM
+            0x0000..=0x7FFF => self.cartridge.read(address),
+            // Cartridge RAM
+            0xA000..=0xBFFF => self.cartridge.read(address),
+            0x8000..=0xFEFF | 0xFF80..=0xFFFE => self.memory[address as usize],
+            // IO Registers
             0xFF00..=0xFF7F | 0xFFFF => self.read_io(address as u8),
         }
     }
@@ -150,7 +156,11 @@ impl GameBoy {
         }
 
         match address {
-            0x0000..=0x7FFF => {}
+            // Cartridge ROM
+            0x0000..=0x7FFF => self.cartridge.write(address, value),
+            // Cartridge RAM
+            0xA000..=0xBFFF => self.cartridge.write(address, value),
+            // IO Registers
             0xFF00..=0xFF7F | 0xFFFF => self.write_io(address as u8, value),
             _ => self.memory[address as usize] = value,
         }

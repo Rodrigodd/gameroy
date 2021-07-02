@@ -2,7 +2,7 @@ use std::{fs::File, sync::Arc, sync::Mutex};
 
 use gameroy::{
     gameboy,
-    interpreter::{self, Interpreter},
+    interpreter::{self, Interpreter},cartridge::Cartridge
 };
 
 mod layout;
@@ -32,7 +32,9 @@ fn main() {
     let rom_file = File::open(rom_path).unwrap();
     let boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
 
-    let game_boy = gameboy::GameBoy::new(boot_rom_file, rom_file).unwrap();
+    let cartridge = Cartridge::new(rom_file).unwrap();
+
+    let game_boy = gameboy::GameBoy::new(boot_rom_file, cartridge).unwrap();
 
     let inter = interpreter::Interpreter(game_boy);
 

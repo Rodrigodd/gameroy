@@ -1,3 +1,4 @@
+use gameroy::cartridge::Cartridge;
 use gameroy::{interpreter::Interpreter, gameboy::GameBoy};
 use std::fs::File;
 use std::cell::RefCell;
@@ -28,13 +29,16 @@ blargg!(blargg_08, "08-misc instrs.gb", 43000000);
 blargg!(blargg_09, "09-op r,r.gb", 43000000);
 blargg!(blargg_10, "10-bit ops.gb", 43000000);
 blargg!(blargg_11, "11-op a,(hl).gb", 43000000);
+blargg!(blargg_cpu_instrs, "cpu_instrs.gb", 43000000);
 
 fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
     let rom_path = "../roms/".to_string() + path;
     let rom_file = File::open(rom_path).unwrap();
     let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
 
-    let mut game_boy = GameBoy::new(boot_rom_file, rom_file).unwrap();
+    let cartridge = Cartridge::new(rom_file).unwrap();
+
+    let mut game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
     // let mut game_boy = GameBoy::new(&vec![0; 256][..], rom_file);
     let string = Rc::new(RefCell::new(String::new()));
     let string_clone = string.clone();
@@ -82,7 +86,9 @@ fn dmg_acid2() {
     let rom_file = File::open(rom_path).unwrap();
     let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
 
-    let mut game_boy = GameBoy::new(boot_rom_file, rom_file).unwrap();
+    let cartridge = Cartridge::new(rom_file).unwrap();
+
+    let mut game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
     let img_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
     let img_data_clone = img_data.clone();
     game_boy.v_blank = Box::new(move |ppu| {

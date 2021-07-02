@@ -475,16 +475,13 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
                 rom[0xFF48]
             };
 
-            if sy < 0 || sx < 0 {
-                continue;
-            }
             {
                 let y = py % 8;
                 let i = tile * 0x10 + 0x8000;
                 let a = rom[i + y as usize * 2];
                 let b = rom[i + y as usize * 2 + 1];
                 let ly = ppu.ly;
-                for x in 0..8 {
+                for x in 0.max(-sx)..8 {
                     let lx = sx + x;
                     // X-Flip
                     let x = if flags & 0x20 != 0 { x } else { 7 - x };

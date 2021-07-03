@@ -150,7 +150,7 @@ impl Ppu {
         &mut self,
         memory: &mut [u8],
         clock_count: u64,
-        v_blank: &mut Box<dyn FnMut(&mut Ppu)>,
+        v_blank: &mut Box<dyn FnMut(&mut Ppu) + Send>,
     ) {
         use crate::consts;
         self.ly = ((clock_count / 456) % 153) as u8;
@@ -481,7 +481,7 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
                 let a = rom[i + y as usize * 2];
                 let b = rom[i + y as usize * 2 + 1];
                 let ly = ppu.ly;
-                for x in 0.max(-sx)..8 {
+                for x in 0.max(-sx)..8.min(160 - sx) {
                     let lx = sx + x;
                     // X-Flip
                     let x = if flags & 0x20 != 0 { x } else { 7 - x };

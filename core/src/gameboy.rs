@@ -78,8 +78,8 @@ pub struct GameBoy {
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     pub joypad: u8,
-    pub serial_transfer: Box<dyn FnMut(u8)>,
-    pub v_blank: Box<dyn FnMut(&mut Ppu)>,
+    pub serial_transfer: Box<dyn FnMut(u8) + Send>,
+    pub v_blank: Box<dyn FnMut(&mut Ppu) + Send>,
 }
 impl GameBoy {
     pub fn new(mut bootrom_file: impl Read, cartridge: Cartridge) -> std::io::Result<Self> {
@@ -175,7 +175,8 @@ impl GameBoy {
             }
         }
 
-        self.ppu.update(&mut self.memory, self.clock_count, &mut self.v_blank);
+        self.ppu
+            .update(&mut self.memory, self.clock_count, &mut self.v_blank);
     }
 
     pub fn read16(&mut self, address: u16) -> u16 {

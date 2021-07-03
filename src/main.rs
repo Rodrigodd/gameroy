@@ -1,8 +1,17 @@
-use std::{fs::File, sync::Arc, sync::Mutex};
+use std::{
+    fs::File,
+    sync::{
+        mpsc::{sync_channel, Receiver, TryRecvError},
+        Arc, Mutex,
+    },
+    thread,
+    time::{Duration, Instant},
+};
 
 use gameroy::{
+    cartridge::Cartridge,
     gameboy,
-    interpreter::{self, Interpreter},cartridge::Cartridge
+    interpreter::{self, Interpreter},
 };
 
 mod layout;
@@ -83,9 +92,9 @@ fn resize(
     camera.set_position(width / 2.0, height / 2.0);
 }
 
-fn create_window(mut inter: Interpreter, mut debug: bool) {
+fn create_window(mut inter: Interpreter, debug: bool) {
     // create winit's window and event_loop
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::with_user_event();
     let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
 
     // create the render and camera, and a texture for the glyphs rendering
@@ -131,6 +140,7 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
     let img_data: Arc<Mutex<Vec<u8>>> =
         Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
     let img_data_clone = img_data.clone();
+    let proxy = event_loop.create_proxy();
     inter.0.v_blank = Box::new(move |ppu| {
         let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();
         for y in 0..SCREEN_HEIGHT {
@@ -142,10 +152,23 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                 img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
             }
         }
+        let _ = proxy.send_event(UserEvent::FrameUpdated);
     });
 
-    let is_animating = true;
-    let mut target_clock = 0;
+    let mut is_animating = false;
+
+    let (sender, recv) = sync_channel(3);
+    if debug {
+        sender.send(EmulatorEvent::Debug).unwrap();
+    }
+    sender.send(EmulatorEvent::Run).unwrap();
+
+    thread::Builder::new()
+        .name("emulator".to_string())
+        .spawn(move || emulator_thread(inter, recv))
+        .unwrap();
+
+    let mut joypad = 0xFF;
 
     // winit event loop
     event_loop.run(move |event, _, control| {
@@ -185,7 +208,7 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                     }
                     WindowEvent::KeyboardInput { input, .. } => {
                         let mut set_key = |key: u8| {
-                            inter.0.joypad = (inter.0.joypad & !(1 << key))
+                            joypad = (joypad & !(1 << key))
                                 | (((input.state == ElementState::Released) as u8) << key)
                         };
                         match input.virtual_keycode {
@@ -198,41 +221,26 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                             Some(VirtualKeyCode::Return) => set_key(6),
                             Some(VirtualKeyCode::S) => set_key(7),
                             Some(VirtualKeyCode::D) if input.state == ElementState::Pressed => {
-                                debug = !debug
+                                sender.send(EmulatorEvent::Debug).unwrap();
                             }
+                            Some(VirtualKeyCode::LShift) => sender
+                                .send(EmulatorEvent::FrameLimit(
+                                    input.state != ElementState::Pressed,
+                                ))
+                                .unwrap(),
+
                             _ => {}
                         }
                     }
                     _ => {}
                 }
             }
-            Event::MainEventsCleared => {
-                if debug {
-                    inter.debug();
-                } else {
-                    let clock_speed = 4_194_304 / 60;
-                    target_clock += clock_speed;
-                    while inter.0.clock_count < target_clock {
-                        inter.interpret_op();
-                    }
-                }
-
-                {
-                    let img_data: &mut [u8] = &mut img_data.lock().unwrap();
-                    for y in 0..SCREEN_HEIGHT {
-                        for x in 0..SCREEN_WIDTH {
-                            let i = (x + y * SCREEN_WIDTH) as usize * 4;
-                            let c = inter.0.ppu.screen[i / 4];
-                            const COLOR: [[u8; 3]; 4] =
-                                [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
-                            img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-                        }
-                    }
-                }
-
-                render.update_texture(screen_texture, &img_data.lock().unwrap(), None);
+            Event::UserEvent(UserEvent::FrameUpdated) => {
+                let img_data: &mut [u8] = &mut img_data.lock().unwrap();
+                render.update_texture(screen_texture, &img_data, None);
                 window.request_redraw();
             }
+            Event::MainEventsCleared => {}
             Event::RedrawRequested(window_id) => {
                 // render the gui
                 struct Render<'a>(&'a mut GLSpriteRender);
@@ -259,8 +267,8 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                     }
                 }
                 let mut ctx = gui.get_render_context();
-                let (sprites, _is_anim) = gui_render.render(&mut ctx, Render(&mut render));
-                // is_animating = is_anim;
+                let (sprites, is_anim) = gui_render.render(&mut ctx, Render(&mut render));
+                is_animating = is_anim || true;
                 let mut renderer = render.render(window_id);
                 renderer.clear_screen(&[0.0, 0.0, 0.0, 1.0]);
                 renderer.draw_sprites(
@@ -287,8 +295,80 @@ fn create_window(mut inter: Interpreter, mut debug: bool) {
                 }
 
                 renderer.finish();
+
+                sender.send(EmulatorEvent::SetKeys(joypad)).unwrap();
+                sender.send(EmulatorEvent::Run).unwrap();
             }
             _ => {}
         }
     });
+}
+
+enum UserEvent {
+    FrameUpdated,
+}
+
+enum EmulatorEvent {
+    Run,
+    FrameLimit(bool),
+    Debug,
+    SetKeys(u8),
+}
+
+fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
+    use EmulatorEvent::*;
+    let mut debug = false;
+    let mut frame_limit = true;
+    let mut start_time = Instant::now();
+    let clock_speed = 4_194_304;
+    while let Ok(mut event) = recv.recv() {
+        'handle_event: loop {
+            match event {
+                Run if frame_limit && !debug => {
+                    let elapsed = start_time.elapsed();
+                    let mut target_clock = clock_speed * elapsed.as_secs()
+                        + (clock_speed as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
+                    // make sure that the target_clock don't increase exponentially if the program can't keep up.
+                    if target_clock > inter.0.clock_count + clock_speed / 30 {
+                        let expected_target = target_clock;
+                        target_clock = inter.0.clock_count + clock_speed / 30;
+                        start_time += Duration::from_secs_f64(
+                            (expected_target - target_clock) as f64 / clock_speed as f64,
+                        );
+                    }
+                    while inter.0.clock_count < target_clock {
+                        inter.interpret_op();
+                    }
+                }
+                Run => {}
+                FrameLimit(value) => frame_limit = value,
+                SetKeys(keys) => inter.0.joypad = keys,
+                Debug => debug = !debug,
+            }
+
+            if debug {
+                inter.debug();
+            } else if !frame_limit {
+                loop {
+                    start_time -= Duration::from_millis(5);
+                    let elapsed = start_time.elapsed();
+                    let target_clock = clock_speed * elapsed.as_secs()
+                        + (clock_speed as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
+                    while inter.0.clock_count < target_clock {
+                        inter.interpret_op();
+                    }
+                    match recv.try_recv() {
+                        Ok(next_event) => {
+                            event = next_event;
+                            continue 'handle_event;
+                        }
+                        Err(TryRecvError::Disconnected) => return,
+                        _ => {}
+                    }
+                }
+            }
+
+            break;
+        }
+    }
 }

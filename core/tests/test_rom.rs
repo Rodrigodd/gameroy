@@ -1,21 +1,21 @@
 use gameroy::cartridge::Cartridge;
-use gameroy::{interpreter::Interpreter, gameboy::GameBoy};
-use std::fs::File;
+use gameroy::{gameboy::GameBoy, interpreter::Interpreter};
 use std::cell::RefCell;
+use std::fs::File;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
-    const SCREEN_HEIGHT: usize = 144;
-    const SCREEN_WIDTH: usize = 160;
+const SCREEN_HEIGHT: usize = 144;
+const SCREEN_WIDTH: usize = 160;
 
 macro_rules! blargg {
     ($test:ident, $path:expr, $timeout:expr) => {
         #[test]
-        fn $test () {
+        fn $test() {
             test_rom($path, $timeout).unwrap();
         }
-    }
+    };
 }
 
 blargg!(blargg_01, "01-special.gb", 43000000);
@@ -40,11 +40,11 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
 
     let mut game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
     // let mut game_boy = GameBoy::new(&vec![0; 256][..], rom_file);
-    let string = Rc::new(RefCell::new(String::new()));
+    let string = Arc::new(Mutex::new(String::new()));
     let string_clone = string.clone();
     static STOP: AtomicBool = AtomicBool::new(false);
     game_boy.serial_transfer = Box::new(move |byte| {
-        let mut string = string.borrow_mut();
+        let mut string = string.lock().unwrap();
         string.push(byte as char);
         if string.ends_with("Passed\n") {
             STOP.store(true, Ordering::Relaxed);
@@ -60,24 +60,23 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
         }
     }
     // panic!("ahh");
-    let string = string_clone.borrow();
     if STOP.load(Ordering::Relaxed) {
         Ok(())
     } else {
+        let string = string_clone.lock().unwrap();
         Err(format!("test rom failed: \n{}", string))
     }
 }
 
-fn lcd_to_rgba(screen: &[u8; 144*160], img_data: &mut [u8]) {
-        for y in 0..SCREEN_HEIGHT {
-            for x in 0..SCREEN_WIDTH {
-                let i = (x + y * SCREEN_WIDTH) as usize * 4;
-                let c = screen[i / 4];
-                const COLOR: [[u8; 3]; 4] =
-                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
-                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-            }
+fn lcd_to_rgba(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
+    for y in 0..SCREEN_HEIGHT {
+        for x in 0..SCREEN_WIDTH {
+            let i = (x + y * SCREEN_WIDTH) as usize * 4;
+            let c = screen[i / 4];
+            const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+            img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
         }
+    }
 }
 
 #[test]
@@ -89,7 +88,8 @@ fn dmg_acid2() {
     let cartridge = Cartridge::new(rom_file).unwrap();
 
     let mut game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
-    let img_data: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
+    let img_data: Arc<Mutex<Vec<u8>>> =
+        Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
     let img_data_clone = img_data.clone();
     game_boy.v_blank = Box::new(move |ppu| {
         let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();

@@ -52,7 +52,7 @@ impl MBC {
 
 pub struct Cartridge {
     mbc: MBC,
-    rom: Vec<u8>,
+    pub rom: Vec<u8>,
     // the banking register, including second 2-bit
     selected_bank: u8,
     // false is mode 0, true is mode 1

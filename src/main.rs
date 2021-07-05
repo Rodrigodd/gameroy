@@ -45,14 +45,24 @@ fn main() {
 
     let game_boy = gameboy::GameBoy::new(boot_rom_file, cartridge).unwrap();
 
-    let inter = interpreter::Interpreter(game_boy);
+    let mut inter = interpreter::Interpreter(game_boy);
 
     if diss {
-        let mut string = String::new();
+        inter.0.boot_rom_active = false;
+
         let mut trace = inter.0.trace.borrow_mut();
+
         trace.trace_starting_at(&inter.0, 0x100);
+        trace.trace_starting_at(&inter.0, 0x40);
+        trace.trace_starting_at(&inter.0, 0x48);
+        trace.trace_starting_at(&inter.0, 0x50);
+        trace.trace_starting_at(&inter.0, 0x58);
+        trace.trace_starting_at(&inter.0, 0x60);
+
+        let mut string = String::new();
         trace.fmt(&inter.0, &mut string).unwrap();
         println!("{}", string);
+
         return;
     }
 

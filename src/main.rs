@@ -327,10 +327,16 @@ enum EmulatorEvent {
 
 fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
     use EmulatorEvent::*;
+
     let mut debug = false;
+    // When true, the program will sync the time that passed, and the time that is emulated.
     let mut frame_limit = true;
+    // The instant in time that the gameboy supposedly was turned on.
+    // Change when frame_limit is disabled.
     let mut start_time = Instant::now();
+    // The number of clocks the gameboy runs per second.
     let clock_speed = 4_194_304;
+
     while let Ok(mut event) = recv.recv() {
         'handle_event: loop {
             match event {
@@ -351,7 +357,14 @@ fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
                     }
                 }
                 Run => {}
-                FrameLimit(value) => frame_limit = value,
+                FrameLimit(value) => {
+                    frame_limit = value;
+                    if frame_limit {
+                        let secs = inter.0.clock_count / clock_speed;
+                        let nanos = (inter.0.clock_count % clock_speed) * 1_000_000_000 / clock_speed;
+                        start_time = Instant::now() - Duration::new(secs, nanos as u32);
+                    }
+                },
                 SetKeys(keys) => inter.0.joypad = keys,
                 Debug => debug = !debug,
             }
@@ -359,11 +372,9 @@ fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
             if debug {
                 inter.debug();
             } else if !frame_limit {
+                // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                 loop {
-                    start_time -= Duration::from_millis(5);
-                    let elapsed = start_time.elapsed();
-                    let target_clock = clock_speed * elapsed.as_secs()
-                        + (clock_speed as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
+                    let target_clock = inter.0.clock_count + clock_speed / 600;
                     while inter.0.clock_count < target_clock {
                         inter.interpret_op();
                     }

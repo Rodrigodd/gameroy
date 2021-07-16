@@ -1,8 +1,6 @@
 use gameroy::cartridge::Cartridge;
 use gameroy::{gameboy::GameBoy, interpreter::Interpreter};
-use std::cell::RefCell;
 use std::fs::File;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 

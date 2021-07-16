@@ -1,16 +1,13 @@
-use std::{borrow::Borrow, cell::RefCell, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use parking_lot::Mutex;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
-    event_table::{Event, EventTable, FrameUpdated},
+    event_table::{EventTable, FrameUpdated},
     style::Style,
 };
-use crui::{
-    graphics::{Text, TextStyle},
-    ControlBuilder, Gui, Id,
-};
+use crui::{graphics::Text, ControlBuilder, Id};
 use gameroy::interpreter::Interpreter;
 
 struct DissasemblerView {

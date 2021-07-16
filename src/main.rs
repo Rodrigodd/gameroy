@@ -217,7 +217,7 @@ enum EmulatorEvent {
     SetKeys(u8),
 }
 
-fn emulator_thread(mut inter: Arc<Mutex<Interpreter>>, recv: Receiver<EmulatorEvent>) {
+fn emulator_thread(inter: Arc<Mutex<Interpreter>>, recv: Receiver<EmulatorEvent>) {
     use EmulatorEvent::*;
 
     let mut debug = false;

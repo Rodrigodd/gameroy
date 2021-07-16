@@ -1,15 +1,10 @@
-use std::{
-    borrow::Borrow,
-    cell::RefCell,
-    rc::Rc,
-    sync::{Arc},
-};
+use std::{borrow::Borrow, cell::RefCell, rc::Rc, sync::Arc};
 
 use parking_lot::Mutex;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
-    event_table::{Event, EventTable},
+    event_table::{Event, EventTable, FrameUpdated},
     style::Style,
 };
 use crui::{
@@ -48,7 +43,7 @@ fn list<'a>(
         )
         .into(),
     )
-    .behaviour(event_table.register(Event::FrameUpdated, move |ctx| {
+    .behaviour(event_table.register::<FrameUpdated, _>(move |_, ctx| {
         let mut text = String::new();
         {
             let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();

@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use crui::{font::{Font, Fonts}, graphics::{Graphic, TextStyle}, style_loader::{load_style, StyleLoaderCallback}};
+use crui::{
+    font::{Font, Fonts},
+    graphics::{Graphic, TextStyle},
+    style_loader::{load_style, StyleLoaderCallback},
+};
 use sprite_render::SpriteRender;
 
 struct Loader<'a, R: SpriteRender> {
@@ -50,7 +54,11 @@ pub struct Style {
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {
-        let loader = Loader { fonts, render, textures: HashMap::default() };
+        let loader = Loader {
+            fonts,
+            render,
+            textures: HashMap::default(),
+        };
         let file = std::fs::read_to_string("assets/style.ron").unwrap();
         let mut deser = ron::Deserializer::from_str(&file).unwrap();
         let style: Result<Self, _> = load_style(&mut deser, loader);

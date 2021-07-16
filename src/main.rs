@@ -86,7 +86,7 @@ use winit::{
     window::WindowBuilder,
 };
 
-fn create_window(mut inter: Interpreter, debug: bool) {
+fn create_window(mut inter: Interpreter, mut debug: bool) {
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let wb = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
@@ -107,7 +107,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
 
     let (sender, recv) = sync_channel(3);
     if debug {
-        sender.send(EmulatorEvent::Debug).unwrap();
+        sender.send(EmulatorEvent::Debug(debug)).unwrap();
     }
     sender.send(EmulatorEvent::Run).unwrap();
 
@@ -153,16 +153,15 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                             Some(VirtualKeyCode::Return) => set_key(6),
                             Some(VirtualKeyCode::S) => set_key(7),
                             Some(VirtualKeyCode::D) if input.state == ElementState::Pressed => {
-                                sender.send(EmulatorEvent::Debug).unwrap();
-                                ui.notify(event_table::Event::Debug);
+                                debug = !debug;
+                                sender.send(EmulatorEvent::Debug(debug)).unwrap();
+                                ui.notify::<event_table::Debug>(debug);
                             }
-                            Some(VirtualKeyCode::LShift) => {
-                                sender
+                            Some(VirtualKeyCode::LShift) => sender
                                 .send(EmulatorEvent::FrameLimit(
                                     input.state != ElementState::Pressed,
                                 ))
-                                .unwrap()
-                            },
+                                .unwrap(),
 
                             _ => {}
                         }
@@ -186,7 +185,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                     }
                 }
                 ui.frame_update(&img_data);
-                ui.notify(event_table::Event::FrameUpdated);
+                ui.notify::<event_table::FrameUpdated>(());
                 window.request_redraw();
             }
             Event::MainEventsCleared => {}
@@ -214,7 +213,7 @@ enum UserEvent {
 enum EmulatorEvent {
     Run,
     FrameLimit(bool),
-    Debug,
+    Debug(bool),
     SetKeys(u8),
 }
 
@@ -262,7 +261,7 @@ fn emulator_thread(mut inter: Arc<Mutex<Interpreter>>, recv: Receiver<EmulatorEv
                     }
                 }
                 SetKeys(keys) => inter.lock().0.joypad = keys,
-                Debug => debug = !debug,
+                Debug(value) => debug = value,
             }
 
             if debug {

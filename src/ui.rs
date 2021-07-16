@@ -151,8 +151,9 @@ impl Ui {
         renderer.finish();
     }
 
-    pub fn notify(&mut self, event: crate::event_table::Event) {
-        self.event_table.notify(event, &mut self.gui.get_context());
+    pub fn notify<E: crate::event_table::Event>(&mut self, payload: E::Payload) {
+        self.event_table
+            .notify::<E>(payload, &mut self.gui.get_context());
     }
 
     pub fn insert<T: Any>(&mut self, value: T) {

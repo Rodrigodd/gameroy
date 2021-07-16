@@ -15,6 +15,10 @@ gameroy-core = { path = "core" }
 crui = { path = "../crui" }
 sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
 winit = "0.24"
+serde = { version = "1", features = ["derive"] }
+ron = "0.6"
+image = "0.23"
+parking_lot = "0.11"
 
 
 [profile.test]

@@ -1,0 +1,13 @@
+(
+    text_style: (color: "#00ff00", font_size: 16, font_id: "consola.ttf"),
+    split_background: Texture(
+        texture: "white.png",
+        color: "#001600",
+        uv_rect: (0, 0, 1, 1),
+    ),
+    background: Texture(
+        texture: "white.png",
+        color: "#000800",
+        uv_rect: (0, 0, 1, 1),
+    )
+)

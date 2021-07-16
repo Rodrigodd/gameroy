@@ -1,9 +1,11 @@
-use crate::{layout::PixelPerfectLayout, SCREEN_HEIGHT, SCREEN_WIDTH};
+use std::any::Any;
+
+use crate::{
+    dissasembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
+    split_view::SplitView, style::Style, SCREEN_HEIGHT, SCREEN_WIDTH,
+};
 use crui::{
-    font::{Font, Fonts},
-    graphics::Texture,
-    render::GuiRenderer,
-    Gui, GuiRender,
+    font::Fonts, graphics::Texture, layouts::VBoxLayout, render::GuiRenderer, Gui, GuiRender,
 };
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
 use winit::{
@@ -37,6 +39,8 @@ pub struct Ui {
     gui_render: GuiRender,
     render: GLSpriteRender,
     camera: Camera,
+    style: Style,
+    pub event_table: EventTable,
     pub screen_texture: u32,
     pub is_animating: bool,
 }
@@ -52,16 +56,11 @@ impl Ui {
         };
         let font_texture = render.new_texture(128, 128, &[], false);
 
+        let mut fonts = Fonts::new();
+        let style = Style::load(&mut fonts, &mut render).unwrap();
+
         let screen_texture =
             render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false);
-
-        // load a font
-        let mut fonts = Fonts::new();
-        let _my_font = {
-            fonts.add(Font::new(include_bytes!(
-                "../../crui/examples/NotoSans-Regular.ttf"
-            )))
-        };
 
         // create the gui, and the gui_render
         let gui = Gui::new(0.0, 0.0, fonts);
@@ -72,11 +71,13 @@ impl Ui {
             gui_render,
             render,
             camera,
+            style,
             screen_texture,
+            event_table: EventTable::new(),
             is_animating: false,
         };
 
-        create_gui(&mut ui.gui, screen_texture);
+        create_gui(&mut ui.gui, screen_texture, &mut ui.event_table, &ui.style);
 
         ui.resize(window.inner_size(), window.id());
 
@@ -149,12 +150,29 @@ impl Ui {
 
         renderer.finish();
     }
+
+    pub fn notify(&mut self, event: crate::event_table::Event) {
+        self.event_table.notify(event, &mut self.gui.get_context());
+    }
+
+    pub fn insert<T: Any>(&mut self, value: T) {
+        self.gui.set(value);
+    }
 }
 
-pub fn create_gui(gui: &mut Gui, screen_texture: u32) {
+pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTable, style: &Style) {
+    let layout = SplitView::new(4.0, [2.0; 4], false);
+    let surface = gui
+        .create_control()
+        .graphic(style.split_background.clone())
+        .behaviour_and_layout(layout)
+        .build();
     let _text = gui
         .create_control()
+        .parent(surface)
+        .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(|cb| cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into()))
         .build();
+    dissasembler_viewer::build(gui.create_control().parent(surface), event_table, style);
 }

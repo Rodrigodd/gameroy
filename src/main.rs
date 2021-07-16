@@ -2,11 +2,13 @@ use std::{
     fs::File,
     sync::{
         mpsc::{sync_channel, Receiver, TryRecvError},
-        Arc, Mutex,
+        Arc,
     },
     thread,
     time::{Duration, Instant},
 };
+
+use parking_lot::Mutex;
 
 use gameroy::{
     cartridge::Cartridge,
@@ -14,7 +16,11 @@ use gameroy::{
     interpreter::{self, Interpreter},
 };
 
+mod dissasembler_viewer;
+mod event_table;
 mod layout;
+mod split_view;
+mod style;
 mod ui;
 
 #[macro_use]
@@ -87,20 +93,14 @@ fn create_window(mut inter: Interpreter, debug: bool) {
 
     let (mut ui, window) = ui::Ui::new(wb, &event_loop);
 
-    let img_data: Arc<Mutex<Vec<u8>>> =
-        Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
-    let img_data_clone = img_data.clone();
+    let ppu_screen: Arc<Mutex<Vec<u8>>> =
+        Arc::new(Mutex::new(vec![0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+    let ppu_screen_clone = ppu_screen.clone();
     let proxy = event_loop.create_proxy();
     inter.0.v_blank = Box::new(move |ppu| {
-        let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();
-        for y in 0..SCREEN_HEIGHT {
-            for x in 0..SCREEN_WIDTH {
-                let i = (x + y * SCREEN_WIDTH) as usize * 4;
-                let c = ppu.screen[i / 4];
-                const COLOR: [[u8; 3]; 4] =
-                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
-                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-            }
+        {
+            let img_data = &mut ppu_screen_clone.lock();
+            img_data.copy_from_slice(&ppu.screen);
         }
         let _ = proxy.send_event(UserEvent::FrameUpdated);
     });
@@ -110,6 +110,9 @@ fn create_window(mut inter: Interpreter, debug: bool) {
         sender.send(EmulatorEvent::Debug).unwrap();
     }
     sender.send(EmulatorEvent::Run).unwrap();
+
+    let inter = Arc::new(Mutex::new(inter));
+    ui.insert(inter.clone());
 
     thread::Builder::new()
         .name("emulator".to_string())
@@ -151,12 +154,15 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                             Some(VirtualKeyCode::S) => set_key(7),
                             Some(VirtualKeyCode::D) if input.state == ElementState::Pressed => {
                                 sender.send(EmulatorEvent::Debug).unwrap();
+                                ui.notify(event_table::Event::Debug);
                             }
-                            Some(VirtualKeyCode::LShift) => sender
+                            Some(VirtualKeyCode::LShift) => {
+                                sender
                                 .send(EmulatorEvent::FrameLimit(
                                     input.state != ElementState::Pressed,
                                 ))
-                                .unwrap(),
+                                .unwrap()
+                            },
 
                             _ => {}
                         }
@@ -165,8 +171,22 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                 }
             }
             Event::UserEvent(UserEvent::FrameUpdated) => {
-                let img_data: &mut [u8] = &mut img_data.lock().unwrap();
-                ui.frame_update(img_data);
+                let screen: &[u8] = &{
+                    let lock = ppu_screen.lock();
+                    lock.clone()
+                };
+                let mut img_data = vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
+                for y in 0..SCREEN_HEIGHT {
+                    for x in 0..SCREEN_WIDTH {
+                        let i = (x + y * SCREEN_WIDTH) as usize * 4;
+                        let c = screen[i / 4];
+                        const COLOR: [[u8; 3]; 4] =
+                            [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+                        img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+                    }
+                }
+                ui.frame_update(&img_data);
+                ui.notify(event_table::Event::FrameUpdated);
                 window.request_redraw();
             }
             Event::MainEventsCleared => {}
@@ -186,6 +206,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
     });
 }
 
+#[derive(Debug)]
 enum UserEvent {
     FrameUpdated,
 }
@@ -197,7 +218,7 @@ enum EmulatorEvent {
     SetKeys(u8),
 }
 
-fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
+fn emulator_thread(mut inter: Arc<Mutex<Interpreter>>, recv: Receiver<EmulatorEvent>) {
     use EmulatorEvent::*;
 
     let mut debug = false;
@@ -213,6 +234,7 @@ fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
         'handle_event: loop {
             match event {
                 Run if frame_limit && !debug => {
+                    let mut inter = inter.lock();
                     let elapsed = start_time.elapsed();
                     let mut target_clock = clock_speed * elapsed.as_secs()
                         + (clock_speed as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
@@ -232,24 +254,28 @@ fn emulator_thread(mut inter: Interpreter, recv: Receiver<EmulatorEvent>) {
                 FrameLimit(value) => {
                     frame_limit = value;
                     if frame_limit {
+                        let inter = inter.lock();
                         let secs = inter.0.clock_count / clock_speed;
                         let nanos =
                             (inter.0.clock_count % clock_speed) * 1_000_000_000 / clock_speed;
                         start_time = Instant::now() - Duration::new(secs, nanos as u32);
                     }
                 }
-                SetKeys(keys) => inter.0.joypad = keys,
+                SetKeys(keys) => inter.lock().0.joypad = keys,
                 Debug => debug = !debug,
             }
 
             if debug {
-                inter.debug();
+                // inter.debug();
             } else if !frame_limit {
                 // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                 loop {
-                    let target_clock = inter.0.clock_count + clock_speed / 600;
-                    while inter.0.clock_count < target_clock {
-                        inter.interpret_op();
+                    {
+                        let mut inter = inter.lock();
+                        let target_clock = inter.0.clock_count + clock_speed / 600;
+                        while inter.0.clock_count < target_clock {
+                            inter.interpret_op();
+                        }
                     }
                     match recv.try_recv() {
                         Ok(next_event) => {

@@ -7,7 +7,7 @@ use crate::{
     event_table::{EventTable, FrameUpdated},
     style::Style,
 };
-use crui::{graphics::Text, ControlBuilder, Id};
+use crui::{Context, ControlBuilder, Id, graphics::Text};
 use gameroy::interpreter::Interpreter;
 
 struct DissasemblerView {
@@ -40,7 +40,7 @@ fn list<'a>(
         )
         .into(),
     )
-    .behaviour(event_table.register::<FrameUpdated, _>(move |_, ctx| {
+    .behaviour(event_table.register::<FrameUpdated, _>(move |_: (), ctx: &mut Context| {
         let mut text = String::new();
         {
             let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();

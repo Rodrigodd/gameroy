@@ -8,7 +8,7 @@ pub struct SplitView {
     spacing: f32,
     margins: [f32; 4],
     vertical: bool,
-    split: f32,
+    pub split: f32,
     left_min_size: f32,
     right_min_size: f32,
     dragging: bool,

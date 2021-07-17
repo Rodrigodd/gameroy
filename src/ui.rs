@@ -5,7 +5,7 @@ use crate::{
     split_view::SplitView, style::Style, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use crui::{
-    font::Fonts, graphics::Texture, layouts::VBoxLayout, render::GuiRenderer, Gui, GuiRender,
+    font::Fonts, graphics::Texture, render::GuiRenderer, Gui, GuiRender,
 };
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
 use winit::{
@@ -162,7 +162,8 @@ impl Ui {
 }
 
 pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTable, style: &Style) {
-    let layout = SplitView::new(4.0, [2.0; 4], false);
+    let mut layout = SplitView::new(4.0, [2.0; 4], false);
+    layout.split = 0.4;
     let surface = gui
         .create_control()
         .graphic(style.split_background.clone())

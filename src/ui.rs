@@ -1,19 +1,11 @@
-use std::any::Any;
+use std::{any::Any, sync::mpsc::SyncSender};
 
-use crate::{
-    dissasembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
-    split_view::SplitView, style::Style, SCREEN_HEIGHT, SCREEN_WIDTH,
-};
+use crate::{EmulatorEvent, SCREEN_HEIGHT, SCREEN_WIDTH, UserEvent, dissasembler_viewer, event_table::EventTable, layout::PixelPerfectLayout, split_view::SplitView, style::Style};
 use crui::{
-    font::Fonts, graphics::Texture, render::GuiRenderer, Gui, GuiRender,
+    font::Fonts, graphics::Texture, render::GuiRenderer, widgets::OnKeyboardEvent, Gui, GuiRender,
 };
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
-use winit::{
-    dpi::PhysicalSize,
-    event::WindowEvent,
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder, WindowId},
-};
+use winit::{dpi::PhysicalSize, event::WindowEvent, event_loop::{ControlFlow, EventLoop, EventLoopProxy}, window::{Window, WindowBuilder, WindowId}};
 
 struct Render<'a>(&'a mut GLSpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
@@ -156,6 +148,10 @@ impl Ui {
             .notify::<E>(payload, &mut self.gui.get_context());
     }
 
+    pub fn get<T: Any>(&mut self) -> &mut T {
+        self.gui.get_mut()
+    }
+
     pub fn insert<T: Any>(&mut self, value: T) {
         self.gui.set(value);
     }
@@ -164,17 +160,75 @@ impl Ui {
 pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTable, style: &Style) {
     let mut layout = SplitView::new(4.0, [2.0; 4], false);
     layout.split = 0.4;
-    let surface = gui
+    let mut debug = false;
+    let root = gui
         .create_control()
+        .behaviour(OnKeyboardEvent(move |event, _, ctx| {
+            use crui::KeyboardEvent::*;
+            use winit::event::VirtualKeyCode::*;
+            let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
+            if debug {
+                match event {
+                    Pressed(Right) => {
+                        sender.send(EmulatorEvent::Step).unwrap();
+                    }
+                    Pressed(D) => {
+                        debug = !debug;
+                        sender.send(EmulatorEvent::Debug(debug)).unwrap();
+                        let proxy = ctx.get_mut::<EventLoopProxy<UserEvent>>();
+                        proxy.send_event(UserEvent::Debug(debug)).unwrap();
+                    }
+                    _ => {}
+                }
+            } else {
+                let joypad = ctx.get_mut::<crate::Joypad>();
+                let mut set_key =
+                    |key: u8, value: bool| joypad.0 = (joypad.0 & !(1 << key)) | ((!value as u8) << key);
+                match event {
+                    Pressed(Right) => set_key(0, true),
+                    Release(Right) => set_key(0, false),
+                    Pressed(Left) => set_key(1, true),
+                    Release(Left) => set_key(1, false),
+                    Pressed(Up) => set_key(2, true),
+                    Release(Up) => set_key(2, false),
+                    Pressed(Down) => set_key(3, true),
+                    Release(Down) => set_key(3, false),
+                    Pressed(Z) => set_key(4, true),
+                    Release(Z) => set_key(4, false),
+                    Pressed(X) => set_key(5, true),
+                    Release(X) => set_key(5, false),
+                    Pressed(Return) => set_key(6, true),
+                    Release(Return) => set_key(6, false),
+                    Pressed(S) => set_key(7, true),
+                    Release(S) => set_key(7, false),
+                    Pressed(D) => {
+                        debug = !debug;
+                        sender.send(EmulatorEvent::Debug(debug)).unwrap();
+                        let proxy = ctx.get_mut::<EventLoopProxy<UserEvent>>();
+                        proxy.send_event(UserEvent::Debug(debug)).unwrap();
+                    }
+                    Pressed(LShift) | Release(LShift) => sender
+                        .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
+                        .unwrap(),
+
+                    _ => {}
+                }
+            }
+            true
+        }))
+        .build();
+    let split_view = gui
+        .create_control()
+        .parent(root)
         .graphic(style.split_background.clone())
         .behaviour_and_layout(layout)
         .build();
     let _text = gui
         .create_control()
-        .parent(surface)
+        .parent(split_view)
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(|cb| cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into()))
         .build();
-    dissasembler_viewer::build(gui.create_control().parent(surface), event_table, style);
+    dissasembler_viewer::build(split_view, gui, event_table, style);
 }

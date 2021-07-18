@@ -1,8 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use crui::{
     font::{Font, Fonts},
     graphics::{Graphic, TextStyle},
+    style::OnFocusStyle,
     style_loader::{load_style, StyleLoaderCallback},
 };
 use sprite_render::SpriteRender;
@@ -51,6 +52,7 @@ pub struct Style {
     pub text_style: TextStyle,
     pub split_background: Graphic,
     pub background: Graphic,
+    pub text_field: Rc<OnFocusStyle>,
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {

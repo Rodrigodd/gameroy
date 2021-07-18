@@ -9,5 +9,9 @@
         texture: "white.png",
         color: "#000800",
         uv_rect: (0, 0, 1, 1),
+    ),
+    text_field: OnFocusStyle(
+        normal: Texture(texture: "white.png", color: "#000800", uv_rect: (0,0,1,1)),
+        focus: Texture(texture: "white.png", color: "#001000", uv_rect: (0,0,1,1)),
     )
 )

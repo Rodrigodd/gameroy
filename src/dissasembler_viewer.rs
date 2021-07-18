@@ -1,59 +1,118 @@
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
-    event_table::{EventTable, FrameUpdated},
+    event_table::{EmulatorUpdated, EventTable},
     style::Style,
 };
-use crui::{Context, ControlBuilder, Id, graphics::Text};
+use crui::{
+    graphics::Text,
+    layouts::VBoxLayout,
+    widgets::{TextField, TextFieldCallback},
+    Context, Gui, Id,
+};
 use gameroy::interpreter::Interpreter;
 
+#[derive(Clone, Copy)]
 struct DissasemblerView {
     text: Id,
 }
 
-pub fn build(mut cb: ControlBuilder, event_table: &mut EventTable, style: &Style) {
-    let diss_view = Rc::new(RefCell::new(DissasemblerView { text: cb.reserve() }));
-    let _text = cb
+struct Callback;
+#[allow(unused_variables)]
+impl TextFieldCallback for Callback {
+    fn on_submit(&mut self, this: Id, ctx: &mut Context, text: &mut String) -> bool {
+        true
+    }
+
+    fn on_change(&mut self, this: Id, ctx: &mut Context, text: &str) {}
+
+    fn on_unfocus(&mut self, this: Id, ctx: &mut Context, text: &mut String) -> bool {
+        true
+    }
+}
+
+pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &Style) {
+    let diss_view = DissasemblerView {
+        text: gui.reserve_id(),
+    };
+
+    let vbox = gui
+        .create_control()
         .graphic(style.background.clone())
+        .parent(parent)
         .expand_y(true)
         .expand_x(true)
-        .child_reserved(diss_view.borrow_mut().text, |cb| {
-            list(cb, style, diss_view.clone(), event_table)
-        })
+        .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
+        .build();
+
+    list(vbox, gui, style, diss_view, event_table);
+
+    let caret = gui.reserve_id();
+    let label = gui.reserve_id();
+
+    let text_field = gui
+        .create_control()
+        .parent(vbox)
+        .behaviour(TextField::new(
+            "test".to_string(),
+            caret,
+            label,
+            style.text_field.clone(),
+            Callback,
+        ))
+        .min_size([20.0; 2])
+        .build();
+
+    gui.create_control_reserved(caret)
+        .parent(text_field)
+        .graphic(style.background.clone().with_color([0,0,0,255]))
+        .anchors([0.0; 4])
+        .build();
+
+    gui.create_control_reserved(label)
+        .parent(text_field)
+        .graphic(Text::new("Testando!!".into(), (-1, -1), style.text_style.clone()).into())
         .build();
 }
 
 fn list<'a>(
-    cb: ControlBuilder<'a>,
+    parent: Id,
+    gui: &mut Gui,
     style: &Style,
-    diss_view: Rc<RefCell<DissasemblerView>>,
+    diss_view: DissasemblerView,
     event_table: &mut EventTable,
-) -> ControlBuilder<'a> {
-    cb.graphic(
-        Text::new(
-            "This is a dissasembler viewer!!".to_string(),
-            (-1, 0),
-            style.text_style.clone(),
+) {
+    gui.create_control_reserved(diss_view.text)
+        .parent(parent)
+        .expand_y(true)
+        .graphic(
+            Text::new(
+                "This is a dissasembler viewer!!".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            )
+            .into(),
         )
-        .into(),
-    )
-    .behaviour(event_table.register::<FrameUpdated, _>(move |_: (), ctx: &mut Context| {
-        let mut text = String::new();
-        {
-            let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
-            text += &format!("{}", inter.0.cpu);
-            // let mut around = String::new();
-            inter
-                .0
-                .trace
-                .borrow_mut()
-                .print_around(inter.0.cpu.pc, &inter.0, &mut text)
-                .unwrap();
-        }
-        ctx.get_graphic_mut(diss_view.borrow_mut().text)
-            .set_text(&text);
-    }))
+        .behaviour(
+            event_table.register::<EmulatorUpdated, _>(move |_: (), ctx: &mut Context| {
+                let mut text = String::new();
+                {
+                    let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
+                    text += &format!("{}", inter.0.cpu);
+                    // let mut around = String::new();
+                    inter
+                        .0
+                        .trace
+                        .borrow_mut()
+                        .print_around(inter.0.cpu.pc, &inter.0, &mut text)
+                        .unwrap();
+                }
+                ctx.get_graphic_mut(diss_view.text)
+                    .set_text(&text);
+            }),
+        )
+        .build();
 }

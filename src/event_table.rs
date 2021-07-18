@@ -20,6 +20,11 @@ impl Event for FrameUpdated {
     type Payload = ();
 }
 
+pub struct EmulatorUpdated;
+impl Event for EmulatorUpdated {
+    type Payload = ();
+}
+
 // type dyn Callback<E> = dyn FnMut(<E as Event>::Payload, &mut Context) + 'static;
 pub trait Callback<E: Event>: FnMut(<E as Event>::Payload, &mut Context) + 'static {}
 impl<E:Event, F: FnMut(<E as Event>::Payload, &mut Context) + 'static> Callback<E> for F {}
@@ -36,6 +41,7 @@ impl<E: Event> Drop for Handle<E> {
             Some(x) => x,
             None => return,
         };
+        println!(">> unregister!!");
         event_table.unregister(self.event_id.get());
     }
 

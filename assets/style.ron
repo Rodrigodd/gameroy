@@ -10,8 +10,12 @@
         color: "#000800",
         uv_rect: (0, 0, 1, 1),
     ),
-    text_field: OnFocusStyle(
-        normal: Texture(texture: "white.png", color: "#000800", uv_rect: (0,0,1,1)),
-        focus: Texture(texture: "white.png", color: "#001000", uv_rect: (0,0,1,1)),
-    )
+    text_field: TextFieldStyle(
+        background: OnFocusStyle(
+            normal: Texture(texture: "white.png", color: "#001000", uv_rect: (0,0,1,1)),
+            focus: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
+        ),
+        caret_color: "#000000",
+        selection_color: "#40A000",
+    ),
 )

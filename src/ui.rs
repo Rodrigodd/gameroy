@@ -1,11 +1,19 @@
 use std::{any::Any, sync::mpsc::SyncSender};
 
-use crate::{EmulatorEvent, SCREEN_HEIGHT, SCREEN_WIDTH, UserEvent, dissasembler_viewer, event_table::EventTable, layout::PixelPerfectLayout, split_view::SplitView, style::Style};
+use crate::{
+    dissasembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
+    split_view::SplitView, style::Style, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
+};
 use crui::{
     font::Fonts, graphics::Texture, render::GuiRenderer, widgets::OnKeyboardEvent, Gui, GuiRender,
 };
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
-use winit::{dpi::PhysicalSize, event::WindowEvent, event_loop::{ControlFlow, EventLoop, EventLoopProxy}, window::{Window, WindowBuilder, WindowId}};
+use winit::{
+    dpi::PhysicalSize,
+    event::WindowEvent,
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    window::{Window, WindowBuilder, WindowId},
+};
 
 struct Render<'a>(&'a mut GLSpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
@@ -160,30 +168,29 @@ impl Ui {
 pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTable, style: &Style) {
     let mut layout = SplitView::new(4.0, [2.0; 4], false);
     layout.split = 0.4;
-    let mut debug = false;
     let root = gui
         .create_control()
         .behaviour(OnKeyboardEvent(move |event, _, ctx| {
             use crui::KeyboardEvent::*;
             use winit::event::VirtualKeyCode::*;
             let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
+            let debug = ctx.get::<crate::AppState>().debug;
             if debug {
                 match event {
                     Pressed(Right) => {
                         sender.send(EmulatorEvent::Step).unwrap();
                     }
                     Pressed(D) => {
-                        debug = !debug;
-                        sender.send(EmulatorEvent::Debug(debug)).unwrap();
-                        let proxy = ctx.get_mut::<EventLoopProxy<UserEvent>>();
-                        proxy.send_event(UserEvent::Debug(debug)).unwrap();
+                        let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
+                        proxy.send_event(UserEvent::Debug(false)).unwrap();
                     }
                     _ => {}
                 }
             } else {
-                let joypad = ctx.get_mut::<crate::Joypad>();
-                let mut set_key =
-                    |key: u8, value: bool| joypad.0 = (joypad.0 & !(1 << key)) | ((!value as u8) << key);
+                let app_state = ctx.get_mut::<crate::AppState>();
+                let mut set_key = |key: u8, value: bool| {
+                    app_state.joypad = (app_state.joypad & !(1 << key)) | ((!value as u8) << key)
+                };
                 match event {
                     Pressed(Right) => set_key(0, true),
                     Release(Right) => set_key(0, false),
@@ -202,10 +209,8 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
                     Pressed(S) => set_key(7, true),
                     Release(S) => set_key(7, false),
                     Pressed(D) => {
-                        debug = !debug;
-                        sender.send(EmulatorEvent::Debug(debug)).unwrap();
-                        let proxy = ctx.get_mut::<EventLoopProxy<UserEvent>>();
-                        proxy.send_event(UserEvent::Debug(debug)).unwrap();
+                        let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
+                        proxy.send_event(UserEvent::Debug(true)).unwrap();
                     }
                     Pressed(LShift) | Release(LShift) => sender
                         .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))

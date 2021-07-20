@@ -1,12 +1,10 @@
-use std::sync::Arc;
+use std::sync::{Arc, mpsc::SyncSender};
 
 use parking_lot::Mutex;
+use winit::event_loop::EventLoopProxy;
 
 // use std::{rc::Rc, cell::RefCell};
-use crate::{
-    event_table::{EmulatorUpdated, EventTable},
-    style::Style,
-};
+use crate::{EmulatorEvent, UserEvent, event_table::{EmulatorUpdated, EventTable}, style::Style};
 use crui::{
     graphics::Text,
     layouts::VBoxLayout,
@@ -24,6 +22,30 @@ struct Callback;
 #[allow(unused_variables)]
 impl TextFieldCallback for Callback {
     fn on_submit(&mut self, this: Id, ctx: &mut Context, text: &mut String) -> bool {
+        let sender = ctx.get::<SyncSender<EmulatorEvent>>();
+        let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
+        let mut args = text.split_ascii_whitespace();
+        match args.next() {
+            Some("step" | "") | None => sender.send(EmulatorEvent::Step).unwrap(),
+            Some("runto") => {
+                if let Some(arg) = args.next() {
+                    if !args.next().map(str::is_empty).unwrap_or(true) {
+                        // report a error!!
+                        return true;
+                    }
+                    let address = match u16::from_str_radix(arg, 16) {
+                        Ok(x) => x,
+                        Err(_) => return true,
+                    };
+                    sender.send(EmulatorEvent::RunTo(address)).unwrap();
+                } else {
+                    return true;
+                }
+            }
+            Some("run") => proxy.send_event(UserEvent::Debug(false)).unwrap(),
+            _ => return true,
+        }
+        text.clear();
         true
     }
 

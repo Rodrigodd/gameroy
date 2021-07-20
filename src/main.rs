@@ -86,12 +86,22 @@ use winit::{
     window::WindowBuilder,
 };
 
-struct Joypad(pub u8);
+struct AppState {
+    /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
+    pub joypad: u8,
+    /// If the emulation is in debug mode.
+    pub debug: bool,
+}
+impl AppState {
+    fn new(debug: bool) -> Self {
+        Self {
+            debug,
+            joypad: 0xFF,
+        }
+    }
+}
 
 fn create_window(mut inter: Interpreter, debug: bool) {
-    if debug {
-        unimplemented!("Enbling debug will cause logics erros for now.");
-    }
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let wb = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
@@ -110,23 +120,27 @@ fn create_window(mut inter: Interpreter, debug: bool) {
         let _ = proxy.send_event(UserEvent::FrameUpdated);
     });
 
-    let (sender, recv) = sync_channel(3);
-    if debug {
-        sender.send(EmulatorEvent::Debug(debug)).unwrap();
-    }
-    sender.send(EmulatorEvent::Run).unwrap();
-
     let inter = Arc::new(Mutex::new(inter));
     let proxy = event_loop.create_proxy();
+
+    let (emu_channel, recv) = sync_channel(3);
+    if debug {
+        proxy.send_event(UserEvent::Debug(debug)).unwrap();
+    }
+    emu_channel.send(EmulatorEvent::Run).unwrap();
+
     ui.insert(inter.clone());
-    ui.insert(sender.clone());
+    ui.insert(emu_channel.clone());
     ui.insert::<EventLoopProxy<UserEvent>>(proxy.clone());
-    ui.insert(Joypad(0xFF));
+    ui.insert(AppState::new(debug));
 
     thread::Builder::new()
         .name("emulator".to_string())
         .spawn(move || emulator_thread(inter, recv, proxy))
         .unwrap();
+
+    // undeclare
+    let debug = ();
 
     // winit event loop
     event_loop.run(move |event, _, control| {
@@ -173,7 +187,11 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                     EmulatorUpdated => {
                         ui.notify::<event_table::EmulatorUpdated>(());
                     }
-                    Debug(value) => ui.notify::<event_table::Debug>(value),
+                    Debug(value) => {
+                        ui.get::<AppState>().debug = value;
+                        ui.notify::<event_table::Debug>(value);
+                        emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
+                    }
                 }
             }
             Event::MainEventsCleared => {}
@@ -185,9 +203,9 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                     *control = ControlFlow::Poll;
                 }
 
-                let joypad = ui.get::<Joypad>();
-                sender.send(EmulatorEvent::SetKeys(joypad.0)).unwrap();
-                sender.send(EmulatorEvent::Run).unwrap();
+                let joypad = ui.get::<AppState>().joypad;
+                emu_channel.send(EmulatorEvent::SetKeys(joypad)).unwrap();
+                emu_channel.send(EmulatorEvent::Run).unwrap();
             }
             _ => {}
         }
@@ -207,6 +225,12 @@ enum EmulatorEvent {
     SetKeys(u8),
     Debug(bool),
     Step,
+    RunTo(u16),
+}
+
+enum EmulatorState {
+    Idle,
+    RunTo(u16),
 }
 
 fn emulator_thread(
@@ -217,6 +241,7 @@ fn emulator_thread(
     use EmulatorEvent::*;
 
     let mut debug = false;
+    let mut state = EmulatorState::Idle;
     // When true, the program will sync the time that passed, and the time that is emulated.
     let mut frame_limit = true;
     // The instant in time that the gameboy supposedly was turned on.
@@ -272,12 +297,42 @@ fn emulator_thread(
                         let mut inter = inter.lock();
                         inter.interpret_op();
                         proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
+                        state = EmulatorState::Idle;
+                    }
+                }
+                RunTo(address) => {
+                    if debug {
+                        state = EmulatorState::RunTo(address);
                     }
                 }
             }
 
             if debug {
-                // inter.debug();
+                match state {
+                    EmulatorState::Idle => {}
+                    EmulatorState::RunTo(target_address) => 'runto: loop {
+                        {
+                            let mut inter = inter.lock();
+                            let target_clock = inter.0.clock_count + clock_speed / 600;
+                            while inter.0.clock_count < target_clock {
+                                inter.interpret_op();
+                                if inter.0.cpu.pc == target_address {
+                                    state = EmulatorState::Idle;
+                                    proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
+                                    break 'runto;
+                                }
+                            }
+                        }
+                        match recv.try_recv() {
+                            Ok(next_event) => {
+                                event = next_event;
+                                continue 'handle_event;
+                            }
+                            Err(TryRecvError::Disconnected) => return,
+                            _ => {}
+                        }
+                    },
+                }
             } else if !frame_limit {
                 // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                 loop {

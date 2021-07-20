@@ -1,7 +1,7 @@
 use std::any::{Any, TypeId};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use crui::Context;
@@ -27,7 +27,7 @@ impl Event for EmulatorUpdated {
 
 // type dyn Callback<E> = dyn FnMut(<E as Event>::Payload, &mut Context) + 'static;
 pub trait Callback<E: Event>: FnMut(<E as Event>::Payload, &mut Context) + 'static {}
-impl<E:Event, F: FnMut(<E as Event>::Payload, &mut Context) + 'static> Callback<E> for F {}
+impl<E: Event, F: FnMut(<E as Event>::Payload, &mut Context) + 'static> Callback<E> for F {}
 
 /// A handle to a registered event callback. When this is dropped, the callback is unregistered.
 pub struct Handle<E: Event> {
@@ -44,7 +44,6 @@ impl<E: Event> Drop for Handle<E> {
         println!(">> unregister!!");
         event_table.unregister(self.event_id.get());
     }
-
 }
 /// Dummy implementation, only for allowing a control hold up this handle, unregistering the
 /// callback when the control is dropped.
@@ -67,9 +66,10 @@ impl<E: Event> List<E> {
 
     fn unregister(&self, event_id: usize) {
         let mut event_table = self.listeners.borrow_mut();
-        if let Some(i) = event_table.iter().position(|x| {
-            (&**x as &dyn Callback<E> as *const _ as *const () as usize) == event_id
-        }) {
+        if let Some(i) = event_table
+            .iter()
+            .position(|x| (&**x as &dyn Callback<E> as *const _ as *const () as usize) == event_id)
+        {
             drop(event_table.remove(i));
         }
     }
@@ -102,13 +102,9 @@ impl EventTable {
 
     /// Register a callback to a event. Returns a Handle that, when dropped, will unregister this
     /// callback.
-    pub fn register<E: Event, F: Callback<E>>(
-        &mut self,
-        callback: F,
-    ) -> Handle<E> {
+    pub fn register<E: Event, F: Callback<E>>(&mut self, callback: F) -> Handle<E> {
         let list = self.get_list::<E>();
         let event_id = list.register(callback);
-
 
         Handle {
             event_id,

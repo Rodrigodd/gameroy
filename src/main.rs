@@ -53,28 +53,35 @@ fn main() {
 
     let cartridge = Cartridge::new(rom_file).unwrap();
 
-    let game_boy = gameboy::GameBoy::new(boot_rom_file, cartridge).unwrap();
+    let mut game_boy = gameboy::GameBoy::new(boot_rom_file, cartridge).unwrap();
 
-    let mut inter = interpreter::Interpreter(game_boy);
+    {
+        let mut trace = game_boy.trace.borrow_mut();
 
-    if diss {
-        inter.0.boot_rom_active = false;
+        trace.trace_starting_at(&game_boy, 0, 0x100, Some("entry point".into()));
+        trace.trace_starting_at(&game_boy, 0, 0x40, Some("RST_0x40".into()));
+        trace.trace_starting_at(&game_boy, 0, 0x48, Some("RST_0x48".into()));
+        trace.trace_starting_at(&game_boy, 0, 0x50, Some("RST_0x50".into()));
+        trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
+        trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
 
-        let mut trace = inter.0.trace.borrow_mut();
+        // trace starting from the start of each bank
+        // for i in 1..game_boy.cartridge.rom.len() / 0x4000 {
+        //     trace.trace_starting_at(&game_boy, i as u8, i as u16 * 0x4000, None);
+        // }
 
-        trace.trace_starting_at(&inter.0, 0x100);
-        trace.trace_starting_at(&inter.0, 0x40);
-        trace.trace_starting_at(&inter.0, 0x48);
-        trace.trace_starting_at(&inter.0, 0x50);
-        trace.trace_starting_at(&inter.0, 0x58);
-        trace.trace_starting_at(&inter.0, 0x60);
+        if diss {
+            game_boy.boot_rom_active = false;
 
-        let mut string = String::new();
-        trace.fmt(&inter.0, &mut string).unwrap();
-        println!("{}", string);
+            let mut string = String::new();
+            trace.fmt(&game_boy, &mut string).unwrap();
+            println!("{}", string);
 
-        return;
+            return;
+        }
     }
+
+    let inter = interpreter::Interpreter(game_boy);
 
     create_window(inter, debug);
 }

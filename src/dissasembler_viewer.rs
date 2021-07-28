@@ -129,7 +129,7 @@ fn list<'a>(
                         .0
                         .trace
                         .borrow_mut()
-                        .print_around(inter.0.cpu.pc, &inter.0, &mut text)
+                        .print_around(inter.0.cartridge.curr_bank(), inter.0.cpu.pc, &inter.0, &mut text)
                         .unwrap();
                 }
                 ctx.get_graphic_mut(diss_view.text)

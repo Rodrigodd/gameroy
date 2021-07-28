@@ -62,12 +62,12 @@ pub struct Cartridge {
 }
 impl Cartridge {
     pub fn new(mut file: impl Read) -> Result<Self, String> {
-        let mut buffer = Vec::with_capacity(0x10000);
+        let mut buffer = Vec::with_capacity(0x8000);
         file.read_to_end(&mut buffer)
             .map_err(|err| err.to_string())?;
 
-        if buffer.len() < 0x10000 {
-            buffer.resize(0x10000, 0);
+        if buffer.len() < 0x8000 {
+            buffer.resize(0x8000, 0);
         }
 
         // Cartridge Type
@@ -81,6 +81,36 @@ impl Cartridge {
             ram: vec![0; 0x8000],
             ram_enabled: false,
         })
+    }
+
+    /// The number of banks in this cartridge. A cartridge without bank switching have 2 banks.
+    pub fn num_banks(&self) -> u8 {
+        (self.rom.len() / 0x4000) as u8
+    }
+
+    /// The current selected rom bank
+    pub fn curr_bank(&self) -> u8 {
+        match self.mbc {
+            MBC::None => 1,
+            MBC::MBC1 => {
+                let mut bank = if self.mode {
+                    // Mode 1
+                    self.selected_bank & 0x1F
+                } else {
+                    // Mode 0
+                    self.selected_bank & 0x7F
+                };
+
+                // cannot adress a bank where the 5-bit bank register is 0
+                if bank & 0x1F == 0 {
+                    bank += 1;
+                }
+
+                // mask upper bits if the bank is out of bounds
+                bank %= (self.rom.len() / 0x4000) as u8;
+                bank
+            }
+        }
     }
 
     pub fn read(&mut self, address: u16) -> u8 {
@@ -100,21 +130,7 @@ impl Cartridge {
                     0x0000..=0x3FFF => self.rom[address as usize],
                     // ROM Bank 01-7F
                     0x4000..=0x7FFF => {
-                        let mut bank = if self.mode {
-                            // Mode 1
-                            self.selected_bank & 0x1F
-                        } else {
-                            // Mode 0
-                            self.selected_bank & 0x7F
-                        };
-
-                        // cannot adress a bank where the 5-bit bank register is 0
-                        if bank & 0x1F == 0 {
-                            bank += 1;
-                        }
-
-                        // mask upper bits if the bank is out of bounds
-                        bank %= (self.rom.len() / 0x4000) as u8;
+                        let bank = self.curr_bank();
 
                         let address_start = 0x4000 * bank as usize;
                         self.rom[address as usize - 0x4000 + address_start]

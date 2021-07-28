@@ -1,5 +1,6 @@
 use crate::consts;
 use crate::gameboy::GameBoy;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Write;
 use std::ops::Range;
@@ -14,17 +15,116 @@ impl fmt::LowerHex for ReallySigned {
     }
 }
 
+/// A address in the rom.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct Address {
+    /// The bank where this address belongs
+    bank: u8,
+    /// The address in the bank, in range 0x0000..=0x3FFF
+    address: u16,
+}
+impl Address {
+    fn new(bank: u8, address: u16) -> Self {
+        assert!(
+            (0x0000..=0x3FFF).contains(&address),
+            "create out of range address"
+        );
+        Self { bank, address }
+    }
+
+    fn from_pc(bank: Option<u8>, address: u16) -> Option<Self> {
+        if address <= 0x3FFF {
+            // it is in the main bank
+            Some(Self::new(0, address))
+        } else if bank.is_some() && (0x4000..=0x7FFF).contains(&address) {
+            // it is in the switchable bank
+            let bank = bank.unwrap();
+            assert!(bank != 0);
+            Some(Self::new(bank, address - 0x4000))
+        } else {
+            // it isn't in the rom or the bank is unknow.
+            None
+        }
+    }
+
+    fn to_pc(&self) -> u16 {
+        if self.bank == 0 {
+            self.address
+        } else {
+            self.address + 0x4000
+        }
+    }
+
+    fn as_cursor(&self) -> Cursor {
+        let pc = if self.bank != 0 { 0x4000 } else { 0x0000 } + self.address;
+        Cursor {
+            bank: Some(self.bank),
+            pc,
+            reg_a: None,
+        }
+    }
+}
+
+struct Label {
+    /// The address specifies the bank and memory address
+    address: Address,
+    name: String,
+}
+impl Label {
+    /// Create a Label in a given address with a generate name, in the format "L<BANK:02x>_<ADDRESS:04x>".
+    fn new(address: Address) -> Self {
+        Self {
+            address,
+            name: format!("L{:02x}_{:04x}", address.bank, address.address),
+        }
+    }
+}
+
+struct Cursor {
+    /// The currently active bank, if know
+    bank: Option<u8>,
+    /// The program counter, can have any value in the entire range
+    pc: u16,
+    /// The currently value of register A, if know
+    reg_a: Option<u8>,
+}
+impl Cursor {
+    /// Return the opcode, and the length
+    fn get_op<'a>(&self, rom: &'a [u8]) -> (&'a [u8], u8) {
+        let bank;
+        let offset = if (0x4000..=0x7FFF).contains(&self.pc) {
+            bank = self.bank.expect("I don't know what I am doing");
+            (self.pc - 0x4000) as usize
+        } else if self.pc <= 0x3FFF {
+            bank = 0;
+            self.pc as usize
+        } else {
+            todo!("I don't know if this is reachable yet")
+        };
+
+        let i = bank as usize * 0x4000 + offset;
+
+        let op = rom[i];
+        let len = consts::LEN[op as usize];
+
+        (&rom[i..i + len as usize], len)
+    }
+}
+
 pub struct Trace {
     /// Ranges of memory where code are executed
-    code_ranges: Vec<Range<u16>>,
-    /// Andress in the memory where there is jumps pointing to
-    labels: Vec<u16>,
+    code_ranges: Vec<Range<Address>>,
+    /// Map beetween a address and a label
+    labels: BTreeMap<Address, Label>,
+    /// Map from a opcode (like jp or call) to another address
+    jumps: BTreeMap<Address, Address>,
 }
 impl Trace {
     pub fn new() -> Self {
         let this = Self {
             code_ranges: Vec::new(),
-            labels: Vec::new(),
+            labels: Default::default(),
+            jumps: Default::default(),
         };
 
         //         const ENTRY_POINT: u16 = 0x0;
@@ -36,23 +136,32 @@ impl Trace {
     }
 
     /// Dissasembly some opcodes above and below, respecting code_ranges
-    pub fn print_around(&mut self, curr: u16, rom: &GameBoy, w: &mut impl Write) -> fmt::Result {
-        self.trace_starting_at(rom, curr);
-        let curr_range = self
-            .get_curr_code_range(curr)
-            .expect("This andress was add to the code_ranges at the start of the function!!");
+    pub fn print_around(
+        &mut self,
+        bank: u8,
+        curr: u16,
+        rom: &GameBoy,
+        w: &mut impl Write,
+    ) -> fmt::Result {
+        self.trace_starting_at(rom, bank, curr, None);
+        let curr_range = match self.get_curr_code_range(bank, curr) {
+            Some(x) => x,
+            None => return writeln!(w, "Outside ROM..."),
+        };
 
         const LOOK_ABOVE: u16 = 5;
 
-        let mut queue = [0; LOOK_ABOVE as usize];
+        let mut queue = [Address::new(0, 0); LOOK_ABOVE as usize];
         let mut i = 0;
         let mut c = 0;
         let mut pc = curr_range.start;
+        let curr = Address::from_pc(Some(bank), curr).unwrap();
         while pc < curr {
             queue[i] = pc;
             i = (i + 1) % LOOK_ABOVE as usize;
             c += 1;
-            pc += consts::LEN[rom[pc as usize] as usize] as u16;
+            let (_, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+            pc.address += len as u16;
         }
         if c < LOOK_ABOVE {
             for _ in c..LOOK_ABOVE {
@@ -62,18 +171,26 @@ impl Trace {
         } else {
             pc = queue[i];
         }
+        let label = |pc, x| {
+            if let Some(address) = self.jumps.get(&pc) {
+                return self.labels.get(&address).unwrap().name.clone();
+            }
+            format!("${:04x}", x)
+        };
         while pc < curr {
-            write!(w, "  {:04x}: ", pc)?;
-            dissasembly_opcode(rom, pc, w)?;
+            write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
+            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+            dissasembly_opcode(pc.address, op, |x| label(pc, x), w)?;
             writeln!(w)?;
-            pc += consts::LEN[rom[pc as usize] as usize] as u16;
+            pc.address += len as u16;
         }
 
         let mut pc = curr;
-        write!(w, ">>{:04x}: ", pc)?;
-        dissasembly_opcode(rom, pc, w)?;
+        write!(w, ">>{:02x}_{:04x}: ", pc.bank, pc.address)?;
+        let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+        dissasembly_opcode(pc.address, op, |x| label(pc, x), w)?;
         writeln!(w)?;
-        pc += consts::LEN[rom[pc as usize] as usize] as u16;
+        pc.address += len as u16;
 
         for c in 0..LOOK_ABOVE {
             if pc >= curr_range.end {
@@ -82,28 +199,52 @@ impl Trace {
                 }
                 break;
             }
-            write!(w, "  {:04x}: ", pc)?;
-            dissasembly_opcode(rom, pc, w)?;
+            write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
+            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+            dissasembly_opcode(pc.address, op, |x| label(pc, x), w)?;
             writeln!(w)?;
-            pc += consts::LEN[rom[pc as usize] as usize] as u16;
+            pc.address += len as u16;
         }
         Ok(())
     }
 
-    pub fn trace_starting_at(&mut self, rom: &GameBoy, start: u16) {
-        let mut cursors = vec![start];
+    pub fn trace_starting_at(
+        &mut self,
+        rom: &GameBoy,
+        bank: u8,
+        start: u16,
+        label: Option<String>,
+    ) {
+        let bank = if rom.cartridge.num_banks() == 2 {
+            Some(1)
+        } else if bank == 0 {
+            None
+        } else {
+            Some(bank)
+        };
+        let mut cursors = vec![Cursor {
+            bank,
+            pc: start,
+            reg_a: None,
+        }];
+        if let Some(label) = label {
+            self.add_label(bank, start)
+                .expect("could not add label in trace_starting_at")
+                .name = label;
+        }
         while !cursors.is_empty() {
             self.trace_once(rom, &mut cursors);
         }
     }
 
-    fn get_curr_code_range(&self, pc: u16) -> Option<Range<u16>> {
+    fn get_curr_code_range(&self, bank: u8, pc: u16) -> Option<Range<Address>> {
+        let address = Address::from_pc(Some(bank), pc)?;
         self.code_ranges
             .binary_search_by(|range| {
                 use std::cmp::Ordering;
-                if pc < range.start {
+                if address < range.start {
                     Ordering::Greater
-                } else if pc >= range.end {
+                } else if address >= range.end {
                     Ordering::Less
                 } else {
                     Ordering::Equal
@@ -115,12 +256,12 @@ impl Trace {
 
     /// Insert a opcode to Self::code_ranges.
     /// Return true if the opcode was not added before.
-    fn add_opcode(&mut self, pc: u16, len: u16) -> bool {
+    fn add_opcode(&mut self, address: Address, len: u16) -> bool {
         let i = self.code_ranges.binary_search_by(|range| {
             use std::cmp::Ordering;
-            if pc < range.start {
+            if address < range.start {
                 Ordering::Greater
-            } else if pc >= range.end {
+            } else if address >= range.end {
                 Ordering::Less
             } else {
                 Ordering::Equal
@@ -129,119 +270,237 @@ impl Trace {
         match i {
             Ok(_) => false,
             Err(i) => {
-                let merge_previous = i > 0 && self.code_ranges[i - 1].end == pc;
+                let address_end = Address::new(address.bank, address.address + len);
+                let merge_previous = i > 0 && self.code_ranges[i - 1].end >= address;
                 let merge_next =
-                    i + 1 < self.code_ranges.len() && self.code_ranges[i].start == pc + len;
+                    i + 1 < self.code_ranges.len() && self.code_ranges[i].start <= address_end;
 
                 if merge_previous && merge_next {
                     self.code_ranges[i - 1].end = self.code_ranges[i].end;
                     self.code_ranges.remove(i);
                 } else if merge_previous {
-                    self.code_ranges[i - 1].end = self.code_ranges[i - 1].end.saturating_add(len);
+                    self.code_ranges[i - 1].end = address_end;
                 } else if merge_next {
-                    self.code_ranges[i].start -= len;
+                    self.code_ranges[i].start = address;
                 } else {
-                    self.code_ranges.insert(i, pc..pc + len);
+                    self.code_ranges.insert(i, address..address_end);
                 }
                 true
             }
         }
     }
 
-    fn add_label(&mut self, pc: u16) {
-        match self.labels.binary_search(&pc) {
-            Ok(_) => {}
-            Err(i) => self.labels.insert(i, pc),
+    fn add_label(&mut self, bank: Option<u8>, pc: u16) -> Option<&mut Label> {
+        // the address may not be in the rom
+        let address = Address::from_pc(bank, pc)?;
+        Some(
+            self.labels
+                .entry(address)
+                .or_insert_with(|| Label::new(address)),
+        )
+    }
+
+    fn add_jump(&mut self, from: Address, bank: Option<u8>, pc: u16) {
+        match self.add_label(bank, pc) {
+            Some(x) => {
+                let to = x.address;
+                self.jumps.insert(from, to);
+            }
+            None => {}
         }
     }
 
     /// Pop a PC from 'cursors', compute next possible PC values, and push to 'cursors'
-    fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<u16>) {
-        let pc = cursors.pop().unwrap() as usize;
-        if pc >= rom.len() {
-            eprintln!("{:04x} is out of bounds!!", pc);
+    fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
+        let cursor = cursors.pop().unwrap();
+        let Cursor { pc, bank, reg_a } = cursor;
+        let address = match Address::from_pc(bank, pc as u16) {
+            Some(x) => x,
+            None => {
+                eprintln!("jump out of rom: {:02x?}_{:04x}", bank, pc);
+                return;
+            }
+        };
+        let (op, len) = cursor.get_op(&rom.cartridge.rom);
+
+        if !self.add_opcode(address, len as u16) {
             return;
         }
-        let len = consts::LEN[rom[pc] as usize] as usize;
-        let op = [rom[pc as usize], rom[pc as usize + 1], rom[pc as usize + 2]];
-        if !self.add_opcode(pc as u16, len as u16) {
-            return;
-        }
+
+        let cursors = &std::cell::RefCell::new(cursors);
+        let only_one_bank = rom.cartridge.num_banks() == 2;
+
+        let jump = move |dest| {
+            let bank = if only_one_bank {
+                // If there is only one switchable bank, it will be the active.
+                Some(1)
+            } else if dest < 0x4000 {
+                // if it jump to the bank 0, the program can switch banks.
+                None
+            } else {
+                // if it continue in this bank, it is unlikely that it will switch banks.
+                bank
+            };
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: dest,
+                reg_a: None,
+            });
+        };
+        let step = move || {
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: pc + len as u16,
+                reg_a,
+            })
+        };
+
         match op[0] {
             0xC3 => {
                 // JP $aaaa
                 let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_label(dest);
-                cursors.push(dest);
+                self.add_jump(address, bank, dest);
+                // cursors.push(cursor { bank, pc: dest });
+                jump(dest);
             }
             0xE9 => {
                 // JP (HL)
-                cursors.push((pc + len) as u16);
+                // I can't predict where this will jump to
             }
             x if x & 0b11100111 == 0b11000010 => {
                 // JP cc, $aaaa
                 let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_label(dest);
-                cursors.push(dest);
-                cursors.push((pc + len) as u16);
+                self.add_jump(address, bank, dest);
+                jump(dest);
+                step();
             }
             0x18 => {
                 // JR $rr
-                let dest = ((pc + len) as i16 + op[1] as i8 as i16) as u16;
-                self.add_label(dest);
-                cursors.push(dest);
+                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                self.add_jump(address, bank, dest);
+                jump(dest);
+                step();
             }
-            x if x & 0b11100111 == 0b00100000 => {
+            x if x & 0b1110_0111 == 0b0010_0000 => {
                 // JR cc, $rr
-                let dest = ((pc + len) as i16 + op[1] as i8 as i16) as u16;
-                self.add_label(dest);
-                cursors.push(dest);
-                cursors.push((pc + len) as u16);
+                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                self.add_jump(address, bank, dest);
+                jump(dest);
+                step();
             }
-            0xCD => {
-                // CALL $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_label(dest);
-                cursors.push(dest);
-                cursors.push((pc + len) as u16);
+            x if x & 0b1100_1111 == 0b0000_1010 || x & 0b1111_1000 == 0b0111_1000 => {
+                // LD A, ?
+                cursors.borrow_mut().push(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a: None,
+                })
             }
-            x if x & 0b11100111 == 0b11000100 => {
-                // CALL cc, $aaaa
+            0x3e => {
+                // LD A, d8
+                cursors.borrow_mut().push(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a: Some(op[1]),
+                })
+            }
+            0xEA => {
+                // LD (a16), A
+                let mut bank = bank;
+                // TODO: this only works for MBC1
+                // If it write a know value of A to 0x2000..=0x3FFF region, the bank is switched.
+                let address = u16::from_le_bytes([op[1], op[2]]);
+                if address >= 0x2000 && address <= 0x3FFF {
+                    if let Some(a) = reg_a {
+                        bank = Some(a & 0x1F);
+                    } else {
+                        bank = None;
+                    }
+                }
+                cursors.borrow_mut().push(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a,
+                })
+            }
+            0x08 => {
+                // LD (a16), SP
+                let address = u16::from_le_bytes([op[1], op[2]]);
+                if (0x2000..=0x3FFF).contains(&address) {
+                    cursors.borrow_mut().push(Cursor {
+                        bank: None,
+                        pc: pc + len as u16,
+                        reg_a,
+                    })
+                } else {
+                    step();
+                }
+            }
+            x if x == 0x36
+                || x & 0b1100_1111 == 0b0000_0010
+                || x != 0x76 && x & 0b1111_1000 == 0b0111_0000 =>
+            {
+                // LD (?), ?
+                // this could switch bank, but is unlikely to happen when inside a switchable bank.
+                let bank = if pc < 0x4000 { None } else { bank };
+                cursors.borrow_mut().push(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a,
+                })
+            }
+            x if x == 0xCD || x & 0b11100111 == 0b11000100 => {
+                // CALL $aaaa or CALL cc, $aaaa
                 let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_label(dest);
-                cursors.push(dest);
-                cursors.push((pc + len) as u16);
+                self.add_jump(address, bank, dest);
+                jump(dest);
+                // the call could switch bank, but is unlikely to happen when inside a switchable bank.
+                let bank = if pc < 0x4000 { None } else { bank };
+                cursors.borrow_mut().push(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a: None,
+                })
             }
             0xC9 | 0xD9 => { /* RET or RETI */ }
             x if x & 0b11000111 == 0b11000111 => {
                 // RST n
                 let dest = (x & 0b00111000) as u16;
-                self.add_label(dest);
-                cursors.push(dest);
+                self.add_jump(address, bank, dest);
+                jump(dest);
             }
             _ => {
-                cursors.push((pc + len) as u16);
+                step();
             }
         }
     }
 
     pub fn fmt(&self, rom: &GameBoy, f: &mut impl Write) -> fmt::Result {
         for range in self.code_ranges.iter() {
-            let mut pc = range.start as usize;
+            let mut pc = range.start;
             loop {
-                if pc >= range.end as usize {
+                if pc >= range.end {
                     break;
                 }
-                let len = consts::LEN[rom[pc] as usize] as usize;
-                if self.labels.binary_search(&(pc as u16)).is_ok() {
-                    write!(f, "*")?;
-                } else {
-                    write!(f, " ")?;
+                let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+                if let Some(label) = self.labels.get(&pc) {
+                    writeln!(f, "{}:", label.name)?;
                 }
-                write!(f, "{:04x}: ", pc)?;
-                dissasembly_opcode(rom, pc as u16, f)?;
+                write!(f, "    ")?;
+                write!(f, "{:02x}_{:04x}: ", pc.bank, pc.address)?;
+                dissasembly_opcode(
+                    pc.to_pc(),
+                    op,
+                    |x| {
+                        if let Some(address) = self.jumps.get(&pc) {
+                            return self.labels.get(&address).unwrap().name.clone();
+                        }
+                        format!("${:04x}", x)
+                    },
+                    f,
+                )?;
                 writeln!(f)?;
-                pc += len;
+                pc.address += len as u16;
             }
             writeln!(f)?;
         }
@@ -249,9 +508,18 @@ impl Trace {
     }
 }
 
-pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Result {
-    let op = [rom[pc as usize], rom[pc as usize + 1], rom[pc as usize + 2]];
-    let len = consts::LEN[op[0] as usize] as u16;
+pub fn dissasembly_opcode(
+    pc: u16,
+    op: &[u8],
+    label: impl Fn(u16) -> String,
+    w: &mut impl Write,
+) -> fmt::Result {
+    let len = op.len() as u16;
+    let op = {
+        let mut a = [0; 3];
+        a[0..op.len()].copy_from_slice(op);
+        a
+    };
     match op[0] {
         0x00 => write!(w, "NOP  "),
         0x01 => write!(w, "LD   BC, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
@@ -279,8 +547,8 @@ pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Re
         0x17 => write!(w, "RLA  "),
         0x18 => write!(
             w,
-            "JR   ${:04x} ",
-            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+            "JR   {} ",
+            label(((pc + len) as i16 + op[1] as i8 as i16) as u16)
         ),
         0x19 => write!(w, "ADD  HL, DE "),
         0x1a => write!(w, "LD   A, (DE) "),
@@ -291,8 +559,8 @@ pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Re
         0x1f => write!(w, "RRA  "),
         0x20 => write!(
             w,
-            "JR   NZ, ${:04x} ",
-            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+            "JR   NZ, {} ",
+            label(((pc + len) as i16 + op[1] as i8 as i16) as u16)
         ),
         0x21 => write!(w, "LD   HL, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
         0x22 => write!(w, "LD   (HL+), A "),
@@ -303,8 +571,8 @@ pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Re
         0x27 => write!(w, "DAA  "),
         0x28 => write!(
             w,
-            "JR   Z, ${:04x} ",
-            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+            "JR   Z, {} ",
+            label(((pc + len) as i16 + op[1] as i8 as i16) as u16)
         ),
         0x29 => write!(w, "ADD  HL, HL "),
         0x2a => write!(w, "LD   A, (HL+) "),
@@ -315,8 +583,8 @@ pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Re
         0x2f => write!(w, "CPL  "),
         0x30 => write!(
             w,
-            "JR   NC, ${:04x} ",
-            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+            "JR   NC, {} ",
+            label(((pc + len) as i16 + op[1] as i8 as i16) as u16)
         ),
         0x31 => write!(w, "LD   SP, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
         0x32 => write!(w, "LD   (HL-), A "),
@@ -327,8 +595,8 @@ pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Re
         0x37 => write!(w, "SCF  "),
         0x38 => write!(
             w,
-            "JR   C, ${:04x} ",
-            ((pc + len) as i16 + op[1] as i8 as i16) as u16
+            "JR   C, {} ",
+            label(((pc + len) as i16 + op[1] as i8 as i16) as u16)
         ),
         0x39 => write!(w, "ADD  HL, SP "),
         0x3a => write!(w, "LD   A, (HL-) "),
@@ -467,33 +735,33 @@ pub fn dissasembly_opcode(rom: &GameBoy, pc: u16, w: &mut impl Write) -> fmt::Re
         0xbf => write!(w, "CP   A "),
         0xc0 => write!(w, "RET  NZ "),
         0xc1 => write!(w, "POP  BC "),
-        0xc2 => write!(w, "JP   NZ, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
-        0xc3 => write!(w, "JP   ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
-        0xc4 => write!(w, "CALL NZ, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xc2 => write!(w, "JP   NZ, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
+        0xc3 => write!(w, "JP   {} ", label(u16::from_le_bytes([op[1], op[2]]))),
+        0xc4 => write!(w, "CALL NZ, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xc5 => write!(w, "PUSH BC "),
         0xc6 => write!(w, "ADD  A, ${:02x} ", op[1]),
         0xc7 => write!(w, "RST  00H "),
         0xc8 => write!(w, "RET  Z "),
         0xc9 => write!(w, "RET  "),
-        0xca => write!(w, "JP   Z, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xca => write!(w, "JP   Z, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xcb => dissasembly_opcode_cr(op[1], w),
-        0xcc => write!(w, "CALL Z, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
-        0xcd => write!(w, "CALL ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xcc => write!(w, "CALL Z, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
+        0xcd => write!(w, "CALL {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xce => write!(w, "ADC  A, ${:02x} ", op[1]),
         0xcf => write!(w, "RST  08H "),
         0xd0 => write!(w, "RET  NC "),
         0xd1 => write!(w, "POP  DE "),
-        0xd2 => write!(w, "JP   NC, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xd2 => write!(w, "JP   NC, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xd3 => write!(w, "     "),
-        0xd4 => write!(w, "CALL NC, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xd4 => write!(w, "CALL NC, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xd5 => write!(w, "PUSH DE "),
         0xd6 => write!(w, "SUB  ${:02x} ", op[1]),
         0xd7 => write!(w, "RST  10H "),
         0xd8 => write!(w, "RET  C "),
         0xd9 => write!(w, "RETI "),
-        0xda => write!(w, "JP   C, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xda => write!(w, "JP   C, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xdb => write!(w, "     "),
-        0xdc => write!(w, "CALL C, ${:04x} ", u16::from_le_bytes([op[1], op[2]])),
+        0xdc => write!(w, "CALL C, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xdd => write!(w, "     "),
         0xde => write!(w, "SBC  A, ${:02x} ", op[1]),
         0xdf => write!(w, "RST  18H "),

@@ -79,7 +79,7 @@ impl Interpreter {
         self.0
             .trace
             .borrow_mut()
-            .print_around(pc, &self.0, &mut string)
+            .print_around(self.0.cartridge.curr_bank(), pc, &self.0, &mut string)
             .unwrap();
         writeln!(std, "{}", string).unwrap();
         writeln!(std, "{}", self.0.cpu).unwrap();

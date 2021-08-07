@@ -317,7 +317,7 @@ impl Trace {
         let address = match Address::from_pc(bank, pc as u16) {
             Some(x) => x,
             None => {
-                eprintln!("jump out of rom: {:02x?}_{:04x}", bank, pc);
+                eprintln!("jump out of know rom: {:02x?}_{:04x}", bank, pc);
                 return;
             }
         };
@@ -455,7 +455,11 @@ impl Trace {
                 self.add_jump(address, bank, dest);
                 jump(dest);
                 // the call could switch bank, but is unlikely to happen when inside a switchable bank.
-                let bank = if pc < 0x4000 { None } else { bank };
+                let bank = if pc >= 0x4000 || dest >= 0x4000 {
+                    bank
+                } else {
+                    None
+                };
                 cursors.borrow_mut().push(Cursor {
                     bank,
                     pc: pc + len as u16,
@@ -468,6 +472,7 @@ impl Trace {
                 let dest = (x & 0b00111000) as u16;
                 self.add_jump(address, bank, dest);
                 jump(dest);
+                step();
             }
             _ => {
                 step();

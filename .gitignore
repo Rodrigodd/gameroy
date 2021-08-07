@@ -3,3 +3,4 @@ dissasembly.txt
 roms
 bootrom
 log.txt
+test_rom/test.o

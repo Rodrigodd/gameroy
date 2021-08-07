@@ -1,5 +1,5 @@
 use crate::cartridge::Cartridge;
-use crate::{consts, cpu::Cpu, dissasembler::Trace, ppu::Ppu};
+use crate::{consts, cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::Read;
 

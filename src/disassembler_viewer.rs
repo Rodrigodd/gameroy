@@ -14,7 +14,7 @@ use crui::{
 use gameroy::interpreter::Interpreter;
 
 #[derive(Clone, Copy)]
-struct DissasemblerView {
+struct DisassemblerView {
     text: Id,
 }
 
@@ -57,7 +57,7 @@ impl TextFieldCallback for Callback {
 }
 
 pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &Style) {
-    let diss_view = DissasemblerView {
+    let diss_view = DisassemblerView {
         text: gui.reserve_id(),
     };
 
@@ -104,7 +104,7 @@ fn list<'a>(
     parent: Id,
     gui: &mut Gui,
     style: &Style,
-    diss_view: DissasemblerView,
+    diss_view: DisassemblerView,
     event_table: &mut EventTable,
 ) {
     gui.create_control_reserved(diss_view.text)
@@ -112,7 +112,7 @@ fn list<'a>(
         .expand_y(true)
         .graphic(
             Text::new(
-                "This is a dissasembler viewer!!".to_string(),
+                "This is a disassembler viewer!!".to_string(),
                 (-1, 0),
                 style.text_style.clone(),
             )

@@ -16,7 +16,7 @@ use gameroy::{
     interpreter::{self, Interpreter},
 };
 
-mod dissasembler_viewer;
+mod disassembler_viewer;
 mod event_table;
 mod layout;
 mod split_view;
@@ -36,7 +36,7 @@ fn main() {
 
     for arg in std::env::args() {
         match arg.as_str() {
-            "-d" | "--dissasembly" => diss = true,
+            "-d" | "--disassembly" => diss = true,
             "-b" | "--debug" => debug = true,
             _ if arg.starts_with("-") => {
                 eprintln!("unknown argument {}", arg);

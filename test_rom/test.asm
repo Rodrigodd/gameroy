@@ -30,7 +30,7 @@ EntryPoint:
 	ld a, 0
 	ld [rNR52], a
 
-    ; Test Dissasembly
+    ; Test Disassembly
 
     ; Test if write invalidate reg A
     ld a, $03
@@ -52,7 +52,7 @@ EntryPoint:
     ld a, $04
     ld [$2000], a
     call EmptyFunction4
-    call NotChangeBank ; invalidate bank, because dissasembler isn't smart
+    call NotChangeBank ; invalidate bank, because disassembler isn't smart
     call EmptyFunction4
 
     ; Test if read invalidate bank
@@ -100,7 +100,7 @@ Done:
 SECTION "bank2", ROMX, BANK[2]
 
 TestInsideBank:
-    ; Test if dissasembler don't invalidate bank, inside a switchable bank
+    ; Test if disassembler don't invalidate bank, inside a switchable bank
 
     ; Test if call invalidate bank
     call EmptyFunction2

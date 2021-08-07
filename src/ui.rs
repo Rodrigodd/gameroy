@@ -1,7 +1,7 @@
 use std::{any::Any, sync::mpsc::SyncSender};
 
 use crate::{
-    dissasembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
+    disassembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
     split_view::SplitView, style::Style, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use crui::{
@@ -235,5 +235,5 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(|cb| cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into()))
         .build();
-    dissasembler_viewer::build(split_view, gui, event_table, style);
+    disassembler_viewer::build(split_view, gui, event_table, style);
 }

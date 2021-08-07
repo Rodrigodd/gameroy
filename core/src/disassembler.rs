@@ -135,7 +135,7 @@ impl Trace {
         this
     }
 
-    /// Dissasembly some opcodes above and below, respecting code_ranges
+    /// Disassembly some opcodes above and below, respecting code_ranges
     pub fn print_around(
         &mut self,
         bank: u8,
@@ -180,7 +180,7 @@ impl Trace {
         while pc < curr {
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
             let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
-            dissasembly_opcode(pc.address, op, |x| label(pc, x), w)?;
+            disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
         }
@@ -188,7 +188,7 @@ impl Trace {
         let mut pc = curr;
         write!(w, ">>{:02x}_{:04x}: ", pc.bank, pc.address)?;
         let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
-        dissasembly_opcode(pc.address, op, |x| label(pc, x), w)?;
+        disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
         writeln!(w)?;
         pc.address += len as u16;
 
@@ -201,7 +201,7 @@ impl Trace {
             }
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
             let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
-            dissasembly_opcode(pc.address, op, |x| label(pc, x), w)?;
+            disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
         }
@@ -493,7 +493,7 @@ impl Trace {
                 }
                 write!(f, "    ")?;
                 write!(f, "{:02x}_{:04x}: ", pc.bank, pc.address)?;
-                dissasembly_opcode(
+                disassembly_opcode(
                     pc.to_pc(),
                     op,
                     |x| {
@@ -513,7 +513,7 @@ impl Trace {
     }
 }
 
-pub fn dissasembly_opcode(
+pub fn disassembly_opcode(
     pc: u16,
     op: &[u8],
     label: impl Fn(u16) -> String,
@@ -749,7 +749,7 @@ pub fn dissasembly_opcode(
         0xc8 => write!(w, "RET  Z "),
         0xc9 => write!(w, "RET  "),
         0xca => write!(w, "JP   Z, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
-        0xcb => dissasembly_opcode_cr(op[1], w),
+        0xcb => disassembly_opcode_cr(op[1], w),
         0xcc => write!(w, "CALL Z, {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xcd => write!(w, "CALL {} ", label(u16::from_le_bytes([op[1], op[2]]))),
         0xce => write!(w, "ADC  A, ${:02x} ", op[1]),
@@ -805,7 +805,7 @@ pub fn dissasembly_opcode(
     }
 }
 
-fn dissasembly_opcode_cr(op: u8, w: &mut impl Write) -> fmt::Result {
+fn disassembly_opcode_cr(op: u8, w: &mut impl Write) -> fmt::Result {
     match op {
         0x00 => write!(w, "RLC  B "),
         0x01 => write!(w, "RLC  C "),

@@ -1,10 +1,14 @@
-use std::sync::{Arc, mpsc::SyncSender};
+use std::sync::{mpsc::SyncSender, Arc};
 
 use parking_lot::Mutex;
 use winit::event_loop::EventLoopProxy;
 
 // use std::{rc::Rc, cell::RefCell};
-use crate::{EmulatorEvent, UserEvent, event_table::{EmulatorUpdated, EventTable}, style::Style};
+use crate::{
+    event_table::{EmulatorUpdated, EventTable},
+    style::Style,
+    EmulatorEvent, UserEvent,
+};
 use crui::{
     graphics::Text,
     layouts::VBoxLayout,
@@ -21,7 +25,7 @@ struct DisassemblerView {
 struct Callback;
 #[allow(unused_variables)]
 impl TextFieldCallback for Callback {
-    fn on_submit(&mut self, this: Id, ctx: &mut Context, text: &mut String) -> bool {
+    fn on_submit(&mut self, this: Id, ctx: &mut Context, text: &mut String) {
         let sender = ctx.get::<SyncSender<EmulatorEvent>>();
         let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
         let mut args = text.split_ascii_whitespace();
@@ -31,29 +35,26 @@ impl TextFieldCallback for Callback {
                 if let Some(arg) = args.next() {
                     if !args.next().map(str::is_empty).unwrap_or(true) {
                         // report a error!!
-                        return true;
+                        return;
                     }
                     let address = match u16::from_str_radix(arg, 16) {
                         Ok(x) => x,
-                        Err(_) => return true,
+                        Err(_) => return,
                     };
                     sender.send(EmulatorEvent::RunTo(address)).unwrap();
                 } else {
-                    return true;
+                    return;
                 }
             }
             Some("run") => proxy.send_event(UserEvent::Debug(false)).unwrap(),
-            _ => return true,
+            _ => return,
         }
         text.clear();
-        true
     }
 
     fn on_change(&mut self, this: Id, ctx: &mut Context, text: &str) {}
 
-    fn on_unfocus(&mut self, this: Id, ctx: &mut Context, text: &mut String) -> bool {
-        true
-    }
+    fn on_unfocus(&mut self, this: Id, ctx: &mut Context, text: &mut String) {}
 }
 
 pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &Style) {
@@ -79,7 +80,6 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         .create_control()
         .parent(vbox)
         .behaviour(TextField::new(
-            "test".to_string(),
             caret,
             label,
             style.text_field.clone(),
@@ -90,13 +90,13 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
 
     gui.create_control_reserved(caret)
         .parent(text_field)
-        .graphic(style.background.clone().with_color([0,0,0,255]))
+        .graphic(style.background.clone().with_color([0, 0, 0, 255].into()))
         .anchors([0.0; 4])
         .build();
 
     gui.create_control_reserved(label)
         .parent(text_field)
-        .graphic(Text::new("Testando!!".into(), (-1, -1), style.text_style.clone()).into())
+        .graphic(Text::new("test".into(), (-1, -1), style.text_style.clone()).into())
         .build();
 }
 
@@ -129,11 +129,15 @@ fn list<'a>(
                         .0
                         .trace
                         .borrow_mut()
-                        .print_around(inter.0.cartridge.curr_bank(), inter.0.cpu.pc, &inter.0, &mut text)
+                        .print_around(
+                            inter.0.cartridge.curr_bank(),
+                            inter.0.cpu.pc,
+                            &inter.0,
+                            &mut text,
+                        )
                         .unwrap();
                 }
-                ctx.get_graphic_mut(diss_view.text)
-                    .set_text(&text);
+                ctx.get_graphic_mut(diss_view.text).set_text(&text);
             }),
         )
         .build();

@@ -61,10 +61,11 @@ impl Ui {
 
         let screen_texture =
             render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false);
+        let white_texture = render.new_texture(1, 1, &[255, 255, 255, 255], false);
 
         // create the gui, and the gui_render
         let gui = Gui::new(0.0, 0.0, fonts);
-        let gui_render = GuiRender::new(font_texture, [128, 128]);
+        let gui_render = GuiRender::new(font_texture, white_texture, [128, 128]);
 
         let mut ui = Self {
             gui,
@@ -140,7 +141,7 @@ impl Ui {
                         scale: [width, height],
                         angle: 0.0,
                         uv_rect: x.uv_rect,
-                        color: x.color,
+                        color: x.color.to_array(),
                         pos: [x.rect[0] + width / 2.0, x.rect[1] + height / 2.0],
                         texture: x.texture,
                     }

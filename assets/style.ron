@@ -16,6 +16,6 @@
             focus: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
         ),
         caret_color: "#000000",
-        selection_color: "#40A000",
+        selection_color: (bg: "#40A000", fg: "#001600"),
     ),
 )

@@ -15,7 +15,7 @@
             normal: Texture(texture: "white.png", color: "#001000", uv_rect: (0,0,1,1)),
             focus: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
         ),
-        caret_color: "#000000",
+        caret_color: "#00FF00",
         selection_color: (bg: "#40A000", fg: "#001600"),
     ),
 )

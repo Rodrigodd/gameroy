@@ -1,38 +1,30 @@
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::num::NonZeroUsize;
+use std::marker::PhantomData;
 use std::rc::{Rc, Weak};
 
-use crui::Context;
+use crui::{Context, Id};
 
-pub trait Event: 'static {
-    type Payload: Clone;
+pub trait Event: Clone + 'static {
 }
 
-pub struct Debug;
-impl Event for Debug {
-    type Payload = bool;
-}
+#[derive(Clone)]
+pub struct Debug(pub bool);
+impl Event for Debug { }
 
+#[derive(Clone, Copy)]
 pub struct FrameUpdated;
-impl Event for FrameUpdated {
-    type Payload = ();
-}
+impl Event for FrameUpdated { }
 
+#[derive(Clone, Copy)]
 pub struct EmulatorUpdated;
-impl Event for EmulatorUpdated {
-    type Payload = ();
-}
-
-// type dyn Callback<E> = dyn FnMut(<E as Event>::Payload, &mut Context) + 'static;
-pub trait Callback<E: Event>: FnMut(<E as Event>::Payload, &mut Context) + 'static {}
-impl<E: Event, F: FnMut(<E as Event>::Payload, &mut Context) + 'static> Callback<E> for F {}
+impl Event for EmulatorUpdated { }
 
 /// A handle to a registered event callback. When this is dropped, the callback is unregistered.
 pub struct Handle<E: Event> {
     /// The value of the pointer that the callback have.
-    event_id: NonZeroUsize,
+    id: Id,
     event_table: Weak<List<E>>,
 }
 impl<E: Event> Drop for Handle<E> {
@@ -42,7 +34,7 @@ impl<E: Event> Drop for Handle<E> {
             None => return,
         };
         println!(">> unregister!!");
-        event_table.unregister(self.event_id.get());
+        event_table.unregister(self.id);
     }
 }
 /// Dummy implementation, only for allowing a control hold up this handle, unregistering the
@@ -51,32 +43,27 @@ impl<E: Event> crui::Behaviour for Handle<E> {}
 
 #[derive(Default)]
 struct List<E: Event> {
-    listeners: RefCell<Vec<Box<dyn Callback<E>>>>,
+    listeners: RefCell<Vec<Id>>,
+    _event: PhantomData<*const E>
 }
 impl<E: Event> List<E> {
-    fn register(&self, callback: impl Callback<E>) -> NonZeroUsize {
-        let callback: Box<dyn Callback<E>> = Box::new(callback);
-        let event_id: *const dyn Callback<E> = &*callback;
-        let event_id = NonZeroUsize::new(event_id as *const () as usize).unwrap();
-
-        self.listeners.borrow_mut().push(callback);
-
-        event_id
+    fn register(&self, id: Id) {
+        self.listeners.borrow_mut().push(id);
     }
 
-    fn unregister(&self, event_id: usize) {
+    fn unregister(&self, id: Id) {
         let mut event_table = self.listeners.borrow_mut();
         if let Some(i) = event_table
             .iter()
-            .position(|x| (&**x as &dyn Callback<E> as *const _ as *const () as usize) == event_id)
+            .position(|x| *x == id)
         {
             drop(event_table.remove(i));
         }
     }
 
-    fn notify(&self, payload: E::Payload, ctx: &mut Context) {
+    fn notify(&self, event: E, ctx: &mut Context) {
         for listener in &mut *self.listeners.borrow_mut() {
-            (listener)(payload.clone(), ctx);
+            ctx.send_event_to(*listener, event.clone())
         }
     }
 }
@@ -95,25 +82,26 @@ impl EventTable {
         let list = self.listeners.entry(TypeId::of::<E>()).or_insert_with(|| {
             Rc::new(List::<E> {
                 listeners: Default::default(),
+                _event: PhantomData::default(),
             })
         });
         list.clone().downcast::<List<E>>().unwrap()
     }
 
-    /// Register a callback to a event. Returns a Handle that, when dropped, will unregister this
+    /// Register a control to a event. Returns a Handle that, when dropped, will unregister this
     /// callback.
-    pub fn register<E: Event, F: Callback<E>>(&mut self, callback: F) -> Handle<E> {
+    pub fn register<E: Event>(&mut self, id: Id) -> Handle<E> {
         let list = self.get_list::<E>();
-        let event_id = list.register(callback);
+        list.register(id);
 
         Handle {
-            event_id,
+            id,
             event_table: Rc::downgrade(&list),
         }
     }
 
-    pub fn notify<E: Event>(&mut self, payload: E::Payload, ctx: &mut Context) {
+    pub fn notify<E: Event>(&mut self, event: E, ctx: &mut Context) {
         let list = self.get_list::<E>();
-        list.notify(payload, ctx);
+        list.notify(event, ctx);
     }
 }

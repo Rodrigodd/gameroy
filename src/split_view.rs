@@ -145,7 +145,7 @@ impl Behaviour for SplitView {
     }
 
     fn on_mouse_event(&mut self, mouse: crui::MouseInfo, this: Id, ctx: &mut crui::Context) {
-        let rect = *ctx.get_rect(this);
+        let rect = ctx.get_rect(this);
         match mouse.event {
             MouseEvent::Down(crui::MouseButton::Left) => {
                 if self.is_on_split(mouse.pos, rect) {

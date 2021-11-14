@@ -152,9 +152,9 @@ impl Ui {
         renderer.finish();
     }
 
-    pub fn notify<E: crate::event_table::Event>(&mut self, payload: E::Payload) {
+    pub fn notify<E: crate::event_table::Event>(&mut self, event: E) {
         self.event_table
-            .notify::<E>(payload, &mut self.gui.get_context());
+            .notify::<E>(event, &mut self.gui.get_context());
     }
 
     pub fn get<T: Any>(&mut self) -> &mut T {
@@ -222,19 +222,19 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
             }
             true
         }))
-        .build();
+        .build(gui);
     let split_view = gui
         .create_control()
         .parent(root)
         .graphic(style.split_background.clone())
         .behaviour_and_layout(layout)
-        .build();
+        .build(gui);
     let _text = gui
         .create_control()
         .parent(split_view)
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-        .child(|cb| cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into()))
-        .build();
+        .child(gui, |cb, _| cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into()))
+        .build(gui);
     disassembler_viewer::build(split_view, gui, event_table, style);
 }

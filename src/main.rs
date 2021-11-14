@@ -188,15 +188,15 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                             }
                         }
                         ui.frame_update(&img_data);
-                        ui.notify::<event_table::FrameUpdated>(());
+                        ui.notify(event_table::FrameUpdated);
                         window.request_redraw();
                     }
                     EmulatorUpdated => {
-                        ui.notify::<event_table::EmulatorUpdated>(());
+                        ui.notify(event_table::EmulatorUpdated);
                     }
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
-                        ui.notify::<event_table::Debug>(value);
+                        ui.notify(event_table::Debug(value));
                         emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                 }

@@ -14,7 +14,7 @@ impl Layout for PixelPerfectLayout {
         let mut min_size = [self.size.0 as f32, self.size.1 as f32];
         let ratio = min_size[0] / min_size[1];
         for child in ctx.get_active_children(this) {
-            let c_min_size = ctx.get_layouting(child).get_min_size();
+            let c_min_size = ctx.get_layouting(child).unwrap().get_min_size();
             min_size[0] = min_size[0].max(c_min_size[0]);
             min_size[1] = min_size[1].max(c_min_size[1]);
         }

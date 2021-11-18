@@ -3,7 +3,7 @@ use std::{collections::HashMap, rc::Rc};
 use crui::{
     font::{Font, Fonts},
     graphics::{Graphic, TextStyle},
-    style::TextFieldStyle,
+    style::{ButtonStyle, TextFieldStyle},
     style_loader::{load_style, StyleLoaderCallback},
 };
 use sprite_render::SpriteRender;
@@ -53,6 +53,7 @@ pub struct Style {
     pub split_background: Graphic,
     pub background: Graphic,
     pub text_field: Rc<TextFieldStyle>,
+    pub scrollbar: Rc<ButtonStyle>,
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {

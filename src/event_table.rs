@@ -6,20 +6,19 @@ use std::rc::{Rc, Weak};
 
 use crui::{Context, Id};
 
-pub trait Event: Clone + 'static {
-}
+pub trait Event: Clone + 'static {}
 
 #[derive(Clone)]
 pub struct Debug(pub bool);
-impl Event for Debug { }
+impl Event for Debug {}
 
 #[derive(Clone, Copy)]
 pub struct FrameUpdated;
-impl Event for FrameUpdated { }
+impl Event for FrameUpdated {}
 
 #[derive(Clone, Copy)]
 pub struct EmulatorUpdated;
-impl Event for EmulatorUpdated { }
+impl Event for EmulatorUpdated {}
 
 /// A handle to a registered event callback. When this is dropped, the callback is unregistered.
 pub struct Handle<E: Event> {
@@ -44,7 +43,7 @@ impl<E: Event> crui::Behaviour for Handle<E> {}
 #[derive(Default)]
 struct List<E: Event> {
     listeners: RefCell<Vec<Id>>,
-    _event: PhantomData<*const E>
+    _event: PhantomData<*const E>,
 }
 impl<E: Event> List<E> {
     fn register(&self, id: Id) {
@@ -53,10 +52,7 @@ impl<E: Event> List<E> {
 
     fn unregister(&self, id: Id) {
         let mut event_table = self.listeners.borrow_mut();
-        if let Some(i) = event_table
-            .iter()
-            .position(|x| *x == id)
-        {
+        if let Some(i) = event_table.iter().position(|x| *x == id) {
             drop(event_table.remove(i));
         }
     }

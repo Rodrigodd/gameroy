@@ -1,6 +1,6 @@
 use crate::consts;
 use crate::gameboy::GameBoy;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fmt::Write;
 use std::ops::Range;
@@ -17,22 +17,23 @@ impl fmt::LowerHex for ReallySigned {
 
 /// A address in the rom.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct Address {
+pub struct Address {
     /// The bank where this address belongs
-    bank: u8,
+    pub bank: u8,
     /// The address in the bank, in range 0x0000..=0x3FFF
-    address: u16,
+    pub address: u16,
 }
 impl Address {
-    fn new(bank: u8, address: u16) -> Self {
+    pub fn new(bank: u8, address: u16) -> Self {
         assert!(
             (0x0000..=0x3FFF).contains(&address),
             "create out of range address"
         );
+        // assert!((bank == 0) == (address <= 0x3FFF));
         Self { bank, address }
     }
 
-    fn from_pc(bank: Option<u8>, address: u16) -> Option<Self> {
+    pub fn from_pc(bank: Option<u8>, address: u16) -> Option<Self> {
         if address <= 0x3FFF {
             // it is in the main bank
             Some(Self::new(0, address))
@@ -65,10 +66,10 @@ impl Address {
     }
 }
 
-struct Label {
+pub struct Label {
     /// The address specifies the bank and memory address
-    address: Address,
-    name: String,
+    pub address: Address,
+    pub name: String,
 }
 impl Label {
     /// Create a Label in a given address with a generate name, in the format "L<BANK:02x>_<ADDRESS:04x>".
@@ -111,17 +112,30 @@ impl Cursor {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct Directive {
+    /// The adress where this directive disassemble from
+    pub address: Address,
+    /// The length of bytes this directive disassemble from
+    pub len: u16,
+    /// The instruction of the directive
+    pub op: [u8; 3],
+}
+
 pub struct Trace {
+    /// Dissasembled directives
+    pub directives: BTreeSet<Directive>,
     /// Ranges of memory where code are executed
-    code_ranges: Vec<Range<Address>>,
+    pub code_ranges: Vec<Range<Address>>,
     /// Map beetween a address and a label
-    labels: BTreeMap<Address, Label>,
+    pub labels: BTreeMap<Address, Label>,
     /// Map from a opcode (like jp or call) to another address
-    jumps: BTreeMap<Address, Address>,
+    pub jumps: BTreeMap<Address, Address>,
 }
 impl Trace {
     pub fn new() -> Self {
         let this = Self {
+            directives: BTreeSet::new(),
             code_ranges: Vec::new(),
             labels: Default::default(),
             jumps: Default::default(),
@@ -256,7 +270,7 @@ impl Trace {
 
     /// Insert a opcode to Self::code_ranges.
     /// Return true if the opcode was not added before.
-    fn add_opcode(&mut self, address: Address, len: u16) -> bool {
+    fn add_opcode(&mut self, address: Address, op: &[u8], len: u16) -> bool {
         let i = self.code_ranges.binary_search_by(|range| {
             use std::cmp::Ordering;
             if address < range.start {
@@ -270,6 +284,16 @@ impl Trace {
         match i {
             Ok(_) => false,
             Err(i) => {
+                let mut op_array = [0; 3];
+                for (a, b) in op_array.iter_mut().zip(op.iter()) {
+                    *a = *b;
+                }
+                self.directives.insert(Directive {
+                    address,
+                    len,
+                    op: op_array,
+                });
+
                 let address_end = Address::new(address.bank, address.address + len);
                 let merge_previous = i > 0 && self.code_ranges[i - 1].end >= address;
                 let merge_next =
@@ -323,7 +347,7 @@ impl Trace {
         };
         let (op, len) = cursor.get_op(&rom.cartridge.rom);
 
-        if !self.add_opcode(address, len as u16) {
+        if !self.add_opcode(address, op, len as u16) {
             return;
         }
 

@@ -10,39 +10,51 @@ use crate::{
     EmulatorEvent, UserEvent,
 };
 use crui::{
-    graphics::Text,
+    graphics::{Graphic, Text},
     layouts::VBoxLayout,
-    widgets::{TextField, TextFieldCallback},
-    Behaviour, Context, Gui, Id,
+    text::TextStyle,
+    widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback},
+    Behaviour, BuilderContext, Context, ControlBuilder, Gui, Id,
 };
-use gameroy::interpreter::Interpreter;
+use gameroy::{disassembler::Address, interpreter::Interpreter};
 
 struct DisassemblerView {
-    text: Id,
+    list: Id,
     _emulator_updated_event: crate::event_table::Handle<EmulatorUpdated>,
 }
 impl Behaviour for DisassemblerView {
     fn on_event(&mut self, event: Box<dyn std::any::Any>, _this: Id, ctx: &mut Context) {
         if event.is::<EmulatorUpdated>() {
-            eprintln!(">> EMULATOR IPGAED");
-            let mut text = String::new();
-            {
+            let value = {
                 let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
-                text += &format!("{}", inter.0.cpu);
-                // let mut around = String::new();
-                inter
-                    .0
-                    .trace
-                    .borrow_mut()
-                    .print_around(
-                        inter.0.cartridge.curr_bank(),
-                        inter.0.cpu.pc,
-                        &inter.0,
-                        &mut text,
-                    )
-                    .unwrap();
-            }
-            ctx.get_graphic_mut(self.text).set_text(&text);
+
+                let pc = inter.0.cpu.pc;
+                let bank = inter.0.cartridge.curr_bank();
+                let pc = Address::from_pc(Some(bank), pc);
+                let pc = match pc {
+                    Some(x) => x,
+                    _ => return,
+                };
+
+                let trace = inter.0.trace.borrow();
+                let pos = trace.directives.iter().position(|x| x.address == pc);
+                let pos = match pos {
+                    Some(x) => x,
+                    _ => return,
+                };
+
+                let len = trace.directives.len();
+                pos as f32 / len as f32
+            };
+
+            // scroll disassembly list to the current program counter
+            ctx.send_event_to(
+                self.list,
+                SetScrollPosition {
+                    vertical: true,
+                    value,
+                },
+            );
         }
     }
 }
@@ -82,11 +94,94 @@ impl TextFieldCallback for Callback {
     fn on_unfocus(&mut self, this: Id, ctx: &mut Context, text: &mut String) {}
 }
 
+struct DissasemblerList {
+    text_style: TextStyle,
+}
+impl DissasemblerList {
+    fn graphic(
+        &mut self,
+        direc: gameroy::disassembler::Directive,
+        trace: std::cell::Ref<gameroy::disassembler::Trace>,
+        pc: Option<Address>,
+    ) -> Graphic {
+        let curr = direc.address;
+        let mut text = format!("{:16} ", trace.labels.get(&curr).map_or("", |x| &x.name));
+        let label = |pc, x| {
+            if let Some(address) = trace.jumps.get(&pc) {
+                let name = trace.labels.get(&address).unwrap().name.clone();
+                return name;
+            }
+            format!("${:04x}", x)
+        };
+        gameroy::disassembler::disassembly_opcode(
+            direc.address.address,
+            &direc.op[0..direc.len as usize],
+            |x| label(curr, x),
+            &mut text,
+        )
+        .unwrap();
+        let mut style = self.text_style.clone();
+        if Some(curr) == pc {
+            style.color = [255, 0, 0, 255].into();
+        }
+        let graphic = Text::new(text, (-1, 0), style).into();
+        graphic
+    }
+}
+impl ListBuilder for DissasemblerList {
+    fn item_count(&mut self, ctx: &mut dyn crui::BuilderContext) -> usize {
+        ctx.get::<Arc<Mutex<Interpreter>>>()
+            .lock()
+            .0
+            .trace
+            .borrow_mut()
+            .directives
+            .len()
+    }
+
+    fn create_item<'a>(
+        &mut self,
+        index: usize,
+        _list_id: Id,
+        cb: crui::ControlBuilder,
+        ctx: &mut dyn crui::BuilderContext,
+    ) -> crui::ControlBuilder {
+        let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
+
+        let trace = inter.0.trace.borrow();
+        let directive = trace.directives.iter().nth(index).cloned();
+        if let Some(direc) = directive {
+            let pc = inter.0.cpu.pc;
+            let bank = inter.0.cartridge.curr_bank();
+            let pc = Address::from_pc(Some(bank), pc);
+            let graphic = self.graphic(direc, trace, pc);
+            cb.graphic(graphic).layout(crui::layouts::FitText)
+        } else {
+            cb
+        }
+    }
+
+    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
+        let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
+
+        let trace = inter.0.trace.borrow();
+        let directive = trace.directives.iter().nth(index).cloned();
+        if let Some(direc) = directive {
+            let pc = inter.0.cpu.pc;
+            let bank = inter.0.cartridge.curr_bank();
+            let pc = Address::from_pc(Some(bank), pc);
+            let graphic = self.graphic(direc, trace, pc);
+            drop(inter);
+            *ctx.get_graphic_mut(item_id) = graphic;
+        }
+    }
+}
+
 pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &Style) {
     let diss_view_id = gui.reserve_id();
-    let text_id = gui.reserve_id();
+    let list_id = gui.reserve_id();
     let diss_view = DisassemblerView {
-        text: text_id,
+        list: list_id,
         _emulator_updated_event: event_table.register(diss_view_id),
     };
 
@@ -96,11 +191,22 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         .parent(parent)
         .expand_y(true)
         .expand_x(true)
+        .min_width(100.0)
         .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
         .behaviour(diss_view)
         .build(gui);
 
-    list(vbox, gui, style, text_id);
+    list(
+        gui.create_control_reserved(list_id),
+        gui,
+        style,
+        DissasemblerList {
+            text_style: style.text_style.clone(),
+        },
+    )
+    .expand_y(true)
+    .parent(vbox)
+    .build(gui);
 
     let caret = gui.reserve_id();
     let label = gui.reserve_id();
@@ -129,17 +235,64 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         .build(gui);
 }
 
-fn list<'a>(parent: Id, gui: &mut Gui, style: &Style, text_id: Id) {
-    gui.create_control_reserved(text_id)
-        .parent(parent)
-        .expand_y(true)
-        .graphic(
-            Text::new(
-                "This is a disassembler viewer!!".to_string(),
-                (-1, 0),
-                style.text_style.clone(),
-            )
-            .into(),
-        )
-        .build(gui);
+fn list(
+    cb: ControlBuilder,
+    ctx: &mut impl BuilderContext,
+    style: &Style,
+    list_builder: impl ListBuilder + 'static,
+) -> ControlBuilder {
+    use crui::widgets::{List, ScrollBar, ViewLayout};
+    let scroll_view = cb.id();
+    let view = ctx
+        .create_control()
+        .parent(scroll_view)
+        .layout(ViewLayout::new(false, true))
+        .build(ctx);
+    let h_scroll_bar_handle = ctx.reserve();
+    let h_scroll_bar = ctx
+        .create_control()
+        .min_size([10.0, 10.0])
+        .parent(scroll_view)
+        .behaviour(ScrollBar::new(
+            h_scroll_bar_handle,
+            scroll_view,
+            false,
+            style.scrollbar.clone(),
+        ))
+        .build(ctx);
+    let h_scroll_bar_handle = ctx
+        .create_control_reserved(h_scroll_bar_handle)
+        .min_size([10.0, 10.0])
+        .parent(h_scroll_bar)
+        .build(ctx);
+    let v_scroll_bar_handle = ctx.reserve();
+    let v_scroll_bar = ctx
+        .create_control()
+        .min_size([10.0, 10.0])
+        // .graphic(style.scroll_background.clone())
+        .parent(scroll_view)
+        .behaviour(ScrollBar::new(
+            v_scroll_bar_handle,
+            scroll_view,
+            true,
+            style.scrollbar.clone(),
+        ))
+        .build(ctx);
+    let v_scroll_bar_handle = ctx
+        .create_control_reserved(v_scroll_bar_handle)
+        .min_size([10.0, 10.0])
+        .parent(v_scroll_bar)
+        .build(ctx);
+
+    cb.behaviour_and_layout(List::new(
+        10.0,
+        1.0,
+        [10.0; 4],
+        view,
+        v_scroll_bar,
+        v_scroll_bar_handle,
+        h_scroll_bar,
+        h_scroll_bar_handle,
+        list_builder,
+    ))
 }

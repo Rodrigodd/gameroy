@@ -18,4 +18,10 @@
         caret_color: "#00FF00",
         selection_color: (bg: "#40A000", fg: "#001600"),
     ),
+    scrollbar: ButtonStyle(
+        normal: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
+        hover: Texture(texture: "white.png", color: "#002600", uv_rect: (0,0,1,1)),
+        pressed: Texture(texture: "white.png", color: "#003600", uv_rect: (0,0,1,1)),
+        focus: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
+    )
 )

@@ -234,7 +234,9 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
         .parent(split_view)
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-        .child(gui, |cb, _| cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into()))
+        .child(gui, |cb, _| {
+            cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
+        })
         .build(gui);
     disassembler_viewer::build(split_view, gui, event_table, style);
 }

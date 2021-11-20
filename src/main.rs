@@ -30,6 +30,8 @@ const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 
 fn main() {
+    env_logger::init();
+
     let mut diss = false;
     let mut debug = false;
     let mut rom_path = "roms/test.gb".to_string();

@@ -13,7 +13,7 @@ use crate::{
     EmulatorEvent, UserEvent,
 };
 use crui::{BuilderContext, Context, ControlBuilder, Gui, Id, graphics::{Graphic, Text}, layouts::{FitText, VBoxLayout}, text::TextStyle, widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback}};
-use gameroy::{disassembler::Address, interpreter::Interpreter};
+use gameroy::{disassembler::{Address, Directive}, interpreter::Interpreter};
 
 struct Callback;
 #[allow(unused_variables)]
@@ -54,12 +54,14 @@ struct DissasemblerList {
     text_style: TextStyle,
     list: Id,
     reg: Id,
+    pc: Option<Address>,
+    directives: Vec<Directive>,
     _emulator_updated_event: crate::event_table::Handle<EmulatorUpdated>,
 }
 impl DissasemblerList {
     fn graphic(
         &mut self,
-        direc: gameroy::disassembler::Directive,
+        direc: Directive,
         trace: std::cell::Ref<gameroy::disassembler::Trace>,
         pc: Option<Address>,
     ) -> Graphic {
@@ -101,13 +103,17 @@ impl ListBuilder for DissasemblerList {
 
                 let pc = cpu.pc;
                 let bank = inter.0.cartridge.curr_bank();
-                let pc = Address::from_pc(Some(bank), pc);
-                let pc = match pc {
+                self.pc = Address::from_pc(Some(bank), pc);
+                let pc = match self.pc {
                     Some(x) => x,
                     _ => return,
                 };
 
                 let trace = inter.0.trace.borrow();
+                
+                self.directives.clear();
+                self.directives.extend(trace.directives.iter().cloned());
+
                 let pos = trace.directives.iter().position(|x| x.address == pc);
                 let pos = match pos {
                     Some(x) => x,
@@ -135,14 +141,8 @@ impl ListBuilder for DissasemblerList {
         }
     }
 
-    fn item_count(&mut self, ctx: &mut dyn crui::BuilderContext) -> usize {
-        ctx.get::<Arc<Mutex<Interpreter>>>()
-            .lock()
-            .0
-            .trace
-            .borrow_mut()
-            .directives
-            .len()
+    fn item_count(&mut self, _ctx: &mut dyn crui::BuilderContext) -> usize {
+        self.directives.len()
     }
 
     fn create_item<'a>(
@@ -155,31 +155,24 @@ impl ListBuilder for DissasemblerList {
         let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
 
         let trace = inter.0.trace.borrow();
-        let directive = trace.directives.iter().nth(index).cloned();
-        if let Some(direc) = directive {
-            let pc = inter.0.cpu.pc;
-            let bank = inter.0.cartridge.curr_bank();
-            let pc = Address::from_pc(Some(bank), pc);
-            let graphic = self.graphic(direc, trace, pc);
-            cb.graphic(graphic).layout(FitText)
-        } else {
-            cb.min_size([10.0, 10.0])
-        }
+        let directive = self.directives[index].clone();
+
+        let pc = inter.0.cpu.pc;
+        let bank = inter.0.cartridge.curr_bank();
+        let pc = Address::from_pc(Some(bank), pc);
+        let graphic = self.graphic(directive, trace, pc);
+        cb.graphic(graphic).layout(FitText)
     }
 
     fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
         let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
 
         let trace = inter.0.trace.borrow();
-        let directive = trace.directives.iter().nth(index).cloned();
-        if let Some(direc) = directive {
-            let pc = inter.0.cpu.pc;
-            let bank = inter.0.cartridge.curr_bank();
-            let pc = Address::from_pc(Some(bank), pc);
-            let graphic = self.graphic(direc, trace, pc);
-            drop(inter);
-            *ctx.get_graphic_mut(item_id) = graphic;
-        }
+        let directive = self.directives[index].clone();
+
+        let graphic = self.graphic(directive, trace, self.pc);
+        drop(inter);
+        *ctx.get_graphic_mut(item_id) = graphic;
     }
 }
 
@@ -206,6 +199,8 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
             text_style: style.text_style.clone(),
             list: list_id,
             reg: reg_id,
+            pc: None,
+            directives: Vec::new(),
             _emulator_updated_event: event_table.register(list_id),
         },
     )

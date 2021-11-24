@@ -12,8 +12,17 @@ use crate::{
     style::Style,
     EmulatorEvent, UserEvent,
 };
-use crui::{BuilderContext, Context, ControlBuilder, Gui, Id, graphics::{Graphic, Text}, layouts::{FitText, VBoxLayout}, text::TextStyle, widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback}};
-use gameroy::{disassembler::{Address, Directive}, interpreter::Interpreter};
+use crui::{
+    graphics::{Graphic, Text},
+    layouts::{FitText, MarginLayout, VBoxLayout},
+    text::TextStyle,
+    widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback},
+    BuilderContext, Context, ControlBuilder, Gui, Id, RectFill,
+};
+use gameroy::{
+    disassembler::{Address, Directive},
+    interpreter::Interpreter,
+};
 
 struct Callback;
 #[allow(unused_variables)]
@@ -97,7 +106,7 @@ impl ListBuilder for DissasemblerList {
 
                 let cpu = &inter.0.cpu;
                 let reg_text = format!(
-                    "{:02x} {:02x}|{:02x} {:02x}|{:02x} {:02x}|{:02x} {:02x} | {:04x} | {:04x}",
+                    "AF: {:02x} {:02x}\nBC: {:02x} {:02x}\nDE: {:02x} {:02x}\nHL: {:02x} {:02x}\nSP: {:04x} \nPC: {:04x}",
                     cpu.a, cpu.f.0, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.sp, cpu.pc
                 );
 
@@ -110,7 +119,7 @@ impl ListBuilder for DissasemblerList {
                 };
 
                 let trace = inter.0.trace.borrow();
-                
+
                 self.directives.clear();
                 self.directives.extend(trace.directives.iter().cloned());
 
@@ -191,6 +200,8 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
         .build(gui);
 
+    let stack = gui.create_control().parent(vbox).expand_y(true).build(gui);
+
     list(
         gui.create_control_reserved(list_id),
         gui,
@@ -204,25 +215,33 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
             _emulator_updated_event: event_table.register(list_id),
         },
     )
-    .expand_y(true)
-    .parent(vbox)
+    .parent(stack)
     .build(gui);
 
     let caret = gui.reserve_id();
     let label = gui.reserve_id();
 
     let _reg_view = gui
-        .create_control_reserved(reg_id)
-        .graphic(
-            Text::new(
-                "0A 0F|0B 0C|0D 0E|0H 0L | 0S0P | 0P0C".to_string(),
-                (-1, 0),
-                style.text_style.clone(),
+        .create_control()
+        .child_reserved(reg_id, gui, |cb, _| {
+            cb.graphic(
+                Text::new(
+                    format!(
+                        "AF: {:02x} {:02x}\nBC: {:02x} {:02x}\nDE: {:02x} {:02x}\nHL: {:02x} {:02x}\nSP: {:04x} \nPC: {:04x}",
+                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                    ),
+                    (-1, 0),
+                    style.text_style.clone(),
+                )
+                .into(),
             )
-            .into(),
-        )
-        .layout(FitText)
-        .parent(vbox)
+            .layout(FitText)
+        })
+        .parent(stack)
+        .layout(MarginLayout::default())
+        .graphic(style.background.clone())
+        .fill_x(RectFill::ShrinkEnd)
+        .fill_y(RectFill::ShrinkEnd)
         .build(gui);
 
     let text_field = gui

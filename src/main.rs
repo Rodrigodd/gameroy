@@ -1,12 +1,7 @@
 use std::{
-    collections::HashSet,
     fs::File,
-    sync::{
-        mpsc::{sync_channel, Receiver, TryRecvError},
-        Arc,
-    },
+    sync::{mpsc::sync_channel, Arc},
     thread,
-    time::{Duration, Instant},
 };
 
 use parking_lot::Mutex;
@@ -18,11 +13,14 @@ use gameroy::{
 };
 
 mod disassembler_viewer;
+mod emulator;
 mod event_table;
 mod layout;
 mod split_view;
 mod style;
 mod ui;
+
+pub use emulator::{Emulator, EmulatorEvent};
 
 #[macro_use]
 extern crate crui;
@@ -146,7 +144,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
 
     thread::Builder::new()
         .name("emulator".to_string())
-        .spawn(move || emulator_thread(inter, recv, proxy))
+        .spawn(move || Emulator::run(inter, recv, proxy))
         .unwrap();
 
     // undeclare
@@ -194,8 +192,12 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                         ui.notify(event_table::FrameUpdated);
                         window.request_redraw();
                     }
-                    EmulatorUpdated => {
+                    EmulatorStarted => {
+                        ui.force_render = true;
+                    }
+                    EmulatorPaused => {
                         ui.notify(event_table::EmulatorUpdated);
+                        ui.force_render = false;
                     }
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
@@ -223,208 +225,9 @@ fn create_window(mut inter: Interpreter, debug: bool) {
 }
 
 #[derive(Debug)]
-enum UserEvent {
+pub enum UserEvent {
     FrameUpdated,
-    EmulatorUpdated,
+    EmulatorPaused,
+    EmulatorStarted,
     Debug(bool),
-}
-
-enum EmulatorEvent {
-    RunFrame,
-    FrameLimit(bool),
-    SetKeys(u8),
-    Debug(bool),
-    Step,
-    RunTo(u16),
-    Run,
-    AddWriteBreakpoint(u16),
-    AddExecuteBreakpoint(u16),
-}
-
-enum EmulatorState {
-    Idle,
-    Run,
-    RunTo(u16),
-}
-
-fn emulator_thread(
-    inter: Arc<Mutex<Interpreter>>,
-    recv: Receiver<EmulatorEvent>,
-    proxy: EventLoopProxy<UserEvent>,
-) {
-    use EmulatorEvent::*;
-
-    let mut debug = false;
-    let mut state = EmulatorState::Idle;
-    // When true, the program will sync the time that passed, and the time that is emulated.
-    let mut frame_limit = true;
-    // The instant in time that the gameboy supposedly was turned on.
-    // Change when frame_limit is disabled.
-    let mut start_time = Instant::now();
-    // The number of clocks the gameboy runs per second.
-    let clock_speed = 4_194_304;
-
-    let mut write_breakpoints = HashSet::<u16>::new();
-    let mut execute_breakpoints = HashSet::<u16>::new();
-
-    while let Ok(mut event) = recv.recv() {
-        'handle_event: loop {
-            match event {
-                RunFrame => {
-                    if frame_limit && !debug {
-                        {
-                            let mut inter = inter.lock();
-                            let elapsed = start_time.elapsed();
-                            let mut target_clock = clock_speed * elapsed.as_secs()
-                                + (clock_speed as f64 * (elapsed.subsec_nanos() as f64 * 1e-9))
-                                    as u64;
-                            // make sure that the target_clock don't increase indefinitely if the program can't keep up.
-                            if target_clock > inter.0.clock_count + clock_speed / 30 {
-                                let expected_target = target_clock;
-                                target_clock = inter.0.clock_count + clock_speed / 30;
-                                start_time += Duration::from_secs_f64(
-                                    (expected_target - target_clock) as f64 / clock_speed as f64,
-                                );
-                            }
-                            while inter.0.clock_count < target_clock {
-                                inter.interpret_op();
-                            }
-                        }
-                    }
-                }
-                FrameLimit(value) => {
-                    frame_limit = value;
-                    if frame_limit {
-                        let inter = inter.lock();
-                        let secs = inter.0.clock_count / clock_speed;
-                        let nanos =
-                            (inter.0.clock_count % clock_speed) * 1_000_000_000 / clock_speed;
-                        start_time = Instant::now() - Duration::new(secs, nanos as u32);
-                    }
-                }
-                SetKeys(keys) => inter.lock().0.joypad = keys,
-                Debug(value) => {
-                    debug = value;
-                    if debug {
-                        proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                    }
-                }
-                Step => {
-                    if debug {
-                        let mut inter = inter.lock();
-                        inter.interpret_op();
-                        proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                        state = EmulatorState::Idle;
-                    }
-                }
-                RunTo(address) => {
-                    if debug {
-                        state = EmulatorState::RunTo(address);
-                    }
-                }
-                Run => {
-                    if debug {
-                        state = EmulatorState::Run;
-                        // Run a single step, to ignore the current breakpoint
-                        inter.lock().interpret_op();
-                    }
-                }
-                AddExecuteBreakpoint(address) => {
-                    execute_breakpoints.insert(address);
-                }
-                AddWriteBreakpoint(address) => {
-                    write_breakpoints.insert(address);
-                }
-            }
-
-            let check_break = |inter: &mut Interpreter| {
-                let writes = inter.will_write_to();
-                for w in &writes.1[..writes.0 as usize] {
-                    if write_breakpoints.contains(w) {
-                        return true;
-                    }
-                }
-                if execute_breakpoints.contains(&inter.0.cpu.pc) {
-                    return true;
-                }
-                false
-            };
-
-            if debug {
-                match state {
-                    EmulatorState::Idle => {}
-                    EmulatorState::Run => 'run: loop {
-                        {
-                            let mut inter = inter.lock();
-                            let target_clock = inter.0.clock_count + clock_speed / 600;
-                            while inter.0.clock_count < target_clock {
-                                if check_break(&mut inter) {
-                                    state = EmulatorState::Idle;
-                                    proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                                    break 'run;
-                                }
-                                inter.interpret_op();
-                            }
-                        }
-                        match recv.try_recv() {
-                            Ok(next_event) => {
-                                event = next_event;
-                                continue 'handle_event;
-                            }
-                            Err(TryRecvError::Disconnected) => return,
-                            _ => {}
-                        }
-                    },
-                    EmulatorState::RunTo(target_address) => 'runto: loop {
-                        {
-                            let mut inter = inter.lock();
-                            let target_clock = inter.0.clock_count + clock_speed / 600;
-                            while inter.0.clock_count < target_clock {
-                                if check_break(&mut inter) {
-                                    state = EmulatorState::Idle;
-                                    proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                                    break 'runto;
-                                }
-                                inter.interpret_op();
-                                if inter.0.cpu.pc == target_address {
-                                    state = EmulatorState::Idle;
-                                    proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                                    break 'runto;
-                                }
-                            }
-                        }
-                        match recv.try_recv() {
-                            Ok(next_event) => {
-                                event = next_event;
-                                continue 'handle_event;
-                            }
-                            Err(TryRecvError::Disconnected) => return,
-                            _ => {}
-                        }
-                    },
-                }
-            } else if !frame_limit {
-                // run 1.6ms worth of emulation, and check for events in the channel, in a loop
-                loop {
-                    {
-                        let mut inter = inter.lock();
-                        let target_clock = inter.0.clock_count + clock_speed / 600;
-                        while inter.0.clock_count < target_clock {
-                            inter.interpret_op();
-                        }
-                    }
-                    match recv.try_recv() {
-                        Ok(next_event) => {
-                            event = next_event;
-                            continue 'handle_event;
-                        }
-                        Err(TryRecvError::Disconnected) => return,
-                        _ => {}
-                    }
-                }
-            }
-
-            break;
-        }
-    }
 }

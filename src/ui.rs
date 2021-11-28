@@ -43,6 +43,7 @@ pub struct Ui {
     pub event_table: EventTable,
     pub screen_texture: u32,
     pub is_animating: bool,
+    pub force_render: bool,
 }
 impl Ui {
     pub fn new<T>(wb: WindowBuilder, event_loop: &EventLoop<T>) -> (Self, Window) {
@@ -76,6 +77,7 @@ impl Ui {
             screen_texture,
             event_table: EventTable::new(),
             is_animating: false,
+            force_render: true,
         };
 
         create_gui(&mut ui.gui, screen_texture, &mut ui.event_table, &ui.style);
@@ -127,7 +129,7 @@ impl Ui {
     pub fn render(&mut self, window_id: WindowId) {
         let mut ctx = self.gui.get_render_context();
         let (sprites, is_anim) = self.gui_render.render(&mut ctx, Render(&mut self.render));
-        self.is_animating = is_anim || true;
+        self.is_animating = is_anim || self.force_render;
         let mut renderer = self.render.render(window_id);
         renderer.clear_screen(&[0.0, 0.0, 0.0, 1.0]);
         renderer.draw_sprites(

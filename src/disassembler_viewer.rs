@@ -48,7 +48,24 @@ impl TextFieldCallback for Callback {
                     return;
                 }
             }
-            Some("run") => proxy.send_event(UserEvent::Debug(false)).unwrap(),
+            Some("run") => sender.send(EmulatorEvent::Run).unwrap(),
+            Some("break") => {
+                if let Some(arg) = args.next() {
+                    if !args.next().map(str::is_empty).unwrap_or(true) {
+                        // report a error!!
+                        return;
+                    }
+                    let address = match u16::from_str_radix(arg, 16) {
+                        Ok(x) => x,
+                        Err(_) => return,
+                    };
+                    sender
+                        .send(EmulatorEvent::AddWriteBreakpoint(address))
+                        .unwrap();
+                } else {
+                    return;
+                }
+            }
             _ => return,
         }
         text.clear();

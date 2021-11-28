@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs::File,
     sync::{
         mpsc::{sync_channel, Receiver, TryRecvError},
@@ -136,7 +137,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
     if debug {
         proxy.send_event(UserEvent::Debug(debug)).unwrap();
     }
-    emu_channel.send(EmulatorEvent::Run).unwrap();
+    emu_channel.send(EmulatorEvent::RunFrame).unwrap();
 
     ui.insert(inter.clone());
     ui.insert(emu_channel.clone());
@@ -214,7 +215,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
 
                 let joypad = ui.get::<AppState>().joypad;
                 emu_channel.send(EmulatorEvent::SetKeys(joypad)).unwrap();
-                emu_channel.send(EmulatorEvent::Run).unwrap();
+                emu_channel.send(EmulatorEvent::RunFrame).unwrap();
             }
             _ => {}
         }
@@ -229,16 +230,19 @@ enum UserEvent {
 }
 
 enum EmulatorEvent {
-    Run,
+    RunFrame,
     FrameLimit(bool),
     SetKeys(u8),
     Debug(bool),
     Step,
     RunTo(u16),
+    Run,
+    AddWriteBreakpoint(u16),
 }
 
 enum EmulatorState {
     Idle,
+    Run,
     RunTo(u16),
 }
 
@@ -259,10 +263,12 @@ fn emulator_thread(
     // The number of clocks the gameboy runs per second.
     let clock_speed = 4_194_304;
 
+    let mut write_breakpoints = HashSet::new();
+
     while let Ok(mut event) = recv.recv() {
         'handle_event: loop {
             match event {
-                Run => {
+                RunFrame => {
                     if frame_limit && !debug {
                         {
                             let mut inter = inter.lock();
@@ -270,7 +276,7 @@ fn emulator_thread(
                             let mut target_clock = clock_speed * elapsed.as_secs()
                                 + (clock_speed as f64 * (elapsed.subsec_nanos() as f64 * 1e-9))
                                     as u64;
-                            // make sure that the target_clock don't increase exponentially if the program can't keep up.
+                            // make sure that the target_clock don't increase indefinitely if the program can't keep up.
                             if target_clock > inter.0.clock_count + clock_speed / 30 {
                                 let expected_target = target_clock;
                                 target_clock = inter.0.clock_count + clock_speed / 30;
@@ -314,16 +320,59 @@ fn emulator_thread(
                         state = EmulatorState::RunTo(address);
                     }
                 }
+                Run => {
+                    if debug {
+                        state = EmulatorState::Run;
+                        // Run a single step, to ignore the current breakpoint
+                        inter.lock().interpret_op();
+                    }
+                }
+                AddWriteBreakpoint(address) => {
+                    write_breakpoints.insert(address);
+                }
             }
 
             if debug {
                 match state {
                     EmulatorState::Idle => {}
+                    EmulatorState::Run => 'run: loop {
+                        {
+                            let mut inter = inter.lock();
+                            let target_clock = inter.0.clock_count + clock_speed / 600;
+                            while inter.0.clock_count < target_clock {
+                                let writes = inter.will_write_to();
+                                for w in &writes.1[..writes.0 as usize] {
+                                    if write_breakpoints.contains(w) {
+                                        state = EmulatorState::Idle;
+                                        proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
+                                        break 'run;
+                                    }
+                                }
+                                inter.interpret_op();
+                            }
+                        }
+                        match recv.try_recv() {
+                            Ok(next_event) => {
+                                event = next_event;
+                                continue 'handle_event;
+                            }
+                            Err(TryRecvError::Disconnected) => return,
+                            _ => {}
+                        }
+                    },
                     EmulatorState::RunTo(target_address) => 'runto: loop {
                         {
                             let mut inter = inter.lock();
                             let target_clock = inter.0.clock_count + clock_speed / 600;
                             while inter.0.clock_count < target_clock {
+                                let writes = inter.will_write_to();
+                                for w in &writes.1[..writes.0 as usize] {
+                                    if write_breakpoints.contains(w) {
+                                        state = EmulatorState::Idle;
+                                        proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
+                                        break 'runto;
+                                    }
+                                }
                                 inter.interpret_op();
                                 if inter.0.cpu.pc == target_address {
                                     state = EmulatorState::Idle;

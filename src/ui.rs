@@ -178,8 +178,11 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
             let debug = ctx.get::<crate::AppState>().debug;
             if debug {
                 match event {
-                    Pressed(Right) => {
+                    Pressed(F7) => {
                         sender.send(EmulatorEvent::Step).unwrap();
+                    }
+                    Pressed(F9) => {
+                        sender.send(EmulatorEvent::Run).unwrap();
                     }
                     Pressed(D) => {
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>();

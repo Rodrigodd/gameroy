@@ -814,157 +814,23 @@ impl Interpreter {
                 let adress = self.0.read16(self.0.cpu.pc + 1);
                 (2, [adress, add16(adress, 1)])
             }
-            0x12 => {
-                // LD (DE),A 1:8 - - - -
-                some(self.0.cpu.de())
-            }
-            0x22 => {
-                // LD (HL+),A 1:8 - - - -
+            0x12 => some(self.0.cpu.de()),
+            0x22 | 0x32 | 0x34 | 0x35 | 0x36 | 0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x77
+            | 0x96 | 0xa6 | 0xae | 0xb6 | 0xbe => {
+                // LD (HL), .. or INC (HL) or etc.
                 some(self.0.cpu.hl())
             }
-            0x32 => {
-                // LD (HL-),A 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x34 => {
-                // INC (HL) 1:12 Z 0 H -
-                some(self.0.cpu.hl())
-            }
-            0x35 => {
-                // DEC (HL) 1:12 Z 1 H -
-                some(self.0.cpu.hl())
-            }
-            0x36 => {
-                // LD (HL),d8 2:12 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x70 => {
-                // LD (HL),B 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x71 => {
-                // LD (HL),C 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x72 => {
-                // LD (HL),D 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x73 => {
-                // LD (HL),E 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x74 => {
-                // LD (HL),H 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x75 => {
-                // LD (HL),L 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x77 => {
-                // LD (HL),A 1:8 - - - -
-                some(self.0.cpu.hl())
-            }
-            0x96 => {
-                // SUB (HL) 1:8 Z 1 H C
-                some(self.0.cpu.hl())
-            }
-            0xa6 => {
-                // AND (HL) 1:8 Z 0 1 0
-                some(self.0.cpu.hl())
-            }
-            0xae => {
-                // XOR (HL) 1:8 Z 0 0 0
-                some(self.0.cpu.hl())
-            }
-            0xb6 => {
-                // OR (HL) 1:8 Z 0 0 0
-                some(self.0.cpu.hl())
-            }
-            0xbe => {
-                // CP (HL) 1:8 Z 1 H C
-                some(self.0.cpu.hl())
-            }
-            0xc4 => {
-                // CALL NZ,a16 3:24/12 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xc5 => {
-                // PUSH BC 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xcd => {
-                // CALL a16 3:24 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-
-            }
-            0xcf => {
-                // RST 08H 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xd4 => {
-                // CALL NC,a16 3:24/12 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-
-            }
-            0xd5 => {
-                // PUSH DE 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xd7 => {
-                // RST 10H 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xd8 => {
-                // RET C 1:20/8 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xd9 => {
-                // RETI 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xdc => {
-                // CALL C,a16 3:24/12 - - - -
+            0xc4 | 0xc5 | 0xcd | 0xcf | 0xd4 | 0xd5 | 0xd7 | 0xd8 | 0xd9 | 0xe5 | 0xe7 | 0xef
+            | 0xf5 | 0xf7 | 0xff | 0xdc => {
+                // PUSH .. or CALL ..
                 (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
             }
             0xe0 => {
-                // LDH (a8),A 2:12 - - - -
                 let r8 = self.0.read(add16(self.0.cpu.pc, 1));
                 some(0xFF00 | r8 as u16)
             }
-            0xe2 => {
-                // LD (C),A 2:8 - - - -
-                some(0xFF00 | self.0.cpu.c as u16)
-            }
-            0xe5 => {
-                // PUSH HL 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xe7 => {
-                // RST 20H 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xea => {
-                // LD (a16),A 3:16 - - - -
-                some(self.0.read16(add16(self.0.cpu.pc, 1)))
-            }
-            0xef => {
-                // RST 28H 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xf5 => {
-                // PUSH AF 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xf7 => {
-                // RST 30H 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xff => {
-                // RST 38H 1:16 - - - -
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
+            0xe2 => some(0xFF00 | self.0.cpu.c as u16),
+            0xea => some(self.0.read16(add16(self.0.cpu.pc, 1))),
             _ => none,
         }
     }

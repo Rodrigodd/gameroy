@@ -238,6 +238,7 @@ enum EmulatorEvent {
     RunTo(u16),
     Run,
     AddWriteBreakpoint(u16),
+    AddExecuteBreakpoint(u16),
 }
 
 enum EmulatorState {
@@ -263,7 +264,8 @@ fn emulator_thread(
     // The number of clocks the gameboy runs per second.
     let clock_speed = 4_194_304;
 
-    let mut write_breakpoints = HashSet::new();
+    let mut write_breakpoints = HashSet::<u16>::new();
+    let mut execute_breakpoints = HashSet::<u16>::new();
 
     while let Ok(mut event) = recv.recv() {
         'handle_event: loop {
@@ -327,10 +329,26 @@ fn emulator_thread(
                         inter.lock().interpret_op();
                     }
                 }
+                AddExecuteBreakpoint(address) => {
+                    execute_breakpoints.insert(address);
+                }
                 AddWriteBreakpoint(address) => {
                     write_breakpoints.insert(address);
                 }
             }
+
+            let check_break = |inter: &mut Interpreter| {
+                let writes = inter.will_write_to();
+                for w in &writes.1[..writes.0 as usize] {
+                    if write_breakpoints.contains(w) {
+                        return true;
+                    }
+                }
+                if execute_breakpoints.contains(&inter.0.cpu.pc) {
+                    return true;
+                }
+                false
+            };
 
             if debug {
                 match state {
@@ -340,13 +358,10 @@ fn emulator_thread(
                             let mut inter = inter.lock();
                             let target_clock = inter.0.clock_count + clock_speed / 600;
                             while inter.0.clock_count < target_clock {
-                                let writes = inter.will_write_to();
-                                for w in &writes.1[..writes.0 as usize] {
-                                    if write_breakpoints.contains(w) {
-                                        state = EmulatorState::Idle;
-                                        proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                                        break 'run;
-                                    }
+                                if check_break(&mut inter) {
+                                    state = EmulatorState::Idle;
+                                    proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
+                                    break 'run;
                                 }
                                 inter.interpret_op();
                             }
@@ -365,13 +380,10 @@ fn emulator_thread(
                             let mut inter = inter.lock();
                             let target_clock = inter.0.clock_count + clock_speed / 600;
                             while inter.0.clock_count < target_clock {
-                                let writes = inter.will_write_to();
-                                for w in &writes.1[..writes.0 as usize] {
-                                    if write_breakpoints.contains(w) {
-                                        state = EmulatorState::Idle;
-                                        proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
-                                        break 'runto;
-                                    }
+                                if check_break(&mut inter) {
+                                    state = EmulatorState::Idle;
+                                    proxy.send_event(UserEvent::EmulatorUpdated).unwrap();
+                                    break 'runto;
                                 }
                                 inter.interpret_op();
                                 if inter.0.cpu.pc == target_address {

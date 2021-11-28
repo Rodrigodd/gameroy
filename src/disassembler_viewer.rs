@@ -30,40 +30,47 @@ impl TextFieldCallback for Callback {
     fn on_submit(&mut self, this: Id, ctx: &mut Context, text: &mut String) {
         let sender = ctx.get::<SyncSender<EmulatorEvent>>();
         let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
-        let mut args = text.split_ascii_whitespace();
-        match args.next() {
-            Some("step" | "") | None => sender.send(EmulatorEvent::Step).unwrap(),
-            Some("runto") => {
-                if let Some(arg) = args.next() {
-                    if !args.next().map(str::is_empty).unwrap_or(true) {
-                        // report a error!!
-                        return;
-                    }
-                    let address = match u16::from_str_radix(arg, 16) {
-                        Ok(x) => x,
-                        Err(_) => return,
-                    };
-                    sender.send(EmulatorEvent::RunTo(address)).unwrap();
-                } else {
+        let mut args: Vec<_> = text.split_ascii_whitespace().collect();
+        if args.len() == 0 {
+            args.push("");
+        }
+        match args[0] {
+            "step" | "" => sender.send(EmulatorEvent::Step).unwrap(),
+            "runto" => {
+                if args.len() != 2 {
+                    // report a error!!
                     return;
                 }
+                let address = match u16::from_str_radix(args[1], 16) {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+                sender.send(EmulatorEvent::RunTo(address)).unwrap();
             }
-            Some("run") => sender.send(EmulatorEvent::Run).unwrap(),
-            Some("break") => {
-                if let Some(arg) = args.next() {
-                    if !args.next().map(str::is_empty).unwrap_or(true) {
-                        // report a error!!
-                        return;
-                    }
-                    let address = match u16::from_str_radix(arg, 16) {
-                        Ok(x) => x,
-                        Err(_) => return,
-                    };
+            "run" => sender.send(EmulatorEvent::Run).unwrap(),
+            "break" => {
+                if args.len() != 3 {
+                    // report a error!!
+                    return;
+                }
+
+                let address = match u16::from_str_radix(args[2], 16) {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+
+                let write = args[1].contains('w');
+                let exectute = args[1].contains('x');
+
+                if write {
                     sender
                         .send(EmulatorEvent::AddWriteBreakpoint(address))
                         .unwrap();
-                } else {
-                    return;
+                }
+                if exectute {
+                    sender
+                        .send(EmulatorEvent::AddExecuteBreakpoint(address))
+                        .unwrap();
                 }
             }
             _ => return,

@@ -159,6 +159,7 @@ impl Behaviour for SplitView {
                 self.dragging = false;
                 ctx.lock_cursor(false);
             }
+            MouseEvent::Exit => ctx.set_cursor(CursorIcon::Default),
             MouseEvent::Moved => {
                 if self.dragging || self.is_on_split(mouse.pos, rect) {
                     ctx.set_cursor(CursorIcon::ColResize);

@@ -172,8 +172,12 @@ impl Emulator {
                     }
                 }
 
-                if self.frame_limit && !self.debug {
-                    self.set_state(EmulatorState::RunNoBreak);
+                if !self.debug {
+                    if self.frame_limit {
+                        break;
+                    } else {
+                        self.state = EmulatorState::RunNoBreak;
+                    }
                 }
 
                 match self.state {

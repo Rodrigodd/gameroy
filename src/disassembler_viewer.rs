@@ -134,27 +134,28 @@ impl ListBuilder for DissasemblerList {
                     cpu.a, cpu.f.0, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.sp, cpu.pc
                 );
 
-                let pc = cpu.pc;
-                let bank = inter.0.cartridge.curr_bank();
-                self.pc = Address::from_pc(Some(bank), pc);
-                let pc = match self.pc {
-                    Some(x) => x,
-                    _ => return,
-                };
-
                 let trace = inter.0.trace.borrow();
 
                 self.directives.clear();
                 self.directives.extend(trace.directives.iter().cloned());
 
-                let pos = trace.directives.iter().position(|x| x.address == pc);
-                let pos = match pos {
+                let pc = cpu.pc;
+                let bank = inter.0.cartridge.curr_bank();
+                self.pc = Address::from_pc(Some(bank), pc);
+                let pc = match self.pc {
                     Some(x) => x,
-                    _ => return,
+                    _ => Address { address: pc, bank },
                 };
 
-                let len = trace.directives.len();
-                let scroll_value = pos as f32 / len as f32;
+                let mut scroll_value = None;
+                let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));
+                match pos {
+                    Ok(pos) => {
+                        let len = trace.directives.len();
+                        scroll_value = Some(pos as f32 / len as f32);
+                    }
+                    _ => {}
+                };
 
                 (scroll_value, reg_text)
             };
@@ -164,13 +165,15 @@ impl ListBuilder for DissasemblerList {
             }
 
             // scroll disassembly list to the current program counter
-            ctx.send_event_to(
-                self.list,
-                SetScrollPosition {
-                    vertical: true,
-                    value: scroll_value,
-                },
-            );
+            if let Some(value) = scroll_value {
+                ctx.send_event_to(
+                    self.list,
+                    SetScrollPosition {
+                        vertical: true,
+                        value,
+                    },
+                );
+            }
         }
     }
 

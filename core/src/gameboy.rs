@@ -168,15 +168,15 @@ impl GameBoy {
 
     /// Advante the clock by 'count' cycles
     pub fn tick(&mut self, count: u8) {
-        self.clock_count += count as u64;
         for _ in 0..count {
+            self.clock_count += 1 as u64;
             if self.timer.tick_one() {
                 self.memory[consts::IF as usize] |= 1 << 2;
             }
+            self.ppu
+                .update(&mut self.memory, self.clock_count, &mut self.v_blank);
         }
 
-        self.ppu
-            .update(&mut self.memory, self.clock_count, &mut self.v_blank);
     }
 
     pub fn read16(&mut self, address: u16) -> u16 {

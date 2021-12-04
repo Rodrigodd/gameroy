@@ -59,19 +59,17 @@ impl TextFieldCallback for Callback {
                     Err(_) => return,
                 };
 
-                let write = args[1].contains('w');
-                let exectute = args[1].contains('x');
+                let write = args[1].contains('w') as u8;
+                let execute = args[1].contains('x') as u8;
+                let jump = args[1].contains('j') as u8;
 
-                if write {
-                    sender
-                        .send(EmulatorEvent::AddWriteBreakpoint(address))
-                        .unwrap();
-                }
-                if exectute {
-                    sender
-                        .send(EmulatorEvent::AddExecuteBreakpoint(address))
-                        .unwrap();
-                }
+                use crate::emulator::break_flags::*;
+
+                let flags = (write * WRITE) | (execute * EXECUTE) | (jump * JUMP);
+
+                sender
+                    .send(EmulatorEvent::AddBreakpoint(flags, address))
+                    .unwrap();
             }
             // write the currently dissasembly to a file
             "dump" => {

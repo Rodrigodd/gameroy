@@ -12,6 +12,12 @@ use winit::event_loop::EventLoopProxy;
 
 use super::UserEvent;
 
+pub mod break_flags {
+    pub const WRITE: u8 = 1 << 0;
+    pub const EXECUTE: u8 = 1 << 1;
+    pub const JUMP: u8 = 1 << 2;
+}
+
 pub enum EmulatorEvent {
     RunFrame,
     FrameLimit(bool),
@@ -20,8 +26,8 @@ pub enum EmulatorEvent {
     Step,
     RunTo(u16),
     Run,
-    AddWriteBreakpoint(u16),
-    AddExecuteBreakpoint(u16),
+    // flags, address
+    AddBreakpoint(u8, u16),
 }
 
 #[derive(PartialEq, Eq)]
@@ -37,6 +43,7 @@ const CLOCK_SPEED: u64 = 4_194_304;
 
 struct Breakpoints {
     write_breakpoints: HashSet<u16>,
+    jump_breakpoints: HashSet<u16>,
     execute_breakpoints: HashSet<u16>,
 }
 impl Breakpoints {
@@ -44,6 +51,11 @@ impl Breakpoints {
         let writes = inter.will_write_to();
         for w in &writes.1[..writes.0 as usize] {
             if self.write_breakpoints.contains(w) {
+                return true;
+            }
+        }
+        if let Some(jump) = inter.will_jump_to() {
+            if self.jump_breakpoints.contains(&jump) {
                 return true;
             }
         }
@@ -84,8 +96,9 @@ impl Emulator {
             frame_limit: true,
             start_time: Instant::now(),
             breakpoints: Breakpoints {
-                write_breakpoints: HashSet::<u16>::new(),
-                execute_breakpoints: HashSet::<u16>::new(),
+                write_breakpoints: HashSet::new(),
+                execute_breakpoints: HashSet::new(),
+                jump_breakpoints: HashSet::new(),
             },
         }
         .event_loop()
@@ -164,11 +177,16 @@ impl Emulator {
                             self.inter.lock().interpret_op();
                         }
                     }
-                    AddExecuteBreakpoint(address) => {
-                        self.breakpoints.execute_breakpoints.insert(address);
-                    }
-                    AddWriteBreakpoint(address) => {
-                        self.breakpoints.write_breakpoints.insert(address);
+                    AddBreakpoint(flags, address) => {
+                        if (flags & break_flags::WRITE) != 0 {
+                            self.breakpoints.write_breakpoints.insert(address);
+                        }
+                        if (flags & break_flags::EXECUTE) != 0 {
+                            self.breakpoints.execute_breakpoints.insert(address);
+                        }
+                        if (flags & break_flags::JUMP) != 0 {
+                            self.breakpoints.jump_breakpoints.insert(address);
+                        }
                     }
                 }
 

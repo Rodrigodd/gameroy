@@ -848,6 +848,60 @@ impl Interpreter {
         }
     }
 
+    pub fn will_jump_to(&mut self) -> Option<u16> {
+        let pc = self.0.cpu.pc;
+        let op = &[
+            self.0.read(pc),
+            self.0.read(add16(pc, 1)),
+            self.0.read(add16(pc, 2)),
+        ];
+        let len = consts::LEN[op[0] as usize];
+        match op[0] {
+            0xC3 => {
+                // JP $aaaa
+                let dest = u16::from_le_bytes([op[1], op[2]]);
+                Some(dest)
+            }
+            0xE9 => {
+                // JP (HL)
+                Some(self.0.cpu.hl())
+            }
+            x if x & 0b11100111 == 0b11000010 => {
+                // JP cc, $aaaa
+                let dest = u16::from_le_bytes([op[1], op[2]]);
+                Some(dest)
+            }
+            0x18 => {
+                // JR $rr
+                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                Some(dest)
+            }
+            x if x & 0b1110_0111 == 0b0010_0000 => {
+                // JR cc, $rr
+                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                Some(dest)
+            }
+            x if x == 0xCD || x & 0b11100111 == 0b11000100 => {
+                // CALL $aaaa or CALL cc, $aaaa
+                let dest = u16::from_le_bytes([op[1], op[2]]);
+                Some(dest)
+            }
+            0xC9 | 0xD9 => {
+                let dest = u16::from_le_bytes([
+                    self.0.read(sub16(self.0.cpu.sp, 1)),
+                    self.0.read(sub16(self.0.cpu.sp, 2)),
+                ]);
+                Some(dest)
+            }
+            x if x & 0b11000111 == 0b11000111 => {
+                // RST n
+                let dest = (x & 0b00111000) as u16;
+                Some(dest)
+            }
+            _ => None,
+        }
+    }
+
     pub fn interpret_op(&mut self) {
         let interrupts: u8 = self.0.memory[consts::IF] & self.0.memory[consts::IE];
         if interrupts != 0 {

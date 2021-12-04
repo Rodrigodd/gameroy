@@ -26,8 +26,7 @@ pub enum EmulatorEvent {
     Step,
     RunTo(u16),
     Run,
-    // flags, address
-    AddBreakpoint(u8, u16),
+    AddBreakpoint { flags: u8, address: u16 },
 }
 
 #[derive(PartialEq, Eq)]
@@ -177,7 +176,7 @@ impl Emulator {
                             self.inter.lock().interpret_op();
                         }
                     }
-                    AddBreakpoint(flags, address) => {
+                    AddBreakpoint { flags, address } => {
                         if (flags & break_flags::WRITE) != 0 {
                             self.breakpoints.write_breakpoints.insert(address);
                         }

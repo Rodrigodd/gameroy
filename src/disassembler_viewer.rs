@@ -68,7 +68,7 @@ impl TextFieldCallback for Callback {
                 let flags = (write * WRITE) | (execute * EXECUTE) | (jump * JUMP);
 
                 sender
-                    .send(EmulatorEvent::AddBreakpoint(flags, address))
+                    .send(EmulatorEvent::AddBreakpoint { flags, address })
                     .unwrap();
             }
             // write the currently dissasembly to a file

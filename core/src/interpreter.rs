@@ -115,6 +115,18 @@ impl Interpreter {
         }
     }
 
+    /// Set the value of the cpu PC, but also update the dissasembly tracing
+    fn jump_to(&mut self, address: u16) {
+        self.0.cpu.pc = address;
+        let bank = self.0.cartridge.curr_bank();
+        self.0.trace.borrow_mut().trace_starting_at(
+            &self.0,
+            bank,
+            address,
+            Some(format!("L{:02x}_{:04x}", bank, address)),
+        );
+    }
+
     fn jump(&mut self, c: Condition, address: u16) {
         // JP cc, nn
         use Condition::*;
@@ -126,11 +138,11 @@ impl Interpreter {
             NC => !self.0.cpu.f.c(),
         };
         if c {
-            self.0.cpu.pc = address;
+            self.jump_to(address);
             let cycles = 16;
             self.0.tick(cycles);
         } else {
-            self.0.cpu.pc = add16(self.0.cpu.pc, 3);
+            self.jump_to(add16(self.0.cpu.pc, 3));
             let cycles = 12;
             self.0.tick(cycles);
         }
@@ -146,10 +158,10 @@ impl Interpreter {
             C => self.0.cpu.f.c(),
             NC => !self.0.cpu.f.c(),
         };
-        self.0.cpu.pc = add16(self.0.cpu.pc, 2);
+        self.jump_to(add16(self.0.cpu.pc, 2));
         if c {
             let pc = (self.0.cpu.pc as i16 + address as i16) as u16;
-            self.0.cpu.pc = pc;
+            self.jump_to(pc);
             let cycles = 12;
             self.0.tick(cycles);
         } else {
@@ -219,7 +231,7 @@ impl Interpreter {
         self.0.cpu.pc += 3;
         if c {
             self.pushr(self.0.cpu.pc);
-            self.0.cpu.pc = address;
+            self.jump_to(address);
             let cycles = 24;
             self.0.tick(cycles);
         } else {
@@ -240,7 +252,8 @@ impl Interpreter {
         };
         self.0.cpu.pc = add16(self.0.cpu.pc, 1);
         if c {
-            self.0.cpu.pc = self.popr();
+            let address = self.popr();
+            self.jump_to(address);
             let cycles = if cond == None { 16 } else { 20 };
             self.0.tick(cycles);
         } else {
@@ -661,7 +674,7 @@ impl Interpreter {
         self.pushr(self.0.cpu.pc);
         let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
         self.0.tick(cycles);
-        self.0.cpu.pc = address as u16;
+        self.jump_to(address as u16);
     }
 
     fn bit(&mut self, bit: u8, reg: Reg) {
@@ -843,7 +856,7 @@ impl Interpreter {
                 self.0.memory[consts::IF] = 0;
                 let address = [0x40, 0x48, 0x50, 0x58, 0x60][interrupts.trailing_zeros() as usize];
                 self.pushr(self.0.cpu.pc);
-                self.0.cpu.pc = address;
+                self.jump_to(address);
                 self.0.tick(20);
             }
             if self.0.cpu.state == State::Halt {
@@ -1881,7 +1894,7 @@ impl Interpreter {
             }
             0xe9 => {
                 // JP (HL) 1:4 - - - -
-                self.0.cpu.pc = self.0.cpu.hl();
+                self.jump_to(self.0.cpu.hl());
                 let cycles = 4;
                 self.0.tick(cycles);
                 return;

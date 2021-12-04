@@ -176,7 +176,6 @@ impl GameBoy {
             self.ppu
                 .update(&mut self.memory, self.clock_count, &mut self.v_blank);
         }
-
     }
 
     pub fn read16(&mut self, address: u16) -> u16 {

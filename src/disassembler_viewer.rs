@@ -73,6 +73,19 @@ impl TextFieldCallback for Callback {
                         .unwrap();
                 }
             }
+            // write the currently dissasembly to a file
+            "dump" => {
+                if args.len() != 2 {
+                    // report a error!!
+                    return;
+                }
+                let file = args[1];
+                let game_boy = &ctx.get::<Arc<Mutex<Interpreter>>>().lock().0;
+                let trace = game_boy.trace.borrow();
+                let mut string = String::new();
+                trace.fmt(game_boy, &mut string).unwrap();
+                std::fs::write(file, string).unwrap();
+            }
             _ => return,
         }
         text.clear();

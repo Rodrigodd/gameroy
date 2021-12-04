@@ -224,12 +224,16 @@ impl Trace {
 
     pub fn trace_starting_at(
         &mut self,
-        rom: &GameBoy,
+        gameboy: &GameBoy,
         bank: u8,
         start: u16,
         label: Option<String>,
     ) {
-        let bank = if rom.cartridge.num_banks() == 2 {
+        // check early if this address is already traced or out of rom, and return if it is
+        if start > 0x3FFF || self.get_curr_code_range(bank, start).is_some() {
+            return;
+        }
+        let bank = if gameboy.cartridge.num_banks() == 2 {
             Some(1)
         } else if bank == 0 {
             None
@@ -247,7 +251,7 @@ impl Trace {
                 .name = label;
         }
         while !cursors.is_empty() {
-            self.trace_once(rom, &mut cursors);
+            self.trace_once(gameboy, &mut cursors);
         }
     }
 

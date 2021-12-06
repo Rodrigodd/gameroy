@@ -18,6 +18,7 @@ pub mod break_flags {
     pub const JUMP: u8 = 1 << 2;
 }
 
+#[derive(Debug)]
 pub enum EmulatorEvent {
     RunFrame,
     FrameLimit(bool),
@@ -119,26 +120,8 @@ impl Emulator {
                 use EmulatorEvent::*;
                 match event {
                     RunFrame => {
-                        if self.frame_limit && !self.debug {
-                            {
-                                let mut inter = self.inter.lock();
-                                let elapsed = self.start_time.elapsed();
-                                let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
-                                    + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9))
-                                        as u64;
-                                // make sure that the target_clock don't increase indefinitely if the program can't keep up.
-                                if target_clock > inter.0.clock_count + CLOCK_SPEED / 30 {
-                                    let expected_target = target_clock;
-                                    target_clock = inter.0.clock_count + CLOCK_SPEED / 30;
-                                    self.start_time += Duration::from_secs_f64(
-                                        (expected_target - target_clock) as f64
-                                            / CLOCK_SPEED as f64,
-                                    );
-                                }
-                                while inter.0.clock_count < target_clock {
-                                    inter.interpret_op();
-                                }
-                            }
+                        if !self.debug {
+                            self.set_state(EmulatorState::RunNoBreak);
                         }
                     }
                     FrameLimit(value) => {
@@ -156,6 +139,8 @@ impl Emulator {
                         self.debug = value;
                         if self.debug {
                             self.set_state(EmulatorState::Idle);
+                        } else {
+                            self.set_state(EmulatorState::RunNoBreak);
                         }
                     }
                     Step => {
@@ -186,14 +171,6 @@ impl Emulator {
                         if (flags & break_flags::JUMP) != 0 {
                             self.breakpoints.jump_breakpoints.insert(address);
                         }
-                    }
-                }
-
-                if !self.debug {
-                    if self.frame_limit {
-                        break;
-                    } else {
-                        self.state = EmulatorState::RunNoBreak;
                     }
                 }
 
@@ -249,24 +226,52 @@ impl Emulator {
                             _ => {}
                         }
                     },
-                    EmulatorState::RunNoBreak => loop {
-                        // run 1.6ms worth of emulation, and check for events in the channel, in a loop
-                        {
-                            let mut inter = self.inter.lock();
-                            let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
+                    EmulatorState::RunNoBreak => {
+                        let mut inter = self.inter.lock();
+                        if self.frame_limit {
+                            let elapsed = self.start_time.elapsed();
+                            let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
+                                + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9))
+                                    as u64;
+
+                            // make sure that the target_clock don't increase indefinitely if the program can't keep up.
+                            if target_clock > inter.0.clock_count + CLOCK_SPEED / 30 {
+                                let expected_target = target_clock;
+                                target_clock = inter.0.clock_count + CLOCK_SPEED / 30;
+                                self.start_time += Duration::from_secs_f64(
+                                    (expected_target - target_clock) as f64 / CLOCK_SPEED as f64,
+                                );
+                            }
+
                             while inter.0.clock_count < target_clock {
                                 inter.interpret_op();
                             }
-                        }
-                        match self.recv.try_recv() {
-                            Ok(next_event) => {
-                                event = next_event;
-                                continue 'handle_event;
+
+                            // change state to Idle, and wait for the next RunFrame
+
+                            // I don't call self.set_state, because i don't want to send the update
+                            // event
+                            self.state = EmulatorState::Idle;
+                        } else {
+                            // run 1.6ms worth of emulation, and check for events in the channel, in a loop
+                            loop {
+                                let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
+
+                                while inter.0.clock_count < target_clock {
+                                    inter.interpret_op();
+                                }
+
+                                match self.recv.try_recv() {
+                                    Ok(next_event) => {
+                                        event = next_event;
+                                        continue 'handle_event;
+                                    }
+                                    Err(TryRecvError::Disconnected) => return,
+                                    _ => {}
+                                }
                             }
-                            Err(TryRecvError::Disconnected) => return,
-                            _ => {}
                         }
-                    },
+                    }
                 }
 
                 break;

@@ -194,6 +194,7 @@ fn create_window(mut inter: Interpreter, debug: bool) {
                     }
                     EmulatorStarted => {
                         ui.force_render = true;
+                        window.request_redraw();
                     }
                     EmulatorPaused => {
                         ui.notify(event_table::EmulatorUpdated);

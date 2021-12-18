@@ -1,4 +1,4 @@
-use std::{any::Any, sync::mpsc::SyncSender};
+use std::{any::Any, cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
 
 use crate::{
     disassembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
@@ -40,7 +40,7 @@ pub struct Ui {
     render: GLSpriteRender,
     camera: Camera,
     style: Style,
-    pub event_table: EventTable,
+    pub event_table: Rc<RefCell<EventTable>>,
     pub screen_texture: u32,
     pub is_animating: bool,
     pub force_render: bool,
@@ -75,12 +75,17 @@ impl Ui {
             camera,
             style,
             screen_texture,
-            event_table: EventTable::new(),
+            event_table: Rc::new(RefCell::new(EventTable::new())),
             is_animating: false,
             force_render: true,
         };
 
-        create_gui(&mut ui.gui, screen_texture, &mut ui.event_table, &ui.style);
+        create_gui(
+            &mut ui.gui,
+            screen_texture,
+            ui.event_table.clone(),
+            &ui.style,
+        );
 
         ui.resize(window.inner_size(), window.id());
 
@@ -156,6 +161,7 @@ impl Ui {
 
     pub fn notify<E: crate::event_table::Event>(&mut self, event: E) {
         self.event_table
+            .borrow_mut()
             .notify::<E>(event, &mut self.gui.get_context());
     }
 
@@ -168,12 +174,20 @@ impl Ui {
     }
 }
 
-pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTable, style: &Style) {
-    let mut layout = SplitView::new(4.0, [2.0; 4], false);
-    layout.split = 0.4;
-    let root = gui
-        .create_control()
+pub fn create_gui(
+    gui: &mut Gui,
+    screen_texture: u32,
+    event_table: Rc<RefCell<EventTable>>,
+    style: &Style,
+) {
+    let mut screen_id = gui.reserve_id();
+    let mut split_view = gui.reserve_id();
+    let root = gui.reserve_id();
+
+    let sty = style.clone();
+    gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent(move |event, _, ctx| {
+            use crui::BuilderContext;
             use crui::KeyboardEvent::*;
             use winit::event::VirtualKeyCode::*;
             let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
@@ -186,7 +200,23 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
                     Pressed(F9) => {
                         sender.send(EmulatorEvent::Run).unwrap();
                     }
-                    Pressed(D) => {
+                    Pressed(F12) => {
+                        ctx.remove(split_view);
+                        split_view = ctx.reserve();
+
+                        screen_id = ctx.reserve();
+                        ctx.create_control_reserved(screen_id)
+                            .parent(root)
+                            .graphic(sty.background.clone())
+                            .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+                            .child(ctx, |cb, _| {
+                                cb.graphic(
+                                    Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into(),
+                                )
+                            })
+                            .build(ctx);
+                        ctx.set_focus(screen_id);
+
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
                         proxy.send_event(UserEvent::Debug(false)).unwrap();
                     }
@@ -214,7 +244,40 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
                     Release(Return) => set_key(6, false),
                     Pressed(S) => set_key(7, true),
                     Release(S) => set_key(7, false),
-                    Pressed(D) => {
+                    Pressed(F12) => {
+                        let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
+                        split_layout.split = 0.5;
+
+                        ctx.create_control_reserved(split_view)
+                            .parent(root)
+                            .graphic(sty.split_background.clone())
+                            .behaviour_and_layout(split_layout)
+                            .build(ctx);
+
+                        // TODO: instead of destroying the screen control, and creating it again, I
+                        // need to look if I could create a 'set_parent' method. But that may be
+                        // complicated
+                        ctx.remove(screen_id);
+
+                        // TODO: maybe there should be a replace_control method?
+                        screen_id = ctx.reserve();
+                        ctx.create_control_reserved(screen_id)
+                            .parent(split_view)
+                            .graphic(sty.background.clone())
+                            .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+                            .child(ctx, |cb, _| {
+                                cb.graphic(
+                                    Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into(),
+                                )
+                            })
+                            .build(ctx);
+                        disassembler_viewer::build(
+                            split_view,
+                            ctx,
+                            &mut *event_table.borrow_mut(),
+                            &sty,
+                        );
+
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
                         proxy.send_event(UserEvent::Debug(true)).unwrap();
                     }
@@ -228,20 +291,14 @@ pub fn create_gui(gui: &mut Gui, screen_texture: u32, event_table: &mut EventTab
             true
         }))
         .build(gui);
-    let split_view = gui
-        .create_control()
+
+    gui.create_control_reserved(screen_id)
         .parent(root)
-        .graphic(style.split_background.clone())
-        .behaviour_and_layout(layout)
-        .build(gui);
-    let _text = gui
-        .create_control()
-        .parent(split_view)
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(gui, |cb, _| {
             cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
         })
         .build(gui);
-    disassembler_viewer::build(split_view, gui, event_table, style);
+    gui.set_focus(Some(screen_id));
 }

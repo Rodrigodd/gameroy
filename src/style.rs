@@ -47,7 +47,7 @@ impl<'a, R: SpriteRender> StyleLoaderCallback for Loader<'a, R> {
     }
 }
 
-#[derive(LoadStyle)]
+#[derive(LoadStyle, Clone)]
 pub struct Style {
     pub text_style: TextStyle,
     pub split_background: Graphic,

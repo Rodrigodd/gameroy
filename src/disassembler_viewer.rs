@@ -223,12 +223,12 @@ impl ListBuilder for DissasemblerList {
     }
 }
 
-pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &Style) {
-    let diss_view_id = gui.reserve_id();
-    let list_id = gui.reserve_id();
-    let reg_id = gui.reserve_id();
+pub fn build(parent: Id, ctx: &mut dyn BuilderContext, event_table: &mut EventTable,  style: &Style) {
+    let diss_view_id = ctx.reserve();
+    let list_id = ctx.reserve();
+    let reg_id = ctx.reserve();
 
-    let vbox = gui
+    let vbox = ctx
         .create_control_reserved(diss_view_id)
         .graphic(style.background.clone())
         .parent(parent)
@@ -236,13 +236,13 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         .expand_x(true)
         .min_width(100.0)
         .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
-        .build(gui);
+        .build(ctx);
 
-    let stack = gui.create_control().parent(vbox).expand_y(true).build(gui);
+    let stack = ctx.create_control().parent(vbox).expand_y(true).build(ctx);
 
     list(
-        gui.create_control_reserved(list_id),
-        gui,
+        ctx.create_control_reserved(list_id),
+        ctx,
         style,
         DissasemblerList {
             text_style: style.text_style.clone(),
@@ -254,14 +254,14 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         },
     )
     .parent(stack)
-    .build(gui);
+    .build(ctx);
 
-    let caret = gui.reserve_id();
-    let label = gui.reserve_id();
+    let caret = ctx.reserve();
+    let label = ctx.reserve();
 
-    let _reg_view = gui
+    let _reg_view = ctx
         .create_control()
-        .child_reserved(reg_id, gui, |cb, _| {
+        .child_reserved(reg_id, ctx, |cb, _| {
             cb.graphic(
                 Text::new(
                     format!(
@@ -280,9 +280,9 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
         .graphic(style.background.clone())
         .fill_x(RectFill::ShrinkEnd)
         .fill_y(RectFill::ShrinkEnd)
-        .build(gui);
+        .build(ctx);
 
-    let text_field = gui
+    let text_field = ctx
         .create_control()
         .parent(vbox)
         .behaviour(TextField::new(
@@ -292,23 +292,23 @@ pub fn build(parent: Id, gui: &mut Gui, event_table: &mut EventTable, style: &St
             Callback,
         ))
         .min_size([20.0; 2])
-        .build(gui);
+        .build(ctx);
 
-    gui.create_control_reserved(caret)
+    ctx.create_control_reserved(caret)
         .parent(text_field)
         .graphic(style.background.clone().with_color([0, 0, 0, 255].into()))
         .anchors([0.0; 4])
-        .build(gui);
+        .build(ctx);
 
-    gui.create_control_reserved(label)
+    ctx.create_control_reserved(label)
         .parent(text_field)
         .graphic(Text::new("test".into(), (-1, -1), style.text_style.clone()).into())
-        .build(gui);
+        .build(ctx);
 }
 
 fn list(
     cb: ControlBuilder,
-    ctx: &mut impl BuilderContext,
+    ctx: &mut (impl BuilderContext + ?Sized),
     style: &Style,
     list_builder: impl ListBuilder + 'static,
 ) -> ControlBuilder {

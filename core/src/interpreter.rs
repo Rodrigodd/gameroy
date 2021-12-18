@@ -119,7 +119,14 @@ impl Interpreter {
     fn jump_to(&mut self, address: u16) {
         self.0.cpu.pc = address;
         let bank = self.0.cartridge.curr_bank();
-        self.0.trace.borrow_mut().trace_starting_at(
+        let mut trace = self.0.trace.borrow_mut();
+
+        // check early if this address is already traced or out of rom, and return if it is
+        if trace.is_already_traced(bank, address) {
+            return;
+        }
+
+        trace.trace_starting_at(
             &self.0,
             bank,
             address,

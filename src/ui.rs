@@ -271,6 +271,7 @@ pub fn create_gui(
                                 )
                             })
                             .build(ctx);
+                        ctx.set_focus(screen_id);
                         disassembler_viewer::build(
                             split_view,
                             ctx,

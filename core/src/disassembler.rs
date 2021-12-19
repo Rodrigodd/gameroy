@@ -174,7 +174,7 @@ impl Trace {
             queue[i] = pc;
             i = (i + 1) % LOOK_ABOVE as usize;
             c += 1;
-            let (_, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+            let (_, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
             pc.address += len as u16;
         }
         if c < LOOK_ABOVE {
@@ -193,7 +193,7 @@ impl Trace {
         };
         while pc < curr {
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
-            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
             disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
@@ -201,7 +201,7 @@ impl Trace {
 
         let mut pc = curr;
         write!(w, ">>{:02x}_{:04x}: ", pc.bank, pc.address)?;
-        let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+        let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
         disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
         writeln!(w)?;
         pc.address += len as u16;
@@ -214,7 +214,7 @@ impl Trace {
                 break;
             }
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
-            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
             disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
@@ -349,7 +349,7 @@ impl Trace {
                 return;
             }
         };
-        let (op, len) = cursor.get_op(&rom.cartridge.rom);
+        let (op, len) = cursor.get_op(&rom.cartridge.rom());
 
         if !self.add_opcode(address, op, len as u16) {
             return;
@@ -515,7 +515,7 @@ impl Trace {
                 if pc >= range.end {
                     break;
                 }
-                let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom);
+                let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
                 if let Some(label) = self.labels.get(&pc) {
                     writeln!(f, "{}:", label.name)?;
                 }

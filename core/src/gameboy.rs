@@ -262,7 +262,7 @@ impl std::ops::Index<usize> for GameBoy {
         if self.boot_rom_active && index <= 0xff {
             &self.boot_rom[index]
         } else if index < 0x7FFF {
-            &self.cartridge.rom[index]
+            &self.cartridge.rom()[index]
         } else {
             &0x00
         }

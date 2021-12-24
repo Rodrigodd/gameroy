@@ -1,3 +1,6 @@
+// The number of clocks the gameboy runs per second.
+pub const CLOCK_SPEED: u64 = 4_194_304;
+
 pub const IF: usize = 0xff0f;
 pub const IE: usize = 0xffff;
 

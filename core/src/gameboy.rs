@@ -1,8 +1,10 @@
 use crate::cartridge::Cartridge;
+use crate::sound_controller::SoundController;
 use crate::{consts, cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::Read;
 
+#[derive(Default)]
 pub struct Timer {
     pub div: u16,
     pub tima: u8,
@@ -74,6 +76,7 @@ pub struct GameBoy {
     pub boot_rom_active: bool,
     pub clock_count: u64,
     pub timer: Timer,
+    pub sound: SoundController,
     pub ppu: Ppu,
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
@@ -95,28 +98,9 @@ impl GameBoy {
             boot_rom,
             boot_rom_active: true,
             clock_count: 0,
-            timer: Timer {
-                div: 0,
-                tima: 0,
-                tma: 0,
-                tac: 0,
-                last_counter_bit: false,
-            },
-            ppu: Ppu {
-                screen: [0; 144 * 160],
-                sprite_buffer: [[0; 4]; 10],
-                sprite_buffer_len: 0,
-                wyc: 0,
-                lcdc: 0,
-                stat: 0,
-                scy: 0,
-                scx: 0,
-                ly: 0,
-                lyc: 0,
-                bgp: 0,
-                wy: 0,
-                wx: 0,
-            },
+            timer: Timer::default(),
+            sound: SoundController::default(),
+            ppu: Ppu::default(),
             joypad: 0xFF,
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
@@ -195,6 +179,9 @@ impl GameBoy {
             0x05 => self.timer.write_tima(value),
             0x06 => self.timer.write_tma(value),
             0x07 => self.timer.write_tac(value),
+            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => {
+                self.sound.write(self.clock_count, address, value)
+            }
             0x40 => self.ppu.set_lcdc(value),
             0x41 => self.ppu.set_stat(value),
             0x42 => self.ppu.set_scy(value),
@@ -239,6 +226,7 @@ impl GameBoy {
             0x05 => self.timer.read_tima(),
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_tac(),
+            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => self.sound.read(address),
             0x40 => self.ppu.lcdc(),
             0x41 => self.ppu.stat(),
             0x42 => self.ppu.scy(),

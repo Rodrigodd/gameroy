@@ -1,7 +1,8 @@
-use gameroy::interpreter::Interpreter;
-use parking_lot::Mutex;
+use audio_engine::{AudioEngine, SoundSource};
+use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter};
+use parking_lot::Mutex as ParkMutex;
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     sync::{
         mpsc::{Receiver, TryRecvError},
         Arc,
@@ -38,9 +39,6 @@ enum EmulatorState {
     RunNoBreak,
 }
 
-// The number of clocks the gameboy runs per second.
-const CLOCK_SPEED: u64 = 4_194_304;
-
 struct Breakpoints {
     write_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
@@ -66,8 +64,36 @@ impl Breakpoints {
     }
 }
 
+struct Buffer {
+    buffer: Arc<ParkMutex<VecDeque<i16>>>,
+}
+impl SoundSource for Buffer {
+    fn channels(&self) -> u16 {
+        2
+    }
+
+    fn sample_rate(&self) -> u32 {
+        48000
+    }
+
+    fn reset(&mut self) {
+        self.buffer.lock().clear()
+    }
+
+    fn write_samples(&mut self, buffer: &mut [i16]) -> usize {
+        let mut lock = self.buffer.lock();
+        let len = lock.len().min(buffer.len());
+        for (a, b) in buffer[0..len].iter_mut().zip(lock.iter()) {
+            *a = *b;
+        }
+        lock.drain(0..len);
+
+        len
+    }
+}
+
 pub struct Emulator {
-    inter: Arc<Mutex<Interpreter>>,
+    inter: Arc<ParkMutex<Interpreter>>,
     recv: Receiver<EmulatorEvent>,
     proxy: EventLoopProxy<UserEvent>,
 
@@ -80,13 +106,25 @@ pub struct Emulator {
     start_time: Instant,
 
     breakpoints: Breakpoints,
+
+    audio: AudioEngine,
+    audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
 }
 impl Emulator {
     pub fn run(
-        inter: Arc<Mutex<Interpreter>>,
+        inter: Arc<ParkMutex<Interpreter>>,
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
     ) {
+        let audio = AudioEngine::new().unwrap();
+        let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
+        let buffer = Buffer {
+            buffer: audio_buffer.clone(),
+        };
+        let mut sound = audio.new_sound(buffer).unwrap();
+        sound.set_loop(true);
+        sound.play();
+        std::mem::forget(sound);
         Self {
             inter,
             recv,
@@ -100,6 +138,8 @@ impl Emulator {
                 execute_breakpoints: HashSet::new(),
                 jump_breakpoints: HashSet::new(),
             },
+            audio,
+            audio_buffer,
         }
         .event_loop()
     }
@@ -245,6 +285,14 @@ impl Emulator {
 
                             while inter.0.clock_count < target_clock {
                                 inter.interpret_op();
+                            }
+
+                            {
+                                let clock_count = inter.0.clock_count;
+                                let buffer = inter.0.sound.get_output(clock_count);
+                                let mut lock = self.audio_buffer.lock();
+                                lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 4));
+                                println!("buffer len: {}", lock.len());
                             }
 
                             // change state to Idle, and wait for the next RunFrame

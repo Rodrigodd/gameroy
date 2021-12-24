@@ -28,6 +28,26 @@ pub struct Ppu {
     pub wx: u8,
 }
 
+impl Default for Ppu {
+    fn default() -> Self {
+        Self {
+            screen: [0; 144 * 160],
+            sprite_buffer: Default::default(),
+            sprite_buffer_len: Default::default(),
+            wyc: Default::default(),
+            lcdc: Default::default(),
+            stat: Default::default(),
+            scy: Default::default(),
+            scx: Default::default(),
+            ly: Default::default(),
+            lyc: Default::default(),
+            bgp: Default::default(),
+            wy: Default::default(),
+            wx: Default::default(),
+        }
+    }
+}
+
 impl Ppu {
     /// Set the ppu's lcdc.
     pub fn set_lcdc(&mut self, lcdc: u8) {

@@ -21,6 +21,7 @@ pub mod break_flags {
 
 #[derive(Debug)]
 pub enum EmulatorEvent {
+    Kill,
     RunFrame,
     FrameLimit(bool),
     SetKeys(u8),
@@ -66,6 +67,7 @@ impl Breakpoints {
 
 struct Buffer {
     buffer: Arc<ParkMutex<VecDeque<i16>>>,
+    sample_rate: u32,
 }
 impl SoundSource for Buffer {
     fn channels(&self) -> u16 {
@@ -73,7 +75,7 @@ impl SoundSource for Buffer {
     }
 
     fn sample_rate(&self) -> u32 {
-        48000
+        self.sample_rate
     }
 
     fn reset(&mut self) {
@@ -109,6 +111,7 @@ pub struct Emulator {
 
     audio: AudioEngine,
     audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
+    last_buffer_len: usize,
 }
 impl Emulator {
     pub fn run(
@@ -118,9 +121,16 @@ impl Emulator {
     ) {
         let audio = AudioEngine::new().unwrap();
         let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
+        audio_buffer.lock().extend((0..1600*5).map(|_|0)); // gap of 83.3 ms
         let buffer = Buffer {
             buffer: audio_buffer.clone(),
+            sample_rate: audio.sample_rate(),
         };
+        // println!("{}", buffer.sample_rate);
+        // std::process::exit(0);
+
+        inter.lock().0.sound.sample_frequency = audio.sample_rate() as u64;
+
         let mut sound = audio.new_sound(buffer).unwrap();
         sound.set_loop(true);
         sound.play();
@@ -140,6 +150,7 @@ impl Emulator {
             },
             audio,
             audio_buffer,
+            last_buffer_len: 0,
         }
         .event_loop()
     }
@@ -159,6 +170,7 @@ impl Emulator {
             'handle_event: loop {
                 use EmulatorEvent::*;
                 match event {
+                    Kill => return,
                     RunFrame => {
                         if !self.debug {
                             self.set_state(EmulatorState::RunNoBreak);
@@ -287,13 +299,8 @@ impl Emulator {
                                 inter.interpret_op();
                             }
 
-                            {
-                                let clock_count = inter.0.clock_count;
-                                let buffer = inter.0.sound.get_output(clock_count);
-                                let mut lock = self.audio_buffer.lock();
-                                lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 4));
-                                println!("buffer len: {}", lock.len());
-                            }
+                            drop(inter);
+                            self.update_audio();
 
                             // change state to Idle, and wait for the next RunFrame
 
@@ -325,5 +332,19 @@ impl Emulator {
                 break;
             }
         }
+    }
+
+    fn update_audio(&mut self) {
+        let mut inter = self.inter.lock();
+        let clock_count = inter.0.clock_count;
+        let buffer = inter.0.sound.get_output(clock_count);
+        let generated = buffer.len();
+        let mut lock = self.audio_buffer.lock();
+        let consumed = self.last_buffer_len - lock.len();
+        lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
+
+        println!("buffer: {:7} {:7} {:7}, {}", -(consumed as i64), lock.len(), lock.len() as i64 - self.last_buffer_len as i64, inter.0.sound.sample_frequency);
+        let len = lock.len();
+        self.last_buffer_len = lock.len();
     }
 }

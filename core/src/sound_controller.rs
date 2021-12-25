@@ -1,6 +1,7 @@
 use std::process::exit;
 
-#[derive(Default)]
+use crate::consts::CLOCK_SPEED;
+
 pub struct SoundController {
     // Sound Channel 1 - Tone & Sweep
     /// FF10: Channel 1 Sweep register (R/W)
@@ -59,13 +60,52 @@ pub struct SoundController {
     /// All sound on/off
     on: bool,
 
+    frequency_timer: u16,
+    wave_duty_position: u8,
+
     /// Output Buffer
     output: Vec<u8>,
     /// Clock count at the last sound output
     last_clock: u64,
+    /// The frequency in Hertz at which the sound controller is sampled.
+    pub sample_frequency: u64,
+    sample_mod: u64,
+}
 
-    frequency_timer: u16,
-    wave_duty_position: u8,
+impl Default for SoundController {
+    fn default() -> Self {
+        Self {
+            nr10: 0,
+            nr11: 0,
+            nr12: 0,
+            nr13: 0,
+            nr14: 0,
+            nr21: 0,
+            nr22: 0,
+            nr23: 0,
+            nr24: 0,
+            nr30: 0,
+            nr31: 0,
+            nr32: 0,
+            nr33: 0,
+            nr34: 0,
+            wave_pattern: [0; 16],
+            nr41: 0,
+            nr42: 0,
+            nr43: 0,
+            nr44: 0,
+            nr50: 0,
+            nr51: 0,
+            nr52: 0,
+            on: false,
+            frequency_timer: 0,
+            wave_duty_position: 0,
+            output: Vec::default(),
+            last_clock: 0,
+            sample_frequency: 48_000,
+            sample_mod: 0,
+        }
+    }
 }
 
 const WAVE_DUTY_TABLE: [u8; 4] = [0b0000_0001, 0b0000_0011, 0b0000_1111, 0b1111_1100];
@@ -78,15 +118,29 @@ impl SoundController {
     }
 
     pub fn update(&mut self, clock_count: u64) {
-        let sample_rate = crate::consts::CLOCK_SPEED / 48_000;
         // if it is off, there is no need for audio generation
         if !self.on {
-            //  n = r/k - (l - 1)/k <- underflow
-            //  n = r/k - l/k + (l%k) == 0
-            let n = clock_count / sample_rate - self.last_clock / sample_rate
-                + ((self.last_clock % sample_rate) == 0) as u64;
+            // compute the number of samples (multiples of k) beetween l (inclusive) and r (exclusive)
+            //  k = fc/fs
+            //  n = r/k - l/k + (l%k == 0) <- for r, l and k integers
+            //  => n = r*fs/fc - l*fs/fc + (l*fs % fc < fs) <- for r, l, fs and fc integers
+
+            // map clock_count to a smaller value, to avoid multiplication overflows in the
+            // distance future
+            let anchor = self.last_clock - (self.last_clock % CLOCK_SPEED);
+            let l = self.last_clock - anchor;
+            let r = clock_count - anchor;
+
+            let n = r * self.sample_frequency / CLOCK_SPEED
+                - l * self.sample_frequency / CLOCK_SPEED
+                + ((l * self.sample_frequency) % CLOCK_SPEED < self.sample_frequency) as u64;
+            // for each sample, there is two values (left and right channels)
+            self.output.extend((0..2 * n).map(|_| 0));
+
             self.last_clock = clock_count;
-            self.output.extend((0..n).map(|_| 0));
+            let elapsed_clock = clock_count - self.last_clock;
+            self.sample_mod =
+                (self.sample_mod + elapsed_clock * self.sample_frequency) % CLOCK_SPEED;
             return;
         }
         // channel 2
@@ -98,7 +152,7 @@ impl SoundController {
         let channel2_left = (self.nr51 & 0x20) != 0;
         let volume_right = self.nr50 & 0x7;
         let channel2_right = (self.nr51 & 0x02) != 0;
-        for clock in self.last_clock..clock_count {
+        for _ in self.last_clock..clock_count {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
             if self.frequency_timer <= 1 {
                 // Frequency Timer = (2048 - Frequency) * 4;
@@ -107,9 +161,14 @@ impl SoundController {
             } else {
                 self.frequency_timer -= 1;
             }
+
             // collect a sample
-            // TODO: here CLOCK_SPEED / 48_000 is rounded down, wich could cause inaccuracies.
-            if (clock % sample_rate) == 0 {
+
+            // c % (fc/fs) == 0 ~> c % (fc/fs) < 1 => (c*fs) % fc < fs
+            // => ((c-1)*fs) % fc + fs) % fc < fs
+            // => (last + fs) % fc < fs
+            self.sample_mod = (self.sample_mod + self.sample_frequency) % CLOCK_SPEED;
+            if self.sample_mod < self.sample_frequency {
                 let mut left = 0;
                 if channel2_left {
                     let amp = (WAVE_DUTY_TABLE[duty as usize] >> self.wave_duty_position) & 0x1;

@@ -223,7 +223,12 @@ impl ListBuilder for DissasemblerList {
     }
 }
 
-pub fn build(parent: Id, ctx: &mut dyn BuilderContext, event_table: &mut EventTable,  style: &Style) {
+pub fn build(
+    parent: Id,
+    ctx: &mut dyn BuilderContext,
+    event_table: &mut EventTable,
+    style: &Style,
+) {
     let diss_view_id = ctx.reserve();
     let list_id = ctx.reserve();
     let reg_id = ctx.reserve();

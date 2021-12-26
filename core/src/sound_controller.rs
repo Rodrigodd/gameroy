@@ -2,6 +2,8 @@ use std::process::exit;
 
 use crate::consts::CLOCK_SPEED;
 
+// based mostly on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html#fnref:2
+
 pub struct SoundController {
     // Sound Channel 1 - Tone & Sweep
     /// FF10: Channel 1 Sweep register (R/W)
@@ -60,8 +62,10 @@ pub struct SoundController {
     /// All sound on/off
     on: bool,
 
-    frequency_timer: u16,
-    wave_duty_position: u8,
+    ch2_frequency_timer: u16,
+    ch2_wave_duty_position: u8,
+    ch2_current_volume: u8,
+    ch2_period_timer: u8,
 
     /// Output Buffer
     output: Vec<u8>,
@@ -98,8 +102,10 @@ impl Default for SoundController {
             nr51: 0,
             nr52: 0,
             on: false,
-            frequency_timer: 0,
-            wave_duty_position: 0,
+            ch2_frequency_timer: 0,
+            ch2_wave_duty_position: 0,
+            ch2_current_volume: 0,
+            ch2_period_timer: 0,
             output: Vec::default(),
             last_clock: 0,
             sample_frequency: 48_000,
@@ -146,20 +152,55 @@ impl SoundController {
         // channel 2
         let duty = (self.nr21 >> 6) & 0x3;
         let freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
+        let ch2_period = self.nr22 & 0x7;
+        let ch2_env_direction = (self.nr22 & 0x08) != 0;
 
         // mixing
         let volume_left = (self.nr50 & 0x70) >> 4;
         let channel2_left = (self.nr51 & 0x20) != 0;
         let volume_right = self.nr50 & 0x7;
         let channel2_right = (self.nr51 & 0x02) != 0;
-        for _ in self.last_clock..clock_count {
+        for clock in self.last_clock..clock_count {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
-            if self.frequency_timer <= 1 {
+            if self.ch2_frequency_timer <= 1 {
                 // Frequency Timer = (2048 - Frequency) * 4;
-                self.frequency_timer = (2048 - freq) * 4;
-                self.wave_duty_position = (self.wave_duty_position + 1) % 8;
+                self.ch2_frequency_timer = (2048 - freq) * 4;
+                self.ch2_wave_duty_position = (self.ch2_wave_duty_position + 1) % 8;
             } else {
-                self.frequency_timer -= 1;
+                self.ch2_frequency_timer -= 1;
+            }
+
+            // frame sequencer
+            
+            // TODO: a step should happens in a falling edge of the bit 5 of the DIV timer.
+            if clock % (CLOCK_SPEED / 512) == 0 { // step
+                let lenght_ctr = (clock % (CLOCK_SPEED / 256)) == 0;
+                let volume_env = (clock % (CLOCK_SPEED / 64)) == 0;
+                let sweep = ((clock + CLOCK_SPEED / 256) % (CLOCK_SPEED / 128)) == 0;
+
+                fn env(period: u8, period_timer: &mut u8, current_volume: &mut u8, is_upwards: bool) {
+                    if period != 0 {
+                        if *period_timer > 0 {
+                            *period_timer -= 1;
+                        }
+
+                        if *period_timer == 0 {
+                            *period_timer = period;
+
+                            if (*current_volume < 0xF && is_upwards) || (*current_volume > 0x0 && !is_upwards) {
+                                if is_upwards {
+                                    *current_volume += 1;
+                                } else {
+                                    *current_volume -= 1;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if volume_env {
+                    env(ch2_period, &mut self.ch2_period_timer, &mut self.ch2_current_volume, ch2_env_direction);
+                }
             }
 
             // collect a sample
@@ -170,17 +211,16 @@ impl SoundController {
             self.sample_mod = (self.sample_mod + self.sample_frequency) % CLOCK_SPEED;
             if self.sample_mod < self.sample_frequency {
                 let mut left = 0;
+                let ch2_amp = ((WAVE_DUTY_TABLE[duty as usize] >> self.ch2_wave_duty_position) & 0x1) * self.ch2_current_volume;
                 if channel2_left {
-                    let amp = (WAVE_DUTY_TABLE[duty as usize] >> self.wave_duty_position) & 0x1;
-                    left += amp;
+                    left += ch2_amp;
                 };
                 let mut right = 0;
                 if channel2_right {
-                    let amp = (WAVE_DUTY_TABLE[duty as usize] >> self.wave_duty_position) & 0x1;
-                    right += amp;
+                    right += ch2_amp;
                 };
-                self.output.push(8 * left * volume_left);
-                self.output.push(8 * right * volume_right);
+                self.output.push(left * volume_left);
+                self.output.push(right * volume_right);
             }
         }
         self.last_clock = clock_count;
@@ -208,7 +248,16 @@ impl SoundController {
                 self.nr23 = value;
                 eprintln!("write nr23: {:02x}", value)
             }
-            0x19 => self.nr24 = value,
+            0x19 => {
+                if value & 0x80 != 0 {
+                    // restart sound
+                    self.ch2_period_timer = self.nr22 & 0x07;
+                    self.ch2_current_volume = (self.nr22 & 0xF0) >> 4;
+                    self.ch2_frequency_timer = 0;
+                    self.ch2_wave_duty_position = 0;
+                }
+                self.nr24 = value;
+            },
             0x1A => self.nr30 = value,
             0x1B => self.nr31 = value,
             0x1C => self.nr32 = value,

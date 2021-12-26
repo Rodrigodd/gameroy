@@ -62,6 +62,10 @@ pub struct SoundController {
     /// All sound on/off
     on: bool,
 
+    ch1_frequency_timer: u16,
+    ch1_wave_duty_position: u8,
+    ch1_current_volume: u8,
+    ch1_period_timer: u8,
     ch2_frequency_timer: u16,
     ch2_wave_duty_position: u8,
     ch2_current_volume: u8,
@@ -102,6 +106,10 @@ impl Default for SoundController {
             nr51: 0,
             nr52: 0,
             on: false,
+            ch1_frequency_timer: 0,
+            ch1_wave_duty_position: 0,
+            ch1_current_volume: 0,
+            ch1_period_timer: 0,
             ch2_frequency_timer: 0,
             ch2_wave_duty_position: 0,
             ch2_current_volume: 0,
@@ -149,22 +157,38 @@ impl SoundController {
                 (self.sample_mod + elapsed_clock * self.sample_frequency) % CLOCK_SPEED;
             return;
         }
+        // channel 1
+        let ch1_duty = (self.nr11 >> 6) & 0x3;
+        let ch1_freq = u16::from_be_bytes([self.nr14, self.nr13]) & 0x07FF;
+        let ch1_period = self.nr12 & 0x7;
+        let ch1_env_direction = (self.nr12 & 0x08) != 0;
         // channel 2
-        let duty = (self.nr21 >> 6) & 0x3;
-        let freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
+        let ch2_duty = (self.nr21 >> 6) & 0x3;
+        let ch2_freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
         let ch2_period = self.nr22 & 0x7;
         let ch2_env_direction = (self.nr22 & 0x08) != 0;
 
         // mixing
         let volume_left = (self.nr50 & 0x70) >> 4;
-        let channel2_left = (self.nr51 & 0x20) != 0;
+        let ch1_left = (self.nr51 & 0x10) != 0;
+        let ch2_left = (self.nr51 & 0x20) != 0;
         let volume_right = self.nr50 & 0x7;
-        let channel2_right = (self.nr51 & 0x02) != 0;
+        let ch1_right = (self.nr51 & 0x01) != 0;
+        let ch2_right = (self.nr51 & 0x02) != 0;
         for clock in self.last_clock..clock_count {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
+            //
+            if self.ch1_frequency_timer <= 1 {
+                // Frequency Timer = (2048 - Frequency) * 4;
+                self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
+                self.ch1_wave_duty_position = (self.ch1_wave_duty_position + 1) % 8;
+            } else {
+                self.ch1_frequency_timer -= 1;
+            }
+
             if self.ch2_frequency_timer <= 1 {
                 // Frequency Timer = (2048 - Frequency) * 4;
-                self.ch2_frequency_timer = (2048 - freq) * 4;
+                self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
                 self.ch2_wave_duty_position = (self.ch2_wave_duty_position + 1) % 8;
             } else {
                 self.ch2_frequency_timer -= 1;
@@ -199,6 +223,7 @@ impl SoundController {
                 }
 
                 if volume_env {
+                    env(ch1_period, &mut self.ch1_period_timer, &mut self.ch1_current_volume, ch1_env_direction);
                     env(ch2_period, &mut self.ch2_period_timer, &mut self.ch2_current_volume, ch2_env_direction);
                 }
             }
@@ -210,13 +235,20 @@ impl SoundController {
             // => (last + fs) % fc < fs
             self.sample_mod = (self.sample_mod + self.sample_frequency) % CLOCK_SPEED;
             if self.sample_mod < self.sample_frequency {
+                let ch1_amp = ((WAVE_DUTY_TABLE[ch1_duty as usize] >> self.ch1_wave_duty_position) & 0x1) * self.ch1_current_volume;
+                let ch2_amp = ((WAVE_DUTY_TABLE[ch2_duty as usize] >> self.ch2_wave_duty_position) & 0x1) * self.ch2_current_volume;
                 let mut left = 0;
-                let ch2_amp = ((WAVE_DUTY_TABLE[duty as usize] >> self.ch2_wave_duty_position) & 0x1) * self.ch2_current_volume;
-                if channel2_left {
+                if ch1_left {
+                    left += ch1_amp;
+                };
+                if ch2_left {
                     left += ch2_amp;
                 };
                 let mut right = 0;
-                if channel2_right {
+                if ch1_right {
+                    right += ch1_amp;
+                };
+                if ch2_right {
                     right += ch2_amp;
                 };
                 self.output.push(left * volume_left);
@@ -238,7 +270,16 @@ impl SoundController {
             0x11 => self.nr11 = value,
             0x12 => self.nr12 = value,
             0x13 => self.nr13 = value,
-            0x14 => self.nr14 = value,
+            0x14 => {
+                if value & 0x80 != 0 {
+                    // restart sound
+                    self.ch1_period_timer = self.nr12 & 0x07;
+                    self.ch1_current_volume = (self.nr12 & 0xF0) >> 4;
+                    self.ch1_frequency_timer = 0;
+                    self.ch1_wave_duty_position = 0;
+                }
+                self.nr14 = value;
+            },
             0x16 => {
                 self.nr21 = value;
                 eprintln!("write nr21: {:02x}", value)

@@ -90,7 +90,7 @@ impl SoundSource for Buffer {
         }
         lock.drain(0..len);
 
-        len
+        buffer.len()
     }
 }
 
@@ -340,7 +340,7 @@ impl Emulator {
         let buffer = inter.0.sound.get_output(clock_count);
         let generated = buffer.len();
         let mut lock = self.audio_buffer.lock();
-        let consumed = self.last_buffer_len - lock.len();
+        let consumed = self.last_buffer_len as i64 - lock.len() as i64;
         lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
 
         println!("buffer: {:7} {:7} {:7}, {}", -(consumed as i64), lock.len(), lock.len() as i64 - self.last_buffer_len as i64, inter.0.sound.sample_frequency);

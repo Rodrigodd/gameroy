@@ -22,8 +22,15 @@ image = "0.23"
 parking_lot = "0.11"
 env_logger = "0.9"
 
+[profile.dev]
+opt-level = 1
+
 [profile.release]
 debug = true
 
 [profile.test]
 opt-level = 3
+
+[profile.dev.package.audio-engine]
+opt-level = 3
+# overflow-checks = false

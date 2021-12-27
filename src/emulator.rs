@@ -90,6 +90,8 @@ impl SoundSource for Buffer {
         }
         lock.drain(0..len);
 
+        // even if the writed length is smaller than the buffer, return the entire length to avoid
+        // the audio source to be reseted
         buffer.len()
     }
 }

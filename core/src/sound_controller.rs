@@ -63,6 +63,7 @@ pub struct SoundController {
     on: bool,
 
     ch1_channel_enable: bool,
+    ch1_length_timer: u8,
     ch1_sweep_enabled: bool,
     ch1_shadow_freq: u16,
     ch1_sweep_timer: u8,
@@ -72,6 +73,7 @@ pub struct SoundController {
     ch1_env_period_timer: u8,
 
     ch2_channel_enable: bool,
+    ch2_length_timer: u8,
     ch2_frequency_timer: u16,
     ch2_wave_duty_position: u8,
     ch2_current_volume: u8,
@@ -113,6 +115,7 @@ impl Default for SoundController {
             nr52: 0,
             on: false,
             ch1_channel_enable: false,
+            ch1_length_timer: 0,
             ch1_sweep_enabled: false,
             ch1_shadow_freq: 0,
             ch1_sweep_timer: 0,
@@ -121,6 +124,7 @@ impl Default for SoundController {
             ch1_current_volume: 0,
             ch1_env_period_timer: 0,
             ch2_channel_enable: false,
+            ch2_length_timer: 0,
             ch2_frequency_timer: 0,
             ch2_wave_duty_position: 0,
             ch2_current_volume: 0,
@@ -243,6 +247,21 @@ impl SoundController {
                     }
                 }
 
+                if lenght_ctr {
+                    if self.nr14 & 0x40 != 0 && self.ch1_length_timer != 0{
+                        self.ch1_length_timer -= 1;
+                        if self.ch1_length_timer == 0 {
+                            self.ch1_channel_enable = false;
+                        }
+                    }
+                    if self.nr24 & 0x40 != 0 && self.ch2_length_timer != 0{
+                        self.ch2_length_timer -= 1;
+                        if self.ch2_length_timer == 0 {
+                            self.ch2_channel_enable = false;
+                        }
+                    }
+                }
+
                 if volume_env {
                     env(
                         ch1_env_period,
@@ -356,9 +375,13 @@ impl SoundController {
                     let ch1_sweep_period = (self.nr10 & 0x70) >> 4;
                     let ch1_sweep_shift = self.nr10 & 0x7;
                     let ch1_sweep_direction = (self.nr10 & 0x80) != 0;
+                    let ch1_length_data = self.nr11 & 0x3F;
+                    self.ch1_channel_enable = true;
+                    if self.ch1_length_timer == 0 {
+                        self.ch1_length_timer = 64 - ch1_length_data;
+                    }
                     self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
                     self.ch1_wave_duty_position = 0;
-                    self.ch1_channel_enable = true;
                     self.ch1_sweep_timer = if ch1_sweep_period == 0 {
                         8
                     } else {
@@ -387,7 +410,11 @@ impl SoundController {
             0x19 => {
                 if value & 0x80 != 0 {
                     // Trigger event
+                    let ch2_length_data = self.nr21 & 0x3F;
                     self.ch2_channel_enable = true;
+                    if self.ch2_length_timer == 0 {
+                        self.ch2_length_timer = 64 - ch2_length_data;
+                    }
                     self.ch2_env_period_timer = self.nr22 & 0x07;
                     self.ch2_current_volume = (self.nr22 & 0xF0) >> 4;
                     self.ch2_frequency_timer = 0;

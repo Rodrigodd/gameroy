@@ -1,8 +1,9 @@
-use std::process::exit;
-
 use crate::consts::CLOCK_SPEED;
 
 // based mostly on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html#fnref:2
+
+// TODO:
+// - while NRx2 volume is zero, the channel need to always be disabled
 
 pub struct SoundController {
     // Sound Channel 1 - Tone & Sweep
@@ -39,7 +40,7 @@ pub struct SoundController {
     /// FF1E - NR34 - Channel 3 Frequency’s higher data (R/W)
     nr34: u8,
     /// FF30-FF3F - Wave Pattern RAM
-    wave_pattern: [u8; 16],
+    ch3_wave_pattern: [u8; 16],
 
     // Sound Channel 4 - Noise
     /// FF20 - NR41 - Channel 4 Sound Length (W)
@@ -79,8 +80,13 @@ pub struct SoundController {
     ch2_current_volume: u8,
     ch2_env_period_timer: u8,
 
+    ch3_channel_enable: bool,
+    ch3_length_timer: u16,
+    ch3_frequency_timer: u16,
+    ch3_wave_position: u8,
+
     /// Output Buffer
-    output: Vec<u8>,
+    output: Vec<u16>,
     /// Clock count at the last sound output
     last_clock: u64,
     /// The frequency in Hertz at which the sound controller is sampled.
@@ -105,7 +111,7 @@ impl Default for SoundController {
             nr32: 0,
             nr33: 0,
             nr34: 0,
-            wave_pattern: [0; 16],
+            ch3_wave_pattern: [0; 16],
             nr41: 0,
             nr42: 0,
             nr43: 0,
@@ -129,6 +135,10 @@ impl Default for SoundController {
             ch2_wave_duty_position: 0,
             ch2_current_volume: 0,
             ch2_env_period_timer: 0,
+            ch3_channel_enable: false,
+            ch3_length_timer: 0,
+            ch3_frequency_timer: 0,
+            ch3_wave_position: 0,
             output: Vec::default(),
             last_clock: 0,
             sample_frequency: 48_000,
@@ -141,7 +151,7 @@ const WAVE_DUTY_TABLE: [u8; 4] = [0b0000_0001, 0b0000_0011, 0b0000_1111, 0b1111_
 
 impl SoundController {
     /// Return the currently generated audio output. The buffer is cleared.
-    pub fn get_output(&mut self, clock_count: u64) -> Vec<u8> {
+    pub fn get_output(&mut self, clock_count: u64) -> Vec<u16> {
         self.update(clock_count);
         std::mem::take(&mut self.output)
     }
@@ -180,19 +190,26 @@ impl SoundController {
         let ch1_sweep_shift = self.nr10 & 0x7;
         let ch1_env_period = self.nr12 & 0x7;
         let ch1_env_direction = (self.nr12 & 0x08) != 0;
+
         // channel 2
         let ch2_duty = (self.nr21 >> 6) & 0x3;
         let ch2_freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
         let ch2_period = self.nr22 & 0x7;
         let ch2_env_direction = (self.nr22 & 0x08) != 0;
 
+        // channel 3
+        let ch3_output_level = [4, 0, 1, 2][(self.nr32 as usize & 0x60) >> 5];
+        let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
+
         // mixing
         let volume_left = (self.nr50 & 0x70) >> 4;
         let ch1_left = (self.nr51 & 0x10) != 0;
         let ch2_left = (self.nr51 & 0x20) != 0;
+        let ch3_left = (self.nr51 & 0x40) != 0;
         let volume_right = self.nr50 & 0x7;
         let ch1_right = (self.nr51 & 0x01) != 0;
         let ch2_right = (self.nr51 & 0x02) != 0;
+        let ch3_right = (self.nr51 & 0x04) != 0;
         for clock in self.last_clock..clock_count {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
             if self.ch1_frequency_timer <= 1 {
@@ -211,6 +228,14 @@ impl SoundController {
                 self.ch2_frequency_timer -= 1;
             }
 
+            if self.ch3_frequency_timer <= 1 {
+                // Frequency Timer = (2048 - Frequency) * 4;
+                self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
+                self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
+            } else {
+                self.ch3_frequency_timer -= 1;
+            }
+
             // frame sequencer
 
             // TODO: a step should happens in a falling edge of the bit 5 of the DIV timer.
@@ -220,49 +245,55 @@ impl SoundController {
                 let volume_env = (clock % (CLOCK_SPEED / 64)) == 0;
                 let sweep = ((clock + CLOCK_SPEED / 256) % (CLOCK_SPEED / 128)) == 0;
 
-                fn env(
-                    period: u8,
-                    period_timer: &mut u8,
-                    current_volume: &mut u8,
-                    is_upwards: bool,
-                ) {
-                    if period != 0 {
-                        if *period_timer > 0 {
-                            *period_timer -= 1;
-                        }
-
-                        if *period_timer == 0 {
-                            *period_timer = period;
-
-                            if (*current_volume < 0xF && is_upwards)
-                                || (*current_volume > 0x0 && !is_upwards)
-                            {
-                                if is_upwards {
-                                    *current_volume += 1;
-                                } else {
-                                    *current_volume -= 1;
-                                }
-                            }
-                        }
-                    }
-                }
-
                 if lenght_ctr {
-                    if self.nr14 & 0x40 != 0 && self.ch1_length_timer != 0{
+                    if self.nr14 & 0x40 != 0 && self.ch1_length_timer != 0 {
                         self.ch1_length_timer -= 1;
                         if self.ch1_length_timer == 0 {
                             self.ch1_channel_enable = false;
                         }
                     }
-                    if self.nr24 & 0x40 != 0 && self.ch2_length_timer != 0{
+                    if self.nr24 & 0x40 != 0 && self.ch2_length_timer != 0 {
                         self.ch2_length_timer -= 1;
                         if self.ch2_length_timer == 0 {
                             self.ch2_channel_enable = false;
                         }
                     }
+                    if self.nr34 & 0x40 != 0 && self.ch3_length_timer != 0 {
+                        self.ch3_length_timer -= 1;
+                        if self.ch3_length_timer == 0 {
+                            self.ch3_channel_enable = false;
+                        }
+                    }
                 }
 
                 if volume_env {
+                    fn env(
+                        period: u8,
+                        period_timer: &mut u8,
+                        current_volume: &mut u8,
+                        is_upwards: bool,
+                    ) {
+                        if period != 0 {
+                            if *period_timer > 0 {
+                                *period_timer -= 1;
+                            }
+
+                            if *period_timer == 0 {
+                                *period_timer = period;
+
+                                if (*current_volume < 0xF && is_upwards)
+                                    || (*current_volume > 0x0 && !is_upwards)
+                                {
+                                    if is_upwards {
+                                        *current_volume += 1;
+                                    } else {
+                                        *current_volume -= 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     env(
                         ch1_env_period,
                         &mut self.ch1_env_period_timer,
@@ -318,33 +349,41 @@ impl SoundController {
                 let ch2_amp = ((WAVE_DUTY_TABLE[ch2_duty as usize] >> self.ch2_wave_duty_position)
                     & 0x1)
                     * self.ch2_current_volume;
+                let ch3_amp = ((self.ch3_wave_pattern[self.ch3_wave_position as usize / 2]
+                    >> [4, 0][self.ch3_wave_position as usize % 2])
+                    & 0xF)
+                    >> ch3_output_level;
                 let mut left = 0;
                 let mut right = 0;
                 if self.ch1_channel_enable {
                     if ch1_left {
-                        left += ch1_amp;
+                        left += ch1_amp as u16;
                     }
                     if ch1_right {
-                        right += ch1_amp;
+                        right += ch1_amp as u16;
                     }
                 }
                 if self.ch2_channel_enable {
                     if ch2_left {
-                        left += ch2_amp;
+                        left += ch2_amp as u16;
                     }
                     if ch2_right {
-                        right += ch2_amp;
+                        right += ch2_amp as u16;
                     }
                 }
-                self.output.push(left * volume_left);
-                self.output.push(right * volume_right);
+                if self.ch3_channel_enable && self.nr30 & 0x80 != 0 {
+                    if ch3_left {
+                        left += ch3_amp as u16;
+                    }
+                    if ch3_right {
+                        right += ch3_amp as u16;
+                    }
+                }
+                self.output.push(left * volume_left as u16);
+                self.output.push(right * volume_right as u16);
             }
         }
         self.last_clock = clock_count;
-        if self.output.len() > 2 * 1200_000 {
-            std::fs::write("audio.pcm", &self.output).unwrap();
-            exit(0);
-        }
     }
 
     fn calculate_frequency(&mut self, ch1_sweep_shift: u8, is_downwards: bool) -> u16 {
@@ -365,7 +404,11 @@ impl SoundController {
         self.update(clock_count);
         match address {
             0x10 => self.nr10 = value,
-            0x11 => self.nr11 = value,
+            0x11 => {
+                self.nr11 = value;
+                let ch1_length_data = self.nr11 & 0x3F;
+                self.ch1_length_timer = 64 - ch1_length_data;
+            }
             0x12 => self.nr12 = value,
             0x13 => self.nr13 = value,
             0x14 => {
@@ -375,10 +418,9 @@ impl SoundController {
                     let ch1_sweep_period = (self.nr10 & 0x70) >> 4;
                     let ch1_sweep_shift = self.nr10 & 0x7;
                     let ch1_sweep_direction = (self.nr10 & 0x80) != 0;
-                    let ch1_length_data = self.nr11 & 0x3F;
                     self.ch1_channel_enable = true;
                     if self.ch1_length_timer == 0 {
-                        self.ch1_length_timer = 64 - ch1_length_data;
+                        self.ch1_length_timer = 64;
                     }
                     self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
                     self.ch1_wave_duty_position = 0;
@@ -405,28 +447,58 @@ impl SoundController {
             0x17 => self.nr22 = value,
             0x18 => {
                 self.nr23 = value;
+                let ch2_length_data = self.nr21 & 0x3F;
+                self.ch2_length_timer = 64 - ch2_length_data;
                 eprintln!("write nr23: {:02x}", value)
             }
             0x19 => {
                 if value & 0x80 != 0 {
                     // Trigger event
-                    let ch2_length_data = self.nr21 & 0x3F;
+                    let ch2_freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
                     self.ch2_channel_enable = true;
                     if self.ch2_length_timer == 0 {
-                        self.ch2_length_timer = 64 - ch2_length_data;
+                        self.ch2_length_timer = 64
                     }
                     self.ch2_env_period_timer = self.nr22 & 0x07;
                     self.ch2_current_volume = (self.nr22 & 0xF0) >> 4;
-                    self.ch2_frequency_timer = 0;
+                    self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
                     self.ch2_wave_duty_position = 0;
                 }
                 self.nr24 = value;
+                eprintln!("write nr24: {:02x}", value)
             }
-            0x1A => self.nr30 = value,
-            0x1B => self.nr31 = value,
-            0x1C => self.nr32 = value,
-            0x1D => self.nr33 = value,
-            0x1E => self.nr34 = value,
+            0x1A => {
+                self.nr30 = value;
+                eprintln!("write nr30: {:02x}", value)
+            }
+            0x1B => {
+                self.nr31 = value;
+                let ch3_length_data = self.nr31;
+                self.ch3_length_timer = 256 - ch3_length_data as u16;
+                eprintln!("write nr31: {:02x}", value)
+            }
+            0x1C => {
+                self.nr32 = value;
+                eprintln!("write nr32: {:02x}", value)
+            },
+            0x1D => {
+                self.nr33 = value;
+                eprintln!("write nr33: {:02x}", value)
+            },
+            0x1E => {
+                if value & 0x80 != 0 {
+                    // Trigger event
+                    let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
+                    self.ch3_channel_enable = true;
+                    if self.ch3_length_timer == 0 {
+                        self.ch3_length_timer = 256;
+                    }
+                    self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
+                    self.ch3_wave_position = 0;
+                }
+                self.nr34 = value;
+                eprintln!("write nr34: {:02x}", value)
+            }
             0x20 => self.nr41 = value,
             0x21 => self.nr42 = value,
             0x22 => self.nr43 = value,
@@ -450,7 +522,7 @@ impl SoundController {
                     self.on = true;
                 }
             }
-            0x30..=0x3F => self.wave_pattern[address as usize - 0x30] = value,
+            0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30] = value,
             _ => unreachable!(),
         }
     }
@@ -478,7 +550,7 @@ impl SoundController {
             0x24 => self.nr50,
             0x25 => self.nr51,
             0x26 => self.nr52,
-            0x30..=0x3F => self.wave_pattern[address as usize - 0x30],
+            0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
             _ => unreachable!(),
         }
     }

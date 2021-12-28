@@ -85,6 +85,14 @@ pub struct SoundController {
     ch3_frequency_timer: u16,
     ch3_wave_position: u8,
 
+    ch4_channel_enable: bool,
+    ch4_length_timer: u8,
+    ch4_current_volume: u8,
+    ch4_env_period_timer: u8,
+    ch4_lfsr: u16,
+    ch4_polynomial_counter: u8,
+    ch4_frequency_timer: u16,
+
     /// Output Buffer
     output: Vec<u16>,
     /// Clock count at the last sound output
@@ -139,6 +147,13 @@ impl Default for SoundController {
             ch3_length_timer: 0,
             ch3_frequency_timer: 0,
             ch3_wave_position: 0,
+            ch4_channel_enable: false,
+            ch4_length_timer: 0,
+            ch4_current_volume: 0,
+            ch4_env_period_timer: 0,
+            ch4_lfsr: 0,
+            ch4_polynomial_counter: 0,
+            ch4_frequency_timer: 0,
             output: Vec::default(),
             last_clock: 0,
             sample_frequency: 48_000,
@@ -194,22 +209,31 @@ impl SoundController {
         // channel 2
         let ch2_duty = (self.nr21 >> 6) & 0x3;
         let ch2_freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
-        let ch2_period = self.nr22 & 0x7;
+        let ch2_env_period = self.nr22 & 0x7;
         let ch2_env_direction = (self.nr22 & 0x08) != 0;
 
         // channel 3
         let ch3_output_level = [4, 0, 1, 2][(self.nr32 as usize & 0x60) >> 5];
         let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
 
+        // channel 4
+        let ch4_env_period = self.nr42 & 0x7;
+        let ch4_env_direction = (self.nr42 & 0x08) != 0;
+        let ch4_shift_amount = (self.nr43 & 0xF0) >> 4;
+        let ch4_counter_width = (self.nr43 & 0x08) != 0;
+        let ch4_divisor: u16 = [8, 16, 32, 48, 64, 80, 96, 112][self.nr43 as usize & 0x07];
+
         // mixing
         let volume_left = (self.nr50 & 0x70) >> 4;
         let ch1_left = (self.nr51 & 0x10) != 0;
         let ch2_left = (self.nr51 & 0x20) != 0;
         let ch3_left = (self.nr51 & 0x40) != 0;
+        let ch4_left = (self.nr51 & 0x80) != 0;
         let volume_right = self.nr50 & 0x7;
         let ch1_right = (self.nr51 & 0x01) != 0;
         let ch2_right = (self.nr51 & 0x02) != 0;
         let ch3_right = (self.nr51 & 0x04) != 0;
+        let ch4_right = (self.nr51 & 0x08) != 0;
         for clock in self.last_clock..clock_count {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
             if self.ch1_frequency_timer <= 1 {
@@ -221,7 +245,6 @@ impl SoundController {
             }
 
             if self.ch2_frequency_timer <= 1 {
-                // Frequency Timer = (2048 - Frequency) * 4;
                 self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
                 self.ch2_wave_duty_position = (self.ch2_wave_duty_position + 1) % 8;
             } else {
@@ -229,11 +252,22 @@ impl SoundController {
             }
 
             if self.ch3_frequency_timer <= 1 {
-                // Frequency Timer = (2048 - Frequency) * 4;
                 self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
                 self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
             } else {
                 self.ch3_frequency_timer -= 1;
+            }
+
+            if self.ch4_frequency_timer <= 1 {
+                self.ch4_frequency_timer = ch4_divisor << ch4_shift_amount;
+                let xor = (self.ch4_lfsr & 0x1 != 0) ^ (self.ch4_lfsr & 0x2 != 0);
+                self.ch4_lfsr = (self.ch4_lfsr >> 1) | ((xor as u16) << 14);
+                if ch4_counter_width {
+                    self.ch4_lfsr &= !(1 << 6);
+                    self.ch4_lfsr |= (xor as u16) << 6;
+                }
+            } else {
+                self.ch4_frequency_timer -= 1;
             }
 
             // frame sequencer
@@ -262,6 +296,12 @@ impl SoundController {
                         self.ch3_length_timer -= 1;
                         if self.ch3_length_timer == 0 {
                             self.ch3_channel_enable = false;
+                        }
+                    }
+                    if self.nr44 & 0x40 != 0 && self.ch4_length_timer != 0 {
+                        self.ch4_length_timer -= 1;
+                        if self.ch4_length_timer == 0 {
+                            self.ch4_channel_enable = false;
                         }
                     }
                 }
@@ -301,10 +341,16 @@ impl SoundController {
                         ch1_env_direction,
                     );
                     env(
-                        ch2_period,
+                        ch2_env_period,
                         &mut self.ch2_env_period_timer,
                         &mut self.ch2_current_volume,
                         ch2_env_direction,
+                    );
+                    env(
+                        ch4_env_period,
+                        &mut self.ch4_env_period_timer,
+                        &mut self.ch4_current_volume,
+                        ch4_env_direction,
                     );
                 }
 
@@ -353,6 +399,7 @@ impl SoundController {
                     >> [4, 0][self.ch3_wave_position as usize % 2])
                     & 0xF)
                     >> ch3_output_level;
+                let ch4_amp = ((!self.ch4_lfsr as u8) & 0x01) * self.ch4_current_volume;
                 let mut left = 0;
                 let mut right = 0;
                 if self.ch1_channel_enable {
@@ -377,6 +424,14 @@ impl SoundController {
                     }
                     if ch3_right {
                         right += ch3_amp as u16;
+                    }
+                }
+                if self.ch4_channel_enable {
+                    if ch4_left {
+                        left += ch4_amp as u16;
+                    }
+                    if ch4_right {
+                        right += ch4_amp as u16;
                     }
                 }
                 self.output.push(left * volume_left as u16);
@@ -480,11 +535,11 @@ impl SoundController {
             0x1C => {
                 self.nr32 = value;
                 eprintln!("write nr32: {:02x}", value)
-            },
+            }
             0x1D => {
                 self.nr33 = value;
                 eprintln!("write nr33: {:02x}", value)
-            },
+            }
             0x1E => {
                 if value & 0x80 != 0 {
                     // Trigger event
@@ -499,10 +554,36 @@ impl SoundController {
                 self.nr34 = value;
                 eprintln!("write nr34: {:02x}", value)
             }
-            0x20 => self.nr41 = value,
-            0x21 => self.nr42 = value,
-            0x22 => self.nr43 = value,
-            0x23 => self.nr44 = value,
+            0x20 => {
+                self.nr41 = value;
+                eprintln!("write nr41: {:02x}", value)
+            }
+            0x21 => {
+                self.nr42 = value;
+                eprintln!("write nr42: {:02x}", value)
+            }
+            0x22 => {
+                self.nr43 = value;
+                eprintln!("write nr43: {:02x}", value)
+            }
+            0x23 => {
+                if value & 0x80 != 0 {
+                    // Trigger event
+                    let ch4_divisor = [8, 16, 32, 48, 64, 80, 96, 112][self.nr43 as usize & 0x07];
+                    let ch4_shift_amount = (self.nr43 & 0xF0) >> 4;
+                    self.ch4_channel_enable = true;
+                    if self.ch4_length_timer == 0 {
+                        self.ch4_length_timer = 64;
+                    }
+                    self.ch4_frequency_timer = ch4_divisor << ch4_shift_amount;
+                    self.ch4_lfsr = 0x7FFF;
+                    self.ch4_env_period_timer = self.nr42 & 0x07;
+                    self.ch4_current_volume = (self.nr42 & 0xF0) >> 4;
+                    // TODO: if DAC is off, disable the channel
+                }
+                self.nr44 = value;
+                eprintln!("write nr44: {:02x}", value)
+            }
             0x24 => {
                 self.nr50 = value;
                 eprintln!("write nr50: {:02x}", value)

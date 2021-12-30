@@ -57,8 +57,8 @@ pub struct SoundController {
     nr50: u8,
     /// FF25 - NR51 - Selection of Sound output terminal (R/W)
     nr51: u8,
-    /// FF26 - NR52 - Sound on/off
-    nr52: u8,
+    // FF26 - NR52 - Sound on/off
+    // nr52: u8, this is replaced by `on` and `chX_channel_enable`s
 
     /// All sound on/off
     on: bool,
@@ -90,12 +90,11 @@ pub struct SoundController {
     ch4_current_volume: u8,
     ch4_env_period_timer: u8,
     ch4_lfsr: u16,
-    ch4_polynomial_counter: u8,
     ch4_frequency_timer: u16,
 
     /// Output Buffer
     output: Vec<u16>,
-    /// Clock count at the last sound output
+    /// Clock count at the last sound update
     last_clock: u64,
     /// The frequency in Hertz at which the sound controller is sampled.
     pub sample_frequency: u64,
@@ -119,14 +118,16 @@ impl Default for SoundController {
             nr32: 0,
             nr33: 0,
             nr34: 0,
-            ch3_wave_pattern: [0; 16],
+            ch3_wave_pattern: [
+                0x84, 0x40, 0x43, 0xAA, 0x2D, 0x78, 0x92, 0x3C, 0x60, 0x59, 0x59, 0xB0, 0x34, 0xB8,
+                0x2E, 0xDA,
+            ],
             nr41: 0,
             nr42: 0,
             nr43: 0,
             nr44: 0,
             nr50: 0,
             nr51: 0,
-            nr52: 0,
             on: false,
             ch1_channel_enable: false,
             ch1_length_timer: 0,
@@ -152,7 +153,6 @@ impl Default for SoundController {
             ch4_current_volume: 0,
             ch4_env_period_timer: 0,
             ch4_lfsr: 0,
-            ch4_polynomial_counter: 0,
             ch4_frequency_timer: 0,
             output: Vec::default(),
             last_clock: 0,
@@ -492,6 +492,9 @@ impl SoundController {
 
                     self.ch1_env_period_timer = self.nr12 & 0x07;
                     self.ch1_current_volume = (self.nr12 & 0xF0) >> 4;
+                    if self.nr12 & 0xF8 == 0 {
+                        self.ch1_channel_enable = false;
+                    }
                 }
                 self.nr14 = value;
             }
@@ -518,6 +521,9 @@ impl SoundController {
                     self.ch2_current_volume = (self.nr22 & 0xF0) >> 4;
                     self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
                     self.ch2_wave_duty_position = 0;
+                    if self.nr22 & 0xF8 == 0 {
+                        self.ch2_channel_enable = false;
+                    }
                 }
                 self.nr24 = value;
                 eprintln!("write nr24: {:02x}", value)
@@ -550,6 +556,9 @@ impl SoundController {
                     }
                     self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
                     self.ch3_wave_position = 0;
+                    if self.nr30 & 0x80 == 0 {
+                        self.ch1_sweep_enabled = false;
+                    }
                 }
                 self.nr34 = value;
                 eprintln!("write nr34: {:02x}", value)
@@ -579,7 +588,9 @@ impl SoundController {
                     self.ch4_lfsr = 0x7FFF;
                     self.ch4_env_period_timer = self.nr42 & 0x07;
                     self.ch4_current_volume = (self.nr42 & 0xF0) >> 4;
-                    // TODO: if DAC is off, disable the channel
+                    if self.nr42 & 0xF8 == 0 {
+                        self.ch1_sweep_enabled = false;
+                    }
                 }
                 self.nr44 = value;
                 eprintln!("write nr44: {:02x}", value)
@@ -594,13 +605,21 @@ impl SoundController {
             }
             0x26 => {
                 eprintln!("write nr52: {:02x}", value);
-                // Bit 7 stop all sounds
+                // Bit 7 turn off the sound
                 if value & 0x80 == 0 {
                     self.on = false;
-                    // and reset all registers
-                    *self = Self::default();
                 } else {
                     self.on = true;
+                    // Most register were reset while the sound was off
+                    *self = Self {
+                        ch3_wave_pattern: self.ch3_wave_pattern,
+                        // On DMG, load counters can be written to, while off
+                        nr11: self.nr11 & 0x3F,
+                        nr21: self.nr21 & 0x3F,
+                        nr31: self.nr31 & 0xFF,
+                        nr41: self.nr41 & 0x3F,
+                        ..Self::default()
+                    };
                 }
             }
             0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30] = value,
@@ -610,27 +629,34 @@ impl SoundController {
 
     pub fn read(&mut self, address: u8) -> u8 {
         match address {
-            0x10 => self.nr10,
-            0x11 => self.nr11,
-            0x12 => self.nr12,
-            0x13 => self.nr13,
-            0x14 => self.nr14,
-            0x16 => self.nr21,
-            0x17 => self.nr22,
-            0x18 => self.nr23,
-            0x19 => self.nr24,
-            0x1A => self.nr30,
-            0x1B => self.nr31,
-            0x1C => self.nr32,
-            0x1D => self.nr33,
-            0x1E => self.nr34,
-            0x20 => self.nr41,
-            0x21 => self.nr42,
-            0x22 => self.nr43,
-            0x23 => self.nr44,
-            0x24 => self.nr50,
-            0x25 => self.nr51,
-            0x26 => self.nr52,
+            0x10 => self.nr10 | 0x80,
+            0x11 => self.nr11 | 0x3F,
+            0x12 => self.nr12 | 0x00,
+            0x13 => self.nr13 | 0xFF,
+            0x14 => self.nr14 | 0xBF,
+            0x16 => self.nr21 | 0x3F,
+            0x17 => self.nr22 | 0x00,
+            0x18 => self.nr23 | 0xFF,
+            0x19 => self.nr24 | 0xBF,
+            0x1A => self.nr30 | 0x7F,
+            0x1B => self.nr31 | 0xFF,
+            0x1C => self.nr32 | 0x9F,
+            0x1D => self.nr33 | 0xFF,
+            0x1E => self.nr34 | 0xBF,
+            0x20 => self.nr41 | 0xFF,
+            0x21 => self.nr42 | 0x00,
+            0x22 => self.nr43 | 0x00,
+            0x23 => self.nr44 | 0xBF,
+            0x24 => self.nr50 | 0x00,
+            0x25 => self.nr51 | 0x00,
+            0x26 => {
+                ((self.on as u8) << 7)
+                    | ((self.ch4_channel_enable as u8) << 3)
+                    | ((self.ch3_channel_enable as u8) << 2)
+                    | ((self.ch2_channel_enable as u8) << 1)
+                    | ((self.ch1_channel_enable as u8) << 0)
+                    | 0x70
+            }
             0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
             _ => unreachable!(),
         }

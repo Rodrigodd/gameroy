@@ -14,7 +14,7 @@ use crate::{
 };
 use crui::{
     graphics::{Graphic, Text},
-    layouts::{FitText, MarginLayout, VBoxLayout},
+    layouts::{FitText, HBoxLayout, MarginLayout, VBoxLayout},
     text::TextStyle,
     widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback},
     BuilderContext, Context, ControlBuilder, Id, RectFill,
@@ -151,10 +151,41 @@ impl ListBuilder for DissasemblerList {
             let (scroll_value, reg_text) = {
                 let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
 
+                fn decimal_mark(n: u64) -> String {
+                    let s = n.to_string();
+                    let mut result = String::with_capacity(s.len() + ((s.len() - 1) / 3));
+                    let mut i = s.len();
+                    for c in s.chars() {
+                        result.push(c);
+                        i -= 1;
+                        if i > 0 && i % 3 == 0 {
+                            result.push(' ');
+                        }
+                    }
+                    result
+                }
+
                 let cpu = &inter.0.cpu;
                 let reg_text = format!(
-                    "AF: {:02x} {:02x}\nBC: {:02x} {:02x}\nDE: {:02x} {:02x}\nHL: {:02x} {:02x}\nSP: {:04x} \nPC: {:04x}",
-                    cpu.a, cpu.f.0, cpu.b, cpu.c, cpu.d, cpu.e, cpu.h, cpu.l, cpu.sp, cpu.pc
+                    "\
+clock: {}
+AF: {:02x} {:02x}
+BC: {:02x} {:02x}
+DE: {:02x} {:02x}
+HL: {:02x} {:02x}
+SP: {:04x}
+PC: {:04x}",
+                    decimal_mark(inter.0.clock_count),
+                    cpu.a,
+                    cpu.f.0,
+                    cpu.b,
+                    cpu.c,
+                    cpu.d,
+                    cpu.e,
+                    cpu.h,
+                    cpu.l,
+                    cpu.sp,
+                    cpu.pc
                 );
 
                 let trace = inter.0.trace.borrow();
@@ -178,7 +209,10 @@ impl ListBuilder for DissasemblerList {
 
                 let pc = cpu.pc;
                 let bank = inter.0.cartridge.curr_bank();
-                self.pc = Some(Address::from_pc(Some(bank), pc).unwrap_or(Address { address: pc, bank: 0xFF }));
+                self.pc = Some(Address::from_pc(Some(bank), pc).unwrap_or(Address {
+                    address: pc,
+                    bank: 0xFF,
+                }));
                 let pc = self.pc.unwrap();
 
                 let mut scroll_value = None;
@@ -226,10 +260,6 @@ impl ListBuilder for DissasemblerList {
 
         let trace = inter.0.trace.borrow();
         let directive = self.directives[index].clone();
-
-        let pc = inter.0.cpu.pc;
-        let bank = inter.0.cartridge.curr_bank();
-        let pc = Address::from_pc(Some(bank), pc).unwrap_or(Address { bank: 0xFF, address: pc });
         let graphic = self.graphic(directive, trace, self.pc);
         cb.graphic(graphic).layout(FitText)
     }
@@ -266,7 +296,14 @@ pub fn build(
         .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
         .build(ctx);
 
-    let stack = ctx.create_control().parent(vbox).expand_y(true).build(ctx);
+    let h_box = ctx
+        .create_control()
+        .parent(vbox)
+        .layout(HBoxLayout::default())
+        .expand_y(true)
+        .build(ctx);
+
+    let ignore_min_width = ctx.create_control().parent(h_box).expand_x(true).build(ctx);
 
     list(
         ctx.create_control_reserved(list_id),
@@ -281,7 +318,7 @@ pub fn build(
             _emulator_updated_event: event_table.register(list_id),
         },
     )
-    .parent(stack)
+    .parent(ignore_min_width)
     .build(ctx);
 
     let caret = ctx.reserve();
@@ -289,11 +326,18 @@ pub fn build(
 
     let _reg_view = ctx
         .create_control()
+        .parent(h_box)
         .child_reserved(reg_id, ctx, |cb, _| {
             cb.graphic(
                 Text::new(
                     format!(
-                        "AF: {:02x} {:02x}\nBC: {:02x} {:02x}\nDE: {:02x} {:02x}\nHL: {:02x} {:02x}\nSP: {:04x} \nPC: {:04x}",
+                        "\
+AF: {:02x} {:02x}
+BC: {:02x} {:02x}
+DE: {:02x} {:02x}
+HL: {:02x} {:02x}
+SP: {:04x}
+PC: {:04x}",
                         0, 0, 0, 0, 0, 0, 0, 0, 0, 0
                     ),
                     (-1, 0),
@@ -303,11 +347,8 @@ pub fn build(
             )
             .layout(FitText)
         })
-        .parent(stack)
         .layout(MarginLayout::default())
-        .graphic(style.background.clone())
-        .fill_x(RectFill::ShrinkEnd)
-        .fill_y(RectFill::ShrinkEnd)
+        .graphic(style.split_background.clone())
         .build(ctx);
 
     let text_field = ctx

@@ -113,7 +113,7 @@ impl GameBoy {
         self.memory.len()
     }
 
-    pub fn read(&mut self, mut address: u16) -> u8 {
+    pub fn read(&self, mut address: u16) -> u8 {
         if address < 0x100 && self.boot_rom_active {
             return self.boot_rom[address as usize];
         }
@@ -208,7 +208,7 @@ impl GameBoy {
         }
     }
 
-    fn read_io(&mut self, address: u8) -> u8 {
+    fn read_io(&self, address: u8) -> u8 {
         match address {
             0x00 => {
                 // JOYPAD

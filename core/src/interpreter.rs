@@ -117,13 +117,20 @@ impl Interpreter {
 
     /// Set the value of the cpu PC, but also update the dissasembly tracing
     fn jump_to(&mut self, address: u16) {
+        let pc = self.0.cpu.pc;
         self.0.cpu.pc = address;
         let bank = self.0.cartridge.curr_bank();
         let mut trace = self.0.trace.borrow_mut();
 
-        // check early if this address is already traced or out of rom, and return if it is
-        if trace.is_already_traced(bank, address) {
+        // check early if this address is already traced, and return if it is
+        if address <= 0x3FFF && trace.is_already_traced(bank, address) {
             return;
+        }
+        
+        
+        if pc <= 0x3FFF && address > 0x3FFF {
+            // if it is entring the ram, clear its trace, because the ram could have changed
+            trace.clear_ram_trace();
         }
 
         trace.trace_starting_at(

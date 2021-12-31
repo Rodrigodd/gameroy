@@ -17,7 +17,7 @@ use crui::{
     layouts::{FitText, MarginLayout, VBoxLayout},
     text::TextStyle,
     widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback},
-    BuilderContext, Context, ControlBuilder, Gui, Id, RectFill,
+    BuilderContext, Context, ControlBuilder, Id, RectFill,
 };
 use gameroy::{
     disassembler::{Address, Directive},
@@ -110,11 +110,23 @@ impl DissasemblerList {
         pc: Option<Address>,
     ) -> Graphic {
         let curr = direc.address;
-        let mut text = format!("{:16} ", trace.labels.get(&curr).map_or("", |x| &x.name));
+        let mut text = format!(
+            "{:04x} {:16} ",
+            curr.address,
+            trace
+                .labels
+                .get(&curr)
+                .map(|x| x.name.as_str())
+                .or_else(|| trace.ram_labels.get(&curr.address).map(|x| x.as_str()))
+                .unwrap_or("")
+        );
         let label = |pc, x| {
             if let Some(address) = trace.jumps.get(&pc) {
                 let name = trace.labels.get(&address).unwrap().name.clone();
                 return name;
+            }
+            if let Some(name) = trace.ram_labels.get(&x) {
+                return name.clone();
             }
             format!("${:04x}", x)
         };
@@ -149,20 +161,31 @@ impl ListBuilder for DissasemblerList {
 
                 self.directives.clear();
                 self.directives.extend(trace.directives.iter().cloned());
+                self.directives
+                    .extend(trace.ram_directives.iter().map(|&(address, op, len)| {
+                        // TODO: I am violating my own rule about Address being only rom addresses.
+                        // Maybe I should not have this rule, or have multiple address Types.
+                        Directive {
+                            address: Address {
+                                bank: 0xFF,
+                                address,
+                            },
+                            len: len as u16,
+                            op,
+                        }
+                    }));
+                debug_assert!(self.directives.windows(2).all(|x| x[0] <= x[1]));
 
                 let pc = cpu.pc;
                 let bank = inter.0.cartridge.curr_bank();
-                self.pc = Address::from_pc(Some(bank), pc);
-                let pc = match self.pc {
-                    Some(x) => x,
-                    _ => Address { address: pc, bank },
-                };
+                self.pc = Some(Address::from_pc(Some(bank), pc).unwrap_or(Address { address: pc, bank: 0xFF }));
+                let pc = self.pc.unwrap();
 
                 let mut scroll_value = None;
                 let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));
                 match pos {
                     Ok(pos) => {
-                        let len = trace.directives.len();
+                        let len = self.directives.len();
                         scroll_value = Some(pos as f32 / len as f32);
                     }
                     _ => {}
@@ -206,8 +229,8 @@ impl ListBuilder for DissasemblerList {
 
         let pc = inter.0.cpu.pc;
         let bank = inter.0.cartridge.curr_bank();
-        let pc = Address::from_pc(Some(bank), pc);
-        let graphic = self.graphic(directive, trace, pc);
+        let pc = Address::from_pc(Some(bank), pc).unwrap_or(Address { bank: 0xFF, address: pc });
+        let graphic = self.graphic(directive, trace, self.pc);
         cb.graphic(graphic).layout(FitText)
     }
 

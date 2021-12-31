@@ -91,7 +91,7 @@ struct Cursor {
 }
 impl Cursor {
     /// Return the opcode, and the length
-    fn get_op<'a>(&self, rom: &'a [u8]) -> (&'a [u8], u8) {
+    fn get_op(&self, rom: &GameBoy) -> ([u8; 3], u8) {
         let bank;
         let offset = if (0x4000..=0x7FFF).contains(&self.pc) {
             bank = self.bank.expect("I don't know what I am doing");
@@ -100,15 +100,27 @@ impl Cursor {
             bank = 0;
             self.pc as usize
         } else {
-            todo!("I don't know if this is reachable yet")
+            let op = [
+                rom.read(self.pc),
+                rom.read(self.pc.wrapping_add(1)),
+                rom.read(self.pc.wrapping_add(2)),
+            ];
+            let len = consts::LEN[op[0] as usize];
+            return (op, len);
         };
+
+        let rom = &rom.cartridge.rom();
 
         let i = bank as usize * 0x4000 + offset;
 
         let op = rom[i];
         let len = consts::LEN[op as usize];
+        let op = &rom[i..i + len as usize];
 
-        (&rom[i..i + len as usize], len)
+        let mut op_array = [0; 3];
+        op_array[0..len as usize].copy_from_slice(op);
+
+        (op_array, len)
     }
 }
 
@@ -131,6 +143,13 @@ pub struct Trace {
     pub labels: BTreeMap<Address, Label>,
     /// Map from a opcode (like jp or call) to another address
     pub jumps: BTreeMap<Address, Address>,
+
+    /// Ranges of ram memory where code is being executed
+    pub ram_code_ranges: Vec<Range<u16>>,
+    /// Dissasembled directives in ram
+    pub ram_directives: BTreeSet<(u16, [u8; 3], u8)>,
+    /// Map beetween a ram address and a label
+    pub ram_labels: BTreeMap<u16, String>,
 }
 impl Trace {
     pub fn new() -> Self {
@@ -139,6 +158,9 @@ impl Trace {
             code_ranges: Vec::new(),
             labels: Default::default(),
             jumps: Default::default(),
+            ram_code_ranges: Vec::new(),
+            ram_directives: BTreeSet::new(),
+            ram_labels: BTreeMap::new(),
         };
 
         //         const ENTRY_POINT: u16 = 0x0;
@@ -174,7 +196,7 @@ impl Trace {
             queue[i] = pc;
             i = (i + 1) % LOOK_ABOVE as usize;
             c += 1;
-            let (_, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
+            let (_, len) = pc.as_cursor().get_op(rom);
             pc.address += len as u16;
         }
         if c < LOOK_ABOVE {
@@ -193,16 +215,16 @@ impl Trace {
         };
         while pc < curr {
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
-            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
-            disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
+            let (op, len) = pc.as_cursor().get_op(rom);
+            disassembly_opcode(pc.address, &op[0..len as usize], |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
         }
 
         let mut pc = curr;
         write!(w, ">>{:02x}_{:04x}: ", pc.bank, pc.address)?;
-        let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
-        disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
+        let (op, len) = pc.as_cursor().get_op(rom);
+        disassembly_opcode(pc.address, &op[0..len as usize], |x| label(pc, x), w)?;
         writeln!(w)?;
         pc.address += len as u16;
 
@@ -214,8 +236,8 @@ impl Trace {
                 break;
             }
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
-            let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
-            disassembly_opcode(pc.address, op, |x| label(pc, x), w)?;
+            let (op, len) = pc.as_cursor().get_op(rom);
+            disassembly_opcode(pc.address, &op[0..len as usize], |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
         }
@@ -246,9 +268,7 @@ impl Trace {
             reg_a: None,
         }];
         if let Some(label) = label {
-            self.add_label(bank, start)
-                .expect("could not add label in trace_starting_at")
-                .name = label;
+            self.add_label(bank, start).map(|x| x.name = label);
         }
         while !cursors.is_empty() {
             self.trace_once(gameboy, &mut cursors);
@@ -289,9 +309,7 @@ impl Trace {
             Ok(_) => false,
             Err(i) => {
                 let mut op_array = [0; 3];
-                for (a, b) in op_array.iter_mut().zip(op.iter()) {
-                    *a = *b;
-                }
+                op_array[0..op.len()].copy_from_slice(op);
                 self.directives.insert(Directive {
                     address,
                     len,
@@ -318,14 +336,66 @@ impl Trace {
         }
     }
 
+    /// Every time that the code jumps out of ram, the ram disassembly is cleared because the ram
+    /// code could have changed (and I am not keeping track of the changes).
+    pub fn clear_ram_trace(&mut self) {
+        self.ram_directives.clear();
+        self.ram_code_ranges.clear();
+    }
+
+    /// Insert a opcode to Self::ram_code_ranges.
+    /// Return true if the opcode was not added before.
+    fn add_ram_opcode(&mut self, address: u16, op_array: [u8; 3], len: u8) -> bool {
+        let i = self.ram_code_ranges.binary_search_by(|range| {
+            use std::cmp::Ordering;
+            if address < range.start {
+                Ordering::Greater
+            } else if address >= range.end {
+                Ordering::Less
+            } else {
+                Ordering::Equal
+            }
+        });
+        match i {
+            Ok(_) => false,
+            Err(i) => {
+                self.ram_directives.insert((address, op_array, len));
+
+                let address_end = address + len as u16;
+                let merge_previous = i > 0 && self.ram_code_ranges[i - 1].end >= address;
+                let merge_next = i + 1 < self.ram_code_ranges.len()
+                    && self.ram_code_ranges[i].start <= address_end;
+
+                if merge_previous && merge_next {
+                    self.ram_code_ranges[i - 1].end = self.ram_code_ranges[i].end;
+                    self.ram_code_ranges.remove(i);
+                } else if merge_previous {
+                    self.ram_code_ranges[i - 1].end = address_end;
+                } else if merge_next {
+                    self.ram_code_ranges[i].start = address;
+                } else {
+                    self.ram_code_ranges.insert(i, address..address_end);
+                }
+                true
+            }
+        }
+    }
+
     fn add_label(&mut self, bank: Option<u8>, pc: u16) -> Option<&mut Label> {
         // the address may not be in the rom
-        let address = Address::from_pc(bank, pc)?;
-        Some(
-            self.labels
-                .entry(address)
-                .or_insert_with(|| Label::new(address)),
-        )
+        match Address::from_pc(bank, pc) {
+            Some(address) => Some(
+                self.labels
+                    .entry(address)
+                    .or_insert_with(|| Label::new(address)),
+            ),
+            None => {
+                self.ram_labels
+                    .entry(pc)
+                    .or_insert_with(|| format!("R{:04x}", pc));
+                None
+            },
+        }
     }
 
     fn add_jump(&mut self, from: Address, bank: Option<u8>, pc: u16) {
@@ -342,168 +412,75 @@ impl Trace {
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
         let Cursor { pc, bank, reg_a } = cursor;
-        let address = match Address::from_pc(bank, pc as u16) {
-            Some(x) => x,
-            None => {
-                eprintln!("jump out of know rom: {:02x?}_{:04x}", bank, pc);
-                return;
-            }
-        };
-        let (op, len) = cursor.get_op(&rom.cartridge.rom());
+        match Address::from_pc(bank, pc as u16) {
+            Some(address) => {
+                let (op, len) = cursor.get_op(rom);
 
-        if !self.add_opcode(address, op, len as u16) {
-            return;
-        }
+                if !self.add_opcode(address, &op[0..len as usize], len as u16) {
+                    return;
+                }
 
-        let cursors = &std::cell::RefCell::new(cursors);
-        let only_one_bank = rom.cartridge.num_banks() == 2;
+                let cursors = &std::cell::RefCell::new(cursors);
+                let only_one_bank = rom.cartridge.num_banks() == 2;
 
-        let jump = move |dest| {
-            let bank = if only_one_bank {
-                // If there is only one switchable bank, it will be the active.
-                Some(1)
-            } else if dest < 0x4000 {
-                // if it jump to the bank 0, the program can switch banks.
-                None
-            } else {
-                // if it continue in this bank, it is unlikely that it will switch banks.
-                bank
-            };
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: dest,
-                reg_a: None,
-            });
-        };
-        let step = move || {
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: pc + len as u16,
-                reg_a,
-            })
-        };
-
-        match op[0] {
-            0xC3 => {
-                // JP $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_jump(address, bank, dest);
-                // cursors.push(cursor { bank, pc: dest });
-                jump(dest);
-            }
-            0xE9 => {
-                // JP (HL)
-                // I can't predict where this will jump to
-            }
-            x if x & 0b11100111 == 0b11000010 => {
-                // JP cc, $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_jump(address, bank, dest);
-                jump(dest);
-                step();
-            }
-            0x18 => {
-                // JR $rr
-                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-                self.add_jump(address, bank, dest);
-                jump(dest);
-                step();
-            }
-            x if x & 0b1110_0111 == 0b0010_0000 => {
-                // JR cc, $rr
-                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-                self.add_jump(address, bank, dest);
-                jump(dest);
-                step();
-            }
-            x if x & 0b1100_1111 == 0b0000_1010 || x & 0b1111_1000 == 0b0111_1000 => {
-                // LD A, ?
-                cursors.borrow_mut().push(Cursor {
-                    bank,
-                    pc: pc + len as u16,
-                    reg_a: None,
-                })
-            }
-            0x3e => {
-                // LD A, d8
-                cursors.borrow_mut().push(Cursor {
-                    bank,
-                    pc: pc + len as u16,
-                    reg_a: Some(op[1]),
-                })
-            }
-            0xEA => {
-                // LD (a16), A
-                let mut bank = bank;
-                // TODO: this only works for MBC1
-                // If it write a know value of A to 0x2000..=0x3FFF region, the bank is switched.
-                let address = u16::from_le_bytes([op[1], op[2]]);
-                if address >= 0x2000 && address <= 0x3FFF {
-                    if let Some(a) = reg_a {
-                        bank = Some(a & 0x1F);
+                let jump = move |dest| {
+                    self.add_jump(address, bank, dest);
+                    let bank = if only_one_bank {
+                        // If there is only one switchable bank, it will be the active.
+                        Some(1)
+                    } else if dest < 0x4000 {
+                        // if it jump to the bank 0, the program can switch banks.
+                        None
                     } else {
-                        bank = None;
-                    }
-                }
-                cursors.borrow_mut().push(Cursor {
-                    bank,
-                    pc: pc + len as u16,
-                    reg_a,
-                })
-            }
-            0x08 => {
-                // LD (a16), SP
-                let address = u16::from_le_bytes([op[1], op[2]]);
-                if (0x2000..=0x3FFF).contains(&address) {
+                        // if it continue in this bank, it is unlikely that it will switch banks.
+                        bank
+                    };
                     cursors.borrow_mut().push(Cursor {
-                        bank: None,
-                        pc: pc + len as u16,
-                        reg_a,
-                    })
-                } else {
-                    step();
-                }
-            }
-            x if x == 0x36
-                || x & 0b1100_1111 == 0b0000_0010
-                || x != 0x76 && x & 0b1111_1000 == 0b0111_0000 =>
-            {
-                // LD (?), ?
-                // this could switch bank, but is unlikely to happen when inside a switchable bank.
-                let bank = if pc < 0x4000 { None } else { bank };
-                cursors.borrow_mut().push(Cursor {
-                    bank,
-                    pc: pc + len as u16,
-                    reg_a,
-                })
-            }
-            x if x == 0xCD || x & 0b11100111 == 0b11000100 => {
-                // CALL $aaaa or CALL cc, $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                self.add_jump(address, bank, dest);
-                jump(dest);
-                // the call could switch bank, but is unlikely to happen when inside a switchable bank.
-                let bank = if pc >= 0x4000 || dest >= 0x4000 {
-                    bank
-                } else {
-                    None
+                        bank,
+                        pc: dest,
+                        reg_a: None,
+                    });
                 };
-                cursors.borrow_mut().push(Cursor {
-                    bank,
-                    pc: pc + len as u16,
-                    reg_a: None,
-                })
+                compute_step(cursors, bank, pc, len, reg_a, &op, jump);
             }
-            0xC9 | 0xD9 => { /* RET or RETI */ }
-            x if x & 0b11000111 == 0b11000111 => {
-                // RST n
-                let dest = (x & 0b00111000) as u16;
-                self.add_jump(address, bank, dest);
-                jump(dest);
-                step();
-            }
-            _ => {
-                step();
+            None => {
+                if pc <= 0x3FFF {
+                    return;
+                }
+
+                // it is in ram
+                let (op, len) = cursor.get_op(rom);
+
+                if len as u16 >= 0xFFFF - pc + 1 {
+                    // It is unlikely that is a valid opcode
+                    return;
+                }
+
+                if !self.add_ram_opcode(pc, op, len) {
+                    return;
+                }
+
+                let cursors = &std::cell::RefCell::new(cursors);
+                let only_one_bank = rom.cartridge.num_banks() == 2;
+
+                let jump = move |dest| {
+                    let bank = if only_one_bank {
+                        // If there is only one switchable bank, it will be the active.
+                        Some(1)
+                    } else if dest < 0x4000 {
+                        // if it jump to the bank 0, the program can switch banks.
+                        None
+                    } else {
+                        // if it continue in this bank, it is unlikely that it will switch banks.
+                        bank
+                    };
+                    cursors.borrow_mut().push(Cursor {
+                        bank,
+                        pc: dest,
+                        reg_a: None,
+                    });
+                };
+                compute_step(cursors, bank, pc, len, reg_a, &op, jump);
             }
         }
     }
@@ -515,7 +492,7 @@ impl Trace {
                 if pc >= range.end {
                     break;
                 }
-                let (op, len) = pc.as_cursor().get_op(&rom.cartridge.rom());
+                let (op, len) = pc.as_cursor().get_op(rom);
                 if let Some(label) = self.labels.get(&pc) {
                     writeln!(f, "{}:", label.name)?;
                 }
@@ -523,7 +500,7 @@ impl Trace {
                 write!(f, "{:02x}_{:04x}: ", pc.bank, pc.address)?;
                 disassembly_opcode(
                     pc.to_pc(),
-                    op,
+                    &op,
                     |x| {
                         if let Some(address) = self.jumps.get(&pc) {
                             return self.labels.get(&address).unwrap().name.clone();
@@ -538,6 +515,140 @@ impl Trace {
             writeln!(f)?;
         }
         Ok(())
+    }
+}
+
+fn compute_step(
+    cursors: &std::cell::RefCell<&mut Vec<Cursor>>,
+    bank: Option<u8>,
+    pc: u16,
+    len: u8,
+    reg_a: Option<u8>,
+    op: &[u8],
+    mut jump: impl FnMut(u16),
+) {
+    let step = move || {
+        cursors.borrow_mut().push(Cursor {
+            bank,
+            pc: pc + len as u16,
+            reg_a,
+        })
+    };
+    match op[0] {
+        0xC3 => {
+            // JP $aaaa
+            let dest = u16::from_le_bytes([op[1], op[2]]);
+            jump(dest);
+        }
+        0xE9 => {
+            // JP (HL)
+            // I can't predict where this will jump to
+        }
+        x if x & 0b11100111 == 0b11000010 => {
+            // JP cc, $aaaa
+            let dest = u16::from_le_bytes([op[1], op[2]]);
+            jump(dest);
+            step();
+        }
+        0x18 => {
+            // JR $rr
+            let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+            jump(dest);
+            step();
+        }
+        x if x & 0b1110_0111 == 0b0010_0000 => {
+            // JR cc, $rr
+            let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+            jump(dest);
+            step();
+        }
+        x if x & 0b1100_1111 == 0b0000_1010 || x & 0b1111_1000 == 0b0111_1000 => {
+            // LD A, ?
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: pc + len as u16,
+                reg_a: None,
+            })
+        }
+        0x3e => {
+            // LD A, d8
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: pc + len as u16,
+                reg_a: Some(op[1]),
+            })
+        }
+        0xEA => {
+            // LD (a16), A
+            let mut bank = bank;
+            // TODO: this only works for MBC1
+            // If it write a know value of A to 0x2000..=0x3FFF region, the bank is switched.
+            let address = u16::from_le_bytes([op[1], op[2]]);
+            if address >= 0x2000 && address <= 0x3FFF {
+                if let Some(a) = reg_a {
+                    bank = Some(a & 0x1F);
+                } else {
+                    bank = None;
+                }
+            }
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: pc + len as u16,
+                reg_a,
+            })
+        }
+        0x08 => {
+            // LD (a16), SP
+            let address = u16::from_le_bytes([op[1], op[2]]);
+            if (0x2000..=0x3FFF).contains(&address) {
+                cursors.borrow_mut().push(Cursor {
+                    bank: None,
+                    pc: pc + len as u16,
+                    reg_a,
+                })
+            } else {
+                step();
+            }
+        }
+        x if x == 0x36
+            || x & 0b1100_1111 == 0b0000_0010
+            || x != 0x76 && x & 0b1111_1000 == 0b0111_0000 =>
+        {
+            // LD (?), ?
+            // this could switch bank, but is unlikely to happen when inside a switchable bank.
+            let bank = if pc < 0x4000 { None } else { bank };
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: pc + len as u16,
+                reg_a,
+            })
+        }
+        x if x == 0xCD || x & 0b11100111 == 0b11000100 => {
+            // CALL $aaaa or CALL cc, $aaaa
+            let dest = u16::from_le_bytes([op[1], op[2]]);
+            jump(dest);
+            // the call could switch bank, but is unlikely to happen when inside a switchable bank.
+            let bank = if pc >= 0x4000 || dest >= 0x4000 {
+                bank
+            } else {
+                None
+            };
+            cursors.borrow_mut().push(Cursor {
+                bank,
+                pc: pc + len as u16,
+                reg_a: None,
+            })
+        }
+        0xC9 | 0xD9 => { /* RET or RETI */ }
+        x if x & 0b11000111 == 0b11000111 => {
+            // RST n
+            let dest = (x & 0b00111000) as u16;
+            jump(dest);
+            step();
+        }
+        _ => {
+            step();
+        }
     }
 }
 

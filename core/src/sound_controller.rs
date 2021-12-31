@@ -627,7 +627,7 @@ impl SoundController {
         }
     }
 
-    pub fn read(&mut self, address: u8) -> u8 {
+    pub fn read(&self, address: u8) -> u8 {
         match address {
             0x10 => self.nr10 | 0x80,
             0x11 => self.nr11 | 0x3F,

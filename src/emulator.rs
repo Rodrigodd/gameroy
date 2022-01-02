@@ -15,8 +15,9 @@ use super::UserEvent;
 
 pub mod break_flags {
     pub const WRITE: u8 = 1 << 0;
-    pub const EXECUTE: u8 = 1 << 1;
-    pub const JUMP: u8 = 1 << 2;
+    pub const READ: u8 = 1 << 1;
+    pub const EXECUTE: u8 = 1 << 2;
+    pub const JUMP: u8 = 1 << 3;
 }
 
 #[derive(Debug)]
@@ -48,6 +49,7 @@ enum EmulatorState {
 
 struct Breakpoints {
     write_breakpoints: HashSet<u16>,
+    read_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
     execute_breakpoints: HashSet<u16>,
 }
@@ -56,6 +58,12 @@ impl Breakpoints {
         let writes = inter.will_write_to();
         for w in &writes.1[..writes.0 as usize] {
             if self.write_breakpoints.contains(w) {
+                return true;
+            }
+        }
+        let reads = inter.will_read_from();
+        for r in &reads.1[..reads.0 as usize] {
+            if self.read_breakpoints.contains(r) {
                 return true;
             }
         }
@@ -153,6 +161,7 @@ impl Emulator {
             start_time: Instant::now(),
             breakpoints: Breakpoints {
                 write_breakpoints: HashSet::new(),
+                read_breakpoints: HashSet::new(),
                 execute_breakpoints: HashSet::new(),
                 jump_breakpoints: HashSet::new(),
             },
@@ -236,6 +245,9 @@ impl Emulator {
                     AddBreakpoint { flags, address } => {
                         if (flags & break_flags::WRITE) != 0 {
                             self.breakpoints.write_breakpoints.insert(address);
+                        }
+                        if (flags & break_flags::READ) != 0 {
+                            self.breakpoints.read_breakpoints.insert(address);
                         }
                         if (flags & break_flags::EXECUTE) != 0 {
                             self.breakpoints.execute_breakpoints.insert(address);

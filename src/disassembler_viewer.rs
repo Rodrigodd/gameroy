@@ -69,7 +69,7 @@ impl TextFieldCallback for Callback {
                     // report a error!!
                     return;
                 }
-            },
+            }
             "break" => {
                 if args.len() != 3 {
                     // report a error!!
@@ -82,12 +82,13 @@ impl TextFieldCallback for Callback {
                 };
 
                 let write = args[1].contains('w') as u8;
+                let read = args[1].contains('r') as u8;
                 let execute = args[1].contains('x') as u8;
                 let jump = args[1].contains('j') as u8;
 
                 use crate::emulator::break_flags::*;
 
-                let flags = (write * WRITE) | (execute * EXECUTE) | (jump * JUMP);
+                let flags = (write * WRITE) | (read * READ) | (execute * EXECUTE) | (jump * JUMP);
 
                 sender
                     .send(EmulatorEvent::AddBreakpoint { flags, address })

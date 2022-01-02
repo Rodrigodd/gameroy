@@ -175,7 +175,7 @@ impl GameBoy {
         }
     }
 
-    pub fn read16(&mut self, address: u16) -> u16 {
+    pub fn read16(&self, address: u16) -> u16 {
         u16::from_le_bytes([self.read(address), self.read(address.wrapping_add(1))])
     }
 

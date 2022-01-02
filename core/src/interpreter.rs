@@ -126,8 +126,7 @@ impl Interpreter {
         if address <= 0x3FFF && trace.is_already_traced(bank, address) {
             return;
         }
-        
-        
+
         if pc <= 0x3FFF && address > 0x3FFF {
             // if it is entring the ram, clear its trace, because the ram could have changed
             trace.clear_ram_trace();
@@ -827,29 +826,55 @@ impl Interpreter {
         self.0.tick(cycles);
     }
 
-    pub fn will_write_to(&mut self) -> (u8, [u16; 2]) {
-        let op = &[
-            self.0.read(self.0.cpu.pc),
-            self.0.read(add16(self.0.cpu.pc, 1)),
-            self.0.read(add16(self.0.cpu.pc, 2)),
-        ];
+    pub fn will_read_from(&self) -> (u8, [u16; 2]) {
+        let op = self.0.read(self.0.cpu.pc);
         let none = (0, [0, 0]);
         let some = |x| (1, [x, 0]);
-        match op[0] {
+        match op {
+            0x0a => some(self.0.cpu.bc()),
+            0x1a => some(self.0.cpu.de()),
+            0x2a | 0x3a | 0x46 | 0x4e | 0x56 | 0x5e | 0x66 | 0x6e | 0x7e | 0x86 | 0x8e | 0x96
+            | 0x9e | 0xa6 | 0xae | 0xb6 | 0xbe => some(self.0.cpu.hl()),
+            0xcb => match self.0.read(add16(self.0.cpu.pc, 1)) {
+                0x06 | 0x0e | 0x16 | 0x1e | 0x26 | 0x2e | 0x36 | 0x3e | 0x46 | 0x4e | 0x56
+                | 0x5e | 0x66 | 0x6e | 0x76 | 0x7e | 0x86 | 0x8e | 0x96 | 0x9e | 0xa6 | 0xae
+                | 0xb6 | 0xbe | 0xc6 | 0xce | 0xd6 | 0xde | 0xe6 | 0xee | 0xf6 | 0xfe => {
+                    some(self.0.cpu.hl())
+                }
+                _ => none,
+            },
+            0xf0 => {
+                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
+                some(0xff00 | r8 as u16)
+            }
+            0xf2 => some(0xff00 | self.0.cpu.c as u16),
+            0xfa => some(self.0.read16(add16(self.0.cpu.pc, 1))),
+            0xc0 | 0xc1 | 0xc8 | 0xc9 | 0xd0 | 0xd1 | 0xd8 | 0xd9 | 0xe1 | 0xf1 => {
+                // POP or RET
+                (2, [add16(self.0.cpu.sp, 1), self.0.cpu.sp])
+            }
+            _ => none,
+        }
+    }
+
+    pub fn will_write_to(&self) -> (u8, [u16; 2]) {
+        let op = self.0.read(self.0.cpu.pc);
+        let none = (0, [0, 0]);
+        let some = |x| (1, [x, 0]);
+        match op {
             0x02 => some(self.0.cpu.bc()),
             0x08 => {
                 let adress = self.0.read16(self.0.cpu.pc + 1);
                 (2, [adress, add16(adress, 1)])
             }
             0x12 => some(self.0.cpu.de()),
-            0x22 | 0x32 | 0x34 | 0x35 | 0x36 | 0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x77
-            | 0x96 | 0xa6 | 0xae | 0xb6 | 0xbe => {
+            0x22 | 0x32 | 0x34 | 0x35 | 0x36 | 0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x77 => {
                 // LD (HL), .. or INC (HL) or etc.
                 some(self.0.cpu.hl())
             }
             0xc4 | 0xc5 | 0xcd | 0xcf | 0xd4 | 0xd5 | 0xd7 | 0xd8 | 0xd9 | 0xe5 | 0xe7 | 0xef
             | 0xf5 | 0xf7 | 0xff | 0xdc => {
-                // PUSH .. or CALL ..
+                // PUSH .. or CALL .. or RST
                 (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
             }
             0xe0 => {
@@ -862,7 +887,7 @@ impl Interpreter {
         }
     }
 
-    pub fn will_jump_to(&mut self) -> Option<u16> {
+    pub fn will_jump_to(&self) -> Option<u16> {
         let pc = self.0.cpu.pc;
         let op = &[
             self.0.read(pc),

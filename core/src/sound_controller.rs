@@ -287,7 +287,9 @@ impl SoundController {
                     }
                     if self.nr24 & 0x40 != 0 && self.ch2_length_timer != 0 {
                         self.ch2_length_timer -= 1;
+                        eprintln!("decrease ch2 length: {}", self.ch2_length_timer);
                         if self.ch2_length_timer == 0 {
+                            eprintln!("disable ch2");
                             self.ch2_channel_enable = false;
                         }
                     }
@@ -515,6 +517,8 @@ impl SoundController {
             }
             0x16 => {
                 self.nr21 = value;
+                let ch2_length_data = self.nr21 & 0x3F;
+                self.ch2_length_timer = 64 - ch2_length_data;
                 eprintln!("write nr21: {:02x}", value)
             }
             0x17 => {
@@ -526,8 +530,6 @@ impl SoundController {
             }
             0x18 => {
                 self.nr23 = value;
-                let ch2_length_data = self.nr21 & 0x3F;
-                self.ch2_length_timer = 64 - ch2_length_data;
                 eprintln!("write nr23: {:02x}", value)
             }
             0x19 => {
@@ -552,7 +554,7 @@ impl SoundController {
             0x1A => {
                 self.nr30 = value;
                 if self.nr30 & 0x80 == 0 {
-                    self.ch1_sweep_enabled = false;
+                    self.ch3_channel_enable = false;
                 }
                 eprintln!("write nr30: {:02x}", value)
             }
@@ -581,7 +583,7 @@ impl SoundController {
                     self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
                     self.ch3_wave_position = 0;
                     if self.nr30 & 0x80 == 0 {
-                        self.ch1_sweep_enabled = false;
+                        self.ch3_channel_enable = false;
                     }
                 }
                 self.nr34 = value;
@@ -589,12 +591,14 @@ impl SoundController {
             }
             0x20 => {
                 self.nr41 = value;
+                let ch4_length_data = self.nr41 & 0x3F;
+                self.ch4_length_timer = 64 - ch4_length_data;
                 eprintln!("write nr41: {:02x}", value)
             }
             0x21 => {
                 self.nr42 = value;
                 if self.nr42 & 0xF8 == 0 {
-                    self.ch1_sweep_enabled = false;
+                    self.ch4_channel_enable = false;
                 }
                 eprintln!("write nr42: {:02x}", value)
             }
@@ -616,7 +620,7 @@ impl SoundController {
                     self.ch4_env_period_timer = self.nr42 & 0x07;
                     self.ch4_current_volume = (self.nr42 & 0xF0) >> 4;
                     if self.nr42 & 0xF8 == 0 {
-                        self.ch1_sweep_enabled = false;
+                        self.ch4_channel_enable = false;
                     }
                 }
                 self.nr44 = value;

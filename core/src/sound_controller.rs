@@ -59,7 +59,6 @@ pub struct SoundController {
     nr51: u8,
     // FF26 - NR52 - Sound on/off
     // nr52: u8, this is replaced by `on` and `chX_channel_enable`s
-
     /// All sound on/off
     on: bool,
 
@@ -443,13 +442,15 @@ impl SoundController {
 
     fn calculate_frequency(&mut self, ch1_sweep_shift: u8, is_downwards: bool) -> u16 {
         let mut new_freq = self.ch1_shadow_freq >> ch1_sweep_shift;
+        eprintln!("new freq: {:04x}", new_freq);
         if is_downwards {
             new_freq = self.ch1_shadow_freq - new_freq;
         } else {
             new_freq = self.ch1_shadow_freq + new_freq;
         };
         if new_freq >= 2048 {
-            self.ch1_sweep_enabled = false;
+            eprintln!("disable ch1 by sweep");
+            self.ch1_channel_enable = false;
         }
         new_freq
     }
@@ -458,14 +459,27 @@ impl SoundController {
     pub fn write(&mut self, clock_count: u64, address: u8, value: u8) {
         self.update(clock_count);
         match address {
-            0x10 => self.nr10 = value,
+            0x10 => {
+                self.nr10 = value;
+                eprintln!("write nr10: {:02x}", value)
+            }
             0x11 => {
                 self.nr11 = value;
+                eprintln!("write nr11: {:02x}", value);
                 let ch1_length_data = self.nr11 & 0x3F;
                 self.ch1_length_timer = 64 - ch1_length_data;
             }
-            0x12 => self.nr12 = value,
-            0x13 => self.nr13 = value,
+            0x12 => {
+                self.nr12 = value;
+                if self.nr12 & 0xF8 == 0 {
+                    self.ch1_channel_enable = false;
+                }
+                eprintln!("write nr12: {:02x}", value);
+            }
+            0x13 => {
+                self.nr13 = value;
+                eprintln!("write nr13: {:02x}", value);
+            }
             0x14 => {
                 if value & 0x80 != 0 {
                     // Trigger event
@@ -497,12 +511,19 @@ impl SoundController {
                     }
                 }
                 self.nr14 = value;
+                eprintln!("write nr14: {:02x}", value)
             }
             0x16 => {
                 self.nr21 = value;
                 eprintln!("write nr21: {:02x}", value)
             }
-            0x17 => self.nr22 = value,
+            0x17 => {
+                self.nr22 = value;
+                if self.nr22 & 0xF8 == 0 {
+                    self.ch2_channel_enable = false;
+                }
+                eprintln!("write nr22: {:02x}", value)
+            }
             0x18 => {
                 self.nr23 = value;
                 let ch2_length_data = self.nr21 & 0x3F;
@@ -530,6 +551,9 @@ impl SoundController {
             }
             0x1A => {
                 self.nr30 = value;
+                if self.nr30 & 0x80 == 0 {
+                    self.ch1_sweep_enabled = false;
+                }
                 eprintln!("write nr30: {:02x}", value)
             }
             0x1B => {
@@ -569,6 +593,9 @@ impl SoundController {
             }
             0x21 => {
                 self.nr42 = value;
+                if self.nr42 & 0xF8 == 0 {
+                    self.ch1_sweep_enabled = false;
+                }
                 eprintln!("write nr42: {:02x}", value)
             }
             0x22 => {
@@ -607,11 +634,13 @@ impl SoundController {
                 eprintln!("write nr52: {:02x}", value);
                 // Bit 7 turn off the sound
                 if value & 0x80 == 0 {
+                    eprintln!("turn off");
                     self.on = false;
                 } else {
-                    self.on = true;
+                    eprintln!("turn on");
                     // Most register were reset while the sound was off
                     *self = Self {
+                        on: true,
                         ch3_wave_pattern: self.ch3_wave_pattern,
                         // On DMG, load counters can be written to, while off
                         nr11: self.nr11 & 0x3F,
@@ -622,43 +651,78 @@ impl SoundController {
                     };
                 }
             }
-            0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30] = value,
+            0x30..=0x3F => {
+                self.ch3_wave_pattern[address as usize - 0x30] = value;
+                eprintln!("write wave: {:04x}", value);
+            }
             _ => unreachable!(),
         }
     }
 
-    pub fn read(&self, address: u8) -> u8 {
-        match address {
-            0x10 => self.nr10 | 0x80,
-            0x11 => self.nr11 | 0x3F,
-            0x12 => self.nr12 | 0x00,
-            0x13 => self.nr13 | 0xFF,
-            0x14 => self.nr14 | 0xBF,
-            0x16 => self.nr21 | 0x3F,
-            0x17 => self.nr22 | 0x00,
-            0x18 => self.nr23 | 0xFF,
-            0x19 => self.nr24 | 0xBF,
-            0x1A => self.nr30 | 0x7F,
-            0x1B => self.nr31 | 0xFF,
-            0x1C => self.nr32 | 0x9F,
-            0x1D => self.nr33 | 0xFF,
-            0x1E => self.nr34 | 0xBF,
-            0x20 => self.nr41 | 0xFF,
-            0x21 => self.nr42 | 0x00,
-            0x22 => self.nr43 | 0x00,
-            0x23 => self.nr44 | 0xBF,
-            0x24 => self.nr50 | 0x00,
-            0x25 => self.nr51 | 0x00,
-            0x26 => {
-                ((self.on as u8) << 7)
-                    | ((self.ch4_channel_enable as u8) << 3)
-                    | ((self.ch3_channel_enable as u8) << 2)
-                    | ((self.ch2_channel_enable as u8) << 1)
-                    | ((self.ch1_channel_enable as u8) << 0)
-                    | 0x70
+    pub fn read(&mut self, clock_count: u64, address: u8) -> u8 {
+        let value = if self.on {
+            match address {
+                0x10 => self.nr10 | 0x80,
+                0x11 => self.nr11 | 0x3F,
+                0x12 => self.nr12 | 0x00,
+                0x13 => self.nr13 | 0xFF,
+                0x14 => self.nr14 | 0xBF,
+                0x16 => self.nr21 | 0x3F,
+                0x17 => self.nr22 | 0x00,
+                0x18 => self.nr23 | 0xFF,
+                0x19 => self.nr24 | 0xBF,
+                0x1A => self.nr30 | 0x7F,
+                0x1B => self.nr31 | 0xFF,
+                0x1C => self.nr32 | 0x9F,
+                0x1D => self.nr33 | 0xFF,
+                0x1E => self.nr34 | 0xBF,
+                0x20 => self.nr41 | 0xFF,
+                0x21 => self.nr42 | 0x00,
+                0x22 => self.nr43 | 0x00,
+                0x23 => self.nr44 | 0xBF,
+                0x24 => self.nr50 | 0x00,
+                0x25 => self.nr51 | 0x00,
+                0x26 => {
+                    self.update(clock_count);
+                    let r = ((self.on as u8) << 7)
+                        | ((self.ch4_channel_enable as u8) << 3)
+                        | ((self.ch3_channel_enable as u8) << 2)
+                        | ((self.ch2_channel_enable as u8) << 1)
+                        | ((self.ch1_channel_enable as u8) << 0)
+                        | 0x70;
+                    r
+                }
+                0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
+                _ => unreachable!(),
             }
-            0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
-            _ => unreachable!(),
-        }
+        } else {
+            match address {
+                0x10 => 0x80,
+                0x11 => 0x3F,
+                0x12 => 0x00,
+                0x13 => 0xFF,
+                0x14 => 0xBF,
+                0x16 => 0x3F,
+                0x17 => 0x00,
+                0x18 => 0xFF,
+                0x19 => 0xBF,
+                0x1A => 0x7F,
+                0x1B => 0xFF,
+                0x1C => 0x9F,
+                0x1D => 0xFF,
+                0x1E => 0xBF,
+                0x20 => 0xFF,
+                0x21 => 0x00,
+                0x22 => 0x00,
+                0x23 => 0xBF,
+                0x24 => 0x00,
+                0x25 => 0x00,
+                0x26 => 0x70,
+                0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
+                _ => unreachable!(),
+            }
+        };
+        eprintln!("read {:02x}: {:02x}", address, value);
+        value
     }
 }

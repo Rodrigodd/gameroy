@@ -17,7 +17,7 @@ use crui::{
     layouts::{FitText, HBoxLayout, MarginLayout, VBoxLayout},
     text::TextStyle,
     widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback},
-    BuilderContext, Context, ControlBuilder, Id, RectFill,
+    BuilderContext, Context, ControlBuilder, Id,
 };
 use gameroy::{
     disassembler::{Address, Directive},
@@ -36,6 +36,7 @@ impl TextFieldCallback for Callback {
         }
         match args[0] {
             "step" | "" => sender.send(EmulatorEvent::Step).unwrap(),
+            "reset" => sender.send(EmulatorEvent::Reset).unwrap(),
             "runto" => {
                 if args.len() != 2 {
                     // report a error!!
@@ -47,7 +48,28 @@ impl TextFieldCallback for Callback {
                 };
                 sender.send(EmulatorEvent::RunTo(address)).unwrap();
             }
-            "run" => sender.send(EmulatorEvent::Run).unwrap(),
+            "run" => {
+                if args.len() == 1 {
+                    sender.send(EmulatorEvent::Run).unwrap()
+                } else if args.len() == 3 {
+                    let clocks = match args[2].parse::<u64>() {
+                        Ok(x) => x,
+                        Err(_) => return,
+                    };
+                    match args[1] {
+                        "for" => {
+                            sender.send(EmulatorEvent::RunFor(clocks)).unwrap();
+                        }
+                        "until" => {
+                            sender.send(EmulatorEvent::RunUntil(clocks)).unwrap();
+                        }
+                        _ => return,
+                    }
+                } else {
+                    // report a error!!
+                    return;
+                }
+            },
             "break" => {
                 if args.len() != 3 {
                     // report a error!!

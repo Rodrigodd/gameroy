@@ -27,8 +27,11 @@ pub enum EmulatorEvent {
     SetKeys(u8),
     Debug(bool),
     Step,
-    RunTo(u16),
     Run,
+    RunTo(u16),
+    RunFor(u64),
+    RunUntil(u64),
+    Reset,
     AddBreakpoint { flags: u8, address: u16 },
 }
 
@@ -36,7 +39,10 @@ pub enum EmulatorEvent {
 enum EmulatorState {
     Idle,
     Run,
+    /// Runs until it reachs to given program counter
     RunTo(u16),
+    /// Runs until it reachs to given clock count
+    RunUntil(u64),
     RunNoBreak,
 }
 
@@ -123,7 +129,7 @@ impl Emulator {
     ) {
         let audio = AudioEngine::new().unwrap();
         let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
-        audio_buffer.lock().extend((0..1600*5).map(|_|0)); // gap of 83.3 ms
+        audio_buffer.lock().extend((0..1600 * 5).map(|_| 0)); // gap of 83.3 ms
         let buffer = Buffer {
             buffer: audio_buffer.clone(),
             sample_rate: audio.sample_rate(),
@@ -131,7 +137,7 @@ impl Emulator {
         // println!("{}", buffer.sample_rate);
         // std::process::exit(0);
 
-        inter.lock().0.sound.sample_frequency = audio.sample_rate() as u64;
+        inter.lock().0.sound.borrow_mut().sample_frequency = audio.sample_rate() as u64;
 
         let mut sound = audio.new_sound(buffer).unwrap();
         sound.set_loop(true);
@@ -203,11 +209,6 @@ impl Emulator {
                             self.set_state(EmulatorState::Idle);
                         }
                     }
-                    RunTo(address) => {
-                        if self.debug {
-                            self.set_state(EmulatorState::RunTo(address));
-                        }
-                    }
                     Run => {
                         if self.debug {
                             self.set_state(EmulatorState::Run);
@@ -215,6 +216,23 @@ impl Emulator {
                             self.inter.lock().interpret_op();
                         }
                     }
+                    RunTo(address) => {
+                        if self.debug {
+                            self.set_state(EmulatorState::RunTo(address));
+                        }
+                    }
+                    RunFor(clocks) => {
+                        if self.debug {
+                            let clock_count = self.inter.lock().0.clock_count;
+                            self.set_state(EmulatorState::RunUntil(clock_count + clocks));
+                        }
+                    }
+                    RunUntil(clock) => {
+                        if self.debug {
+                            self.set_state(EmulatorState::RunUntil(clock));
+                        }
+                    }
+                    Reset => self.inter.lock().0.reset(),
                     AddBreakpoint { flags, address } => {
                         if (flags & break_flags::WRITE) != 0 {
                             self.breakpoints.write_breakpoints.insert(address);
@@ -268,6 +286,33 @@ impl Emulator {
                                     drop(inter);
                                     self.set_state(EmulatorState::Idle);
                                     break 'runto;
+                                }
+                            }
+                        }
+                        match self.recv.try_recv() {
+                            Ok(next_event) => {
+                                event = next_event;
+                                continue 'handle_event;
+                            }
+                            Err(TryRecvError::Disconnected) => return,
+                            _ => {}
+                        }
+                    },
+                    EmulatorState::RunUntil(final_clock) => 'rununtil: loop {
+                        {
+                            let mut inter = self.inter.lock();
+                            let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
+                            while inter.0.clock_count < target_clock {
+                                if self.breakpoints.check(&mut inter) {
+                                    drop(inter);
+                                    self.set_state(EmulatorState::Idle);
+                                    break 'rununtil;
+                                }
+                                inter.interpret_op();
+                                if inter.0.clock_count >= final_clock {
+                                    drop(inter);
+                                    self.set_state(EmulatorState::Idle);
+                                    break 'rununtil;
                                 }
                             }
                         }
@@ -339,14 +384,18 @@ impl Emulator {
     fn update_audio(&mut self) {
         let mut inter = self.inter.lock();
         let clock_count = inter.0.clock_count;
-        let buffer = inter.0.sound.get_output(clock_count);
-        let generated = buffer.len();
+        let buffer = inter.0.sound.borrow_mut().get_output(clock_count);
         let mut lock = self.audio_buffer.lock();
         let consumed = self.last_buffer_len as i64 - lock.len() as i64;
         lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
 
-        println!("buffer: {:7} {:7} {:7}, {}", -(consumed as i64), lock.len(), lock.len() as i64 - self.last_buffer_len as i64, inter.0.sound.sample_frequency);
-        let len = lock.len();
+        println!(
+            "buffer: {:7} {:7} {:7}, {}",
+            -(consumed as i64),
+            lock.len(),
+            lock.len() as i64 - self.last_buffer_len as i64,
+            inter.0.sound.borrow_mut().sample_frequency
+        );
         self.last_buffer_len = lock.len();
     }
 }

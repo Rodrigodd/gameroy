@@ -76,7 +76,7 @@ pub struct GameBoy {
     pub boot_rom_active: bool,
     pub clock_count: u64,
     pub timer: Timer,
-    pub sound: SoundController,
+    pub sound: RefCell<SoundController>,
     pub ppu: Ppu,
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
@@ -99,7 +99,7 @@ impl GameBoy {
             boot_rom_active: true,
             clock_count: 0,
             timer: Timer::default(),
-            sound: SoundController::default(),
+            sound: RefCell::new(SoundController::default()),
             ppu: Ppu::default(),
             joypad: 0xFF,
             serial_transfer: Box::new(|c| {
@@ -107,6 +107,19 @@ impl GameBoy {
             }),
             v_blank: Box::new(|_| {}),
         })
+    }
+
+    /// Reset the gameboy to its stating state.
+    pub fn reset(&mut self) {
+        // TODO: Maybe I should reset the cartridge
+        self.cpu = Cpu::default();
+        self.memory = [0; 0x10000];
+        self.boot_rom_active = true;
+        self.clock_count = 0;
+        self.timer = Timer::default();
+        self.sound = RefCell::new(SoundController::default());
+        self.ppu = Ppu::default();
+        self.joypad = 0xFF;
     }
 
     pub fn len(&self) -> usize {
@@ -180,7 +193,7 @@ impl GameBoy {
             0x06 => self.timer.write_tma(value),
             0x07 => self.timer.write_tac(value),
             0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => {
-                self.sound.write(self.clock_count, address, value)
+                self.sound.borrow_mut().write(self.clock_count, address, value)
             }
             0x40 => self.ppu.set_lcdc(value),
             0x41 => self.ppu.set_stat(value),
@@ -226,7 +239,7 @@ impl GameBoy {
             0x05 => self.timer.read_tima(),
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_tac(),
-            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => self.sound.read(address),
+            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => self.sound.borrow_mut().read(self.clock_count, address),
             0x40 => self.ppu.lcdc(),
             0x41 => self.ppu.stat(),
             0x42 => self.ppu.scy(),
@@ -238,7 +251,11 @@ impl GameBoy {
             0x4a => self.ppu.wy(),
             0x4b => self.ppu.wx(),
             0x4d => 0xff,
-            _ => self.memory[0xFF00 | address as usize],
+            0x80..=0xfe => {
+                // high RAM
+                self.memory[0xFF00 | address as usize]
+            }
+            _ => 0xff,
         }
     }
 }

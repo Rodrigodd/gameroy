@@ -53,7 +53,6 @@ fn main() {
     let boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
 
     let cartridge = Cartridge::new(rom_file).unwrap();
-
     let mut game_boy = gameboy::GameBoy::new(boot_rom_file, cartridge).unwrap();
 
     {
@@ -65,11 +64,6 @@ fn main() {
         trace.trace_starting_at(&game_boy, 0, 0x50, Some("RST_0x50".into()));
         trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
         trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
-
-        // trace starting from the start of each bank
-        // for i in 1..game_boy.cartridge.rom.len() / 0x4000 {
-        //     trace.trace_starting_at(&game_boy, i as u8, i as u16 * 0x4000, None);
-        // }
 
         if diss {
             game_boy.boot_rom_active = false;

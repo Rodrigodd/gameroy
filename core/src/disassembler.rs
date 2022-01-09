@@ -27,7 +27,7 @@ impl Address {
     pub fn new(bank: u8, address: u16) -> Self {
         assert!(
             (0x0000..=0x3FFF).contains(&address),
-            "create out of range address"
+            "address {:04x} is out of rom address range", address
         );
         // assert!((bank == 0) == (address <= 0x3FFF));
         Self { bank, address }
@@ -316,7 +316,8 @@ impl Trace {
                     op: op_array,
                 });
 
-                let address_end = Address::new(address.bank, address.address + len);
+                // TODO: this min(0x3FFF) is a hack
+                let address_end = Address::new(address.bank, (address.address + len).min(0x3FFF));
                 let merge_previous = i > 0 && self.code_ranges[i - 1].end >= address;
                 let merge_next =
                     i + 1 < self.code_ranges.len() && self.code_ranges[i].start <= address_end;
@@ -424,6 +425,10 @@ impl Trace {
                 let only_one_bank = rom.cartridge.num_banks() == 2;
 
                 let jump = move |dest| {
+                    // jumps from rom to ram are ignored
+                    if dest > 0x3FFF {
+                        return;
+                    }
                     self.add_jump(address, bank, dest);
                     let bank = if only_one_bank {
                         // If there is only one switchable bank, it will be the active.
@@ -447,8 +452,8 @@ impl Trace {
                 if pc <= 0x3FFF {
                     return;
                 }
-
                 // it is in ram
+
                 let (op, len) = cursor.get_op(rom);
 
                 if len as u16 >= 0xFFFF - pc + 1 {

@@ -67,6 +67,8 @@ pub struct SoundController {
     ch1_sweep_enabled: bool,
     ch1_shadow_freq: u16,
     ch1_sweep_timer: u8,
+    /// Tell if there was at last one sweep calculation with negate mode since the last trigger
+    ch1_has_done_sweep_calculation: bool,
     ch1_frequency_timer: u16,
     ch1_wave_duty_position: u8,
     ch1_current_volume: u8,
@@ -133,6 +135,7 @@ impl Default for SoundController {
             ch1_sweep_enabled: false,
             ch1_shadow_freq: 0,
             ch1_sweep_timer: 0,
+            ch1_has_done_sweep_calculation: false,
             ch1_frequency_timer: 0,
             ch1_wave_duty_position: 0,
             ch1_current_volume: 0,
@@ -200,7 +203,7 @@ impl SoundController {
         let ch1_duty = (self.nr11 >> 6) & 0x3;
         let mut ch1_freq = u16::from_be_bytes([self.nr14, self.nr13]) & 0x07FF;
         let ch1_sweep_period = (self.nr10 & 0x70) >> 4;
-        let ch1_sweep_direction = (self.nr10 & 0x80) != 0;
+        let ch1_sweep_direction = (self.nr10 & 0x08) != 0;
         let ch1_sweep_shift = self.nr10 & 0x7;
         let ch1_env_period = self.nr12 & 0x7;
         let ch1_env_direction = (self.nr12 & 0x08) != 0;
@@ -442,6 +445,9 @@ impl SoundController {
     }
 
     fn calculate_frequency(&mut self, ch1_sweep_shift: u8, is_downwards: bool) -> u16 {
+        if is_downwards {
+            self.ch1_has_done_sweep_calculation = true;
+        }
         let mut new_freq = self.ch1_shadow_freq >> ch1_sweep_shift;
         if is_downwards {
             new_freq = self.ch1_shadow_freq - new_freq;
@@ -460,6 +466,11 @@ impl SoundController {
         self.update(clock_count);
         match address {
             0x10 => {
+                if self.nr10 & 0x08 != 0 && value & 0x08 == 0 && self.ch1_has_done_sweep_calculation {
+                    // Clearing the sweep negate mode bit after at last one sweep calculation using
+                    // the negate mode since the last trigger, disable the channel
+                    self.ch1_channel_enable = false;
+                }
                 self.nr10 = value;
                 eprintln!("write nr10: {:02x}", value)
             }
@@ -508,7 +519,7 @@ impl SoundController {
                     let ch1_freq = u16::from_be_bytes([self.nr14, self.nr13]) & 0x07FF;
                     let ch1_sweep_period = (self.nr10 & 0x70) >> 4;
                     let ch1_sweep_shift = self.nr10 & 0x7;
-                    let ch1_sweep_direction = (self.nr10 & 0x80) != 0;
+                    let ch1_sweep_direction = (self.nr10 & 0x08) != 0;
                     self.ch1_channel_enable = true;
                     if self.ch1_length_timer == 0 {
                         if extra_clock && length_now_enabled {
@@ -526,6 +537,7 @@ impl SoundController {
                     };
                     self.ch1_shadow_freq = ch1_freq;
                     self.ch1_sweep_enabled = ch1_sweep_period != 0 || ch1_sweep_shift != 0;
+                    self.ch1_has_done_sweep_calculation = false;
                     if ch1_sweep_shift != 0 {
                         self.calculate_frequency(ch1_sweep_shift, ch1_sweep_direction);
                     }

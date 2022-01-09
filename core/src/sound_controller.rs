@@ -287,9 +287,7 @@ impl SoundController {
                     }
                     if self.nr24 & 0x40 != 0 && self.ch2_length_timer != 0 {
                         self.ch2_length_timer -= 1;
-                        eprintln!("decrease ch2 length: {}", self.ch2_length_timer);
                         if self.ch2_length_timer == 0 {
-                            eprintln!("disable ch2");
                             self.ch2_channel_enable = false;
                         }
                     }
@@ -369,10 +367,11 @@ impl SoundController {
                             let new_freq =
                                 self.calculate_frequency(ch1_sweep_shift, ch1_sweep_direction);
                             if new_freq < 2048 && ch1_sweep_shift > 0 {
-                                ch1_freq = new_freq;
+                                ch1_freq = new_freq & 0x7FF;
                                 let [upper, lower] = ch1_freq.to_be_bytes();
                                 self.nr14 = (self.nr14 & 0xF8) | (upper & 0x7);
                                 self.nr13 = lower;
+
                                 self.ch1_shadow_freq = new_freq;
 
                                 // do overflow check again
@@ -444,14 +443,13 @@ impl SoundController {
 
     fn calculate_frequency(&mut self, ch1_sweep_shift: u8, is_downwards: bool) -> u16 {
         let mut new_freq = self.ch1_shadow_freq >> ch1_sweep_shift;
-        eprintln!("new freq: {:04x}", new_freq);
         if is_downwards {
             new_freq = self.ch1_shadow_freq - new_freq;
         } else {
             new_freq = self.ch1_shadow_freq + new_freq;
         };
+        dbg!(new_freq);
         if new_freq >= 2048 {
-            eprintln!("disable ch1 by sweep");
             self.ch1_channel_enable = false;
         }
         new_freq
@@ -483,15 +481,41 @@ impl SoundController {
                 eprintln!("write nr13: {:02x}", value);
             }
             0x14 => {
+                let length_previou_enabled = self.nr14 & 0x40 != 0;
+                let length_now_enabled = value & 0x40 != 0;
+                let step_period = CLOCK_SPEED / 256;
+                let extra_clock =
+                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+
+                // extra length clocking occurs when frame sequencer's next step don't clock the
+                // length.
+                if extra_clock {
+                    // if was PREVIOUSLY disabled and now enabled and the length counter is not
+                    // zero, the counter decreases
+                    if !length_previou_enabled && length_now_enabled && self.ch1_length_timer != 0 {
+                        self.ch1_length_timer -= 1;
+                        // if became zero, and trigger is clear, disable channel
+                        if self.ch1_length_timer == 0 && value & 0x80 == 0 {
+                            self.ch1_channel_enable = false;
+                        }
+                    }
+                }
+                self.nr14 = value;
+
                 if value & 0x80 != 0 {
                     // Trigger event
+                    eprintln!("trigger ch1");
                     let ch1_freq = u16::from_be_bytes([self.nr14, self.nr13]) & 0x07FF;
                     let ch1_sweep_period = (self.nr10 & 0x70) >> 4;
                     let ch1_sweep_shift = self.nr10 & 0x7;
                     let ch1_sweep_direction = (self.nr10 & 0x80) != 0;
                     self.ch1_channel_enable = true;
                     if self.ch1_length_timer == 0 {
-                        self.ch1_length_timer = 64;
+                        if extra_clock && length_now_enabled {
+                            self.ch1_length_timer = 63;
+                        } else {
+                            self.ch1_length_timer = 64;
+                        }
                     }
                     self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
                     self.ch1_wave_duty_position = 0;
@@ -500,9 +524,9 @@ impl SoundController {
                     } else {
                         ch1_sweep_period
                     };
-                    self.ch1_shadow_freq = self.ch1_frequency_timer;
+                    self.ch1_shadow_freq = ch1_freq;
                     self.ch1_sweep_enabled = ch1_sweep_period != 0 || ch1_sweep_shift != 0;
-                    if ch1_sweep_period != 0 {
+                    if ch1_sweep_shift != 0 {
                         self.calculate_frequency(ch1_sweep_shift, ch1_sweep_direction);
                     }
 
@@ -512,7 +536,6 @@ impl SoundController {
                         self.ch1_channel_enable = false;
                     }
                 }
-                self.nr14 = value;
                 eprintln!("write nr14: {:02x}", value)
             }
             0x16 => {
@@ -533,12 +556,37 @@ impl SoundController {
                 eprintln!("write nr23: {:02x}", value)
             }
             0x19 => {
+                let length_previou_enabled = self.nr24 & 0x40 != 0;
+                let length_now_enabled = value & 0x40 != 0;
+                let step_period = CLOCK_SPEED / 256;
+                let extra_clock =
+                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+
+                // extra length clocking occurs when frame sequencer's next step don't clock the
+                // length.
+                if extra_clock {
+                    // if was PREVIOUSLY disabled and now enabled and the length counter is not
+                    // zero, the counter decreases
+                    if !length_previou_enabled && length_now_enabled && self.ch2_length_timer != 0 {
+                        self.ch2_length_timer -= 1;
+                        // if became zero, and trigger is clear, disable channel
+                        if self.ch2_length_timer == 0 && value & 0x80 == 0 {
+                            self.ch2_channel_enable = false;
+                        }
+                    }
+                }
+
                 if value & 0x80 != 0 {
                     // Trigger event
+                    eprintln!("trigger ch2");
                     let ch2_freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
                     self.ch2_channel_enable = true;
                     if self.ch2_length_timer == 0 {
-                        self.ch2_length_timer = 64
+                        if extra_clock && length_now_enabled {
+                            self.ch2_length_timer = 63;
+                        } else {
+                            self.ch2_length_timer = 64;
+                        }
                     }
                     self.ch2_env_period_timer = self.nr22 & 0x07;
                     self.ch2_current_volume = (self.nr22 & 0xF0) >> 4;
@@ -573,12 +621,36 @@ impl SoundController {
                 eprintln!("write nr33: {:02x}", value)
             }
             0x1E => {
+                let length_previou_enabled = self.nr34 & 0x40 != 0;
+                let length_now_enabled = value & 0x40 != 0;
+                let step_period = CLOCK_SPEED / 256;
+                let extra_clock =
+                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+
+                // extra length clocking occurs when frame sequencer's next step don't clock the
+                // length.
+                if extra_clock {
+                    // if was PREVIOUSLY disabled and now enabled and the length counter is not
+                    // zero, the counter decreases
+                    if !length_previou_enabled && length_now_enabled && self.ch3_length_timer != 0 {
+                        self.ch3_length_timer -= 1;
+                        // if became zero, and trigger is clear, disable channel
+                        if self.ch3_length_timer == 0 && value & 0x80 == 0 {
+                            self.ch3_channel_enable = false;
+                        }
+                    }
+                }
                 if value & 0x80 != 0 {
                     // Trigger event
+                    eprintln!("trigger ch3");
                     let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
                     self.ch3_channel_enable = true;
                     if self.ch3_length_timer == 0 {
-                        self.ch3_length_timer = 256;
+                        if extra_clock && length_now_enabled {
+                            self.ch3_length_timer = 255;
+                        } else {
+                            self.ch3_length_timer = 256;
+                        }
                     }
                     self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
                     self.ch3_wave_position = 0;
@@ -607,13 +679,37 @@ impl SoundController {
                 eprintln!("write nr43: {:02x}", value)
             }
             0x23 => {
+                let length_previou_enabled = self.nr44 & 0x40 != 0;
+                let length_now_enabled = value & 0x40 != 0;
+                let step_period = CLOCK_SPEED / 256;
+                let extra_clock =
+                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+
+                // extra length clocking occurs when frame sequencer's next step don't clock the
+                // length.
+                if extra_clock {
+                    // if was PREVIOUSLY disabled and now enabled and the length counter is not
+                    // zero, the counter decreases
+                    if !length_previou_enabled && length_now_enabled && self.ch4_length_timer != 0 {
+                        self.ch4_length_timer -= 1;
+                        // if became zero, and trigger is clear, disable channel
+                        if self.ch4_length_timer == 0 && value & 0x80 == 0 {
+                            self.ch4_channel_enable = false;
+                        }
+                    }
+                }
                 if value & 0x80 != 0 {
                     // Trigger event
+                    eprintln!("trigger ch4");
                     let ch4_divisor = [8, 16, 32, 48, 64, 80, 96, 112][self.nr43 as usize & 0x07];
                     let ch4_shift_amount = (self.nr43 & 0xF0) >> 4;
                     self.ch4_channel_enable = true;
                     if self.ch4_length_timer == 0 {
-                        self.ch4_length_timer = 64;
+                        if extra_clock && length_now_enabled {
+                            self.ch4_length_timer = 63;
+                        } else {
+                            self.ch4_length_timer = 64;
+                        }
                     }
                     self.ch4_frequency_timer = ch4_divisor << ch4_shift_amount;
                     self.ch4_lfsr = 0x7FFF;

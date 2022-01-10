@@ -464,9 +464,17 @@ impl SoundController {
     // TODO: Check for read or write only registers and bits.
     pub fn write(&mut self, clock_count: u64, address: u8, value: u8) {
         self.update(clock_count);
+        if !self.on {
+            // On DMG, load counters can be written to, while off
+            match address {
+                0x11 | 0x16 | 0x1B | 0x20 | 0x26 => {}
+                _ => return,
+            }
+        }
         match address {
             0x10 => {
-                if self.nr10 & 0x08 != 0 && value & 0x08 == 0 && self.ch1_has_done_sweep_calculation {
+                if self.nr10 & 0x08 != 0 && value & 0x08 == 0 && self.ch1_has_done_sweep_calculation
+                {
                     // Clearing the sweep negate mode bit after at last one sweep calculation using
                     // the negate mode since the last trigger, disable the channel
                     self.ch1_channel_enable = false;
@@ -745,10 +753,10 @@ impl SoundController {
             0x26 => {
                 eprintln!("write nr52: {:02x}", value);
                 // Bit 7 turn off the sound
-                if value & 0x80 == 0 {
+                if value & 0x80 == 0 && self.on {
                     eprintln!("turn off");
                     self.on = false;
-                } else {
+                } else if value & 0x80 != 0 && !self.on {
                     eprintln!("turn on");
                     // Most register were reset while the sound was off
                     *self = Self {
@@ -756,9 +764,13 @@ impl SoundController {
                         ch3_wave_pattern: self.ch3_wave_pattern,
                         // On DMG, load counters can be written to, while off
                         nr11: self.nr11 & 0x3F,
+                        ch1_length_timer: self.ch1_length_timer,
                         nr21: self.nr21 & 0x3F,
+                        ch2_length_timer: self.ch2_length_timer,
                         nr31: self.nr31 & 0xFF,
+                        ch3_length_timer: self.ch3_length_timer,
                         nr41: self.nr41 & 0x3F,
+                        ch4_length_timer: self.ch4_length_timer,
                         ..Self::default()
                     };
                 }

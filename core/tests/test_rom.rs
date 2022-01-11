@@ -16,6 +16,38 @@ macro_rules! blargg {
     };
 }
 
+blargg!(dmg_sound_01, "dmg_sound/01-registers.gb", 43000000);
+blargg!(dmg_sound_02, "dmg_sound/02-len ctr.gb", 43000000);
+blargg!(dmg_sound_03, "dmg_sound/03-trigger.gb", 43000000);
+blargg!(dmg_sound_04, "dmg_sound/04-sweep.gb", 43000000);
+blargg!(dmg_sound_05, "dmg_sound/05-sweep details.gb", 43000000);
+blargg!(
+    dmg_sound_06,
+    "dmg_sound/06-overflow on trigger.gb",
+    43000000
+);
+blargg!(
+    dmg_sound_07,
+    "dmg_sound/07-len sweep period sync.gb",
+    43000000
+);
+blargg!(
+    dmg_sound_08,
+    "dmg_sound/08-len ctr during power.gb",
+    43000000
+);
+blargg!(dmg_sound_09, "dmg_sound/09-wave read while on.gb", 43000000);
+blargg!(
+    dmg_sound_10,
+    "dmg_sound/10-wave trigger while on.gb",
+    43000000
+);
+blargg!(dmg_sound_11, "dmg_sound/11-regs after power.gb", 43000000);
+blargg!(
+    dmg_sound_12,
+    "dmg_sound/12-wave write while on.gb",
+    43000000
+);
 blargg!(blargg_01, "01-special.gb", 43000000);
 blargg!(blargg_02, "02-interrupts.gb", 43000000);
 blargg!(blargg_03, "03-op sp,hl.gb", 43000000);
@@ -40,12 +72,15 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
     // let mut game_boy = GameBoy::new(&vec![0; 256][..], rom_file);
     let string = Arc::new(Mutex::new(String::new()));
     let string_clone = string.clone();
-    static STOP: AtomicBool = AtomicBool::new(false);
-    game_boy.serial_transfer = Box::new(move |byte| {
-        let mut string = string.lock().unwrap();
-        string.push(byte as char);
-        if string.ends_with("Passed\n") {
-            STOP.store(true, Ordering::Relaxed);
+    let stop = Arc::new(AtomicBool::new(false));
+    game_boy.serial_transfer = Box::new({
+        let stop = stop.clone();
+        move |byte| {
+            let mut string = string.lock().unwrap();
+            string.push(byte as char);
+            if string.ends_with("Passed\n") {
+                stop.store(true, Ordering::Relaxed);
+            }
         }
     });
 
@@ -53,13 +88,15 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
     // while inter.0.clock_count < 33000000 {
     while inter.0.clock_count < timeout {
         inter.interpret_op();
-        if STOP.load(Ordering::Relaxed) {
+        if stop.load(Ordering::Relaxed) {
             break;
         }
     }
     // panic!("ahh");
-    if STOP.load(Ordering::Relaxed) {
+    if stop.load(Ordering::Relaxed) {
         Ok(())
+        // let string = string_clone.lock().unwrap();
+        // Err(format!("test rom failed: \n{}", string))
     } else {
         let string = string_clone.lock().unwrap();
         Err(format!("test rom failed: \n{}", string))

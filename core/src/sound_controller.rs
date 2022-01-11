@@ -454,7 +454,6 @@ impl SoundController {
         } else {
             new_freq = self.ch1_shadow_freq + new_freq;
         };
-        dbg!(new_freq);
         if new_freq >= 2048 {
             self.ch1_channel_enable = false;
         }
@@ -467,7 +466,7 @@ impl SoundController {
         if !self.on {
             // On DMG, load counters can be written to, while off
             match address {
-                0x11 | 0x16 | 0x1B | 0x20 | 0x26 => {}
+                0x11 | 0x16 | 0x1B | 0x20 | 0x26 | 0x30..=0x3F => {}
                 _ => return,
             }
         }
@@ -755,12 +754,9 @@ impl SoundController {
                 // Bit 7 turn off the sound
                 if value & 0x80 == 0 && self.on {
                     eprintln!("turn off");
-                    self.on = false;
-                } else if value & 0x80 != 0 && !self.on {
-                    eprintln!("turn on");
                     // Most register were reset while the sound was off
                     *self = Self {
-                        on: true,
+                        on: false,
                         ch3_wave_pattern: self.ch3_wave_pattern,
                         // On DMG, load counters can be written to, while off
                         nr11: self.nr11 & 0x3F,
@@ -771,8 +767,15 @@ impl SoundController {
                         ch3_length_timer: self.ch3_length_timer,
                         nr41: self.nr41 & 0x3F,
                         ch4_length_timer: self.ch4_length_timer,
+                        output: std::mem::take(&mut self.output),
+                        last_clock: self.last_clock,
+                        sample_frequency: self.sample_frequency,
+                        sample_mod: self.sample_mod,
                         ..Self::default()
                     };
+                } else if value & 0x80 != 0 && !self.on {
+                    eprintln!("turn on");
+                    self.on = true;
                 }
             }
             0x30..=0x3F => {

@@ -62,6 +62,11 @@ pub struct SoundController {
     /// All sound on/off
     on: bool,
 
+    /// The currenty step of the frame sequencer
+    frame_sequencer_step: u8,
+    // From SameBoy source code: "When turning the APU on while DIV's bit 4 (or 5 in
+    // double speed mode) is on, the first DIV/APU event is skipped."
+    // frame_sequencer_skip: u8,
     ch1_channel_enable: bool,
     ch1_length_timer: u8,
     ch1_sweep_enabled: bool,
@@ -130,6 +135,7 @@ impl Default for SoundController {
             nr50: 0,
             nr51: 0,
             on: false,
+            frame_sequencer_step: 0,
             ch1_channel_enable: false,
             ch1_length_timer: 0,
             ch1_sweep_enabled: false,
@@ -277,12 +283,14 @@ impl SoundController {
             // TODO: a step should happens in a falling edge of the bit 5 of the DIV timer.
             if clock % (CLOCK_SPEED / 512) == 0 {
                 // step
-                let lenght_ctr = (clock % (CLOCK_SPEED / 256)) == 0;
-                let volume_env = (clock % (CLOCK_SPEED / 64)) == 0;
-                let sweep = ((clock + CLOCK_SPEED / 256) % (CLOCK_SPEED / 128)) == 0;
+                let lenght_ctr = self.frame_sequencer_step % 2 == 0;
+                let volume_env = self.frame_sequencer_step % 8 == 7;
+                let sweep = self.frame_sequencer_step % 4 == 2;
+                self.frame_sequencer_step = (self.frame_sequencer_step + 1) % 8;
 
                 if lenght_ctr {
                     if self.nr14 & 0x40 != 0 && self.ch1_length_timer != 0 {
+                        eprintln!("drecrease ch1 len from {}", self.ch1_length_timer);
                         self.ch1_length_timer -= 1;
                         if self.ch1_length_timer == 0 {
                             self.ch1_channel_enable = false;
@@ -464,9 +472,35 @@ impl SoundController {
     pub fn write(&mut self, clock_count: u64, address: u8, value: u8) {
         self.update(clock_count);
         if !self.on {
-            // On DMG, load counters can be written to, while off
             match address {
-                0x11 | 0x16 | 0x1B | 0x20 | 0x26 | 0x30..=0x3F => {}
+                0x26 | 0x30..=0x3F => {
+                    // writes to nr52 and wave pattern works
+                }
+                // On DMG, load counters can be written to, while off
+                0x11 => {
+                    self.nr11 = value & 0x3F;
+                    self.ch1_length_timer = 64 - (value & 0x3F);
+                    eprintln!("write nr11: {:02x}", value);
+                    return;
+                }
+                0x16 => {
+                    self.nr21 = value & 0x3F;
+                    self.ch2_length_timer = 64 - (value & 0x3F);
+                    eprintln!("write nr21: {:02x}", value);
+                    return;
+                }
+                0x1B => {
+                    self.nr31 = value;
+                    self.ch3_length_timer = 256 - value as u16;
+                    eprintln!("write nr31: {:02x}", value);
+                    return;
+                }
+                0x20 => {
+                    self.nr41 = value & 0x3F;
+                    self.ch4_length_timer = 64 - (value & 0x3F);
+                    eprintln!("write nr41: {:02x}", value);
+                    return;
+                }
                 _ => return,
             }
         }
@@ -486,6 +520,7 @@ impl SoundController {
                 eprintln!("write nr11: {:02x}", value);
                 let ch1_length_data = self.nr11 & 0x3F;
                 self.ch1_length_timer = 64 - ch1_length_data;
+                eprintln!("set ch1 len to {}", self.ch1_length_timer);
             }
             0x12 => {
                 self.nr12 = value;
@@ -499,18 +534,17 @@ impl SoundController {
                 eprintln!("write nr13: {:02x}", value);
             }
             0x14 => {
-                let length_previou_enabled = self.nr14 & 0x40 != 0;
+                let length_previous_enabled = self.nr14 & 0x40 != 0;
                 let length_now_enabled = value & 0x40 != 0;
-                let step_period = CLOCK_SPEED / 256;
-                let extra_clock =
-                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+                let extra_clock = self.frame_sequencer_step % 2 == 1;
 
                 // extra length clocking occurs when frame sequencer's next step don't clock the
                 // length.
                 if extra_clock {
                     // if was PREVIOUSLY disabled and now enabled and the length counter is not
                     // zero, the counter decreases
-                    if !length_previou_enabled && length_now_enabled && self.ch1_length_timer != 0 {
+                    eprintln!("drecrease ch1 len from {} in extra clock", self.ch1_length_timer);
+                    if !length_previous_enabled && length_now_enabled && self.ch1_length_timer != 0 {
                         self.ch1_length_timer -= 1;
                         // if became zero, and trigger is clear, disable channel
                         if self.ch1_length_timer == 0 && value & 0x80 == 0 {
@@ -534,6 +568,7 @@ impl SoundController {
                         } else {
                             self.ch1_length_timer = 64;
                         }
+                        eprintln!("set ch1 len from 0 to {}", self.ch1_length_timer);
                     }
                     self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
                     self.ch1_wave_duty_position = 0;
@@ -577,9 +612,8 @@ impl SoundController {
             0x19 => {
                 let length_previou_enabled = self.nr24 & 0x40 != 0;
                 let length_now_enabled = value & 0x40 != 0;
-                let step_period = CLOCK_SPEED / 256;
-                let extra_clock =
-                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+                // TODO: replace this step period with frame_sequencer_step
+                let extra_clock = self.frame_sequencer_step % 2 == 1;
 
                 // extra length clocking occurs when frame sequencer's next step don't clock the
                 // length.
@@ -642,9 +676,7 @@ impl SoundController {
             0x1E => {
                 let length_previou_enabled = self.nr34 & 0x40 != 0;
                 let length_now_enabled = value & 0x40 != 0;
-                let step_period = CLOCK_SPEED / 256;
-                let extra_clock =
-                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+                let extra_clock = self.frame_sequencer_step % 2 == 1;
 
                 // extra length clocking occurs when frame sequencer's next step don't clock the
                 // length.
@@ -700,9 +732,7 @@ impl SoundController {
             0x23 => {
                 let length_previou_enabled = self.nr44 & 0x40 != 0;
                 let length_now_enabled = value & 0x40 != 0;
-                let step_period = CLOCK_SPEED / 256;
-                let extra_clock =
-                    (clock_count + (step_period - 1)) % step_period < (CLOCK_SPEED / 512);
+                let extra_clock = self.frame_sequencer_step % 2 == 1;
 
                 // extra length clocking occurs when frame sequencer's next step don't clock the
                 // length.
@@ -767,6 +797,7 @@ impl SoundController {
                         ch3_length_timer: self.ch3_length_timer,
                         nr41: self.nr41 & 0x3F,
                         ch4_length_timer: self.ch4_length_timer,
+
                         output: std::mem::take(&mut self.output),
                         last_clock: self.last_clock,
                         sample_frequency: self.sample_frequency,
@@ -779,8 +810,12 @@ impl SoundController {
                 }
             }
             0x30..=0x3F => {
-                self.ch3_wave_pattern[address as usize - 0x30] = value;
-                eprintln!("write wave: {:04x}", value);
+                // if self.ch3_channel_enable {
+                    // self.ch3_wave_pattern[self.ch3_wave_position as usize / 2] = value;
+                // } else {
+                    self.ch3_wave_pattern[address as usize - 0x30] = value;
+                // }
+                eprintln!("write wave {:02x}: {:02x}", address, value);
             }
             _ => unreachable!(),
         }
@@ -819,7 +854,14 @@ impl SoundController {
                         | 0x70;
                     r
                 }
-                0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
+                0x30..=0x3F => {
+                    if self.ch3_channel_enable {
+                        eprintln!("wave position: {}", self.ch3_wave_position);
+                        self.ch3_wave_pattern[self.ch3_wave_position as usize / 2]
+                    } else {
+                        self.ch3_wave_pattern[address as usize - 0x30]
+                    }
+                }
                 _ => unreachable!(),
             }
         } else {

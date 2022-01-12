@@ -7,61 +7,71 @@ use std::sync::{Arc, Mutex};
 const SCREEN_HEIGHT: usize = 144;
 const SCREEN_WIDTH: usize = 160;
 
-macro_rules! blargg {
+macro_rules! console {
     ($test:ident, $path:expr, $timeout:expr) => {
         #[test]
         fn $test() {
-            test_rom($path, $timeout).unwrap();
+            test_rom_console($path, $timeout).unwrap();
         }
     };
 }
 
-blargg!(dmg_sound_01, "dmg_sound/01-registers.gb", 43000000);
-blargg!(dmg_sound_02, "dmg_sound/02-len ctr.gb", 43000000);
-blargg!(dmg_sound_03, "dmg_sound/03-trigger.gb", 43000000);
-blargg!(dmg_sound_04, "dmg_sound/04-sweep.gb", 43000000);
-blargg!(dmg_sound_05, "dmg_sound/05-sweep details.gb", 43000000);
-blargg!(
+macro_rules! memory {
+    ($test:ident, $path:expr, $timeout:expr) => {
+        #[test]
+        fn $test() {
+            test_rom_memory($path, $timeout).unwrap();
+        }
+    };
+}
+
+memory!(dmg_sound_01, "dmg_sound/01-registers.gb", 30_600_000);
+memory!(dmg_sound_02, "dmg_sound/02-len ctr.gb", 65_000_000);
+memory!(dmg_sound_03, "dmg_sound/03-trigger.gb", 95_000_000);
+memory!(dmg_sound_04, "dmg_sound/04-sweep.gb", 43000000);
+memory!(dmg_sound_05, "dmg_sound/05-sweep details.gb", 43000000);
+memory!(
     dmg_sound_06,
     "dmg_sound/06-overflow on trigger.gb",
     43000000
 );
-blargg!(
+memory!(
     dmg_sound_07,
     "dmg_sound/07-len sweep period sync.gb",
     43000000
 );
-blargg!(
+memory!(
     dmg_sound_08,
     "dmg_sound/08-len ctr during power.gb",
     43000000
 );
-blargg!(dmg_sound_09, "dmg_sound/09-wave read while on.gb", 43000000);
-blargg!(
+memory!(dmg_sound_09, "dmg_sound/09-wave read while on.gb", 43000000);
+memory!(
     dmg_sound_10,
     "dmg_sound/10-wave trigger while on.gb",
     43000000
 );
-blargg!(dmg_sound_11, "dmg_sound/11-regs after power.gb", 43000000);
-blargg!(
+memory!(dmg_sound_11, "dmg_sound/11-regs after power.gb", 43000000);
+memory!(
     dmg_sound_12,
     "dmg_sound/12-wave write while on.gb",
     43000000
 );
-blargg!(blargg_01, "01-special.gb", 43000000);
-blargg!(blargg_02, "02-interrupts.gb", 43000000);
-blargg!(blargg_03, "03-op sp,hl.gb", 43000000);
-blargg!(blargg_04, "04-op r,imm.gb", 43000000);
-blargg!(blargg_05, "05-op rp.gb", 43000000);
-blargg!(blargg_06, "06-ld r,r.gb", 43000000);
-blargg!(blargg_07, "07-jr,jp,call,ret,rst.gb", 43000000);
-blargg!(blargg_08, "08-misc instrs.gb", 43000000);
-blargg!(blargg_09, "09-op r,r.gb", 43000000);
-blargg!(blargg_10, "10-bit ops.gb", 43000000);
-blargg!(blargg_11, "11-op a,(hl).gb", 43000000);
-blargg!(blargg_cpu_instrs, "cpu_instrs.gb", 43000000);
 
-fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
+console!(blargg_01, "01-special.gb", 43000000);
+console!(blargg_02, "02-interrupts.gb", 43000000);
+console!(blargg_03, "03-op sp,hl.gb", 43000000);
+console!(blargg_04, "04-op r,imm.gb", 43000000);
+console!(blargg_05, "05-op rp.gb", 43000000);
+console!(blargg_06, "06-ld r,r.gb", 43000000);
+console!(blargg_07, "07-jr,jp,call,ret,rst.gb", 43000000);
+console!(blargg_08, "08-misc instrs.gb", 43000000);
+console!(blargg_09, "09-op r,r.gb", 43000000);
+console!(blargg_10, "10-bit ops.gb", 43000000);
+console!(blargg_11, "11-op a,(hl).gb", 43000000);
+console!(blargg_cpu_instrs, "cpu_instrs.gb", 43000000);
+
+fn test_rom_console(path: &str, timeout: u64) -> Result<(), String> {
     let rom_path = "../roms/".to_string() + path;
     let rom_file = File::open(rom_path).unwrap();
     let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
@@ -100,6 +110,51 @@ fn test_rom(path: &str, timeout: u64) -> Result<(), String> {
     } else {
         let string = string_clone.lock().unwrap();
         Err(format!("test rom failed: \n{}", string))
+    }
+}
+
+fn test_rom_memory(path: &str, timeout: u64) -> Result<(), String> {
+    let rom_path = "../roms/".to_string() + path;
+    let rom_file = File::open(rom_path).unwrap();
+    let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+
+    let cartridge = Cartridge::new(rom_file).unwrap();
+
+    let game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
+
+    let mut inter = Interpreter(game_boy);
+    // while inter.0.clock_count < 33000000 {
+    while inter.0.clock_count < timeout {
+        inter.interpret_op();
+    }
+
+    let signature = &inter.0.memory[0xA001..=0xA003];
+    if signature == [0xDE, 0xB0, 0x61] {
+        return Err(format!("invalid output to memory signature: {:?}", signature));
+    }
+
+    let status_code = inter.0.read(0xA000);
+
+    // panic!("ahh");
+    if status_code == 0 {
+        Ok(())
+        // let string = string_clone.lock().unwrap();
+        // Err(format!("test rom failed: \n{}", string))
+    } else {
+        let string = {
+            let mut i = 0xA004;
+            let mut string = Vec::new();
+            loop {
+                let value = inter.0.read(i);
+                if value == 0 {
+                    break;
+                }
+                string.push(value);
+                i += 1;
+            }
+            String::from_utf8(string).unwrap()
+        };
+        Err(format!("test rom failed({}): \n{}", status_code, string))
     }
 }
 

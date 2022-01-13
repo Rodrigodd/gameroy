@@ -1,9 +1,7 @@
 use crate::consts::CLOCK_SPEED;
 
-// based mostly on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html#fnref:2
-
-// TODO:
-// - while NRx2 volume is zero, the channel need to always be disabled
+// based on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html, https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
+// and https://github.com/LIJI32/SameBoy source code.
 
 pub struct SoundController {
     // Sound Channel 1 - Tone & Sweep
@@ -90,6 +88,8 @@ pub struct SoundController {
     ch3_length_timer: u16,
     ch3_frequency_timer: u16,
     ch3_wave_position: u8,
+    ch3_sample_buffer: u8,
+    ch3_wave_just_read: bool,
 
     ch4_channel_enable: bool,
     ch4_length_timer: u8,
@@ -156,6 +156,8 @@ impl Default for SoundController {
             ch3_length_timer: 0,
             ch3_frequency_timer: 0,
             ch3_wave_position: 0,
+            ch3_sample_buffer: 0,
+            ch3_wave_just_read: false,
             ch4_channel_enable: false,
             ch4_length_timer: 0,
             ch4_current_volume: 0,
@@ -244,38 +246,53 @@ impl SoundController {
         let ch4_right = (self.nr51 & 0x08) != 0;
         for clock in self.last_clock..clock_count {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
-            if self.ch1_frequency_timer <= 1 {
-                // Frequency Timer = (2048 - Frequency) * 4;
-                self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
-                self.ch1_wave_duty_position = (self.ch1_wave_duty_position + 1) % 8;
-            } else {
-                self.ch1_frequency_timer -= 1;
-            }
-
-            if self.ch2_frequency_timer <= 1 {
-                self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
-                self.ch2_wave_duty_position = (self.ch2_wave_duty_position + 1) % 8;
-            } else {
-                self.ch2_frequency_timer -= 1;
-            }
-
-            if self.ch3_frequency_timer <= 1 {
-                self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
-                self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
-            } else {
-                self.ch3_frequency_timer -= 1;
-            }
-
-            if self.ch4_frequency_timer <= 1 {
-                self.ch4_frequency_timer = ch4_divisor << ch4_shift_amount;
-                let xor = (self.ch4_lfsr & 0x1 != 0) ^ (self.ch4_lfsr & 0x2 != 0);
-                self.ch4_lfsr = (self.ch4_lfsr >> 1) | ((xor as u16) << 14);
-                if ch4_counter_width {
-                    self.ch4_lfsr &= !(1 << 6);
-                    self.ch4_lfsr |= (xor as u16) << 6;
+            if self.ch1_channel_enable {
+                if self.ch1_frequency_timer <= 1 {
+                    // Frequency Timer = (2048 - Frequency) * 4;
+                    self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
+                    self.ch1_wave_duty_position = (self.ch1_wave_duty_position + 1) % 8;
+                } else {
+                    self.ch1_frequency_timer -= 1;
                 }
-            } else {
-                self.ch4_frequency_timer -= 1;
+            }
+
+            if self.ch2_channel_enable {
+                if self.ch2_frequency_timer <= 1 {
+                    self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
+                    self.ch2_wave_duty_position = (self.ch2_wave_duty_position + 1) % 8;
+                } else {
+                    self.ch2_frequency_timer -= 1;
+                }
+            }
+
+            // TODO: make the entire apu only clock at 2MHz
+            if self.ch3_channel_enable && clock % 2 == 0 {
+                if self.ch3_frequency_timer == 0 {
+                    self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
+                    self.ch3_sample_buffer = (self.ch3_wave_pattern
+                        [self.ch3_wave_position as usize / 2]
+                        >> [4, 0][self.ch3_wave_position as usize % 2])
+                        & 0xF;
+                    self.ch3_frequency_timer = ch3_freq ^ 0x07FF;
+                    self.ch3_wave_just_read = true;
+                } else {
+                    self.ch3_frequency_timer -= 1;
+                    self.ch3_wave_just_read = false;
+                }
+            }
+
+            if self.ch4_channel_enable {
+                if self.ch4_frequency_timer <= 1 {
+                    self.ch4_frequency_timer = ch4_divisor << ch4_shift_amount;
+                    let xor = (self.ch4_lfsr & 0x1 != 0) ^ (self.ch4_lfsr & 0x2 != 0);
+                    self.ch4_lfsr = (self.ch4_lfsr >> 1) | ((xor as u16) << 14);
+                    if ch4_counter_width {
+                        self.ch4_lfsr &= !(1 << 6);
+                        self.ch4_lfsr |= (xor as u16) << 6;
+                    }
+                } else {
+                    self.ch4_frequency_timer -= 1;
+                }
             }
 
             // frame sequencer
@@ -406,10 +423,7 @@ impl SoundController {
                 let ch2_amp = ((WAVE_DUTY_TABLE[ch2_duty as usize] >> self.ch2_wave_duty_position)
                     & 0x1)
                     * self.ch2_current_volume;
-                let ch3_amp = ((self.ch3_wave_pattern[self.ch3_wave_position as usize / 2]
-                    >> [4, 0][self.ch3_wave_position as usize % 2])
-                    & 0xF)
-                    >> ch3_output_level;
+                let ch3_amp = self.ch3_sample_buffer >> ch3_output_level;
                 let ch4_amp = ((!self.ch4_lfsr as u8) & 0x01) * self.ch4_current_volume;
                 let mut left = 0;
                 let mut right = 0;
@@ -543,8 +557,12 @@ impl SoundController {
                 if extra_clock {
                     // if was PREVIOUSLY disabled and now enabled and the length counter is not
                     // zero, the counter decreases
-                    eprintln!("drecrease ch1 len from {} in extra clock", self.ch1_length_timer);
-                    if !length_previous_enabled && length_now_enabled && self.ch1_length_timer != 0 {
+                    eprintln!(
+                        "drecrease ch1 len from {} in extra clock",
+                        self.ch1_length_timer
+                    );
+                    if !length_previous_enabled && length_now_enabled && self.ch1_length_timer != 0
+                    {
                         self.ch1_length_timer -= 1;
                         // if became zero, and trigger is clear, disable channel
                         if self.ch1_length_timer == 0 && value & 0x80 == 0 {
@@ -703,7 +721,7 @@ impl SoundController {
                             self.ch3_length_timer = 256;
                         }
                     }
-                    self.ch3_frequency_timer = (2048 - ch3_freq) * 2;
+                    self.ch3_frequency_timer = (ch3_freq ^ 0x07FF) + 3;
                     self.ch3_wave_position = 0;
                     if self.nr30 & 0x80 == 0 {
                         self.ch3_channel_enable = false;
@@ -810,11 +828,7 @@ impl SoundController {
                 }
             }
             0x30..=0x3F => {
-                // if self.ch3_channel_enable {
-                    // self.ch3_wave_pattern[self.ch3_wave_position as usize / 2] = value;
-                // } else {
-                    self.ch3_wave_pattern[address as usize - 0x30] = value;
-                // }
+                self.ch3_wave_pattern[address as usize - 0x30] = value;
                 eprintln!("write wave {:02x}: {:02x}", address, value);
             }
             _ => unreachable!(),
@@ -855,9 +869,20 @@ impl SoundController {
                     r
                 }
                 0x30..=0x3F => {
+                    self.update(clock_count);
+                    let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
+                    println!("read wave: pos {}, tim {}/{}, just {}, enabled {}, last sync {}", 
+                           self.ch3_wave_position, self.ch3_frequency_timer, ch3_freq ^ 0x07FF,
+                           self.ch3_wave_just_read as u8,
+                           self.ch3_channel_enable, clock_count);
                     if self.ch3_channel_enable {
                         eprintln!("wave position: {}", self.ch3_wave_position);
-                        self.ch3_wave_pattern[self.ch3_wave_position as usize / 2]
+                        // if it had read recently, return the currently value, otherwise 0xFF
+                        if self.ch3_wave_just_read {
+                            self.ch3_wave_pattern[self.ch3_wave_position as usize / 2]
+                        } else {
+                            0xFF
+                        }
                     } else {
                         self.ch3_wave_pattern[address as usize - 0x30]
                     }
@@ -887,7 +912,9 @@ impl SoundController {
                 0x24 => 0x00,
                 0x25 => 0x00,
                 0x26 => 0x70,
-                0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
+                0x30..=0x3F => {
+                    self.ch3_wave_pattern[address as usize - 0x30]
+                },
                 _ => unreachable!(),
             }
         };

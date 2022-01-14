@@ -63,18 +63,18 @@ memory!(
     173_500_000
 );
 
-console!(blargg_01, "01-special.gb", 43000000);
-console!(blargg_02, "02-interrupts.gb", 43000000);
-console!(blargg_03, "03-op sp,hl.gb", 43000000);
-console!(blargg_04, "04-op r,imm.gb", 43000000);
-console!(blargg_05, "05-op rp.gb", 43000000);
-console!(blargg_06, "06-ld r,r.gb", 43000000);
-console!(blargg_07, "07-jr,jp,call,ret,rst.gb", 43000000);
-console!(blargg_08, "08-misc instrs.gb", 43000000);
-console!(blargg_09, "09-op r,r.gb", 43000000);
-console!(blargg_10, "10-bit ops.gb", 43000000);
-console!(blargg_11, "11-op a,(hl).gb", 43000000);
-console!(blargg_cpu_instrs, "cpu_instrs.gb", 43000000);
+console!(blargg_01, "01-special.gb", 34_500_000);
+console!(blargg_02, "02-interrupts.gb", 43_000_000);
+console!(blargg_03, "03-op sp,hl.gb", 34_000_000);
+console!(blargg_04, "04-op r,imm.gb", 36_000_000);
+console!(blargg_05, "05-op rp.gb", 40_000_000);
+console!(blargg_06, "06-ld r,r.gb", 27_000_000);
+console!(blargg_07, "07-jr,jp,call,ret,rst.gb", 28_000_000);
+console!(blargg_08, "08-misc instrs.gb", 26_000_000);
+console!(blargg_09, "09-op r,r.gb", 62_000_000);
+console!(blargg_10, "10-bit ops.gb", 89_000_000);
+console!(blargg_11, "11-op a,(hl).gb", 98_000_000);
+console!(blargg_cpu_instrs, "cpu_instrs.gb", 248_000_000);
 
 fn test_rom_console(path: &str, timeout: u64) -> Result<(), String> {
     let rom_path = "../roms/".to_string() + path;

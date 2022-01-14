@@ -307,7 +307,6 @@ impl SoundController {
 
                 if lenght_ctr {
                     if self.nr14 & 0x40 != 0 && self.ch1_length_timer != 0 {
-                        eprintln!("drecrease ch1 len from {}", self.ch1_length_timer);
                         self.ch1_length_timer -= 1;
                         if self.ch1_length_timer == 0 {
                             self.ch1_channel_enable = false;
@@ -487,18 +486,6 @@ impl SoundController {
     // TODO: Check for read or write only registers and bits.
     pub fn write(&mut self, clock_count: u64, address: u8, value: u8) {
         self.update(clock_count);
-        if let 0x30..=0x3F = address {
-            let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
-            println!(
-                "writ wave: pos {}, tim {}/{}, just {}, enabled {}/{}",
-                self.ch3_wave_position,
-                self.ch3_frequency_timer,
-                ch3_freq ^ 0x07FF,
-                self.ch3_wave_just_read as u8,
-                self.ch3_channel_enable as u8,
-                self.on as u8
-            );
-        }
         if !self.on {
             match address {
                 0x26 => {
@@ -508,30 +495,25 @@ impl SoundController {
                 0x11 => {
                     self.nr11 = value & 0x3F;
                     self.ch1_length_timer = 64 - (value & 0x3F);
-                    eprintln!("write nr11: {:02x}", value);
                     return;
                 }
                 0x16 => {
                     self.nr21 = value & 0x3F;
                     self.ch2_length_timer = 64 - (value & 0x3F);
-                    eprintln!("write nr21: {:02x}", value);
                     return;
                 }
                 0x1B => {
                     self.nr31 = value;
                     self.ch3_length_timer = 256 - value as u16;
-                    eprintln!("write nr31: {:02x}", value);
                     return;
                 }
                 0x20 => {
                     self.nr41 = value & 0x3F;
                     self.ch4_length_timer = 64 - (value & 0x3F);
-                    eprintln!("write nr41: {:02x}", value);
                     return;
                 }
                 0x30..=0x3F => {
                     self.ch3_wave_pattern[address as usize - 0x30] = value;
-                    eprintln!("write wave {:02x}: {:02x}", address, value);
                     return;
                 }
                 _ => return,
@@ -546,25 +528,20 @@ impl SoundController {
                     self.ch1_channel_enable = false;
                 }
                 self.nr10 = value;
-                eprintln!("write nr10: {:02x}", value)
             }
             0x11 => {
                 self.nr11 = value;
-                eprintln!("write nr11: {:02x}", value);
                 let ch1_length_data = self.nr11 & 0x3F;
                 self.ch1_length_timer = 64 - ch1_length_data;
-                eprintln!("set ch1 len to {}", self.ch1_length_timer);
             }
             0x12 => {
                 self.nr12 = value;
                 if self.nr12 & 0xF8 == 0 {
                     self.ch1_channel_enable = false;
                 }
-                eprintln!("write nr12: {:02x}", value);
             }
             0x13 => {
                 self.nr13 = value;
-                eprintln!("write nr13: {:02x}", value);
             }
             0x14 => {
                 let length_previous_enabled = self.nr14 & 0x40 != 0;
@@ -576,10 +553,6 @@ impl SoundController {
                 if extra_clock {
                     // if was PREVIOUSLY disabled and now enabled and the length counter is not
                     // zero, the counter decreases
-                    eprintln!(
-                        "drecrease ch1 len from {} in extra clock",
-                        self.ch1_length_timer
-                    );
                     if !length_previous_enabled && length_now_enabled && self.ch1_length_timer != 0
                     {
                         self.ch1_length_timer -= 1;
@@ -593,7 +566,6 @@ impl SoundController {
 
                 if value & 0x80 != 0 {
                     // Trigger event
-                    eprintln!("trigger ch1");
                     let ch1_freq = u16::from_be_bytes([self.nr14, self.nr13]) & 0x07FF;
                     let ch1_sweep_period = (self.nr10 & 0x70) >> 4;
                     let ch1_sweep_shift = self.nr10 & 0x7;
@@ -605,7 +577,6 @@ impl SoundController {
                         } else {
                             self.ch1_length_timer = 64;
                         }
-                        eprintln!("set ch1 len from 0 to {}", self.ch1_length_timer);
                     }
                     self.ch1_frequency_timer = (0x07FF ^ ch1_freq) * 2;
                     self.ch1_wave_duty_position = 0;
@@ -627,24 +598,20 @@ impl SoundController {
                         self.ch1_channel_enable = false;
                     }
                 }
-                eprintln!("write nr14: {:02x}", value)
             }
             0x16 => {
                 self.nr21 = value;
                 let ch2_length_data = self.nr21 & 0x3F;
                 self.ch2_length_timer = 64 - ch2_length_data;
-                eprintln!("write nr21: {:02x}", value)
             }
             0x17 => {
                 self.nr22 = value;
                 if self.nr22 & 0xF8 == 0 {
                     self.ch2_channel_enable = false;
                 }
-                eprintln!("write nr22: {:02x}", value)
             }
             0x18 => {
                 self.nr23 = value;
-                eprintln!("write nr23: {:02x}", value)
             }
             0x19 => {
                 let length_previou_enabled = self.nr24 & 0x40 != 0;
@@ -668,7 +635,6 @@ impl SoundController {
 
                 if value & 0x80 != 0 {
                     // Trigger event
-                    eprintln!("trigger ch2");
                     let ch2_freq = u16::from_be_bytes([self.nr24, self.nr23]) & 0x07FF;
                     self.ch2_channel_enable = true;
                     if self.ch2_length_timer == 0 {
@@ -687,28 +653,23 @@ impl SoundController {
                     }
                 }
                 self.nr24 = value;
-                eprintln!("write nr24: {:02x}", value)
             }
             0x1A => {
                 self.nr30 = value;
                 if self.nr30 & 0x80 == 0 {
                     self.ch3_channel_enable = false;
                 }
-                eprintln!("write nr30: {:02x}", value)
             }
             0x1B => {
                 self.nr31 = value;
                 let ch3_length_data = self.nr31;
                 self.ch3_length_timer = 256 - ch3_length_data as u16;
-                eprintln!("write nr31: {:02x}", value)
             }
             0x1C => {
                 self.nr32 = value;
-                eprintln!("write nr32: {:02x}", value)
             }
             0x1D => {
                 self.nr33 = value;
-                eprintln!("write nr33: {:02x}", value)
             }
             0x1E => {
                 let length_previou_enabled = self.nr34 & 0x40 != 0;
@@ -730,7 +691,6 @@ impl SoundController {
                 }
                 if value & 0x80 != 0 {
                     // Trigger event
-                    eprintln!("trigger ch3");
 
                     if self.ch3_channel_enable
                         && self.nr30 & 0x80 != 0
@@ -762,24 +722,20 @@ impl SoundController {
                     }
                 }
                 self.nr34 = value;
-                eprintln!("write nr34: {:02x}", value)
             }
             0x20 => {
                 self.nr41 = value;
                 let ch4_length_data = self.nr41 & 0x3F;
                 self.ch4_length_timer = 64 - ch4_length_data;
-                eprintln!("write nr41: {:02x}", value)
             }
             0x21 => {
                 self.nr42 = value;
                 if self.nr42 & 0xF8 == 0 {
                     self.ch4_channel_enable = false;
                 }
-                eprintln!("write nr42: {:02x}", value)
             }
             0x22 => {
                 self.nr43 = value;
-                eprintln!("write nr43: {:02x}", value)
             }
             0x23 => {
                 let length_previou_enabled = self.nr44 & 0x40 != 0;
@@ -801,7 +757,6 @@ impl SoundController {
                 }
                 if value & 0x80 != 0 {
                     // Trigger event
-                    eprintln!("trigger ch4");
                     let ch4_divisor = [8, 16, 32, 48, 64, 80, 96, 112][self.nr43 as usize & 0x07];
                     let ch4_shift_amount = (self.nr43 & 0xF0) >> 4;
                     self.ch4_channel_enable = true;
@@ -821,21 +776,16 @@ impl SoundController {
                     }
                 }
                 self.nr44 = value;
-                eprintln!("write nr44: {:02x}", value)
             }
             0x24 => {
                 self.nr50 = value;
-                eprintln!("write nr50: {:02x}", value)
             }
             0x25 => {
                 self.nr51 = value;
-                eprintln!("write nr51: {:02x}", value)
             }
             0x26 => {
-                eprintln!("write nr52: {:02x}", value);
                 // Bit 7 turn off the sound
                 if value & 0x80 == 0 && self.on {
-                    eprintln!("turn off");
                     // Most register were reset while the sound was off
                     *self = Self {
                         on: false,
@@ -857,13 +807,11 @@ impl SoundController {
                         ..Self::default()
                     };
                 } else if value & 0x80 != 0 && !self.on {
-                    eprintln!("turn on");
                     self.on = true;
                 }
             }
             0x30..=0x3F => {
                 if self.ch3_channel_enable {
-                    eprintln!("wave position: {}", self.ch3_wave_position);
                     // if it had read recently, write to the currently read
                     if self.ch3_wave_just_read {
                         self.ch3_wave_pattern[self.ch3_wave_position as usize / 2] = value;
@@ -871,21 +819,12 @@ impl SoundController {
                 } else {
                     self.ch3_wave_pattern[address as usize - 0x30] = value;
                 }
-                eprintln!("write wave {:02x}: {:02x}", address, value);
             }
             _ => unreachable!(),
         }
     }
 
     pub fn read(&mut self, clock_count: u64, address: u8) -> u8 {
-        // if let 0x30..=0x3F = address {
-        //     self.update(clock_count);
-        //     let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
-        //     println!("read wave: pos {}, tim {}/{}, just {}, enabled {}/{}",
-        //              self.ch3_wave_position, self.ch3_frequency_timer, ch3_freq ^ 0x07FF,
-        //              self.ch3_wave_just_read as u8,
-        //              self.ch3_channel_enable as u8, self.on as u8);
-        // }
         let value = if self.on {
             match address {
                 0x10 => self.nr10 | 0x80,
@@ -921,7 +860,6 @@ impl SoundController {
                 0x30..=0x3F => {
                     self.update(clock_count);
                     if self.ch3_channel_enable {
-                        eprintln!("wave position: {}", self.ch3_wave_position);
                         // if it had read recently, return the currently value, otherwise 0xFF
                         if self.ch3_wave_just_read {
                             self.ch3_wave_pattern[self.ch3_wave_position as usize / 2]
@@ -961,7 +899,6 @@ impl SoundController {
                 _ => unreachable!(),
             }
         };
-        eprintln!("read {:02x}: {:02x}", address, value);
         value
     }
 }

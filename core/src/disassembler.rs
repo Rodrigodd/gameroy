@@ -449,7 +449,7 @@ impl Trace {
                 compute_step(cursors, bank, pc, len, reg_a, &op, jump);
             }
             None => {
-                if pc <= 0x3FFF {
+                if pc <= 0x7FFF {
                     return;
                 }
                 // it is in ram

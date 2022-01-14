@@ -266,17 +266,21 @@ impl SoundController {
             }
 
             // TODO: make the entire apu only clock at 2MHz
-            if self.ch3_channel_enable && clock % 2 == 0 {
-                if self.ch3_frequency_timer == 0 {
-                    self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
-                    self.ch3_sample_buffer = (self.ch3_wave_pattern
-                        [self.ch3_wave_position as usize / 2]
-                        >> [4, 0][self.ch3_wave_position as usize % 2])
-                        & 0xF;
-                    self.ch3_frequency_timer = ch3_freq ^ 0x07FF;
-                    self.ch3_wave_just_read = true;
+            if clock % 2 == 0 {
+                if self.ch3_channel_enable {
+                    if self.ch3_frequency_timer == 0 {
+                        self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
+                        self.ch3_sample_buffer = (self.ch3_wave_pattern
+                            [self.ch3_wave_position as usize / 2]
+                            >> [4, 0][self.ch3_wave_position as usize % 2])
+                            & 0xF;
+                        self.ch3_frequency_timer = ch3_freq ^ 0x07FF;
+                        self.ch3_wave_just_read = true;
+                    } else {
+                        self.ch3_frequency_timer -= 1;
+                        self.ch3_wave_just_read = false;
+                    }
                 } else {
-                    self.ch3_frequency_timer -= 1;
                     self.ch3_wave_just_read = false;
                 }
             }
@@ -485,10 +489,22 @@ impl SoundController {
     // TODO: Check for read or write only registers and bits.
     pub fn write(&mut self, clock_count: u64, address: u8, value: u8) {
         self.update(clock_count);
+        if let 0x30..=0x3F = address {
+            let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
+            println!(
+                "writ wave: pos {}, tim {}/{}, just {}, enabled {}/{}",
+                self.ch3_wave_position,
+                self.ch3_frequency_timer,
+                ch3_freq ^ 0x07FF,
+                self.ch3_wave_just_read as u8,
+                self.ch3_channel_enable as u8,
+                self.on as u8
+            );
+        }
         if !self.on {
             match address {
-                0x26 | 0x30..=0x3F => {
-                    // writes to nr52 and wave pattern works
+                0x26 => {
+                    // writes to nr52 works
                 }
                 // On DMG, load counters can be written to, while off
                 0x11 => {
@@ -513,6 +529,11 @@ impl SoundController {
                     self.nr41 = value & 0x3F;
                     self.ch4_length_timer = 64 - (value & 0x3F);
                     eprintln!("write nr41: {:02x}", value);
+                    return;
+                }
+                0x30..=0x3F => {
+                    self.ch3_wave_pattern[address as usize - 0x30] = value;
+                    eprintln!("write wave {:02x}: {:02x}", address, value);
                     return;
                 }
                 _ => return,
@@ -712,6 +733,21 @@ impl SoundController {
                 if value & 0x80 != 0 {
                     // Trigger event
                     eprintln!("trigger ch3");
+
+                    if self.ch3_channel_enable
+                        && self.nr30 & 0x80 != 0
+                        && self.ch3_frequency_timer == 0
+                    {
+                        let pos = ((self.ch3_wave_position as usize + 1) % 32) / 2;
+                        if pos < 4 {
+                            self.ch3_wave_pattern[0] = self.ch3_wave_pattern[pos];
+                        } else {
+                            let p = pos - (pos % 4) - 4;
+                            let (a, b) = self.ch3_wave_pattern.split_at_mut(4);
+                            a.clone_from_slice(&b[p..p + 4]);
+                        }
+                    }
+
                     let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
                     self.ch3_channel_enable = true;
                     if self.ch3_length_timer == 0 {
@@ -828,7 +864,15 @@ impl SoundController {
                 }
             }
             0x30..=0x3F => {
-                self.ch3_wave_pattern[address as usize - 0x30] = value;
+                if self.ch3_channel_enable {
+                    eprintln!("wave position: {}", self.ch3_wave_position);
+                    // if it had read recently, write to the currently read
+                    if self.ch3_wave_just_read {
+                        self.ch3_wave_pattern[self.ch3_wave_position as usize / 2] = value;
+                    }
+                } else {
+                    self.ch3_wave_pattern[address as usize - 0x30] = value;
+                }
                 eprintln!("write wave {:02x}: {:02x}", address, value);
             }
             _ => unreachable!(),
@@ -836,6 +880,14 @@ impl SoundController {
     }
 
     pub fn read(&mut self, clock_count: u64, address: u8) -> u8 {
+        // if let 0x30..=0x3F = address {
+        //     self.update(clock_count);
+        //     let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
+        //     println!("read wave: pos {}, tim {}/{}, just {}, enabled {}/{}",
+        //              self.ch3_wave_position, self.ch3_frequency_timer, ch3_freq ^ 0x07FF,
+        //              self.ch3_wave_just_read as u8,
+        //              self.ch3_channel_enable as u8, self.on as u8);
+        // }
         let value = if self.on {
             match address {
                 0x10 => self.nr10 | 0x80,
@@ -870,11 +922,6 @@ impl SoundController {
                 }
                 0x30..=0x3F => {
                     self.update(clock_count);
-                    let ch3_freq = u16::from_be_bytes([self.nr34, self.nr33]) & 0x07FF;
-                    println!("read wave: pos {}, tim {}/{}, just {}, enabled {}, last sync {}", 
-                           self.ch3_wave_position, self.ch3_frequency_timer, ch3_freq ^ 0x07FF,
-                           self.ch3_wave_just_read as u8,
-                           self.ch3_channel_enable, clock_count);
                     if self.ch3_channel_enable {
                         eprintln!("wave position: {}", self.ch3_wave_position);
                         // if it had read recently, return the currently value, otherwise 0xFF
@@ -912,9 +959,7 @@ impl SoundController {
                 0x24 => 0x00,
                 0x25 => 0x00,
                 0x26 => 0x70,
-                0x30..=0x3F => {
-                    self.ch3_wave_pattern[address as usize - 0x30]
-                },
+                0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
                 _ => unreachable!(),
             }
         };

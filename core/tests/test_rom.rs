@@ -28,34 +28,39 @@ macro_rules! memory {
 memory!(dmg_sound_01, "dmg_sound/01-registers.gb", 30_600_000);
 memory!(dmg_sound_02, "dmg_sound/02-len ctr.gb", 65_000_000);
 memory!(dmg_sound_03, "dmg_sound/03-trigger.gb", 95_000_000);
-memory!(dmg_sound_04, "dmg_sound/04-sweep.gb", 43000000);
-memory!(dmg_sound_05, "dmg_sound/05-sweep details.gb", 43000000);
+memory!(dmg_sound_04, "dmg_sound/04-sweep.gb", 29_500_000);
+memory!(dmg_sound_05, "dmg_sound/05-sweep details.gb", 29_300_000);
 memory!(
     dmg_sound_06,
     "dmg_sound/06-overflow on trigger.gb",
-    43000000
+    29_800_000
 );
 memory!(
     dmg_sound_07,
     "dmg_sound/07-len sweep period sync.gb",
-    43000000
+    27_400_000
 );
 memory!(
     dmg_sound_08,
     "dmg_sound/08-len ctr during power.gb",
-    43000000
+    30_000_000
 );
 memory!(dmg_sound_09, "dmg_sound/09-wave read while on.gb", 43000000);
 memory!(
     dmg_sound_10,
     "dmg_sound/10-wave trigger while on.gb",
-    43000000
+    41_000_000
 );
-memory!(dmg_sound_11, "dmg_sound/11-regs after power.gb", 43000000);
+memory!(dmg_sound_11, "dmg_sound/11-regs after power.gb", 27_700_000);
 memory!(
     dmg_sound_12,
     "dmg_sound/12-wave write while on.gb",
-    43000000
+    41_000_000
+);
+memory!(
+    dmg_sound,
+    "dmg_sound.gb",
+    173_500_000
 );
 
 console!(blargg_01, "01-special.gb", 43000000);

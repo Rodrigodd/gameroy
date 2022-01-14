@@ -244,12 +244,11 @@ impl SoundController {
         let ch2_right = (self.nr51 & 0x02) != 0;
         let ch3_right = (self.nr51 & 0x04) != 0;
         let ch4_right = (self.nr51 & 0x08) != 0;
-        for clock in self.last_clock..clock_count {
+        for clock in (self.last_clock..clock_count).filter(|x| x % 2 == 0) {
             // The frequency timer decreases in one every clock. When it reaches 0, it is reloaded.
             if self.ch1_channel_enable {
-                if self.ch1_frequency_timer <= 1 {
-                    // Frequency Timer = (2048 - Frequency) * 4;
-                    self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
+                if self.ch1_frequency_timer == 0 {
+                    self.ch1_frequency_timer = (0x07FF ^ ch1_freq) * 2;
                     self.ch1_wave_duty_position = (self.ch1_wave_duty_position + 1) % 8;
                 } else {
                     self.ch1_frequency_timer -= 1;
@@ -257,36 +256,33 @@ impl SoundController {
             }
 
             if self.ch2_channel_enable {
-                if self.ch2_frequency_timer <= 1 {
-                    self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
+                if self.ch2_frequency_timer == 0 {
+                    self.ch2_frequency_timer = (0x07FF ^ ch2_freq) * 2;
                     self.ch2_wave_duty_position = (self.ch2_wave_duty_position + 1) % 8;
                 } else {
                     self.ch2_frequency_timer -= 1;
                 }
             }
 
-            // TODO: make the entire apu only clock at 2MHz
-            if clock % 2 == 0 {
-                if self.ch3_channel_enable {
-                    if self.ch3_frequency_timer == 0 {
-                        self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
-                        self.ch3_sample_buffer = (self.ch3_wave_pattern
-                            [self.ch3_wave_position as usize / 2]
-                            >> [4, 0][self.ch3_wave_position as usize % 2])
-                            & 0xF;
-                        self.ch3_frequency_timer = ch3_freq ^ 0x07FF;
-                        self.ch3_wave_just_read = true;
-                    } else {
-                        self.ch3_frequency_timer -= 1;
-                        self.ch3_wave_just_read = false;
-                    }
+            if self.ch3_channel_enable {
+                if self.ch3_frequency_timer == 0 {
+                    self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
+                    self.ch3_sample_buffer = (self.ch3_wave_pattern
+                                              [self.ch3_wave_position as usize / 2]
+                                              >> [4, 0][self.ch3_wave_position as usize % 2])
+                        & 0xF;
+                    self.ch3_frequency_timer = 0x07FF ^ ch3_freq;
+                    self.ch3_wave_just_read = true;
                 } else {
+                    self.ch3_frequency_timer -= 1;
                     self.ch3_wave_just_read = false;
                 }
+            } else {
+                self.ch3_wave_just_read = false;
             }
 
             if self.ch4_channel_enable {
-                if self.ch4_frequency_timer <= 1 {
+                if self.ch4_frequency_timer == 0 {
                     self.ch4_frequency_timer = ch4_divisor << ch4_shift_amount;
                     let xor = (self.ch4_lfsr & 0x1 != 0) ^ (self.ch4_lfsr & 0x2 != 0);
                     self.ch4_lfsr = (self.ch4_lfsr >> 1) | ((xor as u16) << 14);
@@ -399,7 +395,7 @@ impl SoundController {
                             let new_freq =
                                 self.calculate_frequency(ch1_sweep_shift, ch1_sweep_direction);
                             if new_freq < 2048 && ch1_sweep_shift > 0 {
-                                ch1_freq = new_freq & 0x7FF;
+                                ch1_freq = new_freq & 0x07FF;
                                 let [upper, lower] = ch1_freq.to_be_bytes();
                                 self.nr14 = (self.nr14 & 0xF8) | (upper & 0x7);
                                 self.nr13 = lower;
@@ -417,10 +413,12 @@ impl SoundController {
             // collect a sample
 
             // c % (fc/fs) == 0 ~> c % (fc/fs) < 1 => (c*fs) % fc < fs
-            // => ((c-1)*fs) % fc + fs) % fc < fs
-            // => (last + fs) % fc < fs
-            self.sample_mod = (self.sample_mod + self.sample_frequency) % CLOCK_SPEED;
-            if self.sample_mod < self.sample_frequency {
+            // => ( (c-1)*fs)%fc + fs) % fc < fs
+            // => (    last      + fs) % fc < fs
+
+            // I multiple fs by 2, because I increase clock by two by two
+            self.sample_mod = (self.sample_mod + 2*self.sample_frequency) % CLOCK_SPEED;
+            if self.sample_mod < 2*self.sample_frequency {
                 let ch1_amp = ((WAVE_DUTY_TABLE[ch1_duty as usize] >> self.ch1_wave_duty_position)
                     & 0x1)
                     * self.ch1_current_volume;
@@ -609,7 +607,7 @@ impl SoundController {
                         }
                         eprintln!("set ch1 len from 0 to {}", self.ch1_length_timer);
                     }
-                    self.ch1_frequency_timer = (2048 - ch1_freq) * 4;
+                    self.ch1_frequency_timer = (0x07FF ^ ch1_freq) * 2;
                     self.ch1_wave_duty_position = 0;
                     self.ch1_sweep_timer = if ch1_sweep_period == 0 {
                         8
@@ -682,7 +680,7 @@ impl SoundController {
                     }
                     self.ch2_env_period_timer = self.nr22 & 0x07;
                     self.ch2_current_volume = (self.nr22 & 0xF0) >> 4;
-                    self.ch2_frequency_timer = (2048 - ch2_freq) * 4;
+                    self.ch2_frequency_timer = (0x07FF ^ ch2_freq) * 2;
                     self.ch2_wave_duty_position = 0;
                     if self.nr22 & 0xF8 == 0 {
                         self.ch2_channel_enable = false;

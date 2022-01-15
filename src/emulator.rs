@@ -137,7 +137,6 @@ impl Emulator {
     ) {
         let audio = AudioEngine::new().unwrap();
         let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
-        audio_buffer.lock().extend((0..1600 * 5).map(|_| 0)); // gap of 83.3 ms
         let buffer = Buffer {
             buffer: audio_buffer.clone(),
             sample_rate: audio.sample_rate(),
@@ -374,6 +373,9 @@ impl Emulator {
                                 while inter.0.clock_count < target_clock {
                                     inter.interpret_op();
                                 }
+                                // clear the audio output
+                                let clock_count = inter.0.clock_count;
+                                let _ = inter.0.sound.borrow_mut().get_output(clock_count);
 
                                 match self.recv.try_recv() {
                                     Ok(next_event) => {
@@ -394,20 +396,16 @@ impl Emulator {
     }
 
     fn update_audio(&mut self) {
-        let mut inter = self.inter.lock();
+        let inter = self.inter.lock();
         let clock_count = inter.0.clock_count;
         let buffer = inter.0.sound.borrow_mut().get_output(clock_count);
         let mut lock = self.audio_buffer.lock();
-        let consumed = self.last_buffer_len as i64 - lock.len() as i64;
+        if lock.len() == 0 {
+            // if the buffer is empty, add zeros to increase it
+            lock.extend((0..1600*5).map(|_| 0));
+        }
         lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
 
-        println!(
-            "buffer: {:7} {:7} {:7}, {}",
-            -(consumed as i64),
-            lock.len(),
-            lock.len() as i64 - self.last_buffer_len as i64,
-            inter.0.sound.borrow_mut().sample_frequency
-        );
         self.last_buffer_len = lock.len();
     }
 }

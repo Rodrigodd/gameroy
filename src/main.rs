@@ -60,7 +60,7 @@ fn main() {
 
     let mut cartridge = Cartridge::new(rom).unwrap();
     let mut save_path = rom_path.clone();
-    if dbg!(save_path.set_extension("sav")) {
+    if save_path.set_extension("sav") {
         println!("loading save at {}", save_path.display());
         let saved_ram = std::fs::read(&save_path);
         match saved_ram {

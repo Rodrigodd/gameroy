@@ -3,11 +3,12 @@ use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter};
 use parking_lot::Mutex as ParkMutex;
 use std::{
     collections::{HashSet, VecDeque},
+    path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},
         Arc,
     },
-    time::{Duration, Instant}, path::PathBuf,
+    time::{Duration, Instant},
 };
 use winit::event_loop::EventLoopProxy;
 
@@ -417,7 +418,7 @@ impl Emulator {
         let mut lock = self.audio_buffer.lock();
         if lock.len() == 0 {
             // if the buffer is empty, add zeros to increase it
-            lock.extend((0..1600*5).map(|_| 0));
+            lock.extend((0..1600 * 5).map(|_| 0));
         }
         lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
 

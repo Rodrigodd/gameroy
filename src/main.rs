@@ -1,7 +1,9 @@
 use std::{
     fs::File,
+    io::Read,
+    path::PathBuf,
     sync::{mpsc::sync_channel, Arc},
-    thread, io::Read, path::PathBuf,
+    thread,
 };
 
 use parking_lot::Mutex;
@@ -57,8 +59,7 @@ fn main() {
     boot_rom_file.read(&mut boot_rom).unwrap();
 
     let mut cartridge = Cartridge::new(rom).unwrap();
-    let mut save_path = rom_path.clone(
-        );
+    let mut save_path = rom_path.clone();
     if dbg!(save_path.set_extension("sav")) {
         println!("loading save at {}", save_path.display());
         let saved_ram = std::fs::read(&save_path);
@@ -66,7 +67,7 @@ fn main() {
             Ok(save) => *cartridge.ram_mut() = save,
             Err(err) => {
                 println!("load save failed: {}", err);
-            },
+            }
         }
     }
     let mut game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
@@ -152,10 +153,12 @@ fn create_window(mut inter: Interpreter, rom_path: PathBuf, save_path: PathBuf, 
     ui.insert::<EventLoopProxy<UserEvent>>(proxy.clone());
     ui.insert(AppState::new(debug));
 
-    let mut emu_thread = Some(thread::Builder::new()
-        .name("emulator".to_string())
-        .spawn(move || Emulator::run(inter, recv, proxy, rom_path, save_path))
-        .unwrap());
+    let mut emu_thread = Some(
+        thread::Builder::new()
+            .name("emulator".to_string())
+            .spawn(move || Emulator::run(inter, recv, proxy, rom_path, save_path))
+            .unwrap(),
+    );
 
     // winit event loop
     event_loop.run(move |event, _, control| {

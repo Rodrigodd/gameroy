@@ -268,8 +268,8 @@ impl SoundController {
                 if self.ch3_frequency_timer == 0 {
                     self.ch3_wave_position = (self.ch3_wave_position + 1) % 32;
                     self.ch3_sample_buffer = (self.ch3_wave_pattern
-                                              [self.ch3_wave_position as usize / 2]
-                                              >> [4, 0][self.ch3_wave_position as usize % 2])
+                        [self.ch3_wave_position as usize / 2]
+                        >> [4, 0][self.ch3_wave_position as usize % 2])
                         & 0xF;
                     self.ch3_frequency_timer = 0x07FF ^ ch3_freq;
                     self.ch3_wave_just_read = true;
@@ -416,8 +416,8 @@ impl SoundController {
             // => (    last      + fs) % fc < fs
 
             // I multiple fs by 2, because I increase clock by two by two
-            self.sample_mod = (self.sample_mod + 2*self.sample_frequency) % CLOCK_SPEED;
-            if self.sample_mod < 2*self.sample_frequency {
+            self.sample_mod = (self.sample_mod + 2 * self.sample_frequency) % CLOCK_SPEED;
+            if self.sample_mod < 2 * self.sample_frequency {
                 let ch1_amp = ((WAVE_DUTY_TABLE[ch1_duty as usize] >> self.ch1_wave_duty_position)
                     & 0x1)
                     * self.ch1_current_volume;

@@ -86,7 +86,6 @@ pub struct GameBoy {
 }
 impl GameBoy {
     pub fn new(boot_rom: [u8; 0x100], cartridge: Cartridge) -> Self {
-
         Self {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
@@ -190,7 +189,9 @@ impl GameBoy {
             0x06 => self.timer.write_tma(value),
             0x07 => self.timer.write_tac(value),
             0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => {
-                self.sound.borrow_mut().write(self.clock_count, address, value)
+                self.sound
+                    .borrow_mut()
+                    .write(self.clock_count, address, value)
             }
             0x40 => self.ppu.set_lcdc(value),
             0x41 => self.ppu.set_stat(value),
@@ -236,7 +237,9 @@ impl GameBoy {
             0x05 => self.timer.read_tima(),
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_tac(),
-            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => self.sound.borrow_mut().read(self.clock_count, address),
+            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => {
+                self.sound.borrow_mut().read(self.clock_count, address)
+            }
             0x40 => self.ppu.lcdc(),
             0x41 => self.ppu.stat(),
             0x42 => self.ppu.scy(),

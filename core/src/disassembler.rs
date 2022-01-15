@@ -27,7 +27,8 @@ impl Address {
     pub fn new(bank: u8, address: u16) -> Self {
         assert!(
             (0x0000..=0x3FFF).contains(&address),
-            "address {:04x} is out of rom address range", address
+            "address {:04x} is out of rom address range",
+            address
         );
         // assert!((bank == 0) == (address <= 0x3FFF));
         Self { bank, address }
@@ -395,7 +396,7 @@ impl Trace {
                     .entry(pc)
                     .or_insert_with(|| format!("R{:04x}", pc));
                 None
-            },
+            }
         }
     }
 

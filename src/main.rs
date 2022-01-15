@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     sync::{mpsc::sync_channel, Arc},
-    thread, io::Read,
+    thread, io::Read, path::PathBuf,
 };
 
 use parking_lot::Mutex;
@@ -48,14 +48,27 @@ fn main() {
             }
         }
     }
+    let rom_path = PathBuf::from(rom_path);
 
-    let rom = std::fs::read(rom_path).unwrap();
+    let rom = std::fs::read(&rom_path).unwrap();
 
     let mut boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
     let mut boot_rom = [0; 0x100];
     boot_rom_file.read(&mut boot_rom).unwrap();
 
-    let cartridge = Cartridge::new(rom).unwrap();
+    let mut cartridge = Cartridge::new(rom).unwrap();
+    let mut save_path = rom_path.clone(
+        );
+    if dbg!(save_path.set_extension("sav")) {
+        println!("loading save at {}", save_path.display());
+        let saved_ram = std::fs::read(&save_path);
+        match saved_ram {
+            Ok(save) => *cartridge.ram_mut() = save,
+            Err(err) => {
+                println!("load save failed: {}", err);
+            },
+        }
+    }
     let mut game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
 
     {
@@ -81,7 +94,7 @@ fn main() {
 
     let inter = interpreter::Interpreter(game_boy);
 
-    create_window(inter, debug);
+    create_window(inter, rom_path, save_path, debug);
 }
 
 use winit::{
@@ -106,7 +119,7 @@ impl AppState {
     }
 }
 
-fn create_window(mut inter: Interpreter, debug: bool) {
+fn create_window(mut inter: Interpreter, rom_path: PathBuf, save_path: PathBuf, debug: bool) {
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let wb = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
@@ -139,19 +152,20 @@ fn create_window(mut inter: Interpreter, debug: bool) {
     ui.insert::<EventLoopProxy<UserEvent>>(proxy.clone());
     ui.insert(AppState::new(debug));
 
-    thread::Builder::new()
+    let mut emu_thread = Some(thread::Builder::new()
         .name("emulator".to_string())
-        .spawn(move || Emulator::run(inter, recv, proxy))
-        .unwrap();
-
-    // undeclare
-    let debug = ();
+        .spawn(move || Emulator::run(inter, recv, proxy, rom_path, save_path))
+        .unwrap());
 
     // winit event loop
     event_loop.run(move |event, _, control| {
         match event {
             Event::NewEvents(_) => {
                 ui.new_events(control, &window);
+            }
+            Event::LoopDestroyed => {
+                emu_channel.send(EmulatorEvent::Kill).unwrap();
+                emu_thread.take().unwrap().join().unwrap();
             }
             Event::WindowEvent {
                 event, window_id, ..

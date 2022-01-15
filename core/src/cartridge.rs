@@ -46,7 +46,6 @@ pub struct Cartridge {
 }
 impl Cartridge {
     pub fn new(mut rom: Vec<u8>) -> Result<Self, String> {
-
         if rom.len() < 0x8000 {
             rom.resize(0x8000, 0);
         }
@@ -91,6 +90,17 @@ impl Cartridge {
                 }
             },
         })
+    }
+
+    /// Get a mutable reference to the contents of the cartridge ram. This is used to load saved
+    /// games, for example.
+    pub fn ram_mut(&mut self) -> &mut Vec<u8> {
+        match &mut self.mbc {
+            MBC::None(x) => &mut x.ram,
+            MBC::MBC1(x) => &mut x.ram,
+            MBC::MBC2(x) => &mut x.ram,
+            MBC::MBC3(x) => &mut x.ram,
+        }
     }
 
     /// The number of banks in this cartridge. A cartridge without bank switching have 2 banks.

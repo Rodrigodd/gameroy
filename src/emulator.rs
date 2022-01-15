@@ -7,7 +7,7 @@ use std::{
         mpsc::{Receiver, TryRecvError},
         Arc,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant}, path::PathBuf,
 };
 use winit::event_loop::EventLoopProxy;
 
@@ -115,6 +115,9 @@ pub struct Emulator {
     recv: Receiver<EmulatorEvent>,
     proxy: EventLoopProxy<UserEvent>,
 
+    rom_path: PathBuf,
+    save_path: PathBuf,
+
     debug: bool,
     state: EmulatorState,
     // When true, the program will sync the time that passed, and the time that is emulated.
@@ -134,6 +137,8 @@ impl Emulator {
         inter: Arc<ParkMutex<Interpreter>>,
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
+        rom_path: PathBuf,
+        save_path: PathBuf,
     ) {
         let audio = AudioEngine::new().unwrap();
         let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
@@ -154,6 +159,8 @@ impl Emulator {
             inter,
             recv,
             proxy,
+            rom_path,
+            save_path,
             debug: false,
             state: EmulatorState::Idle,
             frame_limit: true,
@@ -168,7 +175,7 @@ impl Emulator {
             audio_buffer,
             last_buffer_len: 0,
         }
-        .event_loop()
+        .event_loop();
     }
 
     fn set_state(&mut self, new_state: EmulatorState) {
@@ -182,11 +189,11 @@ impl Emulator {
     }
 
     fn event_loop(&mut self) {
-        while let Ok(mut event) = self.recv.recv() {
+        'event_loop: while let Ok(mut event) = self.recv.recv() {
             'handle_event: loop {
                 use EmulatorEvent::*;
                 match event {
-                    Kill => return,
+                    Kill => break 'event_loop,
                     RunFrame => {
                         if !self.debug {
                             self.set_state(EmulatorState::RunNoBreak);
@@ -278,7 +285,7 @@ impl Emulator {
                                 event = next_event;
                                 continue 'handle_event;
                             }
-                            Err(TryRecvError::Disconnected) => return,
+                            Err(TryRecvError::Disconnected) => break 'event_loop,
                             _ => {}
                         }
                     },
@@ -305,7 +312,7 @@ impl Emulator {
                                 event = next_event;
                                 continue 'handle_event;
                             }
-                            Err(TryRecvError::Disconnected) => return,
+                            Err(TryRecvError::Disconnected) => break 'event_loop,
                             _ => {}
                         }
                     },
@@ -332,7 +339,7 @@ impl Emulator {
                                 event = next_event;
                                 continue 'handle_event;
                             }
-                            Err(TryRecvError::Disconnected) => return,
+                            Err(TryRecvError::Disconnected) => break 'event_loop,
                             _ => {}
                         }
                     },
@@ -382,7 +389,7 @@ impl Emulator {
                                         event = next_event;
                                         continue 'handle_event;
                                     }
-                                    Err(TryRecvError::Disconnected) => return,
+                                    Err(TryRecvError::Disconnected) => break 'event_loop,
                                     _ => {}
                                 }
                             }
@@ -392,6 +399,14 @@ impl Emulator {
 
                 break;
             }
+        }
+
+        println!("exiting emulator thread");
+
+        print!("saving game data to {}... ", self.save_path.display());
+        match std::fs::write(&self.save_path, self.inter.lock().0.cartridge.ram_mut()) {
+            Ok(_) => println!("success"),
+            Err(x) => println!("error: {}", x),
         }
     }
 

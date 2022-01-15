@@ -85,12 +85,9 @@ pub struct GameBoy {
     pub v_blank: Box<dyn FnMut(&mut Ppu) + Send>,
 }
 impl GameBoy {
-    pub fn new(mut bootrom_file: impl Read, cartridge: Cartridge) -> std::io::Result<Self> {
-        let mut boot_rom = [0; 0x100];
+    pub fn new(boot_rom: [u8; 0x100], cartridge: Cartridge) -> Self {
 
-        let _ = bootrom_file.read(&mut boot_rom)?;
-
-        Ok(Self {
+        Self {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
             cartridge,
@@ -106,7 +103,7 @@ impl GameBoy {
                 eprint!("{}", c as char);
             }),
             v_blank: Box::new(|_| {}),
-        })
+        }
     }
 
     /// Reset the gameboy to its stating state.

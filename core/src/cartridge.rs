@@ -45,39 +45,36 @@ pub struct Cartridge {
     mbc: MBC,
 }
 impl Cartridge {
-    pub fn new(mut file: impl Read) -> Result<Self, String> {
-        let mut buffer = Vec::with_capacity(0x8000);
-        file.read_to_end(&mut buffer)
-            .map_err(|err| err.to_string())?;
+    pub fn new(mut rom: Vec<u8>) -> Result<Self, String> {
 
-        if buffer.len() < 0x8000 {
-            buffer.resize(0x8000, 0);
+        if rom.len() < 0x8000 {
+            rom.resize(0x8000, 0);
         }
 
         // Cartridge Type
-        let mbc_kind = buffer[0x0147];
+        let mbc_kind = rom[0x0147];
 
         Ok(Self {
             mbc: match mbc_kind {
                 0 => MBC::None(MBC0 {
-                    rom: buffer,
+                    rom,
                     ram: vec![0; 0x8000],
                 }),
                 1 | 2 | 3 => MBC::MBC1(MBC1 {
-                    rom: buffer,
+                    rom,
                     selected_bank: 0,
                     mode: false,
                     ram: vec![0; 0x8000],
                     ram_enabled: false,
                 }),
                 5 | 6 => MBC::MBC2(MBC2 {
-                    rom: buffer,
+                    rom,
                     selected_bank: 0,
                     ram: vec![0; 0x8000],
                     ram_enabled: false,
                 }),
                 0x0F | 0x10 | 0x11 | 0x12 | 0x13 => MBC::MBC3(MBC3 {
-                    rom: buffer,
+                    rom,
                     selected_bank: 0,
                     ram: vec![0; 0x8000],
                     ram_enabled: false,

@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     sync::{mpsc::sync_channel, Arc},
-    thread,
+    thread, io::Read,
 };
 
 use parking_lot::Mutex;
@@ -49,11 +49,14 @@ fn main() {
         }
     }
 
-    let rom_file = File::open(rom_path).unwrap();
-    let boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
+    let rom = std::fs::read(rom_path).unwrap();
 
-    let cartridge = Cartridge::new(rom_file).unwrap();
-    let mut game_boy = gameboy::GameBoy::new(boot_rom_file, cartridge).unwrap();
+    let mut boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
+    let mut boot_rom = [0; 0x100];
+    boot_rom_file.read(&mut boot_rom).unwrap();
+
+    let cartridge = Cartridge::new(rom).unwrap();
+    let mut game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
 
     {
         let mut trace = game_boy.trace.borrow_mut();

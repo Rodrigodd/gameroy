@@ -228,23 +228,23 @@ pub fn create_gui(
                     app_state.joypad = (app_state.joypad & !(1 << key)) | ((!value as u8) << key)
                 };
                 match event {
-                    Pressed(Right) => set_key(0, true),
+                    Pressed(Right) => set_key(0, true), // Left
                     Release(Right) => set_key(0, false),
-                    Pressed(Left) => set_key(1, true),
+                    Pressed(Left) => set_key(1, true), // Right
                     Release(Left) => set_key(1, false),
-                    Pressed(Up) => set_key(2, true),
+                    Pressed(Up) => set_key(2, true), // Up
                     Release(Up) => set_key(2, false),
-                    Pressed(Down) => set_key(3, true),
+                    Pressed(Down) => set_key(3, true), // Down
                     Release(Down) => set_key(3, false),
-                    Pressed(Z) => set_key(4, true),
-                    Release(Z) => set_key(4, false),
-                    Pressed(X) => set_key(5, true),
-                    Release(X) => set_key(5, false),
-                    Pressed(Return) => set_key(6, true),
-                    Release(Return) => set_key(6, false),
-                    Pressed(S) => set_key(7, true),
-                    Release(S) => set_key(7, false),
-                    Pressed(F12) => {
+                    Pressed(A) => set_key(4, true), // A
+                    Release(A) => set_key(4, false),
+                    Pressed(S) => set_key(5, true), // B
+                    Release(S) => set_key(5, false),
+                    Pressed(Back) => set_key(6, true), // Select
+                    Release(Back) => set_key(6, false),
+                    Pressed(Return) => set_key(7, true), // Start
+                    Release(Return) => set_key(7, false),
+                    Pressed(F12) => { // Debug
                         let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
                         split_layout.split = 0.5;
 

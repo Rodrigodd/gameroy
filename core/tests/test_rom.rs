@@ -1,6 +1,7 @@
 use gameroy::cartridge::Cartridge;
 use gameroy::{gameboy::GameBoy, interpreter::Interpreter};
 use std::fs::File;
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -57,11 +58,7 @@ memory!(
     "dmg_sound/12-wave write while on.gb",
     41_000_000
 );
-memory!(
-    dmg_sound,
-    "dmg_sound.gb",
-    173_500_000
-);
+memory!(dmg_sound, "dmg_sound.gb", 173_500_000);
 
 console!(blargg_01, "01-special.gb", 34_500_000);
 console!(blargg_02, "02-interrupts.gb", 43_000_000);
@@ -78,12 +75,14 @@ console!(blargg_cpu_instrs, "cpu_instrs.gb", 248_000_000);
 
 fn test_rom_console(path: &str, timeout: u64) -> Result<(), String> {
     let rom_path = "../roms/".to_string() + path;
-    let rom_file = File::open(rom_path).unwrap();
-    let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+    let rom = std::fs::read(rom_path).unwrap();
+    let mut boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+    let mut boot_rom = [0; 0x100];
+    boot_rom_file.read(&mut boot_rom).unwrap();
 
-    let cartridge = Cartridge::new(rom_file).unwrap();
+    let cartridge = Cartridge::new(rom).unwrap();
 
-    let mut game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
+    let mut game_boy = GameBoy::new(boot_rom, cartridge);
     // let mut game_boy = GameBoy::new(&vec![0; 256][..], rom_file);
     let string = Arc::new(Mutex::new(String::new()));
     let string_clone = string.clone();
@@ -120,12 +119,14 @@ fn test_rom_console(path: &str, timeout: u64) -> Result<(), String> {
 
 fn test_rom_memory(path: &str, timeout: u64) -> Result<(), String> {
     let rom_path = "../roms/".to_string() + path;
-    let rom_file = File::open(rom_path).unwrap();
-    let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+    let rom = std::fs::read(rom_path).unwrap();
+    let mut boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+    let mut boot_rom = [0; 0x100];
+    boot_rom_file.read(&mut boot_rom).unwrap();
 
-    let cartridge = Cartridge::new(rom_file).unwrap();
+    let cartridge = Cartridge::new(rom).unwrap();
 
-    let game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
+    let game_boy = GameBoy::new(boot_rom, cartridge);
 
     let mut inter = Interpreter(game_boy);
     // while inter.0.clock_count < 33000000 {
@@ -135,7 +136,10 @@ fn test_rom_memory(path: &str, timeout: u64) -> Result<(), String> {
 
     let signature = &inter.0.memory[0xA001..=0xA003];
     if signature == [0xDE, 0xB0, 0x61] {
-        return Err(format!("invalid output to memory signature: {:?}", signature));
+        return Err(format!(
+            "invalid output to memory signature: {:?}",
+            signature
+        ));
     }
 
     let status_code = inter.0.read(0xA000);
@@ -177,12 +181,14 @@ fn lcd_to_rgba(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
 #[test]
 fn dmg_acid2() {
     let rom_path = "../roms/dmg-acid2.gb";
-    let rom_file = File::open(rom_path).unwrap();
-    let boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+    let rom = std::fs::read(rom_path).unwrap();
+    let mut boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
+    let mut boot_rom = [0; 0x100];
+    boot_rom_file.read(&mut boot_rom).unwrap();
 
-    let cartridge = Cartridge::new(rom_file).unwrap();
+    let cartridge = Cartridge::new(rom).unwrap();
 
-    let mut game_boy = GameBoy::new(boot_rom_file, cartridge).unwrap();
+    let mut game_boy = GameBoy::new(boot_rom, cartridge);
     let img_data: Arc<Mutex<Vec<u8>>> =
         Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
     let img_data_clone = img_data.clone();

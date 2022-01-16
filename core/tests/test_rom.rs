@@ -12,7 +12,7 @@ macro_rules! console {
     ($test:ident, $path:expr, $timeout:expr) => {
         #[test]
         fn $test() {
-            test_rom_console($path, $timeout).unwrap();
+            test_rom_serial($path, $timeout).unwrap();
         }
     };
 }
@@ -71,9 +71,9 @@ console!(blargg_08, "08-misc instrs.gb", 26_000_000);
 console!(blargg_09, "09-op r,r.gb", 62_000_000);
 console!(blargg_10, "10-bit ops.gb", 89_000_000);
 console!(blargg_11, "11-op a,(hl).gb", 98_000_000);
-console!(blargg_cpu_instrs, "cpu_instrs.gb", 248_000_000);
+console!(blargg_cpu_instrs, "cpu_instrs.gb", 250_400_000);
 
-fn test_rom_console(path: &str, timeout: u64) -> Result<(), String> {
+fn test_rom_serial(path: &str, timeout: u64) -> Result<(), String> {
     let rom_path = "../roms/".to_string() + path;
     let rom = std::fs::read(rom_path).unwrap();
     let mut boot_rom_file = File::open("../bootrom/dmg_boot.bin").unwrap();
@@ -92,7 +92,7 @@ fn test_rom_console(path: &str, timeout: u64) -> Result<(), String> {
         move |byte| {
             let mut string = string.lock().unwrap();
             string.push(byte as char);
-            if string.ends_with("Passed\n") {
+            if string.ends_with("Passed") {
                 stop.store(true, Ordering::Relaxed);
             }
         }

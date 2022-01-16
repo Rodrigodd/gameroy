@@ -251,8 +251,8 @@ impl GameBoy {
             0x4a => self.ppu.wy(),
             0x4b => self.ppu.wx(),
             0x4d => 0xff,
-            0x80..=0xfe => {
-                // high RAM
+            0x80..=0xff | 0x0f => {
+                // high RAM, IF flag and IE flag
                 self.memory[0xFF00 | address as usize]
             }
             _ => 0xff,

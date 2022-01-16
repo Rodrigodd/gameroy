@@ -483,7 +483,6 @@ impl SoundController {
         new_freq
     }
 
-    // TODO: Check for read or write only registers and bits.
     pub fn write(&mut self, clock_count: u64, address: u8, value: u8) {
         self.update(clock_count);
         if !self.on {
@@ -616,7 +615,6 @@ impl SoundController {
             0x19 => {
                 let length_previou_enabled = self.nr24 & 0x40 != 0;
                 let length_now_enabled = value & 0x40 != 0;
-                // TODO: replace this step period with frame_sequencer_step
                 let extra_clock = self.frame_sequencer_step % 2 == 1;
 
                 // extra length clocking occurs when frame sequencer's next step don't clock the

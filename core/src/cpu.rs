@@ -1,25 +1,60 @@
+use crate::save_state::{LoadStateError, SaveState};
 use std::fmt;
 
-#[derive(PartialEq, Eq)]
-pub enum State {
-    Running,
-    Halt,
-    Stopped,
+#[derive(PartialEq, Eq, Clone, Copy)]
+pub enum CpuState {
+    Running = 0,
+    Halt = 1,
+    Stopped = 2,
 }
-impl Default for State {
+impl SaveState for CpuState {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        (*self as u8).save_state(data)
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        let mut value = 0u8;
+        value.load_state(data)?;
+        *self = match value {
+            0 => Self::Running,
+            1 => Self::Halt,
+            2 => Self::Stopped,
+            x => return Err(LoadStateError::InvalidState(x)),
+        };
+        Ok(())
+    }
+}
+impl Default for CpuState {
     fn default() -> Self {
         Self::Running
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum ImeState {
     /// Interrupts are disable
-    Disabled,
+    Disabled = 0,
     /// Interrupts are enable
-    Enabled,
+    Enabled = 1,
     /// Interrupts will be enable after the next instruction
-    ToBeEnable,
+    ToBeEnable = 2,
+}
+impl SaveState for ImeState {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        (*self as u8).save_state(data)
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        let mut value = 0u8;
+        value.load_state(data)?;
+        *self = match value {
+            0 => Self::Disabled,
+            1 => Self::Enabled,
+            2 => Self::ToBeEnable,
+            x => return Err(LoadStateError::InvalidImeState(x)),
+        };
+        Ok(())
+    }
 }
 impl Default for ImeState {
     fn default() -> Self {
@@ -41,7 +76,7 @@ pub struct Cpu {
     pub sp: u16,
     pub pc: u16,
     pub ime: ImeState,
-    pub state: State,
+    pub state: CpuState,
 }
 // impl Default for Cpu {
 //     fn default() -> Self {
@@ -69,6 +104,39 @@ impl fmt::Display for Cpu {
         writeln!(f, "H {:02x} {:02x} L", self.h, self.l)?;
         writeln!(f, "SP {:04x}", self.sp)?;
         writeln!(f, "PC {:04x}", self.pc)?;
+        Ok(())
+    }
+}
+impl SaveState for Cpu {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.a.save_state(data)?;
+        self.f.0.save_state(data)?;
+        self.b.save_state(data)?;
+        self.c.save_state(data)?;
+        self.d.save_state(data)?;
+        self.e.save_state(data)?;
+        self.h.save_state(data)?;
+        self.l.save_state(data)?;
+        self.sp.save_state(data)?;
+        self.pc.save_state(data)?;
+        self.ime.save_state(data)?;
+        self.state.save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        self.a.load_state(data)?;
+        self.f.0.load_state(data)?;
+        self.b.load_state(data)?;
+        self.c.load_state(data)?;
+        self.d.load_state(data)?;
+        self.e.load_state(data)?;
+        self.h.load_state(data)?;
+        self.l.load_state(data)?;
+        self.sp.load_state(data)?;
+        self.pc.load_state(data)?;
+        self.ime.load_state(data)?;
+        self.state.load_state(data)?;
         Ok(())
     }
 }

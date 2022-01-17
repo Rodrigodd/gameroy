@@ -1,6 +1,6 @@
 use crate::{
     consts,
-    cpu::{ImeState, State},
+    cpu::{CpuState, ImeState},
     gameboy::GameBoy,
 };
 
@@ -952,16 +952,16 @@ impl Interpreter {
                 self.jump_to(address);
                 self.0.tick(20);
             }
-            if self.0.cpu.state == State::Halt {
+            if self.0.cpu.state == CpuState::Halt {
                 self.0.tick(4);
-                self.0.cpu.state = State::Running;
+                self.0.cpu.state = CpuState::Running;
             }
         }
         if self.0.cpu.ime == ImeState::ToBeEnable {
             self.0.cpu.ime = ImeState::Enabled;
         }
 
-        if self.0.cpu.state != State::Running {
+        if self.0.cpu.state != CpuState::Running {
             self.0.tick(4);
             return;
         }
@@ -1063,7 +1063,7 @@ impl Interpreter {
             }
             0x10 => {
                 // STOP 0 2:4 - - - -
-                self.0.cpu.state = State::Stopped;
+                self.0.cpu.state = CpuState::Stopped;
             }
             0x11 => {
                 // LD DE,d16 3:12 - - - -
@@ -1514,7 +1514,7 @@ impl Interpreter {
             }
             0x76 => {
                 // HALT 1:4 - - - -
-                self.0.cpu.state = State::Halt;
+                self.0.cpu.state = CpuState::Halt;
             }
             0x77 => {
                 // LD (HL),A 1:8 - - - -

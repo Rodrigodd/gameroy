@@ -1,5 +1,7 @@
 use std::io::Read;
 
+use crate::save_state::{LoadStateError, SaveState};
+
 fn mbc_type_name(code: u8) -> &'static str {
     match code {
         0x00 => "ROM ONLY",
@@ -43,6 +45,25 @@ enum MBC {
 
 pub struct Cartridge {
     mbc: MBC,
+}
+impl SaveState for Cartridge {
+    fn save_state(&self, output: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        match &self.mbc {
+            MBC::None(x) => x.save_state(output),
+            MBC::MBC1(x) => x.save_state(output),
+            MBC::MBC2(x) => x.save_state(output),
+            MBC::MBC3(x) => x.save_state(output),
+        }
+    }
+
+    fn load_state(&mut self, input: &mut impl Read) -> Result<(), LoadStateError> {
+        match &mut self.mbc {
+            MBC::None(x) => x.load_state(input),
+            MBC::MBC1(x) => x.load_state(input),
+            MBC::MBC2(x) => x.load_state(input),
+            MBC::MBC3(x) => x.load_state(input),
+        }
+    }
 }
 impl Cartridge {
     pub fn new(mut rom: Vec<u8>) -> Result<Self, String> {
@@ -156,6 +177,19 @@ struct MBC0 {
     pub rom: Vec<u8>,
     ram: Vec<u8>,
 }
+impl SaveState for MBC0 {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.rom.save_state(data)?;
+        self.ram.save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.rom.load_state(data)?;
+        self.ram.load_state(data)?;
+        Ok(())
+    }
+}
 impl MBC0 {
     pub fn read(&self, address: u16) -> u8 {
         match address {
@@ -189,6 +223,25 @@ struct MBC1 {
     mode: bool,
     ram: Vec<u8>,
     ram_enabled: bool,
+}
+impl SaveState for MBC1 {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.rom.save_state(data)?;
+        self.ram.save_state(data)?;
+
+        self.selected_bank.save_state(data)?;
+        [&self.mode, &self.ram_enabled].save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.rom.load_state(data)?;
+        self.ram.load_state(data)?;
+
+        self.selected_bank.load_state(data)?;
+        [&mut self.mode, &mut self.ram_enabled].load_state(data)?;
+        Ok(())
+    }
 }
 impl MBC1 {
     fn curr_bank(&self) -> u8 {
@@ -296,6 +349,25 @@ struct MBC2 {
     ram: Vec<u8>,
     ram_enabled: bool,
 }
+impl SaveState for MBC2 {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.rom.save_state(data)?;
+        self.ram.save_state(data)?;
+
+        self.selected_bank.save_state(data)?;
+        [&self.ram_enabled].save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.rom.load_state(data)?;
+        self.ram.load_state(data)?;
+
+        self.selected_bank.load_state(data)?;
+        [&mut self.ram_enabled].load_state(data)?;
+        Ok(())
+    }
+}
 impl MBC2 {
     fn curr_bank(&self) -> u8 {
         self.selected_bank
@@ -372,6 +444,31 @@ struct MBC3 {
     // 0 is the intial state
     // 1 means that 0 was written
     latch_clock_data: u8,
+}
+impl SaveState for MBC3 {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.rom.save_state(data)?;
+        self.ram.save_state(data)?;
+
+        self.selected_bank.save_state(data)?;
+        self.ram_bank.save_state(data)?;
+        self.rtc.save_state(data)?;
+        [&self.ram_enabled].save_state(data)?;
+        self.latch_clock_data.save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.rom.load_state(data)?;
+        self.ram.load_state(data)?;
+
+        self.selected_bank.load_state(data)?;
+        self.ram_bank.load_state(data)?;
+        self.rtc.load_state(data)?;
+        [&mut self.ram_enabled].load_state(data)?;
+        self.latch_clock_data.load_state(data)?;
+        Ok(())
+    }
 }
 impl MBC3 {
     fn curr_bank(&self) -> u8 {

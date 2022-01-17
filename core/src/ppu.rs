@@ -1,3 +1,5 @@
+use crate::save_state::{LoadStateError, SaveState};
+
 pub struct Ppu {
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
@@ -26,6 +28,41 @@ pub struct Ppu {
     pub wy: u8,
     /// FF4B: Window X Position
     pub wx: u8,
+}
+impl SaveState for Ppu {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.screen.save_state(data)?;
+        self.sprite_buffer.save_state(data)?;
+        self.sprite_buffer_len.save_state(data)?;
+        self.wyc.save_state(data)?;
+        self.lcdc.save_state(data)?;
+        self.stat.save_state(data)?;
+        self.scy.save_state(data)?;
+        self.scx.save_state(data)?;
+        self.ly.save_state(data)?;
+        self.lyc.save_state(data)?;
+        self.bgp.save_state(data)?;
+        self.wy.save_state(data)?;
+        self.wx.save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        self.screen.load_state(data)?;
+        self.sprite_buffer.load_state(data)?;
+        self.sprite_buffer_len.load_state(data)?;
+        self.wyc.load_state(data)?;
+        self.lcdc.load_state(data)?;
+        self.stat.load_state(data)?;
+        self.scy.load_state(data)?;
+        self.scx.load_state(data)?;
+        self.ly.load_state(data)?;
+        self.lyc.load_state(data)?;
+        self.bgp.load_state(data)?;
+        self.wy.load_state(data)?;
+        self.wx.load_state(data)?;
+        Ok(())
+    }
 }
 
 impl Default for Ppu {

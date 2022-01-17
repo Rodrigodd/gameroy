@@ -194,6 +194,12 @@ pub fn create_gui(
             let debug = ctx.get::<crate::AppState>().debug;
             if debug {
                 match event {
+                    Pressed(F5) => {
+                        sender.send(EmulatorEvent::SaveState).unwrap();
+                    }
+                    Pressed(F6) => {
+                        sender.send(EmulatorEvent::LoadState).unwrap();
+                    }
                     Pressed(F7) => {
                         sender.send(EmulatorEvent::Step).unwrap();
                     }
@@ -244,7 +250,14 @@ pub fn create_gui(
                     Release(Back) => set_key(6, false),
                     Pressed(Return) => set_key(7, true), // Start
                     Release(Return) => set_key(7, false),
-                    Pressed(F12) => { // Debug
+                    Pressed(F5) => {
+                        sender.send(EmulatorEvent::SaveState).unwrap();
+                    }
+                    Pressed(F6) => {
+                        sender.send(EmulatorEvent::LoadState).unwrap();
+                    }
+                    Pressed(F12) => {
+                        // Debug
                         let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
                         split_layout.split = 0.5;
 

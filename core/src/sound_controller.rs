@@ -1,4 +1,5 @@
 use crate::consts::CLOCK_SPEED;
+use crate::save_state::{LoadStateError, SaveState};
 
 // based on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html, https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // and https://github.com/LIJI32/SameBoy source code.
@@ -101,10 +102,155 @@ pub struct SoundController {
     /// Output Buffer
     output: Vec<u16>,
     /// Clock count at the last sound update
-    last_clock: u64,
+    pub last_clock: u64,
     /// The frequency in Hertz at which the sound controller is sampled.
     pub sample_frequency: u64,
     sample_mod: u64,
+}
+impl SaveState for SoundController {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.nr10.save_state(data)?;
+        self.nr11.save_state(data)?;
+        self.nr12.save_state(data)?;
+        self.nr13.save_state(data)?;
+        self.nr14.save_state(data)?;
+
+        self.nr21.save_state(data)?;
+        self.nr22.save_state(data)?;
+        self.nr23.save_state(data)?;
+        self.nr24.save_state(data)?;
+
+        self.nr30.save_state(data)?;
+        self.nr31.save_state(data)?;
+        self.nr32.save_state(data)?;
+        self.nr33.save_state(data)?;
+        self.nr34.save_state(data)?;
+        self.ch3_wave_pattern.save_state(data)?;
+
+        self.nr41.save_state(data)?;
+        self.nr42.save_state(data)?;
+        self.nr43.save_state(data)?;
+        self.nr44.save_state(data)?;
+
+        self.nr50.save_state(data)?;
+        self.nr51.save_state(data)?;
+
+        [
+            &self.on,
+            &self.ch1_channel_enable,
+            &self.ch1_sweep_enabled,
+            &self.ch1_has_done_sweep_calculation,
+            &self.ch2_channel_enable,
+            &self.ch3_channel_enable,
+            &self.ch3_wave_just_read,
+            &self.ch4_channel_enable,
+        ]
+        .save_state(data)?;
+
+        self.frame_sequencer_step.save_state(data)?;
+        self.ch1_length_timer.save_state(data)?;
+        self.ch1_shadow_freq.save_state(data)?;
+        self.ch1_sweep_timer.save_state(data)?;
+        self.ch1_frequency_timer.save_state(data)?;
+        self.ch1_wave_duty_position.save_state(data)?;
+        self.ch1_current_volume.save_state(data)?;
+        self.ch1_env_period_timer.save_state(data)?;
+
+        self.ch2_length_timer.save_state(data)?;
+        self.ch2_frequency_timer.save_state(data)?;
+        self.ch2_wave_duty_position.save_state(data)?;
+        self.ch2_current_volume.save_state(data)?;
+        self.ch2_env_period_timer.save_state(data)?;
+
+        self.ch3_length_timer.save_state(data)?;
+        self.ch3_frequency_timer.save_state(data)?;
+        self.ch3_wave_position.save_state(data)?;
+        self.ch3_sample_buffer.save_state(data)?;
+
+        self.ch4_length_timer.save_state(data)?;
+        self.ch4_current_volume.save_state(data)?;
+        self.ch4_env_period_timer.save_state(data)?;
+        self.ch4_lfsr.save_state(data)?;
+        self.ch4_frequency_timer.save_state(data)?;
+
+        // self.output.save_state(data)?;
+        self.last_clock.save_state(data)?;
+        // self.sample_frequency.save_state(data)?;
+        // self.sample_mod.save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        self.nr10.load_state(data)?;
+        self.nr11.load_state(data)?;
+        self.nr12.load_state(data)?;
+        self.nr13.load_state(data)?;
+        self.nr14.load_state(data)?;
+
+        self.nr21.load_state(data)?;
+        self.nr22.load_state(data)?;
+        self.nr23.load_state(data)?;
+        self.nr24.load_state(data)?;
+
+        self.nr30.load_state(data)?;
+        self.nr31.load_state(data)?;
+        self.nr32.load_state(data)?;
+        self.nr33.load_state(data)?;
+        self.nr34.load_state(data)?;
+        self.ch3_wave_pattern.load_state(data)?;
+
+        self.nr41.load_state(data)?;
+        self.nr42.load_state(data)?;
+        self.nr43.load_state(data)?;
+        self.nr44.load_state(data)?;
+
+        self.nr50.load_state(data)?;
+        self.nr51.load_state(data)?;
+
+        [
+            &mut self.on,
+            &mut self.ch1_channel_enable,
+            &mut self.ch1_sweep_enabled,
+            &mut self.ch1_has_done_sweep_calculation,
+            &mut self.ch2_channel_enable,
+            &mut self.ch3_channel_enable,
+            &mut self.ch3_wave_just_read,
+            &mut self.ch4_channel_enable,
+        ]
+        .load_state(data)?;
+
+        self.frame_sequencer_step.load_state(data)?;
+        self.ch1_length_timer.load_state(data)?;
+        self.ch1_shadow_freq.load_state(data)?;
+        self.ch1_sweep_timer.load_state(data)?;
+        self.ch1_frequency_timer.load_state(data)?;
+        self.ch1_wave_duty_position.load_state(data)?;
+        self.ch1_current_volume.load_state(data)?;
+        self.ch1_env_period_timer.load_state(data)?;
+
+        self.ch2_length_timer.load_state(data)?;
+        self.ch2_frequency_timer.load_state(data)?;
+        self.ch2_wave_duty_position.load_state(data)?;
+        self.ch2_current_volume.load_state(data)?;
+        self.ch2_env_period_timer.load_state(data)?;
+
+        self.ch3_length_timer.load_state(data)?;
+        self.ch3_frequency_timer.load_state(data)?;
+        self.ch3_wave_position.load_state(data)?;
+        self.ch3_sample_buffer.load_state(data)?;
+
+        self.ch4_length_timer.load_state(data)?;
+        self.ch4_current_volume.load_state(data)?;
+        self.ch4_env_period_timer.load_state(data)?;
+        self.ch4_lfsr.load_state(data)?;
+        self.ch4_frequency_timer.load_state(data)?;
+
+        // self.output.load_state(data)?;
+        self.last_clock.load_state(data)?;
+        // self.sample_frequency.load_state(data)?;
+        // self.sample_mod.load_state(data)?;
+        Ok(())
+    }
 }
 
 impl Default for SoundController {
@@ -181,6 +327,8 @@ impl SoundController {
         std::mem::take(&mut self.output)
     }
 
+    /// Emulator the sound controler until to the currently clock_count, since the clock_count of
+    /// the last update.
     pub fn update(&mut self, clock_count: u64) {
         // if it is off, there is no need for audio generation
         if !self.on {

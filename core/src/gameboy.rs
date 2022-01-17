@@ -1,8 +1,9 @@
 use crate::cartridge::Cartridge;
+use crate::save_state::{LoadStateError, SaveState};
 use crate::sound_controller::SoundController;
 use crate::{consts, cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
-use std::io::Read;
+use std::io::{Read, Write};
 
 #[derive(Default)]
 pub struct Timer {
@@ -11,6 +12,25 @@ pub struct Timer {
     tma: u8,
     tac: u8,
     last_counter_bit: bool,
+}
+impl SaveState for Timer {
+    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+        self.div.save_state(data)?;
+        self.tima.save_state(data)?;
+        self.tma.save_state(data)?;
+        self.tac.save_state(data)?;
+        [&self.last_counter_bit].save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.div.load_state(data)?;
+        self.tima.load_state(data)?;
+        self.tma.load_state(data)?;
+        self.tac.load_state(data)?;
+        [&mut self.last_counter_bit].load_state(data)?;
+        Ok(())
+    }
 }
 // TODO: At some point, I want this timer to be lazy evaluated.
 impl Timer {
@@ -64,6 +84,55 @@ impl Timer {
     }
     fn write_tac(&mut self, tac: u8) {
         self.tac = tac;
+    }
+}
+
+impl SaveState for GameBoy {
+    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+        // self.trace.save_state(output)?;
+        self.cpu.save_state(data)?;
+        self.cartridge.save_state(data)?;
+        self.memory.save_state(data)?;
+        // self.boot_rom.save_state(output)?;
+        [&self.boot_rom_active].save_state(data)?;
+        self.clock_count.save_state(data)?;
+        self.timer.save_state(data)?;
+        {
+            let mut sound = self.sound.borrow_mut();
+            sound.update(self.clock_count);
+            sound.save_state(data)?;
+        }
+        self.ppu.save_state(data)?;
+        self.joypad.save_state(data)?;
+        // self.serial_transfer.save_state(data)?;
+        // self.v_blank.save_state(data)
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        // self.trace.load_state(output)?;
+        self.cpu.load_state(data)?;
+        self.cartridge.load_state(data)?;
+        self.memory.load_state(data)?;
+        // self.boot_rom.load_state(output)?;
+        [&mut self.boot_rom_active].load_state(data)?;
+        self.clock_count.load_state(data)?;
+        self.timer.load_state(data)?;
+        {
+            let mut sound = self.sound.borrow_mut();
+            sound.load_state(data)?;
+            if sound.last_clock != self.clock_count {
+                return Err(LoadStateError::SoundControllerDesync(
+                    sound.last_clock,
+                    self.clock_count,
+                ));
+            }
+        }
+        self.ppu.load_state(data)?;
+        self.joypad.load_state(data)?;
+        // self.serial_transfer.load_state(data)?;
+        // self.v_blank.load_state(data)
+        Ok(())
     }
 }
 

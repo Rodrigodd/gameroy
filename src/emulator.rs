@@ -1,5 +1,5 @@
 use audio_engine::{AudioEngine, SoundSource};
-use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter};
+use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter, save_state::SaveState};
 use parking_lot::Mutex as ParkMutex;
 use std::{
     collections::{HashSet, VecDeque},
@@ -35,6 +35,8 @@ pub enum EmulatorEvent {
     RunUntil(u64),
     Reset,
     AddBreakpoint { flags: u8, address: u16 },
+    SaveState,
+    LoadState,
 }
 
 #[derive(PartialEq, Eq)]
@@ -129,7 +131,7 @@ pub struct Emulator {
 
     breakpoints: Breakpoints,
 
-    audio: AudioEngine,
+    _audio: AudioEngine,
     audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
     last_buffer_len: usize,
 }
@@ -172,7 +174,7 @@ impl Emulator {
                 execute_breakpoints: HashSet::new(),
                 jump_breakpoints: HashSet::new(),
             },
-            audio,
+            _audio: audio,
             audio_buffer,
             last_buffer_len: 0,
         }
@@ -194,6 +196,20 @@ impl Emulator {
             'handle_event: loop {
                 use EmulatorEvent::*;
                 match event {
+                    SaveState => {
+                        let mut save_state = std::fs::OpenOptions::new()
+                            .create(true)
+                            .write(true)
+                            .open(self.rom_path.with_extension("save_state"))
+                            .unwrap();
+                        self.inter.lock().0.save_state(&mut save_state).unwrap();
+                    }
+                    LoadState => {
+                        let mut save_state =
+                            std::fs::File::open(self.rom_path.with_extension("save_state"))
+                                .unwrap();
+                        self.inter.lock().0.load_state(&mut save_state).unwrap();
+                    }
                     Kill => break 'event_loop,
                     RunFrame => {
                         if !self.debug {

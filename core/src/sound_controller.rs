@@ -4,6 +4,7 @@ use crate::save_state::{LoadStateError, SaveState};
 // based on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html, https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // and https://github.com/LIJI32/SameBoy source code.
 
+#[derive(Eq)]
 pub struct SoundController {
     // Sound Channel 1 - Tone & Sweep
     /// FF10: Channel 1 Sweep register (R/W)
@@ -106,6 +107,66 @@ pub struct SoundController {
     /// The frequency in Hertz at which the sound controller is sampled.
     pub sample_frequency: u64,
     sample_mod: u64,
+}
+
+impl PartialEq for SoundController {
+    fn eq(&self, other: &Self) -> bool {
+        self.nr10 == other.nr10
+            && self.nr11 == other.nr11
+            && self.nr12 == other.nr12
+            && self.nr13 == other.nr13
+            && self.nr14 == other.nr14
+            && self.nr21 == other.nr21
+            && self.nr22 == other.nr22
+            && self.nr23 == other.nr23
+            && self.nr24 == other.nr24
+            && self.nr30 == other.nr30
+            && self.nr31 == other.nr31
+            && self.nr32 == other.nr32
+            && self.nr33 == other.nr33
+            && self.nr34 == other.nr34
+            && self.ch3_wave_pattern == other.ch3_wave_pattern
+            && self.nr41 == other.nr41
+            && self.nr42 == other.nr42
+            && self.nr43 == other.nr43
+            && self.nr44 == other.nr44
+            && self.nr50 == other.nr50
+            && self.nr51 == other.nr51
+            && self.on == other.on
+            && self.frame_sequencer_step == other.frame_sequencer_step
+            && self.ch1_channel_enable == other.ch1_channel_enable
+            && self.ch1_length_timer == other.ch1_length_timer
+            && self.ch1_sweep_enabled == other.ch1_sweep_enabled
+            && self.ch1_shadow_freq == other.ch1_shadow_freq
+            && self.ch1_sweep_timer == other.ch1_sweep_timer
+            && self.ch1_has_done_sweep_calculation == other.ch1_has_done_sweep_calculation
+            && self.ch1_frequency_timer == other.ch1_frequency_timer
+            && self.ch1_wave_duty_position == other.ch1_wave_duty_position
+            && self.ch1_current_volume == other.ch1_current_volume
+            && self.ch1_env_period_timer == other.ch1_env_period_timer
+            && self.ch2_channel_enable == other.ch2_channel_enable
+            && self.ch2_length_timer == other.ch2_length_timer
+            && self.ch2_frequency_timer == other.ch2_frequency_timer
+            && self.ch2_wave_duty_position == other.ch2_wave_duty_position
+            && self.ch2_current_volume == other.ch2_current_volume
+            && self.ch2_env_period_timer == other.ch2_env_period_timer
+            && self.ch3_channel_enable == other.ch3_channel_enable
+            && self.ch3_length_timer == other.ch3_length_timer
+            && self.ch3_frequency_timer == other.ch3_frequency_timer
+            && self.ch3_wave_position == other.ch3_wave_position
+            && self.ch3_sample_buffer == other.ch3_sample_buffer
+            && self.ch3_wave_just_read == other.ch3_wave_just_read
+            && self.ch4_channel_enable == other.ch4_channel_enable
+            && self.ch4_length_timer == other.ch4_length_timer
+            && self.ch4_current_volume == other.ch4_current_volume
+            && self.ch4_env_period_timer == other.ch4_env_period_timer
+            && self.ch4_lfsr == other.ch4_lfsr
+            && self.ch4_frequency_timer == other.ch4_frequency_timer
+            // && self.output == other.output
+            && self.last_clock == other.last_clock
+            // && self.sample_frequency == other.sample_frequency
+            // && self.sample_mod == other.sample_mod
+    }
 }
 impl SaveState for SoundController {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {

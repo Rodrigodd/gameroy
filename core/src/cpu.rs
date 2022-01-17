@@ -63,7 +63,7 @@ impl Default for ImeState {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 pub struct Cpu {
     pub a: u8,
     pub f: Flags,
@@ -78,24 +78,6 @@ pub struct Cpu {
     pub ime: ImeState,
     pub state: CpuState,
 }
-// impl Default for Cpu {
-//     fn default() -> Self {
-//         Self {
-//             a: 0x01,
-//             f: Flags(0xB0),
-//             b: 0x00,
-//             c: 0x13,
-//             d: 0x00,
-//             e: 0xd8,
-//             h: 0x01,
-//             l: 0x4d,
-//             sp: 0xfffe,
-//             pc: 0x000,
-//             ime: false,
-//             state: State::Running,
-//         }
-//     }
-// }
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "A {:02x} {:02x} F", self.a, self.f.0)?;
@@ -176,7 +158,7 @@ impl Cpu {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 pub struct Flags(pub u8);
 impl Flags {
     pub fn z(&self) -> bool {

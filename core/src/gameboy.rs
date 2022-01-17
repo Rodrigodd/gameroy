@@ -5,7 +5,7 @@ use crate::{consts, cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::{Read, Write};
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 pub struct Timer {
     pub div: u16,
     pub tima: u8,
@@ -87,6 +87,63 @@ impl Timer {
     }
 }
 
+pub struct GameBoy {
+    pub trace: RefCell<Trace>,
+    pub cpu: Cpu,
+    pub cartridge: Cartridge,
+    pub memory: [u8; 0x10000],
+    pub boot_rom: [u8; 0x100],
+    pub boot_rom_active: bool,
+    pub clock_count: u64,
+    pub timer: Timer,
+    pub sound: RefCell<SoundController>,
+    pub ppu: Ppu,
+    /// JoyPad state. 0 bit means pressed.
+    /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
+    pub joypad: u8,
+    pub serial_transfer: Box<dyn FnMut(u8) + Send>,
+    pub v_blank: Box<dyn FnMut(&mut Ppu) + Send>,
+}
+
+impl std::fmt::Debug for GameBoy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // TODO: derive Debug for fields when the time arrive.
+        f.debug_struct("GameBoy")
+            // .field("trace", &self.trace)
+            // .field("cpu", &self.cpu)
+            // .field("cartridge", &self.cartridge)
+            .field("memory", &self.memory)
+            .field("boot_rom", &self.boot_rom)
+            .field("boot_rom_active", &self.boot_rom_active)
+            .field("clock_count", &self.clock_count)
+            // .field("timer", &self.timer)
+            // .field("sound", &self.sound)
+            // .field("ppu", &self.ppu)
+            .field("joypad", &self.joypad)
+            // .field("serial_transfer", &self.serial_transfer)
+            // .field("v_blank", &self.v_blank)
+            .finish()
+    }
+}
+
+impl Eq for GameBoy {}
+impl PartialEq for GameBoy {
+    fn eq(&self, other: &Self) -> bool {
+        // self.trace == other.trace &&
+        self.cpu == other.cpu
+            && self.cartridge == other.cartridge
+            && self.memory == other.memory
+            && self.boot_rom == other.boot_rom
+            && self.boot_rom_active == other.boot_rom_active
+            && self.clock_count == other.clock_count
+            && self.timer == other.timer
+            && self.sound == other.sound
+            && self.ppu == other.ppu
+            && self.joypad == other.joypad
+        // && self.serial_transfer == other.serial_transfer
+        // && self.v_blank == other.v_blank
+    }
+}
 impl SaveState for GameBoy {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
         // self.trace.save_state(output)?;
@@ -134,24 +191,6 @@ impl SaveState for GameBoy {
         // self.v_blank.load_state(data)
         Ok(())
     }
-}
-
-pub struct GameBoy {
-    pub trace: RefCell<Trace>,
-    pub cpu: Cpu,
-    pub cartridge: Cartridge,
-    pub memory: [u8; 0x10000],
-    pub boot_rom: [u8; 0x100],
-    pub boot_rom_active: bool,
-    pub clock_count: u64,
-    pub timer: Timer,
-    pub sound: RefCell<SoundController>,
-    pub ppu: Ppu,
-    /// JoyPad state. 0 bit means pressed.
-    /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
-    pub joypad: u8,
-    pub serial_transfer: Box<dyn FnMut(u8) + Send>,
-    pub v_blank: Box<dyn FnMut(&mut Ppu) + Send>,
 }
 impl GameBoy {
     pub fn new(boot_rom: [u8; 0x100], cartridge: Cartridge) -> Self {

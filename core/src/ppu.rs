@@ -1,5 +1,6 @@
 use crate::save_state::{LoadStateError, SaveState};
 
+#[derive(PartialEq, Eq)]
 pub struct Ppu {
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3

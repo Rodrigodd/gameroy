@@ -36,6 +36,7 @@ fn mbc_type_name(code: u8) -> &'static str {
     }
 }
 
+#[derive(PartialEq, Eq)]
 enum MBC {
     None(MBC0),
     MBC1(MBC1),
@@ -43,6 +44,7 @@ enum MBC {
     MBC3(MBC3),
 }
 
+#[derive(PartialEq, Eq)]
 pub struct Cartridge {
     mbc: MBC,
 }
@@ -173,6 +175,7 @@ impl Cartridge {
 }
 
 /// Cartridge without a MBC chip
+#[derive(PartialEq, Eq)]
 struct MBC0 {
     pub rom: Vec<u8>,
     ram: Vec<u8>,
@@ -215,6 +218,7 @@ impl MBC0 {
 }
 
 /// Cartridge with a MBC1 chip
+#[derive(PartialEq, Eq)]
 struct MBC1 {
     pub rom: Vec<u8>,
     // the banking register, including second 2-bit
@@ -342,6 +346,7 @@ impl MBC1 {
 }
 
 /// Cartridge with a MBC2 chip
+#[derive(PartialEq, Eq)]
 struct MBC2 {
     pub rom: Vec<u8>,
     // the banking register
@@ -431,6 +436,7 @@ impl MBC2 {
 }
 
 /// Cartridge with a MBC3 chip
+#[derive(PartialEq, Eq)]
 struct MBC3 {
     pub rom: Vec<u8>,
     // the banking register, including second 2-bit

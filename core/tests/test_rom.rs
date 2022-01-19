@@ -232,10 +232,10 @@ fn dmg_acid2() {
     let img_data: Arc<Mutex<Vec<u8>>> =
         Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
     let img_data_clone = img_data.clone();
-    game_boy.v_blank = Box::new(move |ppu| {
+    game_boy.v_blank = Some(Box::new(move |gb| {
         let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();
-        lcd_to_rgba(&ppu.screen, img_data);
-    });
+        lcd_to_rgba(&gb.ppu.screen, img_data);
+    }));
 
     let mut inter = Interpreter(game_boy);
     let timeout = 43000000;

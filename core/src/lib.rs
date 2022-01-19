@@ -4,6 +4,7 @@ pub mod cpu;
 pub mod disassembler;
 pub mod gameboy;
 pub mod interpreter;
+pub mod parser;
 pub mod ppu;
 pub mod save_state;
 pub mod sound_controller;

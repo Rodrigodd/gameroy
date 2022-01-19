@@ -2,7 +2,7 @@ use std::{
     fs::File,
     io::Read,
     path::PathBuf,
-    sync::{mpsc::sync_channel, Arc},
+    sync::{atomic::AtomicU8, mpsc::sync_channel, Arc},
     thread,
 };
 
@@ -12,6 +12,7 @@ use gameroy::{
     cartridge::Cartridge,
     gameboy,
     interpreter::{self, Interpreter},
+    parser::Vbm,
 };
 
 mod disassembler_viewer;
@@ -36,11 +37,19 @@ fn main() {
     let mut diss = false;
     let mut debug = false;
     let mut rom_path = "roms/test.gb".to_string();
+    let mut movie = None;
 
-    for arg in std::env::args() {
+    let mut args = std::env::args();
+    while let Some(arg) = args.next() {
         match arg.as_str() {
             "-d" | "--disassembly" => diss = true,
             "-b" | "--debug" => debug = true,
+            "-m" | "--movie" => {
+                let path = args.next().expect("expected path to the movie");
+                let mut file = std::fs::File::open(path).unwrap();
+                let vbm = gameroy::parser::vbm(&mut file).unwrap();
+                movie = Some(vbm);
+            }
             _ if arg.starts_with("-") => {
                 eprintln!("unknown argument {}", arg);
                 return;
@@ -95,7 +104,7 @@ fn main() {
 
     let inter = interpreter::Interpreter(game_boy);
 
-    create_window(inter, rom_path, save_path, debug);
+    create_window(inter, movie, rom_path, save_path, debug);
 }
 
 use winit::{
@@ -120,7 +129,13 @@ impl AppState {
     }
 }
 
-fn create_window(mut inter: Interpreter, rom_path: PathBuf, save_path: PathBuf, debug: bool) {
+fn create_window(
+    mut inter: Interpreter,
+    movie: Option<Vbm>,
+    rom_path: PathBuf,
+    save_path: PathBuf,
+    debug: bool,
+) {
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let wb = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
@@ -130,14 +145,15 @@ fn create_window(mut inter: Interpreter, rom_path: PathBuf, save_path: PathBuf, 
     let ppu_screen: Arc<Mutex<Vec<u8>>> =
         Arc::new(Mutex::new(vec![0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     let ppu_screen_clone = ppu_screen.clone();
+    let current_joypad = Arc::new(AtomicU8::new(0xff));
     let proxy = event_loop.create_proxy();
-    inter.0.v_blank = Box::new(move |ppu| {
+    inter.0.v_blank = Some(Box::new(move |gb| {
         {
             let img_data = &mut ppu_screen_clone.lock();
-            img_data.copy_from_slice(&ppu.screen);
+            img_data.copy_from_slice(&gb.ppu.screen);
         }
         let _ = proxy.send_event(UserEvent::FrameUpdated);
-    });
+    }));
 
     let inter = Arc::new(Mutex::new(inter));
     let proxy = event_loop.create_proxy();
@@ -156,7 +172,7 @@ fn create_window(mut inter: Interpreter, rom_path: PathBuf, save_path: PathBuf, 
     let mut emu_thread = Some(
         thread::Builder::new()
             .name("emulator".to_string())
-            .spawn(move || Emulator::run(inter, recv, proxy, rom_path, save_path))
+            .spawn(move || Emulator::run(inter, recv, proxy, movie, rom_path, save_path))
             .unwrap(),
     );
 
@@ -231,7 +247,7 @@ fn create_window(mut inter: Interpreter, rom_path: PathBuf, save_path: PathBuf, 
                 }
 
                 let joypad = ui.get::<AppState>().joypad;
-                emu_channel.send(EmulatorEvent::SetKeys(joypad)).unwrap();
+                emu_channel.send(EmulatorEvent::SetJoypad(joypad)).unwrap();
                 emu_channel.send(EmulatorEvent::RunFrame).unwrap();
             }
             _ => {}

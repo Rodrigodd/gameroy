@@ -1,5 +1,5 @@
 use audio_engine::{AudioEngine, SoundSource};
-use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter, save_state::SaveState};
+use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter, parser::Vbm, save_state::SaveState};
 use parking_lot::Mutex as ParkMutex;
 use std::{
     collections::{HashSet, VecDeque},
@@ -26,7 +26,7 @@ pub enum EmulatorEvent {
     Kill,
     RunFrame,
     FrameLimit(bool),
-    SetKeys(u8),
+    SetJoypad(u8),
     Debug(bool),
     Step,
     Run,
@@ -39,7 +39,7 @@ pub enum EmulatorEvent {
     LoadState,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 enum EmulatorState {
     Idle,
     Run,
@@ -113,10 +113,36 @@ impl SoundSource for Buffer {
     }
 }
 
+struct Joypad {
+    /// Current pressed keys by the user
+    current: u8,
+    movie: Option<Vbm>,
+    frame: usize,
+}
+impl Joypad {
+    fn get_next_joypad(&mut self) -> u8 {
+        if let Some(movie) = &self.movie {
+            self.frame += 1;
+            let skip = 333;
+
+            if self.frame >= skip {
+                let joy = !(movie.controller_data[self.frame - skip] as u8);
+                ((joy & 0x0F) << 4) | (joy >> 4)
+            } else {
+                0xff
+            }
+        } else {
+            self.current
+        }
+    }
+}
+
 pub struct Emulator {
     inter: Arc<ParkMutex<Interpreter>>,
     recv: Receiver<EmulatorEvent>,
     proxy: EventLoopProxy<UserEvent>,
+
+    joypad: Arc<ParkMutex<Joypad>>,
 
     rom_path: PathBuf,
     save_path: PathBuf,
@@ -140,6 +166,7 @@ impl Emulator {
         inter: Arc<ParkMutex<Interpreter>>,
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
+        movie: Option<Vbm>,
         rom_path: PathBuf,
         save_path: PathBuf,
     ) {
@@ -158,10 +185,28 @@ impl Emulator {
         sound.set_loop(true);
         sound.play();
         std::mem::forget(sound);
+
+        let joypad = Arc::new(ParkMutex::new(Joypad {
+            current: 0xff,
+            movie,
+            frame: 0,
+        }));
+        {
+            let game_boy = &mut inter.lock().0;
+            let mut old = game_boy.v_blank.take();
+            let joypad = joypad.clone();
+            game_boy.v_blank = Some(Box::new(move |gb| {
+                gb.joypad = joypad.lock().get_next_joypad();
+                println!("joy: {:02x}, clock: {:9}", gb.joypad, gb.clock_count);
+                old.as_mut().map(|x| x(gb));
+            }));
+        }
+
         Self {
             inter,
             recv,
             proxy,
+            joypad,
             rom_path,
             save_path,
             debug: false,
@@ -226,7 +271,9 @@ impl Emulator {
                             self.start_time = Instant::now() - Duration::new(secs, nanos as u32);
                         }
                     }
-                    SetKeys(keys) => self.inter.lock().0.joypad = keys,
+                    SetJoypad(joypad) => {
+                        self.joypad.lock().current = joypad;
+                    }
                     Debug(value) => {
                         self.debug = value;
                         if self.debug {

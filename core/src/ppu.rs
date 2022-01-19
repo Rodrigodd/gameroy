@@ -1,3 +1,4 @@
+use crate::gameboy::GameBoy;
 use crate::save_state::{LoadStateError, SaveState};
 
 #[derive(PartialEq, Eq)]
@@ -204,15 +205,10 @@ impl Ppu {
         self.sprite_buffer[0..self.sprite_buffer_len as usize].sort_by_key(|x| !x[1]);
     }
 
-    pub fn update(
-        &mut self,
-        memory: &mut [u8],
-        clock_count: u64,
-        v_blank: &mut Box<dyn FnMut(&mut Ppu) + Send>,
-    ) {
+    pub fn update(gb: &mut GameBoy) {
         use crate::consts;
-        self.ly = ((clock_count / 456) % 153) as u8;
-        let lx = clock_count % 456;
+        gb.ppu.ly = ((gb.clock_count / 456) % 153) as u8;
+        let lx = gb.clock_count % 456;
 
         let set_stat_int = |s: &mut Self, memory: &mut [u8], i: u8| {
             if s.stat & (1 << i) != 0 {
@@ -232,42 +228,45 @@ impl Ppu {
         };
 
         // LY==LYC Interrupt
-        let ly = self.ly;
-        let lyc = self.lyc;
+        let ly = gb.ppu.ly;
+        let lyc = gb.ppu.lyc;
         if ly != 0 && (lx == 4 && ly == lyc || ly == 153 && lx == 12 && 0 == lyc) {
             // STAT Coincidente Flag
-            self.stat |= 1 << 2;
+            gb.ppu.stat |= 1 << 2;
             // LY == LYC STAT Interrupt
-            set_stat_int(self, memory, 6)
+            set_stat_int(&mut gb.ppu, &mut gb.memory, 6)
         }
 
-        let mode = self.stat & 0b11;
+        let mode = gb.ppu.stat & 0b11;
         match mode {
-            0 if self.ly == 144 => {
-                set_mode(self, memory, 1);
+            0 if gb.ppu.ly == 144 => {
+                set_mode(&mut gb.ppu, &mut gb.memory, 1);
                 // V-Blank Interrupt
-                (v_blank)(self);
-                memory[consts::IF as usize] |= 1 << 0;
+                if let Some(mut v_blank) = gb.v_blank.take() {
+                    v_blank(gb);
+                    gb.v_blank = Some(v_blank);
+                }
+                gb.memory[consts::IF as usize] |= 1 << 0;
                 // Mode 1 STAT Interrupt
-                set_stat_int(self, memory, 4);
+                set_stat_int(&mut gb.ppu, &mut gb.memory, 4);
             }
             0 | 1 => {
-                if mode == 0 && lx < 80 || mode == 1 && self.ly < 144 {
+                if mode == 0 && lx < 80 || mode == 1 && gb.ppu.ly < 144 {
                     if mode == 1 {
-                        self.wyc = 0;
+                        gb.ppu.wyc = 0;
                     }
-                    set_mode(self, memory, 2);
+                    set_mode(&mut gb.ppu, &mut gb.memory, 2);
                     // Mode 2 STAT Interrupt
-                    set_stat_int(self, memory, 5);
+                    set_stat_int(&mut gb.ppu, &mut gb.memory, 5);
                 }
             }
             2 if lx >= 80 => {
-                set_mode(self, memory, 3);
+                set_mode(&mut gb.ppu, &mut gb.memory, 3);
             }
             3 if lx >= 80 + 172 => {
-                set_mode(self, memory, 0);
+                set_mode(&mut gb.ppu, &mut gb.memory, 0);
                 // Mode 0 STAT Interrupt
-                set_stat_int(self, memory, 3);
+                set_stat_int(&mut gb.ppu, &mut gb.memory, 3);
             }
             4..=255 => unreachable!(),
             _ => {}

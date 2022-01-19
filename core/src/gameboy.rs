@@ -102,7 +102,7 @@ pub struct GameBoy {
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     pub joypad: u8,
     pub serial_transfer: Box<dyn FnMut(u8) + Send>,
-    pub v_blank: Box<dyn FnMut(&mut Ppu) + Send>,
+    pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -209,7 +209,7 @@ impl GameBoy {
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
             }),
-            v_blank: Box::new(|_| {}),
+            v_blank: None,
         }
     }
 
@@ -274,8 +274,7 @@ impl GameBoy {
             if self.timer.tick_one() {
                 self.memory[consts::IF as usize] |= 1 << 2;
             }
-            self.ppu
-                .update(&mut self.memory, self.clock_count, &mut self.v_blank);
+            Ppu::update(self);
         }
     }
 

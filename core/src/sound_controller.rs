@@ -164,8 +164,8 @@ impl PartialEq for SoundController {
             && self.ch4_frequency_timer == other.ch4_frequency_timer
             // && self.output == other.output
             && self.last_clock == other.last_clock
-            // && self.sample_frequency == other.sample_frequency
-            // && self.sample_mod == other.sample_mod
+        // && self.sample_frequency == other.sample_frequency
+        // && self.sample_mod == other.sample_mod
     }
 }
 impl SaveState for SoundController {

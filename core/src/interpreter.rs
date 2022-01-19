@@ -696,7 +696,7 @@ impl Interpreter {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.set_h();
         self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
+        let cycles = if let Reg::HL = reg { 12 } else { 8 };
         self.0.tick(cycles);
     }
 

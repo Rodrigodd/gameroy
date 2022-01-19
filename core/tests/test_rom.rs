@@ -14,51 +14,55 @@ mod blargg {
     use super::*;
 
     macro_rules! console {
-        ($test:ident, $path:expr, $timeout:expr) => {
-            #[test]
+        { $( ( $test:ident, $path:expr, $timeout:expr ); )* } => {
+            $(#[test]
             fn $test() {
                 test_rom_serial($path, $timeout).unwrap();
-            }
+            })*
         };
     }
 
     macro_rules! memory {
-        ($test:ident, $path:expr, $timeout:expr) => {
-            #[test]
+        { $( ( $test:ident, $path:expr, $timeout:expr ); )* } => {
+            $(#[test]
             fn $test() {
                 test_rom_memory($path, $timeout).unwrap();
-            }
+            })*
         };
     }
 
-    memory!(dmg_sound_01, "dmg_sound/rom_singles/01-registers.gb", 30_600_000);
-    memory!(dmg_sound_02, "dmg_sound/rom_singles/02-len ctr.gb", 65_000_000);
-    memory!(dmg_sound_03, "dmg_sound/rom_singles/03-trigger.gb", 95_000_000);
-    memory!(dmg_sound_04, "dmg_sound/rom_singles/04-sweep.gb", 29_500_000);
-    memory!(dmg_sound_05, "dmg_sound/rom_singles/05-sweep details.gb", 29_300_000);
-    memory!(dmg_sound_06, "dmg_sound/rom_singles/06-overflow on trigger.gb", 29_800_000);
-    memory!(dmg_sound_07, "dmg_sound/rom_singles/07-len sweep period sync.gb", 27_400_000);
-    memory!(dmg_sound_08, "dmg_sound/rom_singles/08-len ctr during power.gb", 30_000_000);
-    memory!(dmg_sound_09, "dmg_sound/rom_singles/09-wave read while on.gb", 43000000);
-    memory!(dmg_sound_10, "dmg_sound/rom_singles/10-wave trigger while on.gb", 41_000_000);
-    memory!(dmg_sound_11, "dmg_sound/rom_singles/11-regs after power.gb", 27_700_000);
-    memory!(dmg_sound_12, "dmg_sound/rom_singles/12-wave write while on.gb", 41_000_000);
-    memory!(dmg_sound, "dmg_sound/dmg_sound.gb", 173_500_000);
+    memory! {
+        (dmg_sound_01, "dmg_sound/rom_singles/01-registers.gb", 30_600_000);
+        (dmg_sound_02, "dmg_sound/rom_singles/02-len ctr.gb", 65_000_000);
+        (dmg_sound_03, "dmg_sound/rom_singles/03-trigger.gb", 95_000_000);
+        (dmg_sound_04, "dmg_sound/rom_singles/04-sweep.gb", 29_500_000);
+        (dmg_sound_05, "dmg_sound/rom_singles/05-sweep details.gb", 29_300_000);
+        (dmg_sound_06, "dmg_sound/rom_singles/06-overflow on trigger.gb", 29_800_000);
+        (dmg_sound_07, "dmg_sound/rom_singles/07-len sweep period sync.gb", 27_400_000);
+        (dmg_sound_08, "dmg_sound/rom_singles/08-len ctr during power.gb", 30_000_000);
+        (dmg_sound_09, "dmg_sound/rom_singles/09-wave read while on.gb", 43000000);
+        (dmg_sound_10, "dmg_sound/rom_singles/10-wave trigger while on.gb", 41_000_000);
+        (dmg_sound_11, "dmg_sound/rom_singles/11-regs after power.gb", 27_700_000);
+        (dmg_sound_12, "dmg_sound/rom_singles/12-wave write while on.gb", 41_000_000);
+        (dmg_sound, "dmg_sound/dmg_sound.gb", 173_500_000);
+    }
 
-    console!(instr_timing, "instr_timing/instr_timing.gb", 26_000_000);
+    console! {
+        (instr_timing, "instr_timing/instr_timing.gb", 26_000_000);
 
-    console!(cpu_instrs_01, "cpu_instrs/individual/01-special.gb", 34_500_000);
-    console!(cpu_instrs_02, "cpu_instrs/individual/02-interrupts.gb", 43_000_000);
-    console!(cpu_instrs_03, "cpu_instrs/individual/03-op sp,hl.gb", 34_000_000);
-    console!(cpu_instrs_04, "cpu_instrs/individual/04-op r,imm.gb", 36_000_000);
-    console!(cpu_instrs_05, "cpu_instrs/individual/05-op rp.gb", 40_000_000);
-    console!(cpu_instrs_06, "cpu_instrs/individual/06-ld r,r.gb", 27_000_000);
-    console!(cpu_instrs_07, "cpu_instrs/individual/07-jr,jp,call,ret,rst.gb", 28_000_000);
-    console!(cpu_instrs_08, "cpu_instrs/individual/08-misc instrs.gb", 26_000_000);
-    console!(cpu_instrs_09, "cpu_instrs/individual/09-op r,r.gb", 62_000_000);
-    console!(cpu_instrs_10, "cpu_instrs/individual/10-bit ops.gb", 89_000_000);
-    console!(cpu_instrs_11, "cpu_instrs/individual/11-op a,(hl).gb", 98_000_000);
-    console!(cpu_instrs, "cpu_instrs/cpu_instrs.gb", 250_400_000);
+        (cpu_instrs_01, "cpu_instrs/individual/01-special.gb", 34_500_000);
+        (cpu_instrs_02, "cpu_instrs/individual/02-interrupts.gb", 43_000_000);
+        (cpu_instrs_03, "cpu_instrs/individual/03-op sp,hl.gb", 34_000_000);
+        (cpu_instrs_04, "cpu_instrs/individual/04-op r,imm.gb", 36_000_000);
+        (cpu_instrs_05, "cpu_instrs/individual/05-op rp.gb", 40_000_000);
+        (cpu_instrs_06, "cpu_instrs/individual/06-ld r,r.gb", 27_000_000);
+        (cpu_instrs_07, "cpu_instrs/individual/07-jr,jp,call,ret,rst.gb", 28_000_000);
+        (cpu_instrs_08, "cpu_instrs/individual/08-misc instrs.gb", 26_000_000);
+        (cpu_instrs_09, "cpu_instrs/individual/09-op r,r.gb", 62_000_000);
+        (cpu_instrs_10, "cpu_instrs/individual/10-bit ops.gb", 89_000_000);
+        (cpu_instrs_11, "cpu_instrs/individual/11-op a,(hl).gb", 98_000_000);
+        (cpu_instrs, "cpu_instrs/cpu_instrs.gb", 250_400_000);
+    }
 
     fn test_rom_serial(path: &str, timeout: u64) -> Result<(), String> {
         let rom_path = "../roms/blargg/".to_string() + path;

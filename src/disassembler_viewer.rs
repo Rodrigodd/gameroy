@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
     emulator::{break_flags, Breakpoints},
-    event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle},
+    event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
     style::Style,
     EmulatorEvent,
@@ -93,6 +93,19 @@ impl TextFieldCallback for Callback {
                 sender
                     .send(EmulatorEvent::AddBreakpoint { flags, address })
                     .unwrap();
+            }
+            "watch" => {
+                if args.len() != 2 {
+                    // report a error!!
+                    return;
+                }
+
+                let address = match u16::from_str_radix(args[1], 16) {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+
+                sender.send(EmulatorEvent::AddWatch(address)).unwrap();
             }
             // write the currently dissasembly to a file
             "dump" => {
@@ -298,7 +311,7 @@ struct BreakpointList {
 impl BreakpointList {
     fn get_text(ctx: &mut dyn BuilderContext, index: usize) -> String {
         let breaks = ctx.get::<Arc<Mutex<Breakpoints>>>().lock();
-        let (address, flags) = breaks.list().iter().nth(index).unwrap();
+        let (address, flags) = breaks.breakpoints().iter().nth(index).unwrap();
         let flags = {
             let mut flags_str = String::new();
             let check = |c, flag| if flags & flag != 0 { c } else { '-' };
@@ -323,7 +336,10 @@ impl ListBuilder for BreakpointList {
     }
 
     fn item_count(&mut self, ctx: &mut dyn BuilderContext) -> usize {
-        ctx.get::<Arc<Mutex<Breakpoints>>>().lock().list().len()
+        ctx.get::<Arc<Mutex<Breakpoints>>>()
+            .lock()
+            .breakpoints()
+            .len()
     }
 
     fn create_item<'a>(
@@ -336,7 +352,7 @@ impl ListBuilder for BreakpointList {
         let (&address, _) = ctx
             .get::<Arc<Mutex<Breakpoints>>>()
             .lock()
-            .list()
+            .breakpoints()
             .iter()
             .nth(index)
             .unwrap();
@@ -371,6 +387,75 @@ impl ListBuilder for BreakpointList {
         }
     }
 }
+
+struct WatchsList {
+    text_style: TextStyle,
+    button_style: std::rc::Rc<ButtonStyle>,
+    _watchs_updated_event: Handle<WatchsUpdated>,
+    _emulator_updated_event: Handle<EmulatorUpdated>,
+}
+impl WatchsList {
+fn watch_text(ctx: &mut dyn BuilderContext, index: usize) -> (u16, String) {
+    let &address = ctx
+        .get::<Arc<Mutex<Breakpoints>>>()
+        .lock()
+        .watchs()
+        .iter()
+        .nth(index)
+        .unwrap();
+    let value = ctx.get::<Arc<Mutex<GameBoy>>>().lock().read(address);
+    let text = format!("{:04x} = {:02x}", address, value);
+    (address, text)
+}
+}
+impl ListBuilder for WatchsList {
+    fn on_event(&mut self, event: Box<dyn Any>, this: Id, ctx: &mut Context) {
+        if event.is::<event_table::WatchsUpdated>() || event.is::<event_table::EmulatorUpdated>() {
+            ctx.send_event_to(this, UpdateItems);
+        }
+    }
+
+    fn item_count(&mut self, ctx: &mut dyn BuilderContext) -> usize {
+        ctx.get::<Arc<Mutex<Breakpoints>>>().lock().watchs().len()
+    }
+
+    fn create_item<'a>(
+        &mut self,
+        index: usize,
+        _list_id: Id,
+        cb: ControlBuilder,
+        ctx: &mut dyn BuilderContext,
+    ) -> ControlBuilder {
+        let (address, text) = Self::watch_text(ctx, index);
+        cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
+            .child(ctx, |cb, _| {
+                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()).into())
+                    .layout(FitText)
+                    .expand_x(true)
+            })
+            .child(ctx, |cb, _| {
+                cb.behaviour(Button::new(
+                    self.button_style.clone(),
+                    true,
+                    move |_, ctx| {
+                        let sender = ctx.get::<SyncSender<EmulatorEvent>>();
+                        sender.send(EmulatorEvent::RemoveWatch(address)).unwrap();
+                    },
+                ))
+                .min_size([15.0, 15.0])
+                .fill_y(crui::RectFill::ShrinkCenter)
+            })
+    }
+
+    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
+        let (_, text) = Self::watch_text(ctx, index);
+        let text_id = ctx.get_active_children(item_id)[0];
+        if let Graphic::Text(x) = ctx.get_graphic_mut(text_id) {
+            x.set_text(&text);
+        }
+    }
+}
+
 
 pub fn build(
     parent: Id,
@@ -475,6 +560,36 @@ PC: {:04x}",
             text_style: style.text_style.clone(),
             button_style: style.delete_button.clone(),
             _breakpoints_updated_event: event_table.register(break_list),
+        },
+    )
+    .build(ctx);
+
+    let watchs = ctx
+        .create_control()
+        .parent(right_panel)
+        .behaviour(FoldView { fold: false })
+        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+        .build(ctx);
+
+    let _watchs_header = ctx
+        .create_control()
+        .parent(watchs)
+        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()).into())
+        .layout(FitText)
+        .build(ctx);
+
+    let watchs_list = ctx.reserve();
+    list(
+        ctx.create_control_reserved(watchs_list)
+            .parent(watchs)
+            .min_size([50.0, 100.0]),
+        ctx,
+        style,
+        WatchsList {
+            text_style: style.text_style.clone(),
+            button_style: style.delete_button.clone(),
+            _watchs_updated_event: event_table.register(watchs_list),
+            _emulator_updated_event: event_table.register(watchs_list),
         },
     )
     .build(ctx);

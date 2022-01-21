@@ -235,7 +235,7 @@ fn create_window(
                         ui.force_render = false;
                     }
                     BreakpointsUpdated => ui.notify(event_table::BreakpointsUpdated),
-
+                    WatchsUpdated => ui.notify(event_table::WatchsUpdated),
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
                         ui.notify(event_table::Debug(value));
@@ -267,5 +267,6 @@ pub enum UserEvent {
     EmulatorPaused,
     EmulatorStarted,
     BreakpointsUpdated,
+    WatchsUpdated,
     Debug(bool),
 }

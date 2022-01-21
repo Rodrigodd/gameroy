@@ -5,7 +5,7 @@ use gameroy::{
 };
 use parking_lot::Mutex as ParkMutex;
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashSet, VecDeque, BTreeSet},
     path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},
@@ -39,6 +39,8 @@ pub enum EmulatorEvent {
     Reset,
     AddBreakpoint { flags: u8, address: u16 },
     RemoveBreakpoint(u16),
+    AddWatch(u16),
+    RemoveWatch(u16),
     SaveState,
     LoadState,
 }
@@ -60,16 +62,17 @@ pub struct Breakpoints {
     read_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
     execute_breakpoints: HashSet<u16>,
-    list: BTreeMap<u16, u8>,
+    breakpoints: BTreeMap<u16, u8>,
+    watchs: BTreeSet<u16>,
 }
 impl Breakpoints {
-    pub fn list(&self) -> &BTreeMap<u16, u8> {
-        &self.list
+    pub fn breakpoints(&self) -> &BTreeMap<u16, u8> {
+        &self.breakpoints
     }
 
-    fn remove(&mut self, address: u16) {
+    fn remove_break(&mut self, address: u16) {
         let address = &address;
-        self.list.remove(address);
+        self.breakpoints.remove(address);
         self.read_breakpoints.remove(address);
         self.jump_breakpoints.remove(address);
         self.execute_breakpoints.remove(address);
@@ -77,7 +80,7 @@ impl Breakpoints {
 
     fn add_break(&mut self, flags: u8, address: u16) {
         debug_assert!(flags & 0xF0 == 0);
-        *self.list.entry(address).or_default() |= flags;
+        *self.breakpoints.entry(address).or_default() |= flags;
         if (flags & break_flags::WRITE) != 0 {
             self.write_breakpoints.insert(address);
         }
@@ -92,7 +95,19 @@ impl Breakpoints {
         }
     }
 
-    fn check(&mut self, inter: &mut Interpreter) -> bool {
+    pub fn watchs(&self) -> &BTreeSet<u16> {
+        &self.watchs
+
+    }
+    fn remove_watch(&mut self, address: u16) {
+        self.watchs.remove(&address);
+    }
+
+    fn add_watch(&mut self, address: u16) {
+        self.watchs.insert(address);
+    }
+
+    fn check_break(&mut self, inter: &mut Interpreter) -> bool {
         let writes = inter.will_write_to();
         for w in &writes.1[..writes.0 as usize] {
             if self.write_breakpoints.contains(w) {
@@ -351,9 +366,23 @@ impl Emulator {
                     }
                     RemoveBreakpoint(address) => {
                         let mut breaks = self.breakpoints.lock();
-                        breaks.remove(address);
+                        breaks.remove_break(address);
                         self.proxy
                             .send_event(UserEvent::BreakpointsUpdated)
+                            .unwrap();
+                    }
+                    AddWatch(address) => {
+                        let mut breaks = self.breakpoints.lock();
+                        breaks.add_watch(address);
+                        self.proxy
+                            .send_event(UserEvent::WatchsUpdated)
+                            .unwrap();
+                    }
+                    RemoveWatch(address) => {
+                        let mut breaks = self.breakpoints.lock();
+                        breaks.remove_watch(address);
+                        self.proxy
+                            .send_event(UserEvent::WatchsUpdated)
                             .unwrap();
                     }
                 }
@@ -367,7 +396,7 @@ impl Emulator {
                             let mut inter = Interpreter(&mut *gb);
                             let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
                             while inter.0.clock_count < target_clock {
-                                if self.breakpoints.lock().check(&mut inter) {
+                                if self.breakpoints.lock().check_break(&mut inter) {
                                     drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'run;
@@ -390,7 +419,7 @@ impl Emulator {
                             let mut inter = Interpreter(&mut *gb);
                             let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
                             while inter.0.clock_count < target_clock {
-                                if self.breakpoints.lock().check(&mut inter) {
+                                if self.breakpoints.lock().check_break(&mut inter) {
                                     drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'runto;
@@ -418,7 +447,7 @@ impl Emulator {
                             let mut inter = Interpreter(&mut *gb);
                             let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
                             while inter.0.clock_count < target_clock {
-                                if self.breakpoints.lock().check(&mut inter) {
+                                if self.breakpoints.lock().check_break(&mut inter) {
                                     drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'rununtil;

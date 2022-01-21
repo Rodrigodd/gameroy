@@ -1,12 +1,17 @@
 use crui::Behaviour;
 
-
 pub struct FoldView {
-    pub fold: bool
+    pub fold: bool,
 }
 impl FoldView {
     fn active_children(&mut self, ctx: &mut crui::Context, this: crui::Id) {
-        for c in ctx.get_all_children(this).iter().skip(1).cloned().collect::<Vec<_>>() {
+        for c in ctx
+            .get_all_children(this)
+            .iter()
+            .skip(1)
+            .cloned()
+            .collect::<Vec<_>>()
+        {
             if self.fold {
                 ctx.deactive(c);
             } else {
@@ -37,5 +42,4 @@ impl Behaviour for FoldView {
             crui::MouseEvent::None => (),
         }
     }
-
 }

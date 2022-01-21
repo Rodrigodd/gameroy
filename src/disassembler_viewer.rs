@@ -4,21 +4,21 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use winit::event_loop::EventLoopProxy;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
     emulator::{break_flags, Breakpoints},
-    event_table::{self, EmulatorUpdated, EventTable, Handle, BreakpointsUpdated},
+    event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle},
     fold_view::FoldView,
     style::Style,
-    EmulatorEvent, UserEvent,
+    EmulatorEvent,
 };
 use crui::{
     graphics::{Graphic, Text},
     layouts::{FitText, HBoxLayout, VBoxLayout},
+    style::ButtonStyle,
     text::TextStyle,
-    widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback, UpdateItems},
+    widgets::{Button, ListBuilder, SetScrollPosition, TextField, TextFieldCallback, UpdateItems},
     BuilderContext, Context, ControlBuilder, Id,
 };
 use gameroy::{
@@ -27,11 +27,9 @@ use gameroy::{
 };
 
 struct Callback;
-#[allow(unused_variables)]
 impl TextFieldCallback for Callback {
-    fn on_submit(&mut self, this: Id, ctx: &mut Context, text: &mut String) {
+    fn on_submit(&mut self, _this: Id, ctx: &mut Context, text: &mut String) {
         let sender = ctx.get::<SyncSender<EmulatorEvent>>();
-        let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
         let mut args: Vec<_> = text.split_ascii_whitespace().collect();
         if args.len() == 0 {
             args.push("");
@@ -114,9 +112,9 @@ impl TextFieldCallback for Callback {
         text.clear();
     }
 
-    fn on_change(&mut self, this: Id, ctx: &mut Context, text: &str) {}
+    fn on_change(&mut self, _this: Id, _ctx: &mut Context, _text: &str) {}
 
-    fn on_unfocus(&mut self, this: Id, ctx: &mut Context, text: &mut String) {}
+    fn on_unfocus(&mut self, _this: Id, _ctx: &mut Context, _text: &mut String) {}
 }
 
 struct DissasemblerList {
@@ -294,6 +292,7 @@ PC: {:04x}",
 
 struct BreakpointList {
     text_style: TextStyle,
+    button_style: std::rc::Rc<ButtonStyle>,
     _breakpoints_updated_event: Handle<BreakpointsUpdated>,
 }
 impl BreakpointList {
@@ -334,14 +333,40 @@ impl ListBuilder for BreakpointList {
         cb: ControlBuilder,
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
+        let (&address, _) = ctx
+            .get::<Arc<Mutex<Breakpoints>>>()
+            .lock()
+            .list()
+            .iter()
+            .nth(index)
+            .unwrap();
         let text = Self::get_text(ctx, index);
-        cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()).into())
-            .layout(FitText)
+        cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
+            .child(ctx, |cb, _| {
+                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()).into())
+                    .layout(FitText)
+                    .expand_x(true)
+            })
+            .child(ctx, |cb, _| {
+                cb.behaviour(Button::new(
+                    self.button_style.clone(),
+                    true,
+                    move |_, ctx| {
+                        let sender = ctx.get::<SyncSender<EmulatorEvent>>();
+                        sender
+                            .send(EmulatorEvent::RemoveBreakpoint(address))
+                            .unwrap();
+                    },
+                ))
+                .min_size([15.0, 15.0])
+                .fill_y(crui::RectFill::ShrinkCenter)
+            })
     }
 
     fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
         let text = Self::get_text(ctx, index);
-        if let Graphic::Text(x) = ctx.get_graphic_mut(item_id) {
+        let text_id = ctx.get_active_children(item_id)[0];
+        if let Graphic::Text(x) = ctx.get_graphic_mut(text_id) {
             x.set_text(&text);
         }
     }
@@ -443,11 +468,12 @@ PC: {:04x}",
     list(
         ctx.create_control_reserved(break_list)
             .parent(breaks)
-            .min_size([50.0, 50.0]),
+            .min_size([50.0, 100.0]),
         ctx,
         style,
         BreakpointList {
             text_style: style.text_style.clone(),
+            button_style: style.delete_button.clone(),
             _breakpoints_updated_event: event_table.register(break_list),
         },
     )

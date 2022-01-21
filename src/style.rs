@@ -54,6 +54,7 @@ pub struct Style {
     pub background: Graphic,
     pub text_field: Rc<TextFieldStyle>,
     pub scrollbar: Rc<ButtonStyle>,
+    pub delete_button: Rc<ButtonStyle>,
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {

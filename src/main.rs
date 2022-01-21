@@ -2,7 +2,7 @@ use std::{
     fs::File,
     io::Read,
     path::PathBuf,
-    sync::{atomic::AtomicU8, mpsc::sync_channel, Arc},
+    sync::{mpsc::sync_channel, Arc},
     thread,
 };
 
@@ -11,7 +11,6 @@ use parking_lot::Mutex;
 use gameroy::{
     cartridge::Cartridge,
     gameboy::{self, GameBoy},
-    interpreter::{self, Interpreter},
     parser::Vbm,
 };
 
@@ -146,7 +145,6 @@ fn create_window(
     let ppu_screen: Arc<Mutex<Vec<u8>>> =
         Arc::new(Mutex::new(vec![0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     let ppu_screen_clone = ppu_screen.clone();
-    let current_joypad = Arc::new(AtomicU8::new(0xff));
     let proxy = event_loop.create_proxy();
     gb.v_blank = Some(Box::new(move |gb| {
         {

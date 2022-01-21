@@ -5,7 +5,7 @@ use gameroy::{
 };
 use parking_lot::Mutex as ParkMutex;
 use std::{
-    collections::{HashMap, HashSet, VecDeque, BTreeMap},
+    collections::{BTreeMap, HashSet, VecDeque},
     path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},
@@ -38,6 +38,7 @@ pub enum EmulatorEvent {
     RunUntil(u64),
     Reset,
     AddBreakpoint { flags: u8, address: u16 },
+    RemoveBreakpoint(u16),
     SaveState,
     LoadState,
 }
@@ -64,6 +65,14 @@ pub struct Breakpoints {
 impl Breakpoints {
     pub fn list(&self) -> &BTreeMap<u16, u8> {
         &self.list
+    }
+
+    fn remove(&mut self, address: u16) {
+        let address = &address;
+        self.list.remove(address);
+        self.read_breakpoints.remove(address);
+        self.jump_breakpoints.remove(address);
+        self.execute_breakpoints.remove(address);
     }
 
     fn add_break(&mut self, flags: u8, address: u16) {
@@ -336,8 +345,16 @@ impl Emulator {
                     AddBreakpoint { flags, address } => {
                         let mut breaks = self.breakpoints.lock();
                         breaks.add_break(flags, address);
-                        eprintln!("Sendevent here!!");
-                        self.proxy.send_event(UserEvent::BreakpointsUpdated).unwrap();
+                        self.proxy
+                            .send_event(UserEvent::BreakpointsUpdated)
+                            .unwrap();
+                    }
+                    RemoveBreakpoint(address) => {
+                        let mut breaks = self.breakpoints.lock();
+                        breaks.remove(address);
+                        self.proxy
+                            .send_event(UserEvent::BreakpointsUpdated)
+                            .unwrap();
                     }
                 }
 

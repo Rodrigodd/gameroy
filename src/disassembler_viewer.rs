@@ -8,20 +8,22 @@ use winit::event_loop::EventLoopProxy;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
-    event_table::{EmulatorUpdated, EventTable},
+    emulator::{break_flags, Breakpoints},
+    event_table::{self, EmulatorUpdated, EventTable, Handle, BreakpointsUpdated},
+    fold_view::FoldView,
     style::Style,
     EmulatorEvent, UserEvent,
 };
 use crui::{
     graphics::{Graphic, Text},
-    layouts::{FitText, HBoxLayout, MarginLayout, VBoxLayout},
+    layouts::{FitText, HBoxLayout, VBoxLayout},
     text::TextStyle,
-    widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback},
+    widgets::{ListBuilder, SetScrollPosition, TextField, TextFieldCallback, UpdateItems},
     BuilderContext, Context, ControlBuilder, Id,
 };
 use gameroy::{
     disassembler::{Address, Directive},
-    interpreter::Interpreter,
+    gameboy::GameBoy,
 };
 
 struct Callback;
@@ -101,7 +103,7 @@ impl TextFieldCallback for Callback {
                     return;
                 }
                 let file = args[1];
-                let game_boy = &ctx.get::<Arc<Mutex<Interpreter>>>().lock().0;
+                let game_boy = &ctx.get::<Arc<Mutex<GameBoy>>>().lock();
                 let trace = game_boy.trace.borrow();
                 let mut string = String::new();
                 trace.fmt(game_boy, &mut string).unwrap();
@@ -123,7 +125,7 @@ struct DissasemblerList {
     reg: Id,
     pc: Option<Address>,
     directives: Vec<Directive>,
-    _emulator_updated_event: crate::event_table::Handle<EmulatorUpdated>,
+    _emulator_updated_event: Handle<EmulatorUpdated>,
 }
 impl DissasemblerList {
     fn graphic(
@@ -171,26 +173,26 @@ impl DissasemblerList {
 impl ListBuilder for DissasemblerList {
     fn on_event(&mut self, event: Box<dyn Any>, _this: Id, ctx: &mut Context) {
         if event.is::<EmulatorUpdated>() {
-            let (scroll_value, reg_text) = {
-                let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
+            let inter = ctx.get::<Arc<Mutex<GameBoy>>>().clone();
+            let gb = inter.lock();
 
-                fn decimal_mark(n: u64) -> String {
-                    let s = n.to_string();
-                    let mut result = String::with_capacity(s.len() + ((s.len() - 1) / 3));
-                    let mut i = s.len();
-                    for c in s.chars() {
-                        result.push(c);
-                        i -= 1;
-                        if i > 0 && i % 3 == 0 {
-                            result.push(' ');
-                        }
+            fn decimal_mark(n: u64) -> String {
+                let s = n.to_string();
+                let mut result = String::with_capacity(s.len() + ((s.len() - 1) / 3));
+                let mut i = s.len();
+                for c in s.chars() {
+                    result.push(c);
+                    i -= 1;
+                    if i > 0 && i % 3 == 0 {
+                        result.push(' ');
                     }
-                    result
                 }
+                result
+            }
 
-                let cpu = &inter.0.cpu;
-                let reg_text = format!(
-                    "\
+            let cpu = &gb.cpu;
+            let reg_text = format!(
+                "\
 clock: {}
 AF: {:02x} {:02x}
 BC: {:02x} {:02x}
@@ -198,72 +200,63 @@ DE: {:02x} {:02x}
 HL: {:02x} {:02x}
 SP: {:04x}
 PC: {:04x}",
-                    decimal_mark(inter.0.clock_count),
-                    cpu.a,
-                    cpu.f.0,
-                    cpu.b,
-                    cpu.c,
-                    cpu.d,
-                    cpu.e,
-                    cpu.h,
-                    cpu.l,
-                    cpu.sp,
-                    cpu.pc
-                );
+                decimal_mark(gb.clock_count),
+                cpu.a,
+                cpu.f.0,
+                cpu.b,
+                cpu.c,
+                cpu.d,
+                cpu.e,
+                cpu.h,
+                cpu.l,
+                cpu.sp,
+                cpu.pc
+            );
 
-                let trace = inter.0.trace.borrow();
+            let trace = gb.trace.borrow();
 
-                self.directives.clear();
-                self.directives.extend(trace.directives.iter().cloned());
-                self.directives
-                    .extend(trace.ram_directives.iter().map(|&(address, op, len)| {
-                        // TODO: I am violating my own rule about Address being only rom addresses.
-                        // Maybe I should not have this rule, or have multiple address Types.
-                        Directive {
-                            address: Address {
-                                bank: 0xFF,
-                                address,
-                            },
-                            len: len as u16,
-                            op,
-                        }
-                    }));
-                debug_assert!(self.directives.windows(2).all(|x| x[0] <= x[1]));
-
-                let pc = cpu.pc;
-                let bank = inter.0.cartridge.curr_bank();
-                self.pc = Some(Address::from_pc(Some(bank), pc).unwrap_or(Address {
-                    address: pc,
-                    bank: 0xFF,
-                }));
-                let pc = self.pc.unwrap();
-
-                let mut scroll_value = None;
-                let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));
-                match pos {
-                    Ok(pos) => {
-                        let len = self.directives.len();
-                        scroll_value = Some(pos as f32 / len as f32);
+            self.directives.clear();
+            self.directives.extend(trace.directives.iter().cloned());
+            self.directives
+                .extend(trace.ram_directives.iter().map(|&(address, op, len)| {
+                    // TODO: I am violating my own rule about Address being only rom addresses.
+                    // Maybe I should not have this rule, or have multiple address Types.
+                    Directive {
+                        address: Address {
+                            bank: 0xFF,
+                            address,
+                        },
+                        len: len as u16,
+                        op,
                     }
-                    _ => {}
-                };
+                }));
+            debug_assert!(self.directives.windows(2).all(|x| x[0] <= x[1]));
 
-                (scroll_value, reg_text)
+            let pc = cpu.pc;
+            let bank = gb.cartridge.curr_bank();
+            self.pc = Some(Address::from_pc(Some(bank), pc).unwrap_or(Address {
+                address: pc,
+                bank: 0xFF,
+            }));
+            let pc = self.pc.unwrap();
+
+            let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));
+            match pos {
+                Ok(pos) => {
+                    let len = self.directives.len();
+                    ctx.send_event_to(
+                        self.list,
+                        SetScrollPosition {
+                            vertical: true,
+                            value: pos as f32 / len as f32,
+                        },
+                    );
+                }
+                _ => {}
             };
 
             if let Graphic::Text(text) = ctx.get_graphic_mut(self.reg) {
                 text.set_text(&reg_text);
-            }
-
-            // scroll disassembly list to the current program counter
-            if let Some(value) = scroll_value {
-                ctx.send_event_to(
-                    self.list,
-                    SetScrollPosition {
-                        vertical: true,
-                        value,
-                    },
-                );
             }
         }
     }
@@ -279,23 +272,78 @@ PC: {:04x}",
         cb: crui::ControlBuilder,
         ctx: &mut dyn crui::BuilderContext,
     ) -> crui::ControlBuilder {
-        let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
+        let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
 
-        let trace = inter.0.trace.borrow();
+        let trace = inter.trace.borrow();
         let directive = self.directives[index].clone();
         let graphic = self.graphic(directive, trace, self.pc);
         cb.graphic(graphic).layout(FitText)
     }
 
     fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
-        let inter = ctx.get::<Arc<Mutex<Interpreter>>>().lock();
+        let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
 
-        let trace = inter.0.trace.borrow();
+        let trace = inter.trace.borrow();
         let directive = self.directives[index].clone();
 
         let graphic = self.graphic(directive, trace, self.pc);
         drop(inter);
         *ctx.get_graphic_mut(item_id) = graphic;
+    }
+}
+
+struct BreakpointList {
+    text_style: TextStyle,
+    _breakpoints_updated_event: Handle<BreakpointsUpdated>,
+}
+impl BreakpointList {
+    fn get_text(ctx: &mut dyn BuilderContext, index: usize) -> String {
+        let breaks = ctx.get::<Arc<Mutex<Breakpoints>>>().lock();
+        let (address, flags) = breaks.list().iter().nth(index).unwrap();
+        let flags = {
+            let mut flags_str = String::new();
+            let check = |c, flag| if flags & flag != 0 { c } else { '-' };
+
+            use break_flags::*;
+            flags_str.push(check('w', WRITE));
+            flags_str.push(check('r', READ));
+            flags_str.push(check('j', JUMP));
+            flags_str.push(check('x', EXECUTE));
+
+            flags_str
+        };
+        let text = format!("{} {:04x}", flags, address);
+        text
+    }
+}
+impl ListBuilder for BreakpointList {
+    fn on_event(&mut self, event: Box<dyn Any>, this: Id, ctx: &mut Context) {
+        if event.is::<event_table::BreakpointsUpdated>() {
+            ctx.send_event_to(this, UpdateItems);
+        }
+    }
+
+    fn item_count(&mut self, ctx: &mut dyn BuilderContext) -> usize {
+        ctx.get::<Arc<Mutex<Breakpoints>>>().lock().list().len()
+    }
+
+    fn create_item<'a>(
+        &mut self,
+        index: usize,
+        _list_id: Id,
+        cb: ControlBuilder,
+        ctx: &mut dyn BuilderContext,
+    ) -> ControlBuilder {
+        let text = Self::get_text(ctx, index);
+        cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()).into())
+            .layout(FitText)
+    }
+
+    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
+        let text = Self::get_text(ctx, index);
+        if let Graphic::Text(x) = ctx.get_graphic_mut(item_id) {
+            x.set_text(&text);
+        }
     }
 }
 
@@ -347,32 +395,63 @@ pub fn build(
     let caret = ctx.reserve();
     let label = ctx.reserve();
 
-    let _reg_view = ctx
+    let right_panel = ctx
         .create_control()
         .parent(h_box)
-        .child_reserved(reg_id, ctx, |cb, _| {
-            cb.graphic(
-                Text::new(
-                    format!(
-                        "\
+        .layout(VBoxLayout::new(1.0, [2.0; 4], -1))
+        .graphic(style.split_background.clone())
+        .build(ctx);
+
+    let _reg_view = ctx
+        .create_control_reserved(reg_id)
+        .parent(right_panel)
+        .graphic(
+            Text::new(
+                format!(
+                    "\
 AF: {:02x} {:02x}
 BC: {:02x} {:02x}
 DE: {:02x} {:02x}
 HL: {:02x} {:02x}
 SP: {:04x}
 PC: {:04x}",
-                        0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                    ),
-                    (-1, 0),
-                    style.text_style.clone(),
-                )
-                .into(),
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                ),
+                (-1, 0),
+                style.text_style.clone(),
             )
-            .layout(FitText)
-        })
-        .layout(MarginLayout::default())
-        .graphic(style.split_background.clone())
+            .into(),
+        )
+        .layout(FitText)
         .build(ctx);
+
+    let breaks = ctx
+        .create_control()
+        .parent(right_panel)
+        .behaviour(FoldView { fold: false })
+        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+        .build(ctx);
+
+    let _break_header = ctx
+        .create_control()
+        .parent(breaks)
+        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()).into())
+        .layout(FitText)
+        .build(ctx);
+
+    let break_list = ctx.reserve();
+    list(
+        ctx.create_control_reserved(break_list)
+            .parent(breaks)
+            .min_size([50.0, 50.0]),
+        ctx,
+        style,
+        BreakpointList {
+            text_style: style.text_style.clone(),
+            _breakpoints_updated_event: event_table.register(break_list),
+        },
+    )
+    .build(ctx);
 
     let text_field = ctx
         .create_control()
@@ -452,7 +531,7 @@ fn list(
     cb.behaviour_and_layout(List::new(
         10.0,
         0.0,
-        [10.0; 4],
+        [10.0, 0.0, 0.0, 0.0],
         view,
         v_scroll_bar,
         v_scroll_bar_handle,

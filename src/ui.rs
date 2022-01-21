@@ -169,7 +169,7 @@ impl Ui {
         self.gui.get_mut()
     }
 
-    pub fn insert<T: Any>(&mut self, value: T) {
+    pub fn set<T: Any>(&mut self, value: T) {
         self.gui.set(value);
     }
 }

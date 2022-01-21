@@ -20,6 +20,10 @@ impl Event for FrameUpdated {}
 pub struct EmulatorUpdated;
 impl Event for EmulatorUpdated {}
 
+#[derive(Clone, Copy)]
+pub struct BreakpointsUpdated;
+impl Event for BreakpointsUpdated {}
+
 /// A handle to a registered event callback. When this is dropped, the callback is unregistered.
 pub struct Handle<E: Event> {
     /// The value of the pointer that the callback have.

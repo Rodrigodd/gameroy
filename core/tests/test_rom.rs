@@ -89,7 +89,7 @@ mod blargg {
             }
         });
 
-        let mut inter = Interpreter(game_boy);
+        let mut inter = Interpreter(&mut game_boy);
         while inter.0.clock_count < timeout {
             inter.interpret_op();
             if stop.load(Ordering::Relaxed) {
@@ -116,9 +116,9 @@ mod blargg {
 
         let cartridge = Cartridge::new(rom).unwrap();
 
-        let game_boy = GameBoy::new(boot_rom, cartridge);
+        let mut game_boy = GameBoy::new(boot_rom, cartridge);
 
-        let mut inter = Interpreter(game_boy);
+        let mut inter = Interpreter(&mut game_boy);
         while inter.0.clock_count < timeout {
             inter.interpret_op();
         }
@@ -168,9 +168,9 @@ fn save_state() {
     boot_rom_file.read(&mut boot_rom).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
-    let game_boy = GameBoy::new(boot_rom, cartridge);
+    let mut game_boy = GameBoy::new(boot_rom, cartridge);
 
-    let mut inter = Interpreter(game_boy);
+    let mut inter = Interpreter(&mut game_boy);
     let timeout = 250_400_000;
     let seed = rand::random();
     println!("test seed: {:08x}", seed);
@@ -187,7 +187,7 @@ fn save_state() {
         let cartridge = Cartridge::new(rom.clone()).unwrap();
         let mut gb = GameBoy::new(boot_rom, cartridge);
         gb.load_state(&mut Cursor::new(&mut vec)).unwrap();
-        assert_eq!(inter.0, gb);
+        assert_eq!(inter.0, &gb);
         count += 1;
     }
     println!("number of loads: {}", count);
@@ -223,7 +223,7 @@ fn dmg_acid2() {
         lcd_to_rgba(&gb.ppu.screen, img_data);
     }));
 
-    let mut inter = Interpreter(game_boy);
+    let mut inter = Interpreter(&mut game_boy);
     let timeout = 43000000;
     while inter.0.clock_count < timeout {
         inter.interpret_op();

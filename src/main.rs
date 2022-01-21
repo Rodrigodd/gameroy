@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 
 use gameroy::{
     cartridge::Cartridge,
-    gameboy,
+    gameboy::{self, GameBoy},
     interpreter::{self, Interpreter},
     parser::Vbm,
 };
@@ -18,6 +18,7 @@ use gameroy::{
 mod disassembler_viewer;
 mod emulator;
 mod event_table;
+mod fold_view;
 mod layout;
 mod split_view;
 mod style;
@@ -102,9 +103,7 @@ fn main() {
         }
     }
 
-    let inter = interpreter::Interpreter(game_boy);
-
-    create_window(inter, movie, rom_path, save_path, debug);
+    create_window(game_boy, movie, rom_path, save_path, debug);
 }
 
 use winit::{
@@ -113,6 +112,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::WindowBuilder,
 };
+
+use self::emulator::Breakpoints;
 
 struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
@@ -130,7 +131,7 @@ impl AppState {
 }
 
 fn create_window(
-    mut inter: Interpreter,
+    mut gb: GameBoy,
     movie: Option<Vbm>,
     rom_path: PathBuf,
     save_path: PathBuf,
@@ -147,7 +148,7 @@ fn create_window(
     let ppu_screen_clone = ppu_screen.clone();
     let current_joypad = Arc::new(AtomicU8::new(0xff));
     let proxy = event_loop.create_proxy();
-    inter.0.v_blank = Some(Box::new(move |gb| {
+    gb.v_blank = Some(Box::new(move |gb| {
         {
             let img_data = &mut ppu_screen_clone.lock();
             img_data.copy_from_slice(&gb.ppu.screen);
@@ -155,7 +156,7 @@ fn create_window(
         let _ = proxy.send_event(UserEvent::FrameUpdated);
     }));
 
-    let inter = Arc::new(Mutex::new(inter));
+    let inter = Arc::new(Mutex::new(gb));
     let proxy = event_loop.create_proxy();
 
     let (emu_channel, recv) = sync_channel(3);
@@ -164,15 +165,20 @@ fn create_window(
     }
     emu_channel.send(EmulatorEvent::RunFrame).unwrap();
 
-    ui.insert(inter.clone());
-    ui.insert(emu_channel.clone());
-    ui.insert::<EventLoopProxy<UserEvent>>(proxy.clone());
-    ui.insert(AppState::new(debug));
+    let breakpoints = Arc::new(Mutex::new(Breakpoints::default()));
+
+    ui.set::<Arc<Mutex<GameBoy>>>(inter.clone());
+    ui.set::<Arc<Mutex<Breakpoints>>>(breakpoints.clone());
+    ui.set(emu_channel.clone());
+    ui.set::<EventLoopProxy<UserEvent>>(proxy.clone());
+    ui.set(AppState::new(debug));
 
     let mut emu_thread = Some(
         thread::Builder::new()
             .name("emulator".to_string())
-            .spawn(move || Emulator::run(inter, recv, proxy, movie, rom_path, save_path))
+            .spawn(move || {
+                Emulator::run(inter, breakpoints, recv, proxy, movie, rom_path, save_path)
+            })
             .unwrap(),
     );
 
@@ -230,6 +236,8 @@ fn create_window(
                         ui.notify(event_table::EmulatorUpdated);
                         ui.force_render = false;
                     }
+                    BreakpointsUpdated => ui.notify(event_table::BreakpointsUpdated),
+
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
                         ui.notify(event_table::Debug(value));
@@ -260,5 +268,6 @@ pub enum UserEvent {
     FrameUpdated,
     EmulatorPaused,
     EmulatorStarted,
+    BreakpointsUpdated,
     Debug(bool),
 }

@@ -62,8 +62,8 @@ fn add(a: u8, b: u8) -> u8 {
 }
 
 /// A interpreter
-pub struct Interpreter(pub GameBoy);
-impl Interpreter {
+pub struct Interpreter<'a>(pub &'a mut GameBoy);
+impl Interpreter<'_> {
     /// Interactive debug.
     /// Print the instruction around the current running instruction
     /// and the current state of the CPU.

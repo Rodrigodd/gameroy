@@ -1,8 +1,11 @@
 use audio_engine::{AudioEngine, SoundSource};
-use gameroy::{consts::CLOCK_SPEED, interpreter::Interpreter, parser::Vbm, save_state::SaveState};
+use gameroy::{
+    consts::CLOCK_SPEED, gameboy::GameBoy, interpreter::Interpreter, parser::Vbm,
+    save_state::SaveState,
+};
 use parking_lot::Mutex as ParkMutex;
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque, BTreeMap},
     path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},
@@ -50,13 +53,36 @@ enum EmulatorState {
     RunNoBreak,
 }
 
-struct Breakpoints {
+#[derive(Default)]
+pub struct Breakpoints {
     write_breakpoints: HashSet<u16>,
     read_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
     execute_breakpoints: HashSet<u16>,
+    list: BTreeMap<u16, u8>,
 }
 impl Breakpoints {
+    pub fn list(&self) -> &BTreeMap<u16, u8> {
+        &self.list
+    }
+
+    fn add_break(&mut self, flags: u8, address: u16) {
+        debug_assert!(flags & 0xF0 == 0);
+        *self.list.entry(address).or_default() |= flags;
+        if (flags & break_flags::WRITE) != 0 {
+            self.write_breakpoints.insert(address);
+        }
+        if (flags & break_flags::READ) != 0 {
+            self.read_breakpoints.insert(address);
+        }
+        if (flags & break_flags::EXECUTE) != 0 {
+            self.execute_breakpoints.insert(address);
+        }
+        if (flags & break_flags::JUMP) != 0 {
+            self.jump_breakpoints.insert(address);
+        }
+    }
+
     fn check(&mut self, inter: &mut Interpreter) -> bool {
         let writes = inter.will_write_to();
         for w in &writes.1[..writes.0 as usize] {
@@ -138,7 +164,7 @@ impl Joypad {
 }
 
 pub struct Emulator {
-    inter: Arc<ParkMutex<Interpreter>>,
+    gb: Arc<ParkMutex<GameBoy>>,
     recv: Receiver<EmulatorEvent>,
     proxy: EventLoopProxy<UserEvent>,
 
@@ -155,7 +181,7 @@ pub struct Emulator {
     // Change when frame_limit is disabled.
     start_time: Instant,
 
-    breakpoints: Breakpoints,
+    breakpoints: Arc<ParkMutex<Breakpoints>>,
 
     _audio: AudioEngine,
     audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
@@ -163,7 +189,8 @@ pub struct Emulator {
 }
 impl Emulator {
     pub fn run(
-        inter: Arc<ParkMutex<Interpreter>>,
+        gb: Arc<ParkMutex<GameBoy>>,
+        breakpoints: Arc<ParkMutex<Breakpoints>>,
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
@@ -179,7 +206,7 @@ impl Emulator {
         // println!("{}", buffer.sample_rate);
         // std::process::exit(0);
 
-        inter.lock().0.sound.borrow_mut().sample_frequency = audio.sample_rate() as u64;
+        gb.lock().sound.borrow_mut().sample_frequency = audio.sample_rate() as u64;
 
         let mut sound = audio.new_sound(buffer).unwrap();
         sound.set_loop(true);
@@ -192,18 +219,17 @@ impl Emulator {
             frame: 0,
         }));
         {
-            let game_boy = &mut inter.lock().0;
+            let game_boy = &mut gb.lock();
             let mut old = game_boy.v_blank.take();
             let joypad = joypad.clone();
             game_boy.v_blank = Some(Box::new(move |gb| {
                 gb.joypad = joypad.lock().get_next_joypad();
-                println!("joy: {:02x}, clock: {:9}", gb.joypad, gb.clock_count);
                 old.as_mut().map(|x| x(gb));
             }));
         }
 
         Self {
-            inter,
+            gb,
             recv,
             proxy,
             joypad,
@@ -213,12 +239,7 @@ impl Emulator {
             state: EmulatorState::Idle,
             frame_limit: true,
             start_time: Instant::now(),
-            breakpoints: Breakpoints {
-                write_breakpoints: HashSet::new(),
-                read_breakpoints: HashSet::new(),
-                execute_breakpoints: HashSet::new(),
-                jump_breakpoints: HashSet::new(),
-            },
+            breakpoints,
             _audio: audio,
             audio_buffer,
             last_buffer_len: 0,
@@ -247,13 +268,13 @@ impl Emulator {
                             .write(true)
                             .open(self.rom_path.with_extension("save_state"))
                             .unwrap();
-                        self.inter.lock().0.save_state(&mut save_state).unwrap();
+                        self.gb.lock().save_state(&mut save_state).unwrap();
                     }
                     LoadState => {
                         let mut save_state =
                             std::fs::File::open(self.rom_path.with_extension("save_state"))
                                 .unwrap();
-                        self.inter.lock().0.load_state(&mut save_state).unwrap();
+                        self.gb.lock().load_state(&mut save_state).unwrap();
                     }
                     Kill => break 'event_loop,
                     RunFrame => {
@@ -264,10 +285,10 @@ impl Emulator {
                     FrameLimit(value) => {
                         self.frame_limit = value;
                         if self.frame_limit {
-                            let inter = self.inter.lock();
-                            let secs = inter.0.clock_count / CLOCK_SPEED;
+                            let gb = self.gb.lock();
+                            let secs = gb.clock_count / CLOCK_SPEED;
                             let nanos =
-                                (inter.0.clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
+                                (gb.clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
                             self.start_time = Instant::now() - Duration::new(secs, nanos as u32);
                         }
                     }
@@ -284,7 +305,7 @@ impl Emulator {
                     }
                     Step => {
                         if self.debug {
-                            self.inter.lock().interpret_op();
+                            Interpreter(&mut *self.gb.lock()).interpret_op();
                             self.set_state(EmulatorState::Idle);
                         }
                     }
@@ -292,7 +313,7 @@ impl Emulator {
                         if self.debug {
                             self.set_state(EmulatorState::Run);
                             // Run a single step, to ignore the current breakpoint
-                            self.inter.lock().interpret_op();
+                            Interpreter(&mut *self.gb.lock()).interpret_op();
                         }
                     }
                     RunTo(address) => {
@@ -302,7 +323,7 @@ impl Emulator {
                     }
                     RunFor(clocks) => {
                         if self.debug {
-                            let clock_count = self.inter.lock().0.clock_count;
+                            let clock_count = self.gb.lock().clock_count;
                             self.set_state(EmulatorState::RunUntil(clock_count + clocks));
                         }
                     }
@@ -311,20 +332,12 @@ impl Emulator {
                             self.set_state(EmulatorState::RunUntil(clock));
                         }
                     }
-                    Reset => self.inter.lock().0.reset(),
+                    Reset => self.gb.lock().reset(),
                     AddBreakpoint { flags, address } => {
-                        if (flags & break_flags::WRITE) != 0 {
-                            self.breakpoints.write_breakpoints.insert(address);
-                        }
-                        if (flags & break_flags::READ) != 0 {
-                            self.breakpoints.read_breakpoints.insert(address);
-                        }
-                        if (flags & break_flags::EXECUTE) != 0 {
-                            self.breakpoints.execute_breakpoints.insert(address);
-                        }
-                        if (flags & break_flags::JUMP) != 0 {
-                            self.breakpoints.jump_breakpoints.insert(address);
-                        }
+                        let mut breaks = self.breakpoints.lock();
+                        breaks.add_break(flags, address);
+                        eprintln!("Sendevent here!!");
+                        self.proxy.send_event(UserEvent::BreakpointsUpdated).unwrap();
                     }
                 }
 
@@ -333,11 +346,12 @@ impl Emulator {
                     EmulatorState::Run => 'run: loop {
                         // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                         {
-                            let mut inter = self.inter.lock();
+                            let mut gb = self.gb.lock();
+                            let mut inter = Interpreter(&mut *gb);
                             let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
                             while inter.0.clock_count < target_clock {
-                                if self.breakpoints.check(&mut inter) {
-                                    drop(inter);
+                                if self.breakpoints.lock().check(&mut inter) {
+                                    drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'run;
                                 }
@@ -355,17 +369,18 @@ impl Emulator {
                     },
                     EmulatorState::RunTo(target_address) => 'runto: loop {
                         {
-                            let mut inter = self.inter.lock();
+                            let mut gb = self.gb.lock();
+                            let mut inter = Interpreter(&mut *gb);
                             let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
                             while inter.0.clock_count < target_clock {
-                                if self.breakpoints.check(&mut inter) {
-                                    drop(inter);
+                                if self.breakpoints.lock().check(&mut inter) {
+                                    drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'runto;
                                 }
                                 inter.interpret_op();
                                 if inter.0.cpu.pc == target_address {
-                                    drop(inter);
+                                    drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'runto;
                                 }
@@ -382,17 +397,18 @@ impl Emulator {
                     },
                     EmulatorState::RunUntil(final_clock) => 'rununtil: loop {
                         {
-                            let mut inter = self.inter.lock();
+                            let mut gb = self.gb.lock();
+                            let mut inter = Interpreter(&mut *gb);
                             let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
                             while inter.0.clock_count < target_clock {
-                                if self.breakpoints.check(&mut inter) {
-                                    drop(inter);
+                                if self.breakpoints.lock().check(&mut inter) {
+                                    drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'rununtil;
                                 }
                                 inter.interpret_op();
                                 if inter.0.clock_count >= final_clock {
-                                    drop(inter);
+                                    drop(gb);
                                     self.set_state(EmulatorState::Idle);
                                     break 'rununtil;
                                 }
@@ -408,7 +424,8 @@ impl Emulator {
                         }
                     },
                     EmulatorState::RunNoBreak => {
-                        let mut inter = self.inter.lock();
+                        let mut gb = self.gb.lock();
+                        let mut inter = Interpreter(&mut *gb);
                         if self.frame_limit {
                             let elapsed = self.start_time.elapsed();
                             let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
@@ -428,13 +445,13 @@ impl Emulator {
                                 inter.interpret_op();
                             }
 
-                            drop(inter);
+                            drop(gb);
                             self.update_audio();
 
                             // change state to Idle, and wait for the next RunFrame
 
-                            // I don't call self.set_state, because i don't want to send the update
-                            // event
+                            // I don't call self.set_state, because i don't want to send the
+                            // EmulatorPaused event
                             self.state = EmulatorState::Idle;
                         } else {
                             // run 1.6ms worth of emulation, and check for events in the channel, in a loop
@@ -468,16 +485,16 @@ impl Emulator {
         println!("exiting emulator thread");
 
         print!("saving game data to {}... ", self.save_path.display());
-        match std::fs::write(&self.save_path, self.inter.lock().0.cartridge.ram_mut()) {
+        match std::fs::write(&self.save_path, self.gb.lock().cartridge.ram_mut()) {
             Ok(_) => println!("success"),
             Err(x) => println!("error: {}", x),
         }
     }
 
     fn update_audio(&mut self) {
-        let inter = self.inter.lock();
-        let clock_count = inter.0.clock_count;
-        let buffer = inter.0.sound.borrow_mut().get_output(clock_count);
+        let gb = self.gb.lock();
+        let clock_count = gb.clock_count;
+        let buffer = gb.sound.borrow_mut().get_output(clock_count);
         let mut lock = self.audio_buffer.lock();
         if lock.len() == 0 {
             // if the buffer is empty, add zeros to increase it

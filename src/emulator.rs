@@ -5,7 +5,7 @@ use gameroy::{
 };
 use parking_lot::Mutex as ParkMutex;
 use std::{
-    collections::{BTreeMap, HashSet, VecDeque, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
     path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},
@@ -49,11 +49,15 @@ pub enum EmulatorEvent {
 enum EmulatorState {
     Idle,
     Run,
-    /// Runs until it reachs to given program counter
-    RunTo(u16),
-    /// Runs until it reachs to given clock count
-    RunUntil(u64),
     RunNoBreak,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum RunResult {
+    ReachBreakpoint,
+    ReachTargetAddress,
+    ReachTargetClock,
+    TimeOut,
 }
 
 #[derive(Default)]
@@ -64,6 +68,10 @@ pub struct Breakpoints {
     execute_breakpoints: HashSet<u16>,
     breakpoints: BTreeMap<u16, u8>,
     watchs: BTreeSet<u16>,
+    /// Address to stop at
+    target_address: Option<u16>,
+    /// Clock to stop at
+    target_clock: Option<u64>,
 }
 impl Breakpoints {
     pub fn breakpoints(&self) -> &BTreeMap<u16, u8> {
@@ -97,7 +105,6 @@ impl Breakpoints {
 
     pub fn watchs(&self) -> &BTreeSet<u16> {
         &self.watchs
-
     }
     fn remove_watch(&mut self, address: u16) {
         self.watchs.remove(&address);
@@ -107,7 +114,7 @@ impl Breakpoints {
         self.watchs.insert(address);
     }
 
-    fn check_break(&mut self, inter: &mut Interpreter) -> bool {
+    fn check_break(&self, inter: &mut Interpreter) -> bool {
         let writes = inter.will_write_to();
         for w in &writes.1[..writes.0 as usize] {
             if self.write_breakpoints.contains(w) {
@@ -129,6 +136,39 @@ impl Breakpoints {
             return true;
         }
         false
+    }
+
+    fn run_for(&mut self, gb: &mut GameBoy, clocks: u64) -> RunResult {
+        self.run_until(gb, gb.clock_count + clocks)
+    }
+
+    fn run_until(&mut self, gb: &mut GameBoy, target_clock: u64) -> RunResult {
+        let mut inter = Interpreter(gb);
+        let target_clock = if let Some(clock) = self.target_clock {
+            target_clock.min(clock)
+        } else {
+            target_clock
+        };
+        while inter.0.clock_count < target_clock {
+            if self.check_break(&mut inter) {
+                return RunResult::ReachBreakpoint;
+            }
+            inter.interpret_op();
+            if Some(inter.0.cpu.pc) == self.target_address {
+                self.target_address = None;
+                return RunResult::ReachTargetAddress;
+            }
+        }
+        if let Some(clock) = self.target_clock {
+            if gb.clock_count >= clock {
+                self.target_clock = None;
+                RunResult::ReachTargetClock
+            } else {
+                RunResult::TimeOut
+            }
+        } else {
+            RunResult::TimeOut
+        }
     }
 }
 
@@ -278,6 +318,11 @@ impl Emulator {
         if new_state == EmulatorState::Idle {
             self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
         }
+        if new_state == EmulatorState::Run {
+            let mut lock = self.breakpoints.lock();
+            lock.target_address = None;
+            lock.target_clock = None;
+        }
         self.state = new_state;
     }
 
@@ -342,18 +387,21 @@ impl Emulator {
                     }
                     RunTo(address) => {
                         if self.debug {
-                            self.set_state(EmulatorState::RunTo(address));
+                            self.set_state(EmulatorState::Run);
+                            self.breakpoints.lock().target_address = Some(address);
                         }
                     }
                     RunFor(clocks) => {
                         if self.debug {
                             let clock_count = self.gb.lock().clock_count;
-                            self.set_state(EmulatorState::RunUntil(clock_count + clocks));
+                            self.set_state(EmulatorState::Run);
+                            self.breakpoints.lock().target_clock = Some(clock_count + clocks);
                         }
                     }
                     RunUntil(clock) => {
                         if self.debug {
-                            self.set_state(EmulatorState::RunUntil(clock));
+                            self.set_state(EmulatorState::Run);
+                            self.breakpoints.lock().target_clock = Some(clock);
                         }
                     }
                     Reset => self.gb.lock().reset(),
@@ -374,16 +422,12 @@ impl Emulator {
                     AddWatch(address) => {
                         let mut breaks = self.breakpoints.lock();
                         breaks.add_watch(address);
-                        self.proxy
-                            .send_event(UserEvent::WatchsUpdated)
-                            .unwrap();
+                        self.proxy.send_event(UserEvent::WatchsUpdated).unwrap();
                     }
                     RemoveWatch(address) => {
                         let mut breaks = self.breakpoints.lock();
                         breaks.remove_watch(address);
-                        self.proxy
-                            .send_event(UserEvent::WatchsUpdated)
-                            .unwrap();
+                        self.proxy.send_event(UserEvent::WatchsUpdated).unwrap();
                     }
                 }
 
@@ -393,71 +437,16 @@ impl Emulator {
                         // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                         {
                             let mut gb = self.gb.lock();
-                            let mut inter = Interpreter(&mut *gb);
-                            let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
-                            while inter.0.clock_count < target_clock {
-                                if self.breakpoints.lock().check_break(&mut inter) {
+                            let mut breakpoints = self.breakpoints.lock();
+                            use RunResult::*;
+                            match breakpoints.run_for(&mut *gb, CLOCK_SPEED / 600) {
+                                ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
                                     drop(gb);
+                                    drop(breakpoints);
                                     self.set_state(EmulatorState::Idle);
                                     break 'run;
                                 }
-                                inter.interpret_op();
-                            }
-                        }
-                        match self.recv.try_recv() {
-                            Ok(next_event) => {
-                                event = next_event;
-                                continue 'handle_event;
-                            }
-                            Err(TryRecvError::Disconnected) => break 'event_loop,
-                            _ => {}
-                        }
-                    },
-                    EmulatorState::RunTo(target_address) => 'runto: loop {
-                        {
-                            let mut gb = self.gb.lock();
-                            let mut inter = Interpreter(&mut *gb);
-                            let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
-                            while inter.0.clock_count < target_clock {
-                                if self.breakpoints.lock().check_break(&mut inter) {
-                                    drop(gb);
-                                    self.set_state(EmulatorState::Idle);
-                                    break 'runto;
-                                }
-                                inter.interpret_op();
-                                if inter.0.cpu.pc == target_address {
-                                    drop(gb);
-                                    self.set_state(EmulatorState::Idle);
-                                    break 'runto;
-                                }
-                            }
-                        }
-                        match self.recv.try_recv() {
-                            Ok(next_event) => {
-                                event = next_event;
-                                continue 'handle_event;
-                            }
-                            Err(TryRecvError::Disconnected) => break 'event_loop,
-                            _ => {}
-                        }
-                    },
-                    EmulatorState::RunUntil(final_clock) => 'rununtil: loop {
-                        {
-                            let mut gb = self.gb.lock();
-                            let mut inter = Interpreter(&mut *gb);
-                            let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
-                            while inter.0.clock_count < target_clock {
-                                if self.breakpoints.lock().check_break(&mut inter) {
-                                    drop(gb);
-                                    self.set_state(EmulatorState::Idle);
-                                    break 'rununtil;
-                                }
-                                inter.interpret_op();
-                                if inter.0.clock_count >= final_clock {
-                                    drop(gb);
-                                    self.set_state(EmulatorState::Idle);
-                                    break 'rununtil;
-                                }
+                                RunResult::TimeOut => {}
                             }
                         }
                         match self.recv.try_recv() {

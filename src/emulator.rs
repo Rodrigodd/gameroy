@@ -61,7 +61,7 @@ enum RunResult {
 }
 
 #[derive(Default)]
-pub struct Breakpoints {
+pub struct Debugger {
     write_breakpoints: HashSet<u16>,
     read_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
@@ -73,7 +73,7 @@ pub struct Breakpoints {
     /// Clock to stop at
     target_clock: Option<u64>,
 }
-impl Breakpoints {
+impl Debugger {
     pub fn breakpoints(&self) -> &BTreeMap<u16, u8> {
         &self.breakpoints
     }
@@ -245,7 +245,7 @@ pub struct Emulator {
     // Change when frame_limit is disabled.
     start_time: Instant,
 
-    breakpoints: Arc<ParkMutex<Breakpoints>>,
+    debugger: Arc<ParkMutex<Debugger>>,
 
     _audio: AudioEngine,
     audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
@@ -254,7 +254,7 @@ pub struct Emulator {
 impl Emulator {
     pub fn run(
         gb: Arc<ParkMutex<GameBoy>>,
-        breakpoints: Arc<ParkMutex<Breakpoints>>,
+        debugger: Arc<ParkMutex<Debugger>>,
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
@@ -303,7 +303,7 @@ impl Emulator {
             state: EmulatorState::Idle,
             frame_limit: true,
             start_time: Instant::now(),
-            breakpoints,
+            debugger,
             _audio: audio,
             audio_buffer,
             last_buffer_len: 0,
@@ -319,7 +319,7 @@ impl Emulator {
             self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
         }
         if new_state == EmulatorState::Run {
-            let mut lock = self.breakpoints.lock();
+            let mut lock = self.debugger.lock();
             lock.target_address = None;
             lock.target_clock = None;
         }
@@ -388,44 +388,44 @@ impl Emulator {
                     RunTo(address) => {
                         if self.debug {
                             self.set_state(EmulatorState::Run);
-                            self.breakpoints.lock().target_address = Some(address);
+                            self.debugger.lock().target_address = Some(address);
                         }
                     }
                     RunFor(clocks) => {
                         if self.debug {
                             let clock_count = self.gb.lock().clock_count;
                             self.set_state(EmulatorState::Run);
-                            self.breakpoints.lock().target_clock = Some(clock_count + clocks);
+                            self.debugger.lock().target_clock = Some(clock_count + clocks);
                         }
                     }
                     RunUntil(clock) => {
                         if self.debug {
                             self.set_state(EmulatorState::Run);
-                            self.breakpoints.lock().target_clock = Some(clock);
+                            self.debugger.lock().target_clock = Some(clock);
                         }
                     }
                     Reset => self.gb.lock().reset(),
                     AddBreakpoint { flags, address } => {
-                        let mut breaks = self.breakpoints.lock();
+                        let mut breaks = self.debugger.lock();
                         breaks.add_break(flags, address);
                         self.proxy
                             .send_event(UserEvent::BreakpointsUpdated)
                             .unwrap();
                     }
                     RemoveBreakpoint(address) => {
-                        let mut breaks = self.breakpoints.lock();
+                        let mut breaks = self.debugger.lock();
                         breaks.remove_break(address);
                         self.proxy
                             .send_event(UserEvent::BreakpointsUpdated)
                             .unwrap();
                     }
                     AddWatch(address) => {
-                        let mut breaks = self.breakpoints.lock();
+                        let mut breaks = self.debugger.lock();
                         breaks.add_watch(address);
                         self.proxy.send_event(UserEvent::WatchsUpdated).unwrap();
                     }
                     RemoveWatch(address) => {
-                        let mut breaks = self.breakpoints.lock();
+                        let mut breaks = self.debugger.lock();
                         breaks.remove_watch(address);
                         self.proxy.send_event(UserEvent::WatchsUpdated).unwrap();
                     }
@@ -437,12 +437,12 @@ impl Emulator {
                         // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                         {
                             let mut gb = self.gb.lock();
-                            let mut breakpoints = self.breakpoints.lock();
+                            let mut debugger = self.debugger.lock();
                             use RunResult::*;
-                            match breakpoints.run_for(&mut *gb, CLOCK_SPEED / 600) {
+                            match debugger.run_for(&mut *gb, CLOCK_SPEED / 600) {
                                 ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
                                     drop(gb);
-                                    drop(breakpoints);
+                                    drop(debugger);
                                     self.set_state(EmulatorState::Idle);
                                     break 'run;
                                 }

@@ -7,7 +7,7 @@ use parking_lot::Mutex;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
-    emulator::{break_flags, Breakpoints},
+    emulator::{break_flags, Debugger},
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
     style::Style,
@@ -310,8 +310,8 @@ struct BreakpointList {
 }
 impl BreakpointList {
     fn get_text(ctx: &mut dyn BuilderContext, index: usize) -> String {
-        let breaks = ctx.get::<Arc<Mutex<Breakpoints>>>().lock();
-        let (address, flags) = breaks.breakpoints().iter().nth(index).unwrap();
+        let debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+        let (address, flags) = debugger.breakpoints().iter().nth(index).unwrap();
         let flags = {
             let mut flags_str = String::new();
             let check = |c, flag| if flags & flag != 0 { c } else { '-' };
@@ -336,7 +336,7 @@ impl ListBuilder for BreakpointList {
     }
 
     fn item_count(&mut self, ctx: &mut dyn BuilderContext) -> usize {
-        ctx.get::<Arc<Mutex<Breakpoints>>>()
+        ctx.get::<Arc<Mutex<Debugger>>>()
             .lock()
             .breakpoints()
             .len()
@@ -350,7 +350,7 @@ impl ListBuilder for BreakpointList {
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
         let (&address, _) = ctx
-            .get::<Arc<Mutex<Breakpoints>>>()
+            .get::<Arc<Mutex<Debugger>>>()
             .lock()
             .breakpoints()
             .iter()
@@ -397,7 +397,7 @@ struct WatchsList {
 impl WatchsList {
 fn watch_text(ctx: &mut dyn BuilderContext, index: usize) -> (u16, String) {
     let &address = ctx
-        .get::<Arc<Mutex<Breakpoints>>>()
+        .get::<Arc<Mutex<Debugger>>>()
         .lock()
         .watchs()
         .iter()
@@ -416,7 +416,7 @@ impl ListBuilder for WatchsList {
     }
 
     fn item_count(&mut self, ctx: &mut dyn BuilderContext) -> usize {
-        ctx.get::<Arc<Mutex<Breakpoints>>>().lock().watchs().len()
+        ctx.get::<Arc<Mutex<Debugger>>>().lock().watchs().len()
     }
 
     fn create_item<'a>(

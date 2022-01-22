@@ -112,7 +112,7 @@ use winit::{
     window::WindowBuilder,
 };
 
-use self::emulator::Breakpoints;
+use self::emulator::Debugger;
 
 struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
@@ -163,10 +163,10 @@ fn create_window(
     }
     emu_channel.send(EmulatorEvent::RunFrame).unwrap();
 
-    let breakpoints = Arc::new(Mutex::new(Breakpoints::default()));
+    let debugger = Arc::new(Mutex::new(Debugger::default()));
 
     ui.set::<Arc<Mutex<GameBoy>>>(inter.clone());
-    ui.set::<Arc<Mutex<Breakpoints>>>(breakpoints.clone());
+    ui.set::<Arc<Mutex<Debugger>>>(debugger.clone());
     ui.set(emu_channel.clone());
     ui.set::<EventLoopProxy<UserEvent>>(proxy.clone());
     ui.set(AppState::new(debug));
@@ -175,7 +175,7 @@ fn create_window(
         thread::Builder::new()
             .name("emulator".to_string())
             .spawn(move || {
-                Emulator::run(inter, breakpoints, recv, proxy, movie, rom_path, save_path)
+                Emulator::run(inter, debugger, recv, proxy, movie, rom_path, save_path)
             })
             .unwrap(),
     );

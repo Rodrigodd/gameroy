@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 
 use gameroy::{
     cartridge::Cartridge,
+    debugger::{Debugger, DebuggerEvent},
     gameboy::{self, GameBoy},
     parser::Vbm,
 };
@@ -112,8 +113,6 @@ use winit::{
     window::WindowBuilder,
 };
 
-use self::emulator::Debugger;
-
 struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
     pub joypad: u8,
@@ -165,6 +164,21 @@ fn create_window(
 
     let debugger = Arc::new(Mutex::new(Debugger::default()));
 
+    {
+        let proxy = proxy.clone();
+        let emu_channel = emu_channel.clone();
+        debugger.lock().callback = Some(Box::new(move |_, event| {
+            use DebuggerEvent::*;
+            match event {
+                Step => emu_channel.send(EmulatorEvent::Step).unwrap(),
+                Reset => emu_channel.send(EmulatorEvent::Reset).unwrap(),
+                Run => emu_channel.send(EmulatorEvent::Run).unwrap(),
+                BreakpointsUpdate => proxy.send_event(UserEvent::BreakpointsUpdated).unwrap(),
+                WatchsUpdate => proxy.send_event(UserEvent::WatchsUpdated).unwrap(),
+            }
+        }));
+    }
+
     ui.set::<Arc<Mutex<GameBoy>>>(inter.clone());
     ui.set::<Arc<Mutex<Debugger>>>(debugger.clone());
     ui.set(emu_channel.clone());
@@ -174,9 +188,7 @@ fn create_window(
     let mut emu_thread = Some(
         thread::Builder::new()
             .name("emulator".to_string())
-            .spawn(move || {
-                Emulator::run(inter, debugger, recv, proxy, movie, rom_path, save_path)
-            })
+            .spawn(move || Emulator::run(inter, debugger, recv, proxy, movie, rom_path, save_path))
             .unwrap(),
     );
 

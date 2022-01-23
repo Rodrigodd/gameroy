@@ -1,6 +1,7 @@
 pub mod cartridge;
 pub mod consts;
 pub mod cpu;
+pub mod debugger;
 pub mod disassembler;
 pub mod gameboy;
 pub mod interpreter;

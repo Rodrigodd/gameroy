@@ -1,6 +1,10 @@
 use audio_engine::{AudioEngine, SoundSource};
 use gameroy::{
-    consts::CLOCK_SPEED, gameboy::GameBoy, interpreter::Interpreter, parser::Vbm,
+    consts::CLOCK_SPEED,
+    debugger::{Debugger, RunResult},
+    gameboy::GameBoy,
+    interpreter::Interpreter,
+    parser::Vbm,
     save_state::SaveState,
 };
 use parking_lot::Mutex as ParkMutex;
@@ -17,13 +21,6 @@ use winit::event_loop::EventLoopProxy;
 
 use super::UserEvent;
 
-pub mod break_flags {
-    pub const WRITE: u8 = 1 << 0;
-    pub const READ: u8 = 1 << 1;
-    pub const EXECUTE: u8 = 1 << 2;
-    pub const JUMP: u8 = 1 << 3;
-}
-
 #[derive(Debug)]
 pub enum EmulatorEvent {
     Kill,
@@ -33,14 +30,7 @@ pub enum EmulatorEvent {
     Debug(bool),
     Step,
     Run,
-    RunTo(u16),
-    RunFor(u64),
-    RunUntil(u64),
     Reset,
-    AddBreakpoint { flags: u8, address: u16 },
-    RemoveBreakpoint(u16),
-    AddWatch(u16),
-    RemoveWatch(u16),
     SaveState,
     LoadState,
 }
@@ -50,126 +40,6 @@ enum EmulatorState {
     Idle,
     Run,
     RunNoBreak,
-}
-
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum RunResult {
-    ReachBreakpoint,
-    ReachTargetAddress,
-    ReachTargetClock,
-    TimeOut,
-}
-
-#[derive(Default)]
-pub struct Debugger {
-    write_breakpoints: HashSet<u16>,
-    read_breakpoints: HashSet<u16>,
-    jump_breakpoints: HashSet<u16>,
-    execute_breakpoints: HashSet<u16>,
-    breakpoints: BTreeMap<u16, u8>,
-    watchs: BTreeSet<u16>,
-    /// Address to stop at
-    target_address: Option<u16>,
-    /// Clock to stop at
-    target_clock: Option<u64>,
-}
-impl Debugger {
-    pub fn breakpoints(&self) -> &BTreeMap<u16, u8> {
-        &self.breakpoints
-    }
-
-    fn remove_break(&mut self, address: u16) {
-        let address = &address;
-        self.breakpoints.remove(address);
-        self.read_breakpoints.remove(address);
-        self.jump_breakpoints.remove(address);
-        self.execute_breakpoints.remove(address);
-    }
-
-    fn add_break(&mut self, flags: u8, address: u16) {
-        debug_assert!(flags & 0xF0 == 0);
-        *self.breakpoints.entry(address).or_default() |= flags;
-        if (flags & break_flags::WRITE) != 0 {
-            self.write_breakpoints.insert(address);
-        }
-        if (flags & break_flags::READ) != 0 {
-            self.read_breakpoints.insert(address);
-        }
-        if (flags & break_flags::EXECUTE) != 0 {
-            self.execute_breakpoints.insert(address);
-        }
-        if (flags & break_flags::JUMP) != 0 {
-            self.jump_breakpoints.insert(address);
-        }
-    }
-
-    pub fn watchs(&self) -> &BTreeSet<u16> {
-        &self.watchs
-    }
-    fn remove_watch(&mut self, address: u16) {
-        self.watchs.remove(&address);
-    }
-
-    fn add_watch(&mut self, address: u16) {
-        self.watchs.insert(address);
-    }
-
-    fn check_break(&self, inter: &mut Interpreter) -> bool {
-        let writes = inter.will_write_to();
-        for w in &writes.1[..writes.0 as usize] {
-            if self.write_breakpoints.contains(w) {
-                return true;
-            }
-        }
-        let reads = inter.will_read_from();
-        for r in &reads.1[..reads.0 as usize] {
-            if self.read_breakpoints.contains(r) {
-                return true;
-            }
-        }
-        if let Some(jump) = inter.will_jump_to() {
-            if self.jump_breakpoints.contains(&jump) {
-                return true;
-            }
-        }
-        if self.execute_breakpoints.contains(&inter.0.cpu.pc) {
-            return true;
-        }
-        false
-    }
-
-    fn run_for(&mut self, gb: &mut GameBoy, clocks: u64) -> RunResult {
-        self.run_until(gb, gb.clock_count + clocks)
-    }
-
-    fn run_until(&mut self, gb: &mut GameBoy, target_clock: u64) -> RunResult {
-        let mut inter = Interpreter(gb);
-        let target_clock = if let Some(clock) = self.target_clock {
-            target_clock.min(clock)
-        } else {
-            target_clock
-        };
-        while inter.0.clock_count < target_clock {
-            if self.check_break(&mut inter) {
-                return RunResult::ReachBreakpoint;
-            }
-            inter.interpret_op();
-            if Some(inter.0.cpu.pc) == self.target_address {
-                self.target_address = None;
-                return RunResult::ReachTargetAddress;
-            }
-        }
-        if let Some(clock) = self.target_clock {
-            if gb.clock_count >= clock {
-                self.target_clock = None;
-                RunResult::ReachTargetClock
-            } else {
-                RunResult::TimeOut
-            }
-        } else {
-            RunResult::TimeOut
-        }
-    }
 }
 
 struct Buffer {
@@ -318,11 +188,6 @@ impl Emulator {
         if new_state == EmulatorState::Idle {
             self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
         }
-        if new_state == EmulatorState::Run {
-            let mut lock = self.debugger.lock();
-            lock.target_address = None;
-            lock.target_clock = None;
-        }
         self.state = new_state;
     }
 
@@ -385,50 +250,7 @@ impl Emulator {
                             Interpreter(&mut *self.gb.lock()).interpret_op();
                         }
                     }
-                    RunTo(address) => {
-                        if self.debug {
-                            self.set_state(EmulatorState::Run);
-                            self.debugger.lock().target_address = Some(address);
-                        }
-                    }
-                    RunFor(clocks) => {
-                        if self.debug {
-                            let clock_count = self.gb.lock().clock_count;
-                            self.set_state(EmulatorState::Run);
-                            self.debugger.lock().target_clock = Some(clock_count + clocks);
-                        }
-                    }
-                    RunUntil(clock) => {
-                        if self.debug {
-                            self.set_state(EmulatorState::Run);
-                            self.debugger.lock().target_clock = Some(clock);
-                        }
-                    }
                     Reset => self.gb.lock().reset(),
-                    AddBreakpoint { flags, address } => {
-                        let mut breaks = self.debugger.lock();
-                        breaks.add_break(flags, address);
-                        self.proxy
-                            .send_event(UserEvent::BreakpointsUpdated)
-                            .unwrap();
-                    }
-                    RemoveBreakpoint(address) => {
-                        let mut breaks = self.debugger.lock();
-                        breaks.remove_break(address);
-                        self.proxy
-                            .send_event(UserEvent::BreakpointsUpdated)
-                            .unwrap();
-                    }
-                    AddWatch(address) => {
-                        let mut breaks = self.debugger.lock();
-                        breaks.add_watch(address);
-                        self.proxy.send_event(UserEvent::WatchsUpdated).unwrap();
-                    }
-                    RemoveWatch(address) => {
-                        let mut breaks = self.debugger.lock();
-                        breaks.remove_watch(address);
-                        self.proxy.send_event(UserEvent::WatchsUpdated).unwrap();
-                    }
                 }
 
                 match self.state {
@@ -436,8 +258,8 @@ impl Emulator {
                     EmulatorState::Run => 'run: loop {
                         // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                         {
-                            let mut gb = self.gb.lock();
                             let mut debugger = self.debugger.lock();
+                            let mut gb = self.gb.lock();
                             use RunResult::*;
                             match debugger.run_for(&mut *gb, CLOCK_SPEED / 600) {
                                 ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
@@ -446,7 +268,7 @@ impl Emulator {
                                     self.set_state(EmulatorState::Idle);
                                     break 'run;
                                 }
-                                RunResult::TimeOut => {}
+                                TimeOut => {}
                             }
                         }
                         match self.recv.try_recv() {

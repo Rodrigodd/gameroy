@@ -1,17 +1,12 @@
-use std::{
-    any::Any,
-    sync::{mpsc::SyncSender, Arc},
-};
+use std::{any::Any, sync::Arc};
 
 use parking_lot::Mutex;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
-    emulator::{break_flags, Debugger},
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
     style::Style,
-    EmulatorEvent,
 };
 use crui::{
     graphics::{Graphic, Text},
@@ -22,6 +17,7 @@ use crui::{
     BuilderContext, Context, ControlBuilder, Id,
 };
 use gameroy::{
+    debugger::{break_flags, Debugger},
     disassembler::{Address, Directive},
     gameboy::GameBoy,
 };
@@ -29,99 +25,13 @@ use gameroy::{
 struct Callback;
 impl TextFieldCallback for Callback {
     fn on_submit(&mut self, _this: Id, ctx: &mut Context, text: &mut String) {
-        let sender = ctx.get::<SyncSender<EmulatorEvent>>();
-        let mut args: Vec<_> = text.split_ascii_whitespace().collect();
+        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+        let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+        let mut args: Vec<&str> = text.split_ascii_whitespace().collect();
         if args.len() == 0 {
             args.push("");
         }
-        match args[0] {
-            "step" | "" => sender.send(EmulatorEvent::Step).unwrap(),
-            "reset" => sender.send(EmulatorEvent::Reset).unwrap(),
-            "runto" => {
-                if args.len() != 2 {
-                    // report a error!!
-                    return;
-                }
-                let address = match u16::from_str_radix(args[1], 16) {
-                    Ok(x) => x,
-                    Err(_) => return,
-                };
-                sender.send(EmulatorEvent::RunTo(address)).unwrap();
-            }
-            "run" => {
-                if args.len() == 1 {
-                    sender.send(EmulatorEvent::Run).unwrap()
-                } else if args.len() == 3 {
-                    let clocks = match args[2].parse::<u64>() {
-                        Ok(x) => x,
-                        Err(_) => return,
-                    };
-                    match args[1] {
-                        "for" => {
-                            sender.send(EmulatorEvent::RunFor(clocks)).unwrap();
-                        }
-                        "until" => {
-                            sender.send(EmulatorEvent::RunUntil(clocks)).unwrap();
-                        }
-                        _ => return,
-                    }
-                } else {
-                    // report a error!!
-                    return;
-                }
-            }
-            "break" => {
-                if args.len() != 3 {
-                    // report a error!!
-                    return;
-                }
-
-                let address = match u16::from_str_radix(args[2], 16) {
-                    Ok(x) => x,
-                    Err(_) => return,
-                };
-
-                let write = args[1].contains('w') as u8;
-                let read = args[1].contains('r') as u8;
-                let execute = args[1].contains('x') as u8;
-                let jump = args[1].contains('j') as u8;
-
-                use crate::emulator::break_flags::*;
-
-                let flags = (write * WRITE) | (read * READ) | (execute * EXECUTE) | (jump * JUMP);
-
-                sender
-                    .send(EmulatorEvent::AddBreakpoint { flags, address })
-                    .unwrap();
-            }
-            "watch" => {
-                if args.len() != 2 {
-                    // report a error!!
-                    return;
-                }
-
-                let address = match u16::from_str_radix(args[1], 16) {
-                    Ok(x) => x,
-                    Err(_) => return,
-                };
-
-                sender.send(EmulatorEvent::AddWatch(address)).unwrap();
-            }
-            // write the currently dissasembly to a file
-            "dump" => {
-                if args.len() != 2 {
-                    // report a error!!
-                    return;
-                }
-                let file = args[1];
-                let game_boy = &ctx.get::<Arc<Mutex<GameBoy>>>().lock();
-                let trace = game_boy.trace.borrow();
-                let mut string = String::new();
-                trace.fmt(game_boy, &mut string).unwrap();
-                std::fs::write(file, string).unwrap();
-            }
-            _ => return,
-        }
+        debugger.execute_command(&*gb, &args);
         text.clear();
     }
 
@@ -184,8 +94,8 @@ impl DissasemblerList {
 impl ListBuilder for DissasemblerList {
     fn on_event(&mut self, event: Box<dyn Any>, _this: Id, ctx: &mut Context) {
         if event.is::<EmulatorUpdated>() {
-            let inter = ctx.get::<Arc<Mutex<GameBoy>>>().clone();
-            let gb = inter.lock();
+            let gb = ctx.get::<Arc<Mutex<GameBoy>>>().clone();
+            let gb = gb.lock();
 
             fn decimal_mark(n: u64) -> String {
                 let s = n.to_string();
@@ -336,10 +246,7 @@ impl ListBuilder for BreakpointList {
     }
 
     fn item_count(&mut self, ctx: &mut dyn BuilderContext) -> usize {
-        ctx.get::<Arc<Mutex<Debugger>>>()
-            .lock()
-            .breakpoints()
-            .len()
+        ctx.get::<Arc<Mutex<Debugger>>>().lock().breakpoints().len()
     }
 
     fn create_item<'a>(
@@ -349,13 +256,6 @@ impl ListBuilder for BreakpointList {
         cb: ControlBuilder,
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
-        let (&address, _) = ctx
-            .get::<Arc<Mutex<Debugger>>>()
-            .lock()
-            .breakpoints()
-            .iter()
-            .nth(index)
-            .unwrap();
         let text = Self::get_text(ctx, index);
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
@@ -368,10 +268,9 @@ impl ListBuilder for BreakpointList {
                     self.button_style.clone(),
                     true,
                     move |_, ctx| {
-                        let sender = ctx.get::<SyncSender<EmulatorEvent>>();
-                        sender
-                            .send(EmulatorEvent::RemoveBreakpoint(address))
-                            .unwrap();
+                        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+                        let &address = debugger.breakpoints().keys().nth(index).unwrap();
+                        debugger.remove_break(address);
                     },
                 ))
                 .min_size([15.0, 15.0])
@@ -395,18 +294,18 @@ struct WatchsList {
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
 impl WatchsList {
-fn watch_text(ctx: &mut dyn BuilderContext, index: usize) -> (u16, String) {
-    let &address = ctx
-        .get::<Arc<Mutex<Debugger>>>()
-        .lock()
-        .watchs()
-        .iter()
-        .nth(index)
-        .unwrap();
-    let value = ctx.get::<Arc<Mutex<GameBoy>>>().lock().read(address);
-    let text = format!("{:04x} = {:02x}", address, value);
-    (address, text)
-}
+    fn watch_text(ctx: &mut dyn BuilderContext, index: usize) -> (u16, String) {
+        let &address = ctx
+            .get::<Arc<Mutex<Debugger>>>()
+            .lock()
+            .watchs()
+            .iter()
+            .nth(index)
+            .unwrap();
+        let value = ctx.get::<Arc<Mutex<GameBoy>>>().lock().read(address);
+        let text = format!("{:04x} = {:02x}", address, value);
+        (address, text)
+    }
 }
 impl ListBuilder for WatchsList {
     fn on_event(&mut self, event: Box<dyn Any>, this: Id, ctx: &mut Context) {
@@ -438,8 +337,8 @@ impl ListBuilder for WatchsList {
                     self.button_style.clone(),
                     true,
                     move |_, ctx| {
-                        let sender = ctx.get::<SyncSender<EmulatorEvent>>();
-                        sender.send(EmulatorEvent::RemoveWatch(address)).unwrap();
+                        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+                        debugger.remove_watch(address);
                     },
                 ))
                 .min_size([15.0, 15.0])
@@ -455,7 +354,6 @@ impl ListBuilder for WatchsList {
         }
     }
 }
-
 
 pub fn build(
     parent: Id,

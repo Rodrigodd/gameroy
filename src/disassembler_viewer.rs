@@ -31,7 +31,10 @@ impl TextFieldCallback for Callback {
         if args.len() == 0 {
             args.push("");
         }
-        debugger.execute_command(&*gb, &args);
+        match debugger.execute_command(&*gb, &args) {
+            Ok(_) => {}
+            Err(x) => eprintln!("{}", x),
+        }
         text.clear();
     }
 

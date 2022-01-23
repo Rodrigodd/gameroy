@@ -9,7 +9,7 @@ use gameroy::{
 };
 use parking_lot::Mutex as ParkMutex;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    collections::VecDeque,
     path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},

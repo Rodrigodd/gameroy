@@ -42,7 +42,7 @@ pub struct Debugger {
     pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent) + Send>>,
 }
 impl Debugger {
-    pub fn execute_command(&mut self, gb: &GameBoy, args: &[&str]) {
+    pub fn execute_command<'a>(&mut self, gb: &GameBoy, args: &[&'a str]) -> Result<(), String> {
         use DebuggerEvent::*;
         let callback = |a: &mut Debugger, b| {
             let mut callback = a.callback.take();
@@ -58,12 +58,11 @@ impl Debugger {
             "reset" => callback(self, Reset),
             "runto" => {
                 if args.len() != 2 {
-                    // report a error!!
-                    return;
+                    return Err(format!("'runto' expect 1 argument, receive {}", args.len() - 1))
                 }
                 let address = match u16::from_str_radix(args[1], 16) {
                     Ok(x) => x,
-                    Err(_) => return,
+                    Err(_) => return Err(format!("'runto' expected a address, '{}' is not a valid one", args[1]))
                 };
                 self.target_address = Some(address);
                 callback(self, Run);
@@ -74,7 +73,7 @@ impl Debugger {
                 } else if args.len() == 3 {
                     let clocks = match args[2].parse::<u64>() {
                         Ok(x) => x,
-                        Err(_) => return,
+                        Err(_) => return Err(format!("'run's subcommand' expected a clock number, '{}' is not a valid one", args[2]))
                     };
                     match args[1] {
                         "for" => {
@@ -85,23 +84,21 @@ impl Debugger {
                             self.target_clock = Some(clocks);
                             callback(self, Run);
                         }
-                        _ => return,
+                        _ => return Err(format!("'{}' is not a valid subcommand for 'run'", args[1]))
                     }
                 } else {
-                    // report a error!!
-                    return;
+                    return Err(format!("'run' expect 0 or 2 arguments, receive {}", args.len() - 1))
                 }
             }
             "break" => {
                 if args.len() != 3 {
-                    // report a error!!
-                    return;
+                    return Err(format!("'break' expect 3 arguments, receive {}", args.len() - 1))
                 }
 
-                let address = match u16::from_str_radix(args[2], 16) {
-                    Ok(x) => x,
-                    Err(_) => return,
-                };
+                let flags = args[1].as_bytes();
+                if let Some(x) = flags.iter().find(|x| !b"wrxj".contains(x)) {
+                    return Err(format!("'{}' is not a valid break flag. Valid ones are 'r', 'w', 'x' and 'j'.", *x as char));
+                }
 
                 let write = args[1].contains('w') as u8;
                 let read = args[1].contains('r') as u8;
@@ -111,17 +108,21 @@ impl Debugger {
                 use break_flags::*;
                 let flags = (write * WRITE) | (read * READ) | (execute * EXECUTE) | (jump * JUMP);
 
+                let address = match u16::from_str_radix(args[2], 16) {
+                    Ok(x) => x,
+                    Err(_) => return Err(format!("'break' expected a address, '{}' is not a valid one", args[2]))
+                };
+
                 self.add_break(flags, address);
             }
             "watch" => {
                 if args.len() != 2 {
-                    // report a error!!
-                    return;
+                    return Err(format!("'watch' expect 1 argument, receive {}", args.len() - 1));
                 }
 
                 let address = match u16::from_str_radix(args[1], 16) {
                     Ok(x) => x,
-                    Err(_) => return,
+                    Err(_) => return Err(format!("'watch' expected a address, '{}' is not a valid one", args[1]))
                 };
 
                 self.add_watch(address);
@@ -129,17 +130,17 @@ impl Debugger {
             // write the currently dissasembly to a file
             "dump" => {
                 if args.len() != 2 {
-                    // report a error!!
-                    return;
+                    return Err(format!("'dump' expect 1 argument, receive {}", args.len() - 1));
                 }
                 let file = args[1];
                 let trace = gb.trace.borrow();
                 let mut string = String::new();
-                trace.fmt(gb, &mut string).unwrap();
-                std::fs::write(file, string).unwrap();
+                trace.fmt(gb, &mut string).map_err(|x| x.to_string())?;
+                std::fs::write(file, string).map_err(|x| x.to_string())?;
             }
-            _ => return,
+            x => return Err(format!("'{}' is not a valid command", x)),
         }
+        Ok(())
     }
 
     pub fn breakpoints(&self) -> &BTreeMap<u16, u8> {

@@ -12,7 +12,7 @@ use crui::{
     graphics::{Graphic, Text},
     layouts::{FitText, HBoxLayout, VBoxLayout},
     style::ButtonStyle,
-    text::TextStyle,
+    text::{Span, TextStyle},
     widgets::{Button, ListBuilder, SetScrollPosition, TextField, TextFieldCallback, UpdateItems},
     BuilderContext, Context, ControlBuilder, Id,
 };
@@ -71,13 +71,18 @@ impl DissasemblerList {
         );
         let label = |pc, x| {
             if let Some(address) = trace.jumps.get(&pc) {
-                let name = trace.labels.get(&address).unwrap().name.clone();
+                let mut name = trace.labels.get(&address).unwrap().name.clone();
+                name.insert_str(0, "<l>");
+                name += "</l>";
                 return name;
             }
             if let Some(name) = trace.ram_labels.get(&x) {
-                return name.clone();
+                let mut name = name.clone();
+                name.insert_str(0, "<l>");
+                name += "</l>";
+                return name;
             }
-            format!("${:04x}", x)
+            format!("<a>${:04x}</a>", x)
         };
         gameroy::disassembler::disassembly_opcode(
             direc.address.address,
@@ -90,8 +95,37 @@ impl DissasemblerList {
         if Some(curr) == pc {
             style.color = [255, 0, 0, 255].into();
         }
-        let graphic = Text::new(text, (-1, 0), style).into();
-        graphic
+        let label_range = if let Some(start) = text.find("<l>") {
+            let end = text.find("</l>").unwrap() - 3;
+            text.replace_range(start..start + 3, "");
+            text.replace_range(end..end + 4, "");
+            Some(start..end)
+        } else {
+            None
+        };
+        let address_range = if let Some(start) = text.find("<a>") {
+            let end = text.find("</a>").unwrap() - 3;
+            text.replace_range(start..start + 3, "");
+            text.replace_range(end..end + 4, "");
+            Some(start..end)
+        } else {
+            None
+        };
+        let op_len = text[22..].find(" ").unwrap();
+
+        let mut text = Text::new(text, (-1, 0), style);
+
+        let label = 0x2e8bb2ff.into();
+        let op = 0xff1a1aff.into();
+        let number = 0xd79314ff.into();
+        let address = 0x6f7e67ff.into();
+
+        text.add_span(0..4, Span::Color(address));
+        text.add_span(5..21, Span::Color(label));
+        label_range.map(|r| text.add_span(r, Span::Color(label)));
+        text.add_span(22..22+op_len, Span::Color(op));
+        address_range.map(|r| text.add_span(r, Span::Color(number)));
+        text.into()
     }
 }
 impl ListBuilder for DissasemblerList {

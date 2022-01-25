@@ -7,7 +7,7 @@
     ),
     background: Texture(
         texture: "white.png",
-        color: "#000800",
+        color: "#000f05",
         uv_rect: (0, 0, 1, 1),
     ),
     text_field: TextFieldStyle(

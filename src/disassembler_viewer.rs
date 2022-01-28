@@ -1,11 +1,10 @@
-use std::{any::Any, sync::Arc};
+use std::{any::Any, ops::Range, sync::Arc};
 
 use parking_lot::Mutex;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
-    fold_view::FoldView,
     style::Style,
 };
 use crui::{
@@ -13,8 +12,11 @@ use crui::{
     layouts::{FitText, HBoxLayout, VBoxLayout},
     style::ButtonStyle,
     text::{Span, TextStyle},
-    widgets::{Button, ListBuilder, SetScrollPosition, TextField, TextFieldCallback, UpdateItems},
-    BuilderContext, Context, ControlBuilder, Id,
+    widgets::{
+        Button, InteractiveText, ListBuilder, SetScrollPosition, TextField, TextFieldCallback,
+        UpdateItems,
+    },
+    BuilderContext, Color, Context, ControlBuilder, Id, MouseEvent, MouseInfo,
 };
 use gameroy::{
     debugger::{break_flags, Debugger},
@@ -43,6 +45,10 @@ impl TextFieldCallback for Callback {
     fn on_unfocus(&mut self, _this: Id, _ctx: &mut Context, _text: &mut String) {}
 }
 
+struct JumpToAddress {
+    from_address: Address,
+}
+
 struct DissasemblerList {
     text_style: TextStyle,
     list: Id,
@@ -57,7 +63,7 @@ impl DissasemblerList {
         direc: Directive,
         trace: std::cell::Ref<gameroy::disassembler::Trace>,
         pc: Option<Address>,
-    ) -> Graphic {
+    ) -> (Graphic, Option<Range<usize>>) {
         let curr = direc.address;
         let mut text = format!(
             "{:04x} {:16} ",
@@ -91,10 +97,7 @@ impl DissasemblerList {
             &mut text,
         )
         .unwrap();
-        let mut style = self.text_style.clone();
-        if Some(curr) == pc {
-            style.color = [255, 0, 0, 255].into();
-        }
+        let style = self.text_style.clone();
         let label_range = if let Some(start) = text.find("<l>") {
             let end = text.find("</l>").unwrap() - 3;
             text.replace_range(start..start + 3, "");
@@ -122,10 +125,21 @@ impl DissasemblerList {
 
         text.add_span(0..4, Span::Color(address));
         text.add_span(5..21, Span::Color(label));
-        label_range.map(|r| text.add_span(r, Span::Color(label)));
-        text.add_span(22..22+op_len, Span::Color(op));
+        label_range
+            .as_ref()
+            .map(|r| text.add_span(r.clone(), Span::Color(label)));
+        text.add_span(22..22 + op_len, Span::Color(op));
         address_range.map(|r| text.add_span(r, Span::Color(number)));
-        text.into()
+        if Some(curr) == pc {
+            text.add_span(
+                0..text.len(),
+                Span::Selection {
+                    bg: Color::BLACK,
+                    fg: None,
+                },
+            );
+        }
+        (text.into(), label_range)
     }
 }
 impl ListBuilder for DissasemblerList {
@@ -199,23 +213,49 @@ PC: {:04x}",
             let pc = self.pc.unwrap();
 
             let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));
-            match pos {
-                Ok(pos) => {
-                    let len = self.directives.len();
-                    ctx.send_event_to(
-                        self.list,
-                        SetScrollPosition {
-                            vertical: true,
-                            value: pos as f32 / len as f32,
-                        },
-                    );
-                }
-                _ => {}
+            if let Ok(pos) = pos {
+                let len = self.directives.len();
+                let value = if len == 0 {
+                    1.0
+                } else {
+                    pos as f32 / (len - 1) as f32
+                };
+                ctx.send_event_to(
+                    self.list,
+                    SetScrollPosition {
+                        vertical: true,
+                        value,
+                    },
+                );
             };
 
             if let Graphic::Text(text) = ctx.get_graphic_mut(self.reg) {
-                text.set_text(&reg_text);
+                text.set_string(&reg_text);
             }
+        } else if let Some(JumpToAddress { from_address }) = event.downcast_ref::<JumpToAddress>() {
+            let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+            let trace = gb.trace.borrow_mut();
+            let jump_to = trace.jumps.get(&from_address).unwrap();
+            let pos = self
+                .directives
+                .binary_search_by(|x| x.address.cmp(&jump_to));
+            drop(trace);
+            drop(gb);
+            if let Ok(pos) = pos {
+                let len = self.directives.len();
+                let value = if len == 0 {
+                    1.0
+                } else {
+                    pos as f32 / (len - 1) as f32
+                };
+                ctx.send_event_to(
+                    self.list,
+                    SetScrollPosition {
+                        vertical: true,
+                        value,
+                    },
+                );
+            };
         }
     }
 
@@ -234,19 +274,57 @@ PC: {:04x}",
 
         let trace = inter.trace.borrow();
         let directive = self.directives[index].clone();
-        let graphic = self.graphic(directive, trace, self.pc);
-        cb.graphic(graphic).layout(FitText)
+        let (graphic, label_range) = self.graphic(directive.clone(), trace, self.pc);
+        let cb = cb.graphic(graphic).layout(FitText);
+        let mut span = 0;
+        if let Some(label_range) = label_range {
+            cb.behaviour(InteractiveText::new(vec![(
+                label_range.clone(),
+                Box::new(move |mouse: MouseInfo, this: Id, ctx: &mut Context| {
+                    let text = match ctx.get_graphic_mut(this) {
+                        Graphic::Text(x) => x,
+                        _ => return,
+                    };
+                    match mouse.event {
+                        MouseEvent::Enter => {
+                            let label = 0x2e8bb2ff.into();
+                            span = text.add_span(
+                                label_range.clone(),
+                                Span::Underline(Some(label)),
+                            );
+                        }
+                        MouseEvent::Exit => {
+                            text.remove_span(span);
+                        }
+                        _ if mouse.click() => ctx.send_event_to(
+                            _list_id,
+                            JumpToAddress {
+                                from_address: directive.address,
+                            },
+                        ),
+                        _ => {}
+                    }
+                }),
+            )]))
+        } else {
+            cb
+        }
     }
 
-    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
-        let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) -> bool {
+        if false {
+            let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
 
-        let trace = inter.trace.borrow();
-        let directive = self.directives[index].clone();
+            let trace = inter.trace.borrow();
+            let directive = self.directives[index].clone();
 
-        let graphic = self.graphic(directive, trace, self.pc);
-        drop(inter);
-        *ctx.get_graphic_mut(item_id) = graphic;
+            let graphic = self.graphic(directive, trace, self.pc).0;
+            drop(inter);
+            *ctx.get_graphic_mut(item_id) = graphic;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -315,12 +393,13 @@ impl ListBuilder for BreakpointList {
             })
     }
 
-    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
+    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) -> bool {
         let text = Self::get_text(ctx, index);
         let text_id = ctx.get_active_children(item_id)[0];
         if let Graphic::Text(x) = ctx.get_graphic_mut(text_id) {
-            x.set_text(&text);
+            x.set_string(&text);
         }
+        true
     }
 }
 
@@ -383,12 +462,13 @@ impl ListBuilder for WatchsList {
             })
     }
 
-    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) {
+    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) -> bool {
         let (_, text) = Self::watch_text(ctx, index);
         let text_id = ctx.get_active_children(item_id)[0];
         if let Graphic::Text(x) = ctx.get_graphic_mut(text_id) {
-            x.set_text(&text);
+            x.set_string(&text);
         }
+        true
     }
 }
 
@@ -470,64 +550,64 @@ PC: {:04x}",
         .layout(FitText)
         .build(ctx);
 
-    let breaks = ctx
-        .create_control()
-        .parent(right_panel)
-        .behaviour(FoldView { fold: false })
-        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-        .build(ctx);
-
-    let _break_header = ctx
-        .create_control()
-        .parent(breaks)
-        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()).into())
-        .layout(FitText)
-        .build(ctx);
-
-    let break_list = ctx.reserve();
-    list(
-        ctx.create_control_reserved(break_list)
-            .parent(breaks)
-            .min_size([50.0, 100.0]),
-        ctx,
-        style,
-        BreakpointList {
-            text_style: style.text_style.clone(),
-            button_style: style.delete_button.clone(),
-            _breakpoints_updated_event: event_table.register(break_list),
-        },
-    )
-    .build(ctx);
-
-    let watchs = ctx
-        .create_control()
-        .parent(right_panel)
-        .behaviour(FoldView { fold: false })
-        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-        .build(ctx);
-
-    let _watchs_header = ctx
-        .create_control()
-        .parent(watchs)
-        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()).into())
-        .layout(FitText)
-        .build(ctx);
-
-    let watchs_list = ctx.reserve();
-    list(
-        ctx.create_control_reserved(watchs_list)
-            .parent(watchs)
-            .min_size([50.0, 100.0]),
-        ctx,
-        style,
-        WatchsList {
-            text_style: style.text_style.clone(),
-            button_style: style.delete_button.clone(),
-            _watchs_updated_event: event_table.register(watchs_list),
-            _emulator_updated_event: event_table.register(watchs_list),
-        },
-    )
-    .build(ctx);
+    //    let breaks = ctx
+    //        .create_control()
+    //        .parent(right_panel)
+    //        .behaviour(FoldView { fold: false })
+    //        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+    //        .build(ctx);
+    //
+    //    let _break_header = ctx
+    //        .create_control()
+    //        .parent(breaks)
+    //        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()).into())
+    //        .layout(FitText)
+    //        .build(ctx);
+    //
+    //    let break_list = ctx.reserve();
+    //    list(
+    //        ctx.create_control_reserved(break_list)
+    //            .parent(breaks)
+    //            .min_size([50.0, 100.0]),
+    //        ctx,
+    //        style,
+    //        BreakpointList {
+    //            text_style: style.text_style.clone(),
+    //            button_style: style.delete_button.clone(),
+    //            _breakpoints_updated_event: event_table.register(break_list),
+    //        },
+    //    )
+    //    .build(ctx);
+    //
+    //    let watchs = ctx
+    //        .create_control()
+    //        .parent(right_panel)
+    //        .behaviour(FoldView { fold: false })
+    //        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+    //        .build(ctx);
+    //
+    //    let _watchs_header = ctx
+    //        .create_control()
+    //        .parent(watchs)
+    //        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()).into())
+    //        .layout(FitText)
+    //        .build(ctx);
+    //
+    //    let watchs_list = ctx.reserve();
+    //    list(
+    //        ctx.create_control_reserved(watchs_list)
+    //            .parent(watchs)
+    //            .min_size([50.0, 100.0]),
+    //        ctx,
+    //        style,
+    //        WatchsList {
+    //            text_style: style.text_style.clone(),
+    //            button_style: style.delete_button.clone(),
+    //            _watchs_updated_event: event_table.register(watchs_list),
+    //            _emulator_updated_event: event_table.register(watchs_list),
+    //        },
+    //    )
+    //    .build(ctx);
 
     let text_field = ctx
         .create_control()

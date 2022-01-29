@@ -55,6 +55,7 @@ struct DissasemblerList {
     reg: Id,
     pc: Option<Address>,
     directives: Vec<Directive>,
+    items_are_dirty: bool,
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
 impl DissasemblerList {
@@ -187,6 +188,7 @@ PC: {:04x}",
 
             let trace = gb.trace.borrow();
 
+            self.items_are_dirty = true;
             self.directives.clear();
             self.directives.extend(trace.directives.iter().cloned());
             self.directives
@@ -236,6 +238,7 @@ PC: {:04x}",
             let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
             let trace = gb.trace.borrow_mut();
             let jump_to = trace.jumps.get(&from_address).unwrap();
+            dbg!(&jump_to);
             let pos = self
                 .directives
                 .binary_search_by(|x| x.address.cmp(&jump_to));
@@ -299,7 +302,7 @@ PC: {:04x}",
                         _ if mouse.click() => ctx.send_event_to(
                             _list_id,
                             JumpToAddress {
-                                from_address: directive.address,
+                                from_address: dbg!(directive.address),
                             },
                         ),
                         _ => {}
@@ -311,20 +314,16 @@ PC: {:04x}",
         }
     }
 
-    fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) -> bool {
-        if false {
-            let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
-
-            let trace = inter.trace.borrow();
-            let directive = self.directives[index].clone();
-
-            let graphic = self.graphic(directive, trace, self.pc).0;
-            drop(inter);
-            *ctx.get_graphic_mut(item_id) = graphic;
-            true
-        } else {
+    fn update_item(&mut self, _index: usize, _item_id: Id, _ctx: &mut dyn BuilderContext) -> bool {
+        if self.items_are_dirty {
             false
+        } else {
+            true
         }
+    }
+
+    fn finished_layout(&mut self) {
+        self.items_are_dirty = false;
     }
 }
 
@@ -511,6 +510,7 @@ pub fn build(
             reg: reg_id,
             pc: None,
             directives: Vec::new(),
+            items_are_dirty: true,
             _emulator_updated_event: event_table.register(list_id),
         },
     )

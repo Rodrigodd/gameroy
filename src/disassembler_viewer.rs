@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
-    style::Style,
+    style::Style, fold_view::FoldView,
 };
 use crui::{
     graphics::{Graphic, Text},
@@ -550,64 +550,64 @@ PC: {:04x}",
         .layout(FitText)
         .build(ctx);
 
-    //    let breaks = ctx
-    //        .create_control()
-    //        .parent(right_panel)
-    //        .behaviour(FoldView { fold: false })
-    //        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-    //        .build(ctx);
-    //
-    //    let _break_header = ctx
-    //        .create_control()
-    //        .parent(breaks)
-    //        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()).into())
-    //        .layout(FitText)
-    //        .build(ctx);
-    //
-    //    let break_list = ctx.reserve();
-    //    list(
-    //        ctx.create_control_reserved(break_list)
-    //            .parent(breaks)
-    //            .min_size([50.0, 100.0]),
-    //        ctx,
-    //        style,
-    //        BreakpointList {
-    //            text_style: style.text_style.clone(),
-    //            button_style: style.delete_button.clone(),
-    //            _breakpoints_updated_event: event_table.register(break_list),
-    //        },
-    //    )
-    //    .build(ctx);
-    //
-    //    let watchs = ctx
-    //        .create_control()
-    //        .parent(right_panel)
-    //        .behaviour(FoldView { fold: false })
-    //        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-    //        .build(ctx);
-    //
-    //    let _watchs_header = ctx
-    //        .create_control()
-    //        .parent(watchs)
-    //        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()).into())
-    //        .layout(FitText)
-    //        .build(ctx);
-    //
-    //    let watchs_list = ctx.reserve();
-    //    list(
-    //        ctx.create_control_reserved(watchs_list)
-    //            .parent(watchs)
-    //            .min_size([50.0, 100.0]),
-    //        ctx,
-    //        style,
-    //        WatchsList {
-    //            text_style: style.text_style.clone(),
-    //            button_style: style.delete_button.clone(),
-    //            _watchs_updated_event: event_table.register(watchs_list),
-    //            _emulator_updated_event: event_table.register(watchs_list),
-    //        },
-    //    )
-    //    .build(ctx);
+        let breaks = ctx
+            .create_control()
+            .parent(right_panel)
+            .behaviour(FoldView { fold: false })
+            .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+            .build(ctx);
+    
+        let _break_header = ctx
+            .create_control()
+            .parent(breaks)
+            .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()).into())
+            .layout(FitText)
+            .build(ctx);
+    
+        let break_list = ctx.reserve();
+        list(
+            ctx.create_control_reserved(break_list)
+                .parent(breaks)
+                .min_size([50.0, 100.0]),
+            ctx,
+            style,
+            BreakpointList {
+                text_style: style.text_style.clone(),
+                button_style: style.delete_button.clone(),
+                _breakpoints_updated_event: event_table.register(break_list),
+            },
+        )
+        .build(ctx);
+    
+        let watchs = ctx
+            .create_control()
+            .parent(right_panel)
+            .behaviour(FoldView { fold: false })
+            .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+            .build(ctx);
+    
+        let _watchs_header = ctx
+            .create_control()
+            .parent(watchs)
+            .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()).into())
+            .layout(FitText)
+            .build(ctx);
+    
+        let watchs_list = ctx.reserve();
+        list(
+            ctx.create_control_reserved(watchs_list)
+                .parent(watchs)
+                .min_size([50.0, 100.0]),
+            ctx,
+            style,
+            WatchsList {
+                text_style: style.text_style.clone(),
+                button_style: style.delete_button.clone(),
+                _watchs_updated_event: event_table.register(watchs_list),
+                _emulator_updated_event: event_table.register(watchs_list),
+            },
+        )
+        .build(ctx);
 
     let text_field = ctx
         .create_control()

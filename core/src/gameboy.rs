@@ -13,6 +13,9 @@ pub struct Timer {
     tma: u8,
     tac: u8,
     last_counter_bit: bool,
+
+    /// The last clock cycle where Timer was updated
+    last_clock_count: u64,
 }
 impl SaveState for Timer {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
@@ -21,6 +24,7 @@ impl SaveState for Timer {
         self.tma.save_state(data)?;
         self.tac.save_state(data)?;
         [&self.last_counter_bit].save_state(data)?;
+        self.last_clock_count.save_state(data)?;
         Ok(())
     }
 
@@ -30,6 +34,7 @@ impl SaveState for Timer {
         self.tma.load_state(data)?;
         self.tac.load_state(data)?;
         [&mut self.last_counter_bit].load_state(data)?;
+        self.last_clock_count.load_state(data)?;
         Ok(())
     }
 }
@@ -37,26 +42,31 @@ impl SaveState for Timer {
 impl Timer {
     /// Advance the timer by one cycle
     /// Return true if there is a interrupt
-    pub fn tick_one(&mut self) -> bool {
-        self.div = self.div.wrapping_add(1);
+    pub fn update(&mut self, clock_count: u64) -> bool {
+        let mut interrupt = false;
+        for _ in self.last_clock_count..clock_count {
+            self.div = self.div.wrapping_add(1);
 
-        let f = [9, 3, 5, 7][(self.tac & 0b11) as usize];
-        let counter_bit = ((self.div >> f) as u8 & (self.tac >> 2)) & 0b1 != 0;
+            let f = [9, 3, 5, 7][(self.tac & 0b11) as usize];
+            let counter_bit = ((self.div >> f) as u8 & (self.tac >> 2)) & 0b1 != 0;
 
-        // faling edge
-        if self.last_counter_bit && !counter_bit {
-            let (v, o) = self.tima.overflowing_add(1);
-            self.tima = v;
-            // TODO: TIMA, on overflow, should keep the value 0 for 4 cycles
-            // before the overflow be detected. A write in this interval would cancel it.
-            if o {
-                self.tima = self.tma;
-                return true; // INTERRUPT
+            // faling edge
+            if self.last_counter_bit && !counter_bit {
+                let (v, o) = self.tima.overflowing_add(1);
+                self.tima = v;
+                // TODO: TIMA, on overflow, should keep the value 0 for 4 cycles
+                // before the overflow be detected. A write in this interval would cancel it.
+                if o {
+                    self.tima = self.tma;
+                    interrupt = true;
+                }
             }
-        }
 
-        self.last_counter_bit = counter_bit;
-        false
+            self.last_counter_bit = counter_bit;
+        }
+        self.last_clock_count = clock_count;
+
+        interrupt
     }
 
     fn read_div(&self) -> u8 {
@@ -264,6 +274,7 @@ impl GameBoy {
             tma: 0x00,
             tac: 0x00,
             last_counter_bit: false,
+            last_clock_count: 23_233_188,
         };
         self.sound
             .borrow_mut()
@@ -324,13 +335,11 @@ impl GameBoy {
 
     /// Advante the clock by 'count' cycles
     pub fn tick(&mut self, count: u8) {
-        for _ in 0..count {
-            self.clock_count += 1 as u64;
-            if self.timer.tick_one() {
-                self.memory[consts::IF as usize] |= 1 << 2;
-            }
-            Ppu::update(self);
+        self.clock_count += count as u64;
+        if self.timer.update(self.clock_count) {
+            self.memory[consts::IF as usize] |= 1 << 2;
         }
+        Ppu::update(self);
     }
 
     pub fn read16(&self, address: u16) -> u16 {

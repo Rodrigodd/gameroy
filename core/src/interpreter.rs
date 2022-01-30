@@ -32,6 +32,7 @@ enum Reg {
     HLD,
 }
 
+#[derive(PartialEq, Eq)]
 enum Reg16 {
     AF,
     BC,
@@ -39,10 +40,6 @@ enum Reg16 {
     HL,
     SP,
     Im16,
-}
-
-fn n16(op: &[u8]) -> u16 {
-    u16::from_le_bytes([op[1], op[2]])
 }
 
 fn sub16(a: u16, b: u16) -> u16 {
@@ -152,16 +149,11 @@ impl Interpreter<'_> {
         };
         if c {
             self.jump_to(address);
-            let cycles = 16;
-            self.0.tick(cycles);
-        } else {
-            self.jump_to(add16(self.0.cpu.pc, 3));
-            let cycles = 12;
-            self.0.tick(cycles);
+            self.0.tick(4); // Extra 1 M-cycle for jump
         }
     }
 
-    fn jump_rel(&mut self, c: Condition, address: i8) {
+    fn jump_rel(&mut self, c: Condition, r8: i8) {
         // JP cc, nn
         use Condition::*;
         let c = match c {
@@ -171,29 +163,29 @@ impl Interpreter<'_> {
             C => self.0.cpu.f.c(),
             NC => !self.0.cpu.f.c(),
         };
-        self.jump_to(add16(self.0.cpu.pc, 2));
         if c {
-            let pc = (self.0.cpu.pc as i16 + address as i16) as u16;
+            let pc = (self.0.cpu.pc as i16 + r8 as i16) as u16;
             self.jump_to(pc);
-            let cycles = 12;
-            self.0.tick(cycles);
-        } else {
-            let cycles = 8;
-            self.0.tick(cycles);
+            self.0.tick(4); // Extra 1 M-cycle for jump
         }
     }
 
     fn pushr(&mut self, value: u16) {
-        let [lsp, msp] = value.to_le_bytes();
-        self.0.write(sub16(self.0.cpu.sp, 1), msp);
-        self.0.write(sub16(self.0.cpu.sp, 2), lsp);
+        let [lsb, msb] = value.to_le_bytes();
+        self.0.tick(4); // 1 M-cycle with SP in address buss
+        self.0.write(sub16(self.0.cpu.sp, 1), msb);
+        self.0.tick(4); // 1 M-cycle with SP-1 in address buss
+        self.0.write(sub16(self.0.cpu.sp, 2), lsb);
+        self.0.tick(4); // 1 M-cycle with SP-2 in address buss
         self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
     }
 
     fn popr(&mut self) -> u16 {
+        let lsp = self.0.read(self.0.cpu.sp);
+        self.0.tick(4); // 1 M-cycle with SP in address buss
+        let msp = self.0.read(add16(self.0.cpu.sp, 1));
+        self.0.tick(4); // 1 M-cycle with SP+1 in address buss
         self.0.cpu.sp = add16(self.0.cpu.sp, 2);
-        let lsp = self.0.read(sub16(self.0.cpu.sp, 2));
-        let msp = self.0.read(sub16(self.0.cpu.sp, 1));
         u16::from_be_bytes([msp, lsp])
     }
 
@@ -206,12 +198,6 @@ impl Interpreter<'_> {
             _ => unreachable!(),
         };
         self.pushr(r);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn pop(&mut self, reg: Reg16) {
@@ -223,12 +209,6 @@ impl Interpreter<'_> {
             Reg16::HL => self.0.cpu.set_hl(r),
             _ => unreachable!(),
         }
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn call(&mut self, c: Condition, address: u16) {
@@ -241,15 +221,9 @@ impl Interpreter<'_> {
             C => self.0.cpu.f.c(),
             NC => !self.0.cpu.f.c(),
         };
-        self.0.cpu.pc += 3;
         if c {
             self.pushr(self.0.cpu.pc);
             self.jump_to(address);
-            let cycles = 24;
-            self.0.tick(cycles);
-        } else {
-            let cycles = 12;
-            self.0.tick(cycles);
         }
     }
 
@@ -263,16 +237,29 @@ impl Interpreter<'_> {
             C => self.0.cpu.f.c(),
             NC => !self.0.cpu.f.c(),
         };
-        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+        if cond != None {
+            self.0.tick(4); // 1 M-cycle for condition check (I think?)
+        }
         if c {
             let address = self.popr();
             self.jump_to(address);
-            let cycles = if cond == None { 16 } else { 20 };
-            self.0.tick(cycles);
-        } else {
-            let cycles = 8;
-            self.0.tick(cycles);
+            self.0.tick(4); // more 1 M-cycle
         }
+    }
+
+    /// Read from PC, tick 4 cycles, and increase it by 1
+    fn read_next_pc(&mut self) -> u8 {
+        let v = self.0.read(self.0.cpu.pc);
+        self.0.tick(4);
+        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+        v
+    }
+
+    /// Read from next PC, two times, and form a u16
+    fn read_next_pc16(&mut self) -> u16 {
+        let lsb = self.read_next_pc();
+        let msb = self.read_next_pc();
+        u16::from_le_bytes([lsb, msb])
     }
 
     fn read(&mut self, reg: Reg) -> u8 {
@@ -284,21 +271,37 @@ impl Interpreter<'_> {
             Reg::E => self.0.cpu.e,
             Reg::H => self.0.cpu.h,
             Reg::L => self.0.cpu.l,
-            Reg::Im8 => self.0.read(add16(self.0.cpu.pc, 1)),
+            Reg::Im8 => self.read_next_pc(),
             Reg::Im16 => {
-                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
-                self.0.read(adress)
+                let address = self.read_next_pc16();
+                let v = self.0.read(address);
+                self.0.tick(4);
+                v
             }
-            Reg::BC => self.0.read(self.0.cpu.bc()),
-            Reg::DE => self.0.read(self.0.cpu.de()),
-            Reg::HL => self.0.read(self.0.cpu.hl()),
+            Reg::BC => {
+                let v = self.0.read(self.0.cpu.bc());
+                self.0.tick(4);
+                v
+            }
+            Reg::DE => {
+                let v = self.0.read(self.0.cpu.de());
+                self.0.tick(4);
+                v
+            }
+            Reg::HL => {
+                let v = self.0.read(self.0.cpu.hl());
+                self.0.tick(4);
+                v
+            }
             Reg::HLI => {
                 let v = self.0.read(self.0.cpu.hl());
+                self.0.tick(4);
                 self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
                 v
             }
             Reg::HLD => {
                 let v = self.0.read(self.0.cpu.hl());
+                self.0.tick(4);
                 self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
                 v
             }
@@ -315,20 +318,35 @@ impl Interpreter<'_> {
             Reg::E => self.0.cpu.e = value,
             Reg::H => self.0.cpu.h = value,
             Reg::L => self.0.cpu.l = value,
-            Reg::Im8 => self.0.write(add16(self.0.cpu.pc, 1), value),
-            Reg::Im16 => {
-                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
-                self.0.write(adress, value)
+            Reg::Im8 => {
+                self.0.write(add16(self.0.cpu.pc, 1), value);
+                self.0.tick(4);
             }
-            Reg::BC => self.0.write(self.0.cpu.bc(), value),
-            Reg::DE => self.0.write(self.0.cpu.de(), value),
-            Reg::HL => self.0.write(self.0.cpu.hl(), value),
+            Reg::Im16 => {
+                let adress = self.read_next_pc16();
+                self.0.write(adress, value);
+                self.0.tick(4);
+            }
+            Reg::BC => {
+                self.0.write(self.0.cpu.bc(), value);
+                self.0.tick(4);
+            }
+            Reg::DE => {
+                self.0.write(self.0.cpu.de(), value);
+                self.0.tick(4);
+            }
+            Reg::HL => {
+                self.0.write(self.0.cpu.hl(), value);
+                self.0.tick(4);
+            }
             Reg::HLI => {
                 self.0.write(self.0.cpu.hl(), value);
+                self.0.tick(4);
                 self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
             }
             Reg::HLD => {
                 self.0.write(self.0.cpu.hl(), value);
+                self.0.tick(4);
                 self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
             }
             Reg::SP => unreachable!(),
@@ -338,68 +356,66 @@ impl Interpreter<'_> {
     fn load(&mut self, dst: Reg, src: Reg) {
         let v = self.read(src);
         self.write(dst, v);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn loadh(&mut self, dst: Reg, src: Reg) {
         let src = match src {
             Reg::A => self.0.cpu.a,
-            Reg::C => self.0.read(0xFF00 | self.0.cpu.c as u16),
+            Reg::C => {
+                let v = self.0.read(0xFF00 | self.0.cpu.c as u16);
+                self.0.tick(4);
+                v
+            },
             Reg::Im8 => {
-                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
-                self.0.read(0xFF00 | r8 as u16)
+                let r8 = self.read_next_pc();
+                let v = self.0.read(0xFF00 | r8 as u16);
+                self.0.tick(4);
+                v
             }
             _ => unreachable!(),
         };
 
         match dst {
             Reg::A => self.0.cpu.a = src,
-            Reg::C => self.0.write(0xFF00 | self.0.cpu.c as u16, src),
+            Reg::C => {
+                self.0.write(0xFF00 | self.0.cpu.c as u16, src);
+                self.0.tick(4);
+            },
             Reg::Im8 => {
-                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
+                let r8 = self.read_next_pc();
                 self.0.write(0xFF00 | r8 as u16, src);
+                self.0.tick(4);
             }
             _ => unreachable!(),
         }
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn load16(&mut self, dst: Reg16, src: Reg16) {
-        let src = match src {
+        let v = match src {
             Reg16::BC => self.0.cpu.bc(),
             Reg16::DE => self.0.cpu.de(),
             Reg16::HL => self.0.cpu.hl(),
-            Reg16::SP => self.0.cpu.sp,
-            Reg16::Im16 => self.0.read16(self.0.cpu.pc + 1),
+            Reg16::SP => {
+                self.0.tick(8);
+                self.0.cpu.sp
+            },
+            Reg16::Im16 => self.read_next_pc16(),
             _ => unreachable!(),
         };
+        if dst == Reg16::SP && src == Reg16::HL {
+            self.0.tick(4);
+        }
         match dst {
-            Reg16::BC => self.0.cpu.set_bc(src),
-            Reg16::DE => self.0.cpu.set_de(src),
-            Reg16::HL => self.0.cpu.set_hl(src),
-            Reg16::SP => self.0.cpu.sp = src,
+            Reg16::BC => self.0.cpu.set_bc(v),
+            Reg16::DE => self.0.cpu.set_de(v),
+            Reg16::HL => self.0.cpu.set_hl(v),
+            Reg16::SP => self.0.cpu.sp = v,
             Reg16::Im16 => {
-                let adress = self.0.read16(self.0.cpu.pc + 1);
-                self.0.write16(adress, src)
+                let adress = self.read_next_pc16();
+                self.0.write16(adress, v)
             }
             _ => unreachable!(),
         }
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn inc(&mut self, reg: Reg) {
@@ -413,42 +429,22 @@ impl Interpreter<'_> {
             Reg::L => &mut self.0.cpu.l,
             Reg::BC => {
                 self.0.cpu.set_bc(add16(self.0.cpu.bc(), 1));
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             Reg::DE => {
                 self.0.cpu.set_de(add16(self.0.cpu.de(), 1));
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             Reg::HL => {
                 self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             Reg::SP => {
                 self.0.cpu.sp = add16(self.0.cpu.sp, 1);
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             _ => unreachable!(),
@@ -457,12 +453,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_z(*reg == 0);
         self.0.cpu.f.clr_n();
         self.0.cpu.f.def_h(*reg & 0x0f == 0x0);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn dec(&mut self, reg: Reg) {
@@ -476,42 +466,22 @@ impl Interpreter<'_> {
             Reg::L => &mut self.0.cpu.l,
             Reg::BC => {
                 self.0.cpu.set_bc(sub16(self.0.cpu.bc(), 1));
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             Reg::DE => {
                 self.0.cpu.set_de(sub16(self.0.cpu.de(), 1));
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             Reg::HL => {
                 self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             Reg::SP => {
                 self.0.cpu.sp = sub16(self.0.cpu.sp, 1);
-                let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-                self.0.tick(cycles);
-                self.0.cpu.pc = add16(
-                    self.0.cpu.pc,
-                    consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-                );
+                self.0.tick(4);
                 return;
             }
             _ => unreachable!(),
@@ -520,12 +490,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_z(*reg == 0);
         self.0.cpu.f.set_n();
         self.0.cpu.f.def_h(*reg & 0x0f == 0xf);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn add(&mut self, reg: Reg) {
@@ -536,12 +500,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(o);
         self.0.cpu.f.def_h((self.0.cpu.a & 0xF) + (v & 0xF) > 0xF);
         self.0.cpu.a = r;
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn adc(&mut self, reg: Reg) {
@@ -554,12 +512,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h((a & 0xF) + (v & 0xF) + c > 0xF);
         self.0.cpu.f.def_c(r > 0xff);
         self.0.cpu.a = (r & 0xff) as u8;
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn sub(&mut self, reg: Reg) {
@@ -570,12 +522,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h((self.0.cpu.a & 0xF) < (v & 0xF));
         self.0.cpu.f.def_c(o);
         self.0.cpu.a = r;
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn sbc(&mut self, reg: Reg) {
@@ -588,12 +534,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h((a & 0xF) < (v & 0xF) + c);
         self.0.cpu.f.def_c(r < 0x0);
         self.0.cpu.a = (r & 0xff) as u8;
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn and(&mut self, reg: Reg) {
@@ -603,12 +543,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_c();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.set_h();
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn or(&mut self, reg: Reg) {
@@ -618,12 +552,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_c();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn xor(&mut self, reg: Reg) {
@@ -633,12 +561,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_c();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn cp(&mut self, reg: Reg) {
@@ -647,12 +569,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(self.0.cpu.a < v);
         self.0.cpu.f.set_n();
         self.0.cpu.f.def_h(self.0.cpu.a & 0xF < v & 0xF);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
     }
 
     fn add16(&mut self, b: Reg16) {
@@ -671,22 +587,11 @@ impl Interpreter<'_> {
             .def_h((self.0.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF);
         self.0.cpu.f.def_c(o);
         self.0.cpu.set_hl(r);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
+        self.0.tick(4);
     }
 
     fn rst(&mut self, address: u8) {
-        self.0.cpu.pc = add16(
-            self.0.cpu.pc,
-            consts::LEN[self.0.read(self.0.cpu.pc) as usize] as u16,
-        );
         self.pushr(self.0.cpu.pc);
-        let cycles = consts::CLOCK[self.0.read(self.0.cpu.pc) as usize];
-        self.0.tick(cycles);
         self.jump_to(address as u16);
     }
 
@@ -695,27 +600,18 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_z((r & (1 << bit)) == 0);
         self.0.cpu.f.clr_n();
         self.0.cpu.f.set_h();
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 12 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn set(&mut self, bit: u8, reg: Reg) {
         let mut r = self.read(reg);
         r = r | (1 << bit);
         self.write(reg, r);
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn res(&mut self, bit: u8, reg: Reg) {
         let mut r = self.read(reg);
         r = r & !(1 << bit);
         self.write(reg, r);
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn rlc(&mut self, reg: Reg) {
@@ -726,9 +622,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
         self.0.cpu.f.def_c(r & 0x1 != 0);
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn rl(&mut self, reg: Reg) {
@@ -740,9 +633,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_z(r == 0);
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn rrc(&mut self, reg: Reg) {
@@ -753,9 +643,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
         self.0.cpu.f.def_c(r & 0x80 != 0);
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn rr(&mut self, reg: Reg) {
@@ -767,9 +654,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_z(r == 0);
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn sla(&mut self, reg: Reg) {
@@ -781,9 +665,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
         self.0.cpu.f.def_c(c);
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn sra(&mut self, reg: Reg) {
@@ -794,9 +675,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_z(r == 0);
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn swap(&mut self, reg: Reg) {
@@ -807,9 +685,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
         self.0.cpu.f.clr_c();
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     fn srl(&mut self, reg: Reg) {
@@ -821,9 +696,6 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
         self.0.cpu.f.def_c(c);
-        self.0.cpu.pc += 2;
-        let cycles = if let Reg::HL = reg { 16 } else { 8 };
-        self.0.tick(cycles);
     }
 
     pub fn will_read_from(&self) -> (u8, [u16; 2]) {
@@ -864,7 +736,7 @@ impl Interpreter<'_> {
         match op {
             0x02 => some(self.0.cpu.bc()),
             0x08 => {
-                let adress = self.0.read16(self.0.cpu.pc + 1);
+                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
                 (2, [adress, add16(adress, 1)])
             }
             0x12 => some(self.0.cpu.de()),
@@ -967,17 +839,13 @@ impl Interpreter<'_> {
         }
 
         use Condition::*;
-        let op = &[
-            self.0.read(self.0.cpu.pc),
-            self.0.read(add16(self.0.cpu.pc, 1)),
-            self.0.read(add16(self.0.cpu.pc, 2)),
-        ];
+        let op = self.read_next_pc();
         let trace = false;
         if trace {
             println!(
                 "{:04x}: {:02x} {:04x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
                 self.0.cpu.pc,
-                op[0],
+                op,
                 self.0.cpu.sp,
                 self.0.cpu.a,
                 self.0.cpu.f.0,
@@ -989,7 +857,7 @@ impl Interpreter<'_> {
                 self.0.cpu.l,
             );
         }
-        match op[0] {
+        match op {
             0x00 => {
                 // NOP 1:4 - - - -
             }
@@ -1024,6 +892,7 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_h();
                 self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
                 self.0.cpu.a = self.0.cpu.a.rotate_left(1);
+                return;
             }
             0x08 => {
                 // LD (a16),SP 3:20 - - - -
@@ -1060,6 +929,7 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_h();
                 self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
                 self.0.cpu.a = self.0.cpu.a.rotate_right(1);
+                return;
             }
             0x10 => {
                 // STOP 0 2:4 - - - -
@@ -1097,10 +967,12 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_z();
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.clr_h();
+                return;
             }
             0x18 => {
                 // JR r8 2:12 - - - -
-                return self.jump_rel(None, op[1] as i8);
+                let r8 = self.read_next_pc() as i8;
+                return self.jump_rel(None, r8);
             }
             0x19 => {
                 // ADD HL,DE 1:8 - 0 H C
@@ -1134,10 +1006,12 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_z();
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.clr_h();
+                return;
             }
             0x20 => {
                 // JR NZ,r8 2:12/8 - - - -
-                return self.jump_rel(NZ, op[1] as i8);
+                let r8 = self.read_next_pc() as i8;
+                return self.jump_rel(NZ, r8);
             }
             0x21 => {
                 // LD HL,d16 3:12 - - - -
@@ -1183,10 +1057,12 @@ impl Interpreter<'_> {
                 }
                 self.0.cpu.f.def_z(self.0.cpu.a == 0);
                 self.0.cpu.f.clr_h();
+                return;
             }
             0x28 => {
                 // JR Z,r8 2:12/8 - - - -
-                return self.jump_rel(Z, op[1] as i8);
+                let r8 = self.read_next_pc() as i8;
+                return self.jump_rel(Z, r8);
             }
             0x29 => {
                 // ADD HL,HL 1:8 - 0 H C
@@ -1217,10 +1093,12 @@ impl Interpreter<'_> {
                 self.0.cpu.a = !self.0.cpu.a;
                 self.0.cpu.f.set_n();
                 self.0.cpu.f.set_h();
+                return;
             }
             0x30 => {
                 // JR NC,r8 2:12/8 - - - -
-                return self.jump_rel(NC, op[1] as i8);
+                let r8 = self.read_next_pc() as i8;
+                return self.jump_rel(NC, r8);
             }
             0x31 => {
                 // LD SP,d16 3:12 - - - -
@@ -1236,21 +1114,23 @@ impl Interpreter<'_> {
             }
             0x34 => {
                 // INC (HL) 1:12 Z 0 H -
-                let mut reg = self.0.read(self.0.cpu.hl());
+                let mut reg = self.read(Reg::HL);
                 reg = add(reg, 1);
-                self.0.write(self.0.cpu.hl(), reg);
+                self.write(Reg::HL, reg);
                 self.0.cpu.f.def_z(reg == 0);
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.def_h(reg & 0x0f == 0);
+                return;
             }
             0x35 => {
                 // DEC (HL) 1:12 Z 1 H -
-                let mut reg = self.0.read(self.0.cpu.hl());
+                let mut reg = self.read(Reg::HL);
                 reg = sub(reg, 1);
-                self.0.write(self.0.cpu.hl(), reg);
+                self.write(Reg::HL, reg);
                 self.0.cpu.f.def_z(reg == 0);
                 self.0.cpu.f.set_n();
                 self.0.cpu.f.def_h(reg & 0x0f == 0xf);
+                return;
             }
             0x36 => {
                 // LD (HL),d8 2:12 - - - -
@@ -1261,10 +1141,12 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_h();
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.set_c();
+                return;
             }
             0x38 => {
                 // JR C,r8 2:12/8 - - - -
-                return self.jump_rel(C, op[1] as i8);
+                let r8 = self.read_next_pc() as i8;
+                return self.jump_rel(C, r8);
             }
             0x39 => {
                 // ADD HL,SP 1:8 - 0 H C
@@ -1295,6 +1177,7 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.clr_h();
                 self.0.cpu.f.def_c(!self.0.cpu.f.c());
+                return;
             }
             0x40 => {
                 // LD B,B 1:4 - - - -
@@ -1515,6 +1398,7 @@ impl Interpreter<'_> {
             0x76 => {
                 // HALT 1:4 - - - -
                 self.0.cpu.state = CpuState::Halt;
+                return;
             }
             0x77 => {
                 // LD (HL),A 1:8 - - - -
@@ -1818,15 +1702,18 @@ impl Interpreter<'_> {
             }
             0xc2 => {
                 // JP NZ,a16 3:16/12 - - - -
-                return self.jump(NZ, n16(op));
+                let address = self.read_next_pc16();
+                return self.jump(NZ, address);
             }
             0xc3 => {
                 // JP a16 3:16 - - - -
-                return self.jump(None, n16(op));
+                let address = self.read_next_pc16();
+                return self.jump(None, address);
             }
             0xc4 => {
                 // CALL NZ,a16 3:24/12 - - - -
-                return self.call(NZ, n16(op));
+                let address = self.read_next_pc16();
+                return self.call(NZ, address);
             }
             0xc5 => {
                 // PUSH BC 1:16 - - - -
@@ -1850,7 +1737,8 @@ impl Interpreter<'_> {
             }
             0xca => {
                 // JP Z,a16 3:16/12 - - - -
-                return self.jump(Z, n16(op));
+                let address = self.read_next_pc16();
+                return self.jump(Z, address);
             }
             0xcb => {
                 // PREFIX CB 1:4 - - - -
@@ -1858,11 +1746,13 @@ impl Interpreter<'_> {
             }
             0xcc => {
                 // CALL Z,a16 3:24/12 - - - -
-                return self.call(Z, n16(op));
+                let address = self.read_next_pc16();
+                return self.call(Z, address);
             }
             0xcd => {
                 // CALL a16 3:24 - - - -
-                return self.call(None, n16(op));
+                let address = self.read_next_pc16();
+                return self.call(None, address);
             }
             0xce => {
                 // ADC A,d8 2:8 Z 0 H C
@@ -1882,14 +1772,16 @@ impl Interpreter<'_> {
             }
             0xd2 => {
                 // JP NC,a16 3:16/12 - - - -
-                return self.jump(NC, n16(op));
+                let address = self.read_next_pc16();
+                return self.jump(NC, address);
             }
             0xd3 => {
                 //
             }
             0xd4 => {
                 // CALL NC,a16 3:24/12 - - - -
-                return self.call(NC, n16(op));
+                let address = self.read_next_pc16();
+                return self.call(NC, address);
             }
             0xd5 => {
                 // PUSH DE 1:16 - - - -
@@ -1915,14 +1807,16 @@ impl Interpreter<'_> {
             }
             0xda => {
                 // JP C,a16 3:16/12 - - - -
-                return self.jump(C, n16(op));
+                let address = self.read_next_pc16();
+                return self.jump(C, address);
             }
             0xdb => {
                 //
             }
             0xdc => {
                 // CALL C,a16 3:24/12 - - - -
-                return self.call(C, n16(op));
+                let address = self.read_next_pc16();
+                return self.call(C, address);
             }
             0xdd => {
                 //
@@ -1970,12 +1864,13 @@ impl Interpreter<'_> {
                 let r;
                 let c;
                 let h;
-                if (op[1] as i8) >= 0 {
-                    c = ((self.0.cpu.sp & 0xFF) + op[1] as u16) > 0xFF;
-                    h = ((self.0.cpu.sp & 0x0F) as u8 + (op[1] & 0xF)) > 0x0F;
-                    r = add16(self.0.cpu.sp, op[1] as u16);
+                let r8 = self.read_next_pc() as i8;
+                if (r8) >= 0 {
+                    c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
+                    h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
+                    r = add16(self.0.cpu.sp, r8 as u16);
                 } else {
-                    r = sub16(self.0.cpu.sp, -(op[1] as i8) as u16);
+                    r = sub16(self.0.cpu.sp, -r8 as u16);
                     c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
                     h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
                 }
@@ -1984,12 +1879,12 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.def_c(c);
                 self.0.cpu.f.def_h(h);
+                self.0.tick(8);
+                return;
             }
             0xe9 => {
-                // JP (HL) 1:4 - - - -
+                // JP HL 1:4 - - - -
                 self.jump_to(self.0.cpu.hl());
-                let cycles = 4;
-                self.0.tick(cycles);
                 return;
             }
             0xea => {
@@ -2049,12 +1944,13 @@ impl Interpreter<'_> {
                 let r;
                 let c;
                 let h;
-                if (op[1] as i8) >= 0 {
-                    c = ((self.0.cpu.sp & 0xFF) + op[1] as u16) > 0xFF;
-                    h = ((self.0.cpu.sp & 0x0F) as u8 + (op[1] & 0xF)) > 0x0F;
-                    r = add16(self.0.cpu.sp, op[1] as u16);
+                let r8 = self.read_next_pc() as i8;
+                if (r8) >= 0 {
+                    c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
+                    h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
+                    r = add16(self.0.cpu.sp, r8 as u16);
                 } else {
-                    r = sub16(self.0.cpu.sp, -(op[1] as i8) as u16);
+                    r = sub16(self.0.cpu.sp, -r8 as u16);
                     c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
                     h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
                 }
@@ -2063,6 +1959,7 @@ impl Interpreter<'_> {
                 self.0.cpu.f.clr_n();
                 self.0.cpu.f.def_h(h);
                 self.0.cpu.f.def_c(c);
+                self.0.tick(4);
             }
             0xf9 => {
                 // LD SP,HL 1:8 - - - -
@@ -2076,6 +1973,7 @@ impl Interpreter<'_> {
                 // EI 1:4 - - - -
                 // TODO: this need to be delayed by one instruction
                 self.0.cpu.ime = ImeState::ToBeEnable;
+                return;
             }
             0xfc => {
                 //
@@ -2092,17 +1990,11 @@ impl Interpreter<'_> {
                 return self.rst(0x38);
             }
         }
-        self.0.cpu.pc = add16(self.0.cpu.pc, consts::LEN[op[0] as usize] as u16);
-        let cycles = consts::CLOCK[op[0] as usize];
-        self.0.tick(cycles);
     }
 
     fn interpret_op_cb(&mut self) {
-        let op = &[
-            self.0.read(self.0.cpu.pc + 1),
-            self.0.read(self.0.cpu.pc + 2),
-        ];
-        match op[0] {
+        let op = self.read_next_pc();
+        match op {
             0x00 => {
                 // RLC B 2:8 Z 0 0 C
                 return self.rlc(Reg::B);

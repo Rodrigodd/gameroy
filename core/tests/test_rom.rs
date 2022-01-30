@@ -49,7 +49,23 @@ mod blargg {
 
     console! {
         (instr_timing, "instr_timing/instr_timing.gb", 26_000_000);
+    }
 
+    console! {
+        (mem_timing_01, "mem_timing/individual/01-read_timing.gb", 26_500_000);
+        (mem_timing_02, "mem_timing/individual/02-write_timing.gb", 25_400_000);
+        (mem_timing_03, "mem_timing/individual/03-modify_timing.gb", 30_600_000);
+        (mem_timing, "mem_timing/mem_timing.gb", 30_600_000);
+    }
+
+    memory! {
+        (mem_timing_2_01, "mem_timing-2/rom_singles/01-read_timing.gb", 25_200_000);
+        (mem_timing_2_02, "mem_timing-2/rom_singles/02-write_timing.gb", 25_200_000);
+        (mem_timing_2_03, "mem_timing-2/rom_singles/03-modify_timing.gb", 25_400_000);
+        (mem_timing_2, "mem_timing-2/mem_timing.gb", 34_900_000);
+    }
+
+    console! {
         (cpu_instrs_01, "cpu_instrs/individual/01-special.gb", 34_500_000);
         (cpu_instrs_02, "cpu_instrs/individual/02-interrupts.gb", 43_000_000);
         (cpu_instrs_03, "cpu_instrs/individual/03-op sp,hl.gb", 34_000_000);

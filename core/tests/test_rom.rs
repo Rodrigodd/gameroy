@@ -200,44 +200,242 @@ fn save_state() {
     println!("number of loads: {}", count);
 }
 
-fn lcd_to_rgba(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
-    for y in 0..SCREEN_HEIGHT {
-        for x in 0..SCREEN_WIDTH {
-            let i = (x + y * SCREEN_WIDTH) as usize * 4;
-            let c = screen[i / 4];
-            const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
-            img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-        }
-    }
-}
+mod mattcurrie {
+    use std::path::PathBuf;
 
-#[test]
-fn dmg_acid2() {
-    let rom_path = "../roms/dmg-acid2.gb";
-    let rom = std::fs::read(rom_path).unwrap();
+    use super::*;
 
-    let cartridge = Cartridge::new(rom).unwrap();
-
-    let mut game_boy = GameBoy::new(None, cartridge);
-    let img_data: Arc<Mutex<Vec<u8>>> =
-        Arc::new(Mutex::new(vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4]));
-    let img_data_clone = img_data.clone();
-    game_boy.v_blank = Some(Box::new(move |gb| {
-        let img_data: &mut [u8] = &mut img_data_clone.lock().unwrap();
-        lcd_to_rgba(&gb.ppu.screen, img_data);
-    }));
-
-    let mut inter = Interpreter(&mut game_boy);
-    let timeout = 43000000;
-    while inter.0.clock_count < timeout {
-        inter.interpret_op();
-        if inter.0.read(inter.0.cpu.pc) == 0x40 {
-            break;
+    fn lcd_to_rgb(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
+        for y in 0..SCREEN_HEIGHT {
+            for x in 0..SCREEN_WIDTH {
+                let i = (x + y * SCREEN_WIDTH) as usize * 3;
+                let c = screen[i / 3];
+                const COLOR: [[u8; 3]; 4] =
+                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+            }
         }
     }
 
-    let img_data: &[u8] = &mut img_data.lock().unwrap();
-    let reference_img_data: &[u8] = &image::open("tests/reference-dmg.png").unwrap().to_rgba8();
+    fn test_screen(rom: &str, reference: &str, timeout: u64) {
+        let rom_path = PathBuf::from("../roms/".to_string() + rom);
+        let reference_path = "../roms/".to_string() + reference;
+        let rom = std::fs::read(&rom_path).unwrap();
 
-    assert_eq!(img_data, reference_img_data);
+        let cartridge = Cartridge::new(rom).unwrap();
+
+        let mut game_boy = GameBoy::new(None, cartridge);
+        let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+        let screen_clone = screen.clone();
+        game_boy.v_blank = Some(Box::new(move |gb| {
+            *screen_clone.lock().unwrap() = gb.ppu.screen;
+        }));
+
+        let mut inter = Interpreter(&mut game_boy);
+        while inter.0.clock_count < timeout {
+            inter.interpret_op();
+            if inter.0.read(inter.0.cpu.pc) == 0x40 {
+                break;
+            }
+        }
+
+        if inter.0.clock_count >= timeout {
+            println!("reach timeout!!");
+        }
+
+        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+        lcd_to_rgb(&*screen.lock().unwrap(), &mut img_data);
+        let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
+
+        if img_data != reference_img_data {
+            panic!("screen don't match with expected image");
+            let path = rom_path.file_stem().unwrap().to_string_lossy().to_string() + "_output.png";
+            image::save_buffer(
+                &path,
+                &img_data,
+                SCREEN_WIDTH as u32,
+                SCREEN_HEIGHT as u32,
+                image::ColorType::Rgb8,
+            )
+            .unwrap();
+        }
+    }
+
+    macro_rules! screen {
+        { $( $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
+            $(#[test]
+            fn $test() {
+                test_screen($rom, $expec, $timeout);
+            })*
+        };
+    }
+
+    screen! {
+            dmg_acid2(
+                "dmg-acid2/dmg-acid2.gb",
+                "dmg-acid2/dmg-acid2-dmg.png",
+                24_554_332,
+            );
+            m2_win_en_toggle(
+                "mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
+                "mealybug-tearoom-tests/ppu/m2_win_en_toggle_dmg_blob.png",
+                24_065_976,
+            );
+            m3_bgp_change(
+                "mealybug-tearoom-tests/ppu/m3_bgp_change.gb",
+                "mealybug-tearoom-tests/ppu/m3_bgp_change_dmg_blob.png",
+                24_065_976,
+            );
+            m3_bgp_change_sprites(
+                "mealybug-acid2/m3_bgp_change_sprites.gb",
+                "mealybug-acid2/m3_bgp_change_sprites_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_bg_en_change(
+                "mealybug-acid2/m3_lcdc_bg_en_change.gb",
+                "mealybug-acid2/m3_lcdc_bg_en_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_bg_en_change2(
+                "mealybug-acid2/m3_lcdc_bg_en_change2.gb",
+                "mealybug-acid2/m3_lcdc_bg_en_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_bg_map_change(
+                "mealybug-acid2/m3_lcdc_bg_map_change.gb",
+                "mealybug-acid2/m3_lcdc_bg_map_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_bg_map_change2(
+                "mealybug-acid2/m3_lcdc_bg_map_change2.gb",
+                "mealybug-acid2/m3_lcdc_bg_map_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_obj_en_change(
+                "mealybug-acid2/m3_lcdc_obj_en_change.gb",
+                "mealybug-acid2/m3_lcdc_obj_en_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_obj_en_change_variant(
+                "mealybug-acid2/m3_lcdc_obj_en_change_variant.gb",
+                "mealybug-acid2/m3_lcdc_obj_en_change_variant_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_obj_size_change(
+                "mealybug-acid2/m3_lcdc_obj_size_change.gb",
+                "mealybug-acid2/m3_lcdc_obj_size_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_obj_size_change_scx(
+                "mealybug-acid2/m3_lcdc_obj_size_change_scx.gb",
+                "mealybug-acid2/m3_lcdc_obj_size_change_scx_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_tile_sel_change(
+                "mealybug-acid2/m3_lcdc_tile_sel_change.gb",
+                "mealybug-acid2/m3_lcdc_tile_sel_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_tile_sel_change2(
+                "mealybug-acid2/m3_lcdc_tile_sel_change2.gb",
+                "mealybug-acid2/m3_lcdc_tile_sel_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_tile_sel_win_change(
+                "mealybug-acid2/m3_lcdc_tile_sel_win_change.gb",
+                "mealybug-acid2/m3_lcdc_tile_sel_win_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_tile_sel_win_change2(
+                "mealybug-acid2/m3_lcdc_tile_sel_win_change2.gb",
+                "mealybug-acid2/m3_lcdc_tile_sel_win_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_win_en_change_multiple(
+                "mealybug-acid2/m3_lcdc_win_en_change_multiple.gb",
+                "mealybug-acid2/m3_lcdc_win_en_change_multiple_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_win_en_change_multiple_wx(
+                "mealybug-acid2/m3_lcdc_win_en_change_multiple_wx.gb",
+                "mealybug-acid2/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_win_map_change(
+                "mealybug-acid2/m3_lcdc_win_map_change.gb",
+                "mealybug-acid2/m3_lcdc_win_map_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_lcdc_win_map_change2(
+                "mealybug-acid2/m3_lcdc_win_map_change2.gb",
+                "mealybug-acid2/m3_lcdc_win_map_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_obp0_change(
+                "mealybug-acid2/m3_obp0_change.gb",
+                "mealybug-acid2/m3_obp0_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_scx_high_5_bits(
+                "mealybug-acid2/m3_scx_high_5_bits.gb",
+                "mealybug-acid2/m3_scx_high_5_bits_dmg_blob.png",
+                25_000_000,
+            );
+            m3_scx_high_5_bits_change2(
+                "mealybug-acid2/m3_scx_high_5_bits_change2.gb",
+                "mealybug-acid2/m3_scx_high_5_bits_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_scx_low_3_bits(
+                "mealybug-acid2/m3_scx_low_3_bits.gb",
+                "mealybug-acid2/m3_scx_low_3_bits_dmg_blob.png",
+                25_000_000,
+            );
+            m3_scy_change(
+                "mealybug-acid2/m3_scy_change.gb",
+                "mealybug-acid2/m3_scy_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_scy_change2(
+                "mealybug-acid2/m3_scy_change2.gb",
+                "mealybug-acid2/m3_scy_change2_dmg_blob.png",
+                25_000_000,
+            );
+            m3_window_timing(
+                "mealybug-acid2/m3_window_timing.gb",
+                "mealybug-acid2/m3_window_timing_dmg_blob.png",
+                25_000_000,
+            );
+            m3_window_timing_wx_0(
+                "mealybug-acid2/m3_window_timing_wx_0.gb",
+                "mealybug-acid2/m3_window_timing_wx_0_dmg_blob.png",
+                25_000_000,
+            );
+            m3_wx_4_change(
+                "mealybug-acid2/m3_wx_4_change.gb",
+                "mealybug-acid2/m3_wx_4_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_wx_4_change_sprites(
+                "mealybug-acid2/m3_wx_4_change_sprites.gb",
+                "mealybug-acid2/m3_wx_4_change_sprites_dmg_blob.png",
+                25_000_000,
+            );
+            m3_wx_5_change(
+                "mealybug-acid2/m3_wx_5_change.gb",
+                "mealybug-acid2/m3_wx_5_change_dmg_blob.png",
+                25_000_000,
+            );
+            m3_wx_6_change(
+                "mealybug-acid2/m3_wx_6_change.gb",
+                "mealybug-acid2/m3_wx_6_change_dmg_blob.png",
+                25_000_000,
+            );
+            win_without_bg(
+                "mealybug-acid2/win_without_bg.gb",
+                "mealybug-acid2/win_without_bg_dmg_blob.png",
+                25_000_000,
+            );
+    }
 }

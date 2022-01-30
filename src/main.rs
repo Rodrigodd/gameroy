@@ -38,6 +38,7 @@ fn main() {
     let mut diss = false;
     let mut debug = false;
     let mut rom_path = "roms/test.gb".to_string();
+    let mut boot_rom_path = None; //"bootrom/dmg_boot.bin";
     let mut movie = None;
 
     let mut args = std::env::args();
@@ -50,6 +51,10 @@ fn main() {
                 let mut file = std::fs::File::open(path).unwrap();
                 let vbm = gameroy::parser::vbm(&mut file).unwrap();
                 movie = Some(vbm);
+            }
+            "--boot-rom" => {
+                let path = args.next().expect("expected path to the movie");
+                boot_rom_path = Some(path);
             }
             _ if arg.starts_with("-") => {
                 eprintln!("unknown argument {}", arg);
@@ -64,9 +69,21 @@ fn main() {
 
     let rom = std::fs::read(&rom_path).unwrap();
 
-    let mut boot_rom_file = File::open("bootrom/dmg_boot.bin").unwrap();
-    let mut boot_rom = [0; 0x100];
-    boot_rom_file.read(&mut boot_rom).unwrap();
+    let boot_rom = if let Some(boot_rom_path) = boot_rom_path {
+        match File::open(boot_rom_path) {
+            Ok(mut boot_rom_file) => {
+                let mut boot_rom = [0; 0x100];
+                boot_rom_file.read(&mut boot_rom).unwrap();
+                Some(boot_rom)
+            }
+            Err(e) => {
+                eprintln!("error loading boot rom: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     let mut cartridge = Cartridge::new(rom).unwrap();
     let mut save_path = rom_path.clone();

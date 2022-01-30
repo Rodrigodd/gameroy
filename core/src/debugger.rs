@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use crate::gameboy::GameBoy;
 use crate::interpreter::Interpreter;
+use crate::save_state::SaveState;
 
 pub mod break_flags {
     pub const WRITE: u8 = 1 << 0;
@@ -58,11 +59,19 @@ impl Debugger {
             "reset" => callback(self, Reset),
             "runto" => {
                 if args.len() != 2 {
-                    return Err(format!("'runto' expect 1 argument, receive {}", args.len() - 1))
+                    return Err(format!(
+                        "'runto' expect 1 argument, receive {}",
+                        args.len() - 1
+                    ));
                 }
                 let address = match u16::from_str_radix(args[1], 16) {
                     Ok(x) => x,
-                    Err(_) => return Err(format!("'runto' expected a address, '{}' is not a valid one", args[1]))
+                    Err(_) => {
+                        return Err(format!(
+                            "'runto' expected a address, '{}' is not a valid one",
+                            args[1]
+                        ))
+                    }
                 };
                 self.target_address = Some(address);
                 callback(self, Run);
@@ -73,7 +82,12 @@ impl Debugger {
                 } else if args.len() == 3 {
                     let clocks = match args[2].parse::<u64>() {
                         Ok(x) => x,
-                        Err(_) => return Err(format!("'run's subcommand' expected a clock number, '{}' is not a valid one", args[2]))
+                        Err(_) => {
+                            return Err(format!(
+                            "'run's subcommand' expected a clock number, '{}' is not a valid one",
+                            args[2]
+                        ))
+                        }
                     };
                     match args[1] {
                         "for" => {
@@ -84,20 +98,34 @@ impl Debugger {
                             self.target_clock = Some(clocks);
                             callback(self, Run);
                         }
-                        _ => return Err(format!("'{}' is not a valid subcommand for 'run'", args[1]))
+                        _ => {
+                            return Err(format!(
+                                "'{}' is not a valid subcommand for 'run'",
+                                args[1]
+                            ))
+                        }
                     }
                 } else {
-                    return Err(format!("'run' expect 0 or 2 arguments, receive {}", args.len() - 1))
+                    return Err(format!(
+                        "'run' expect 0 or 2 arguments, receive {}",
+                        args.len() - 1
+                    ));
                 }
             }
             "break" => {
                 if args.len() != 3 {
-                    return Err(format!("'break' expect 3 arguments, receive {}", args.len() - 1))
+                    return Err(format!(
+                        "'break' expect 3 arguments, receive {}",
+                        args.len() - 1
+                    ));
                 }
 
                 let flags = args[1].as_bytes();
                 if let Some(x) = flags.iter().find(|x| !b"wrxj".contains(x)) {
-                    return Err(format!("'{}' is not a valid break flag. Valid ones are 'r', 'w', 'x' and 'j'.", *x as char));
+                    return Err(format!(
+                        "'{}' is not a valid break flag. Valid ones are 'r', 'w', 'x' and 'j'.",
+                        *x as char
+                    ));
                 }
 
                 let write = args[1].contains('w') as u8;
@@ -110,19 +138,32 @@ impl Debugger {
 
                 let address = match u16::from_str_radix(args[2], 16) {
                     Ok(x) => x,
-                    Err(_) => return Err(format!("'break' expected a address, '{}' is not a valid one", args[2]))
+                    Err(_) => {
+                        return Err(format!(
+                            "'break' expected a address, '{}' is not a valid one",
+                            args[2]
+                        ))
+                    }
                 };
 
                 self.add_break(flags, address);
             }
             "watch" => {
                 if args.len() != 2 {
-                    return Err(format!("'watch' expect 1 argument, receive {}", args.len() - 1));
+                    return Err(format!(
+                        "'watch' expect 1 argument, receive {}",
+                        args.len() - 1
+                    ));
                 }
 
                 let address = match u16::from_str_radix(args[1], 16) {
                     Ok(x) => x,
-                    Err(_) => return Err(format!("'watch' expected a address, '{}' is not a valid one", args[1]))
+                    Err(_) => {
+                        return Err(format!(
+                            "'watch' expected a address, '{}' is not a valid one",
+                            args[1]
+                        ))
+                    }
                 };
 
                 self.add_watch(address);
@@ -130,13 +171,67 @@ impl Debugger {
             // write the currently dissasembly to a file
             "dump" => {
                 if args.len() != 2 {
-                    return Err(format!("'dump' expect 1 argument, receive {}", args.len() - 1));
+                    return Err(format!(
+                        "'dump' expect 1 argument, receive {}",
+                        args.len() - 1
+                    ));
                 }
                 let file = args[1];
                 let trace = gb.trace.borrow();
                 let mut string = String::new();
                 trace.fmt(gb, &mut string).map_err(|x| x.to_string())?;
                 std::fs::write(file, string).map_err(|x| x.to_string())?;
+            }
+            // save some state to a file (for dev purpose)
+            "save" => {
+                if args.len() != 2 {
+                    return Err(format!(
+                        "'save' expect 1 argument, receive {}",
+                        args.len() - 1
+                    ));
+                }
+                let dir = args[1];
+
+                // save to file
+                let stf = |name: &str| {
+                    let path = dir.to_string() + "/" + name;
+                    let file = std::fs::File::create(&path).unwrap();
+                    file
+                };
+
+                // gb.trace.save_state(output)?;
+                gb.cpu
+                    .save_state(&mut stf("cpu.sav"))
+                    .map_err(|x| x.to_string())?;
+                // gb.cartridge.save_state(&mut stf("cpu.sav")).map_err(|x| x.to_string())?;
+                gb.memory
+                    .save_state(&mut stf("memory.sav"))
+                    .map_err(|x| x.to_string())?;
+                // gb.boot_rom.save_state(output).map_err(|x| x.to_string())?;
+                [&gb.boot_rom_active]
+                    .save_state(&mut stf("boot_rom_active.sav"))
+                    .map_err(|x| x.to_string())?;
+                gb.clock_count
+                    .save_state(&mut stf("clock_count.sav"))
+                    .map_err(|x| x.to_string())?;
+                gb.timer
+                    .save_state(&mut stf("timer.sav"))
+                    .map_err(|x| x.to_string())?;
+                {
+                    let mut sound = gb.sound.borrow_mut();
+                    sound.update(gb.clock_count);
+                    sound
+                        .save_state(&mut stf("sound.sav"))
+                        .map_err(|x| x.to_string())?;
+                }
+                gb.ppu
+                    .save_state(&mut stf("ppu.sav"))
+                    .map_err(|x| x.to_string())?;
+                gb.joypad
+                    .save_state(&mut stf("joypad.sav"))
+                    .map_err(|x| x.to_string())?;
+                // gb.serial_transfer.save_state(data)?;
+                // gb.v_blank.save_state(data)
             }
             x => return Err(format!("'{}' is not a valid command", x)),
         }

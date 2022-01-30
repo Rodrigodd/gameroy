@@ -2,6 +2,7 @@ use crate::cartridge::Cartridge;
 use crate::save_state::{LoadStateError, SaveState};
 use crate::sound_controller::SoundController;
 use crate::{consts, cpu::Cpu, disassembler::Trace, ppu::Ppu};
+use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::io::{Read, Write};
 
@@ -92,7 +93,7 @@ pub struct GameBoy {
     pub cpu: Cpu,
     pub cartridge: Cartridge,
     pub memory: [u8; 0x10000],
-    pub boot_rom: [u8; 0x100],
+    pub boot_rom: Option<[u8; 0x100]>,
     pub boot_rom_active: bool,
     pub clock_count: u64,
     pub timer: Timer,
@@ -193,8 +194,8 @@ impl SaveState for GameBoy {
     }
 }
 impl GameBoy {
-    pub fn new(boot_rom: [u8; 0x100], cartridge: Cartridge) -> Self {
-        Self {
+    pub fn new(boot_rom: Option<[u8; 0x100]>, cartridge: Cartridge) -> Self {
+        let mut this = Self {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
             cartridge,
@@ -210,11 +211,21 @@ impl GameBoy {
                 eprint!("{}", c as char);
             }),
             v_blank: None,
+        };
+
+        if this.boot_rom.is_none() {
+            this.reset_after_boot();
         }
+
+        this
     }
 
     /// Reset the gameboy to its stating state.
     pub fn reset(&mut self) {
+        if self.boot_rom.is_none() {
+            self.reset_after_boot();
+            return;
+        }
         // TODO: Maybe I should reset the cartridge
         self.cpu = Cpu::default();
         self.memory = [0; 0x10000];
@@ -226,13 +237,57 @@ impl GameBoy {
         self.joypad = 0xFF;
     }
 
+    /// Reset the gameboy to its state after disabling the boot.
+    pub fn reset_after_boot(&mut self) {
+        self.cpu = Cpu {
+            a: 0x01,
+            f: crate::cpu::Flags(0xb0),
+            b: 0x00,
+            c: 0x13,
+            d: 0x00,
+            e: 0xd8,
+            h: 0x01,
+            l: 0x4d,
+            sp: 0xfffe,
+            pc: 0x0100,
+            ime: crate::cpu::ImeState::Disabled,
+            state: crate::cpu::CpuState::Running,
+        };
+        self.memory
+            .load_state(&mut &include_bytes!("../after_boot/memory.sav")[..])
+            .unwrap();
+        self.boot_rom_active = false;
+        self.clock_count = 23_233_188;
+        self.timer = Timer {
+            div: 0x82,
+            tima: 0xa4,
+            tma: 0x00,
+            tac: 0x00,
+            last_counter_bit: false,
+        };
+        self.sound
+            .borrow_mut()
+            .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
+            .unwrap();
+        self.ppu
+            .borrow_mut()
+            .load_state(&mut &include_bytes!("../after_boot/ppu.sav")[..])
+            .unwrap();
+        self.joypad = 0xFF;
+    }
+
     pub fn len(&self) -> usize {
         self.memory.len()
     }
 
     pub fn read(&self, mut address: u16) -> u8 {
-        if address < 0x100 && self.boot_rom_active {
-            return self.boot_rom[address as usize];
+        if self.boot_rom_active {
+            if address < 0x100 {
+                let boot_rom = self
+                    .boot_rom
+                    .expect("the boot rom is only actived when there is one");
+                return boot_rom[address as usize];
+            }
         }
         if (0xE000..=0xFDFF).contains(&address) {
             address -= 0x2000;
@@ -363,20 +418,6 @@ impl GameBoy {
                 self.memory[0xFF00 | address as usize]
             }
             _ => 0xff,
-        }
-    }
-}
-impl std::ops::Index<usize> for GameBoy {
-    type Output = u8;
-
-    fn index(&self, mut index: usize) -> &Self::Output {
-        index = index & 0xffff;
-        if self.boot_rom_active && index <= 0xff {
-            &self.boot_rom[index]
-        } else if index < 0x7FFF {
-            &self.cartridge.rom()[index]
-        } else {
-            &0x00
         }
     }
 }

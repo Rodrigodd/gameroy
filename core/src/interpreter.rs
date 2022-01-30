@@ -365,7 +365,7 @@ impl Interpreter<'_> {
                 let v = self.0.read(0xFF00 | self.0.cpu.c as u16);
                 self.0.tick(4);
                 v
-            },
+            }
             Reg::Im8 => {
                 let r8 = self.read_next_pc();
                 let v = self.0.read(0xFF00 | r8 as u16);
@@ -380,7 +380,7 @@ impl Interpreter<'_> {
             Reg::C => {
                 self.0.write(0xFF00 | self.0.cpu.c as u16, src);
                 self.0.tick(4);
-            },
+            }
             Reg::Im8 => {
                 let r8 = self.read_next_pc();
                 self.0.write(0xFF00 | r8 as u16, src);
@@ -398,7 +398,7 @@ impl Interpreter<'_> {
             Reg16::SP => {
                 self.0.tick(8);
                 self.0.cpu.sp
-            },
+            }
             Reg16::Im16 => self.read_next_pc16(),
             _ => unreachable!(),
         };

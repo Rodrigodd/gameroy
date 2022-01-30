@@ -162,6 +162,13 @@ impl Emulator {
             }));
         }
 
+        let start_time = {
+            let gb = gb.lock();
+            let secs = gb.clock_count / CLOCK_SPEED;
+            let nanos = (gb.clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
+            Instant::now() - Duration::new(secs, nanos as u32)
+        };
+
         Self {
             gb,
             recv,
@@ -172,7 +179,7 @@ impl Emulator {
             debug: false,
             state: EmulatorState::Idle,
             frame_limit: true,
-            start_time: Instant::now(),
+            start_time,
             debugger,
             _audio: audio,
             audio_buffer,

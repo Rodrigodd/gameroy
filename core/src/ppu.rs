@@ -206,7 +206,7 @@ impl Ppu {
                 break;
             }
         }
-        // sort buffer by priority, in asce
+        // sort buffer by priority, in decreasing order
         self.sprite_buffer[0..self.sprite_buffer_len as usize].reverse();
         self.sprite_buffer[0..self.sprite_buffer_len as usize].sort_by_key(|x| !x[1]);
     }
@@ -226,12 +226,17 @@ impl Ppu {
             let set_mode = |s: &mut Self, memory: &mut [u8], mode: u8| {
                 debug_assert!(mode <= 3);
                 s.stat = (s.stat & !0b11) | mode;
-                // object search at mode 2
-                if mode == 2 {
-                    s.search_objects(memory);
-                }
                 if mode == 0 {
                     draw_scan_line(memory, s);
+                    // Mode 0 STAT Interrupt
+                    set_stat_int(s, memory, 3);
+                } else if mode == 1 {
+                    // Mode 1 STAT Interrupt
+                    set_stat_int(s, memory, 4);
+                } else if mode == 2 {
+                    s.search_objects(memory);
+                    // Mode 2 STAT Interrupt
+                    set_stat_int(s, memory, 5);
                 }
             };
 
@@ -247,37 +252,42 @@ impl Ppu {
 
             let mode = gb.ppu.stat & 0b11;
             match mode {
-                0 if gb.ppu.ly == 144 => {
-                    set_mode(&mut gb.ppu, &mut gb.memory, 1);
-                    // V-Blank Interrupt
-                    if let Some(mut v_blank) = gb.v_blank.take() {
-                        v_blank(gb);
-                        gb.v_blank = Some(v_blank);
-                    }
-                    gb.memory[consts::IF as usize] |= 1 << 0;
-                    // Mode 1 STAT Interrupt
-                    set_stat_int(&mut gb.ppu, &mut gb.memory, 4);
-                }
-                0 | 1 => {
-                    if mode == 0 && lx < 80 || mode == 1 && gb.ppu.ly < 144 {
-                        if mode == 1 {
-                            gb.ppu.wyc = 0;
+                // hblank
+                0 => {
+                    if gb.ppu.ly == 144 {
+                        set_mode(&mut gb.ppu, &mut gb.memory, 1);
+
+                        // V-Blank Interrupt
+                        if let Some(mut v_blank) = gb.v_blank.take() {
+                            v_blank(gb);
+                            gb.v_blank = Some(v_blank);
                         }
+                        gb.memory[consts::IF as usize] |= 1 << 0;
+                    } else if lx == 0 {
                         set_mode(&mut gb.ppu, &mut gb.memory, 2);
-                        // Mode 2 STAT Interrupt
-                        set_stat_int(&mut gb.ppu, &mut gb.memory, 5);
                     }
                 }
-                2 if lx >= 80 => {
-                    set_mode(&mut gb.ppu, &mut gb.memory, 3);
+                // vblank
+                1 => {
+                    if gb.ppu.ly == 0 {
+                        gb.ppu.wyc = 0;
+                        set_mode(&mut gb.ppu, &mut gb.memory, 2);
+                    }
                 }
-                3 if lx >= 80 + 172 => {
-                    set_mode(&mut gb.ppu, &mut gb.memory, 0);
-                    // Mode 0 STAT Interrupt
-                    set_stat_int(&mut gb.ppu, &mut gb.memory, 3);
+                // searching objects
+                2 => {
+                    if lx == 80 {
+                        set_mode(&mut gb.ppu, &mut gb.memory, 3);
+                    }
                 }
+                // drawing
+                3 => {
+                    if lx == 80 + 172 {
+                        set_mode(&mut gb.ppu, &mut gb.memory, 0);
+                    }
+                }
+
                 4..=255 => unreachable!(),
-                _ => {}
             }
         }
         gb.ppu.last_clock_count = gb.clock_count;

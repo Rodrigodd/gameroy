@@ -9,6 +9,23 @@ struct PixelFifo {
     /// next position to pop
     tail: u8,
 }
+impl SaveState for PixelFifo {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.queue.save_state(data)?;
+        self.head.save_state(data)?;
+        self.tail.save_state(data)?;
+
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        self.queue.load_state(data)?;
+        self.head.load_state(data)?;
+        self.tail.load_state(data)?;
+
+        Ok(())
+    }
+}
 impl PixelFifo {
     fn is_empty(&self) -> bool {
         self.head == self.tail
@@ -173,6 +190,29 @@ impl SaveState for Ppu {
         self.wy.save_state(data)?;
         self.wx.save_state(data)?;
         self.last_clock_count.save_state(data)?;
+
+        self.background_fifo.save_state(data)?;
+        self.sprite_fifo.save_state(data)?;
+
+        self.fetcher_step.save_state(data)?;
+        self.fetcher_x.save_state(data)?;
+        self.fetch_tile_number.save_state(data)?;
+        self.fetch_tile_address.save_state(data)?;
+        self.fetch_tile_data_low.save_state(data)?;
+        self.fetch_tile_data_hight.save_state(data)?;
+
+        [
+            &self.reach_window,
+            &self.is_in_window,
+            &self.fetcher_skipped_first_push,
+            &self.sprite_fetching,
+            &self.fetcher_cycle,
+            &self.discarting,
+        ]
+        .save_state(data)?;
+
+        self.curr_x.save_state(data)?;
+
         Ok(())
     }
 
@@ -191,6 +231,29 @@ impl SaveState for Ppu {
         self.wy.load_state(data)?;
         self.wx.load_state(data)?;
         self.last_clock_count.load_state(data)?;
+
+        self.background_fifo.load_state(data)?;
+        self.sprite_fifo.load_state(data)?;
+
+        self.fetcher_step.load_state(data)?;
+        self.fetcher_x.load_state(data)?;
+        self.fetch_tile_number.load_state(data)?;
+        self.fetch_tile_address.load_state(data)?;
+        self.fetch_tile_data_low.load_state(data)?;
+        self.fetch_tile_data_hight.load_state(data)?;
+
+        [
+            &mut self.reach_window,
+            &mut self.is_in_window,
+            &mut self.fetcher_skipped_first_push,
+            &mut self.sprite_fetching,
+            &mut self.fetcher_cycle,
+            &mut self.discarting,
+        ]
+        .load_state(data)?;
+
+        self.curr_x.load_state(data)?;
+
         Ok(())
     }
 }
@@ -559,11 +622,7 @@ impl Ppu {
                                     } else {
                                         gb.ppu.fetch_tile_data_hight
                                     };
-                                    let cut_off = if sprite.sx < 8 {
-                                        8 - sprite.sx
-                                    } else {
-                                        0
-                                    };
+                                    let cut_off = if sprite.sx < 8 { 8 - sprite.sx } else { 0 };
                                     gb.ppu.sprite_fifo.push_sprite(
                                         tile_low,
                                         tile_hight,

@@ -267,7 +267,7 @@ impl GameBoy {
             .load_state(&mut &include_bytes!("../after_boot/memory.sav")[..])
             .unwrap();
         self.boot_rom_active = false;
-        self.clock_count = 23_233_188;
+        self.clock_count = 23_233_156;
         self.timer = Timer {
             div: 0x82,
             tima: 0xa4,

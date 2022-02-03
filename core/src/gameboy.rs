@@ -379,6 +379,8 @@ impl GameBoy {
                 }
             }
             0x47 => self.ppu.set_bgp(value),
+            0x48 => self.ppu.set_obp0(value),
+            0x49 => self.ppu.set_obp1(value),
             0x4a => self.ppu.set_wy(value),
             0x4b => self.ppu.set_wx(value),
             0x4d => {}
@@ -419,6 +421,8 @@ impl GameBoy {
             0x45 => self.ppu.lyc(),
             // 0x44 => ((self.clock_count / 456) % 153) as u8,
             0x47 => self.ppu.bgp(),
+            0x48 => self.ppu.obp0(),
+            0x49 => self.ppu.obp1(),
             0x4a => self.ppu.wy(),
             0x4b => self.ppu.wx(),
             0x4d => 0xff,

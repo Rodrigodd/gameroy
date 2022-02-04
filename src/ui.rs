@@ -284,13 +284,12 @@ pub fn create_gui(
                                 )
                             })
                             .build(ctx);
-                        let text_field = disassembler_viewer::build(
+                        disassembler_viewer::build(
                             split_view,
                             ctx,
                             &mut *event_table.borrow_mut(),
                             &sty,
                         );
-                        ctx.set_focus(text_field);
 
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
                         proxy.send_event(UserEvent::Debug(true)).unwrap();

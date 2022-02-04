@@ -474,7 +474,7 @@ pub fn build(
     ctx: &mut dyn BuilderContext,
     event_table: &mut EventTable,
     style: &Style,
-) -> Id {
+) {
     let diss_view_id = ctx.reserve();
     let list_id = ctx.reserve();
     let reg_id = ctx.reserve();
@@ -617,6 +617,7 @@ PC: {:04x}",
             Callback,
         ))
         .min_size([20.0; 2])
+        .focus(true)
         .build(ctx);
 
     ctx.create_control_reserved(caret)
@@ -627,10 +628,8 @@ PC: {:04x}",
 
     ctx.create_control_reserved(label)
         .parent(text_field)
-        .graphic(Text::new("test".into(), (-1, -1), style.text_style.clone()).into())
+        .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()).into())
         .build(ctx);
-
-    text_field
 }
 
 fn list(

@@ -30,4 +30,10 @@
         pressed: Texture(texture: "white.png", color: "#003600", uv_rect: (0,0,1,1)),
         focus: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
     ),
+    tab_style: TabStyle(
+        unselected: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
+        hover: Texture(texture: "white.png", color: "#002600", uv_rect: (0,0,1,1)),
+        pressed: Texture(texture: "white.png", color: "#003600", uv_rect: (0,0,1,1)),
+        selected: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
+    ),
 )

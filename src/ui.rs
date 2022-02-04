@@ -5,7 +5,13 @@ use crate::{
     split_view::SplitView, style::Style, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use crui::{
-    font::Fonts, graphics::Texture, render::GuiRenderer, widgets::OnKeyboardEvent, Gui, GuiRender,
+    font::Fonts,
+    graphics::Texture,
+    layouts::{FitText, HBoxLayout, MarginLayout, VBoxLayout},
+    render::GuiRenderer,
+    text::Text,
+    widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
+    BuilderContext, Gui, GuiRender,
 };
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
 use winit::{
@@ -187,7 +193,6 @@ pub fn create_gui(
     let sty = style.clone();
     gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent(move |event, _, ctx| {
-            use crui::BuilderContext;
             use crui::KeyboardEvent::*;
             use winit::event::VirtualKeyCode::*;
             let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
@@ -207,24 +212,14 @@ pub fn create_gui(
                         sender.send(EmulatorEvent::Run).unwrap();
                     }
                     Pressed(F12) => {
-                        ctx.remove(split_view);
-                        split_view = ctx.reserve();
-
-                        screen_id = ctx.reserve();
-                        ctx.create_control_reserved(screen_id)
-                            .parent(root)
-                            .graphic(sty.background.clone())
-                            .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-                            .child(ctx, |cb, _| {
-                                cb.graphic(
-                                    Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into(),
-                                )
-                            })
-                            .build(ctx);
-                        ctx.set_focus(screen_id);
-
-                        let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
-                        proxy.send_event(UserEvent::Debug(false)).unwrap();
+                        close_debug_panel(
+                            ctx,
+                            screen_texture,
+                            &mut split_view,
+                            &mut screen_id,
+                            root,
+                            &sty,
+                        );
                     }
                     _ => {}
                 }
@@ -258,41 +253,15 @@ pub fn create_gui(
                     }
                     Pressed(F12) => {
                         // Debug
-                        let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
-                        split_layout.split = 0.5;
-
-                        ctx.create_control_reserved(split_view)
-                            .parent(root)
-                            .graphic(sty.split_background.clone())
-                            .behaviour_and_layout(split_layout)
-                            .build(ctx);
-
-                        // TODO: instead of destroying the screen control, and creating it again, I
-                        // need to look if I could create a 'set_parent' method. But that may be
-                        // complicated
-                        ctx.remove(screen_id);
-
-                        // TODO: maybe there should be a replace_control method?
-                        screen_id = ctx.reserve();
-                        ctx.create_control_reserved(screen_id)
-                            .parent(split_view)
-                            .graphic(sty.background.clone())
-                            .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-                            .child(ctx, |cb, _| {
-                                cb.graphic(
-                                    Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into(),
-                                )
-                            })
-                            .build(ctx);
-                        disassembler_viewer::build(
-                            split_view,
+                        open_debug_panel(
                             ctx,
-                            &mut *event_table.borrow_mut(),
+                            screen_texture,
+                            split_view,
+                            root,
                             &sty,
+                            &mut screen_id,
+                            event_table.clone(),
                         );
-
-                        let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
-                        proxy.send_event(UserEvent::Debug(true)).unwrap();
                     }
                     Pressed(LShift) | Release(LShift) => sender
                         .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
@@ -314,4 +283,128 @@ pub fn create_gui(
         })
         .build(gui);
     gui.set_focus(Some(screen_id));
+}
+
+fn close_debug_panel(
+    ctx: &mut crui::Context,
+    screen_texture: u32,
+    split_view: &mut crui::Id,
+    screen_id: &mut crui::Id,
+    root: crui::Id,
+    style: &Style,
+) {
+    ctx.remove(*split_view);
+    *split_view = ctx.reserve();
+    *screen_id = ctx.reserve();
+    ctx.create_control_reserved(*screen_id)
+        .parent(root)
+        .graphic(style.background.clone())
+        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+        .child(ctx, |cb, _| {
+            cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
+        })
+        .build(ctx);
+    ctx.set_focus(*screen_id);
+    let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
+    proxy.send_event(UserEvent::Debug(false)).unwrap();
+}
+
+fn open_debug_panel(
+    ctx: &mut crui::Context,
+    screen_texture: u32,
+    split_view: crui::Id,
+    root: crui::Id,
+    style: &Style,
+    screen_id: &mut crui::Id,
+    event_table: Rc<RefCell<EventTable>>,
+) {
+    let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
+    split_layout.split = 0.5;
+    ctx.create_control_reserved(split_view)
+        .parent(root)
+        .graphic(style.split_background.clone())
+        .behaviour_and_layout(split_layout)
+        .build(ctx);
+    ctx.remove(*screen_id);
+
+    // create screen
+    *screen_id = ctx.reserve();
+    ctx.create_control_reserved(*screen_id)
+        .parent(split_view)
+        .graphic(style.background.clone())
+        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+        .child(ctx, |cb, _| {
+            cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
+        })
+        .build(ctx);
+
+    // create debug panel
+    let debug_panel = ctx
+        .create_control()
+        .layout(VBoxLayout::default())
+        .parent(split_view)
+        .build(ctx);
+
+    let tab_header = ctx
+        .create_control()
+        .parent(debug_panel)
+        .layout(HBoxLayout::default())
+        .min_size([16.0, 16.0])
+        .build(ctx);
+
+    let tab_page = ctx
+        .create_control()
+        .parent(debug_panel)
+        .expand_y(true)
+        .build(ctx);
+
+    let tab_group = ButtonGroup::new(|_, _| ());
+
+    let disas_page = ctx.create_control().parent(tab_page).build(ctx);
+    disassembler_viewer::build(disas_page, ctx, &mut *event_table.borrow_mut(), &style);
+    let _disas_tab = ctx
+        .create_control()
+        .parent(tab_header)
+        .child(ctx, |cb, _| {
+            cb.graphic(
+                Text::new("disassembly".to_string(), (0, 0), style.text_style.clone()).into(),
+            )
+            .layout(FitText)
+        })
+        .layout(MarginLayout::default())
+        .behaviour(TabButton::new(
+            tab_group.clone(),
+            disas_page,
+            true,
+            style.tab_style.clone(),
+        ))
+        .build(ctx);
+
+    let disas_page = ctx
+        .create_control()
+        .parent(tab_page)
+        .active(false)
+        .build(ctx);
+    disassembler_viewer::build(disas_page, ctx, &mut *event_table.borrow_mut(), &style);
+
+    let _disas_tab = ctx
+        .create_control()
+        .parent(tab_header)
+        .child(ctx, |cb, _| {
+            cb.graphic(
+                Text::new("disassembly2".to_string(), (0, 0), style.text_style.clone()).into(),
+            )
+            .layout(FitText)
+        })
+        .layout(MarginLayout::default())
+        .behaviour(TabButton::new(
+            tab_group,
+            disas_page,
+            false,
+            style.tab_style.clone(),
+        ))
+        .build(ctx);
+
+    let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
+    proxy.send_event(UserEvent::Debug(true)).unwrap();
 }

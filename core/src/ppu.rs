@@ -574,9 +574,9 @@ impl Ppu {
                             let flip_x = sprite.flags & 0x20 != 0;
                             let py = if flip_y != 0 {
                                 let height = if tall != 0 { 16 } else { 8 };
-                                (height - 1) - (ly - (sprite.sy - 16))
+                                (height - 1) - (ly + 16 - sprite.sy)
                             } else {
-                                ly - (sprite.sy - 16)
+                                ly + 16 - sprite.sy
                             };
                             match gb.ppu.fetcher_step {
                                 // fetch tile number

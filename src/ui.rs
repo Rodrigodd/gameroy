@@ -1,7 +1,7 @@
 use std::{any::Any, cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
 
 use crate::{
-    disassembler_viewer, event_table::EventTable, layout::PixelPerfectLayout,
+    event_table::EventTable, layout::PixelPerfectLayout,
     split_view::SplitView, style::Style, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use crui::{
@@ -20,6 +20,8 @@ use winit::{
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::{Window, WindowBuilder, WindowId},
 };
+
+mod disassembler_viewer;
 
 struct Render<'a>(&'a mut GLSpriteRender);
 impl<'a> GuiRenderer for Render<'a> {

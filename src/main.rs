@@ -15,7 +15,6 @@ use gameroy::{
     parser::Vbm,
 };
 
-mod disassembler_viewer;
 mod emulator;
 mod event_table;
 mod fold_view;

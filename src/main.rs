@@ -157,13 +157,13 @@ fn create_window(
 
     let (mut ui, window) = ui::Ui::new(wb, &event_loop);
 
-    let ppu_screen: Arc<Mutex<Vec<u8>>> =
+    let lcd_screen: Arc<Mutex<Vec<u8>>> =
         Arc::new(Mutex::new(vec![0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-    let ppu_screen_clone = ppu_screen.clone();
+    let lcd_screen_clone = lcd_screen.clone();
     let proxy = event_loop.create_proxy();
     gb.v_blank = Some(Box::new(move |gb| {
         {
-            let img_data = &mut ppu_screen_clone.lock();
+            let img_data = &mut lcd_screen_clone.lock();
             img_data.copy_from_slice(&gb.ppu.screen);
         }
         let _ = proxy.send_event(UserEvent::FrameUpdated);
@@ -237,7 +237,7 @@ fn create_window(
                 match event {
                     FrameUpdated => {
                         let screen: &[u8] = &{
-                            let lock = ppu_screen.lock();
+                            let lock = lcd_screen.lock();
                             lock.clone()
                         };
                         let mut img_data = vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
@@ -250,7 +250,16 @@ fn create_window(
                                 img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
                             }
                         }
-                        ui.frame_update(&img_data);
+                        ui.update_screen_texture(&img_data);
+                        
+                        let mut img_data = vec![255; 128*194*4];
+                        for (i, a) in img_data.chunks_mut(4).enumerate() {
+                            a[0] = (i % 255) as u8;
+                            a[1] = (!i % 255) as u8;
+                            // a[2] = (i % 255) as u8;
+                        }
+                        ui.update_tilemap_texture(&img_data);
+
                         ui.notify(event_table::FrameUpdated);
                         window.request_redraw();
                     }

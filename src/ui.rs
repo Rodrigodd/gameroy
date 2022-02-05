@@ -1,8 +1,8 @@
 use std::{any::Any, cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
 
 use crate::{
-    event_table::EventTable, layout::PixelPerfectLayout,
-    split_view::SplitView, style::Style, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
+    event_table::EventTable, layout::PixelPerfectLayout, split_view::SplitView, style::Style,
+    EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use crui::{
     font::Fonts,
@@ -22,6 +22,7 @@ use winit::{
 };
 
 mod disassembler_viewer;
+mod ppu_viewer;
 
 struct Render<'a>(&'a mut GLSpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
@@ -50,6 +51,7 @@ pub struct Ui {
     style: Style,
     pub event_table: Rc<RefCell<EventTable>>,
     pub screen_texture: u32,
+    pub tilemap_texture: u32,
     pub is_animating: bool,
     pub force_render: bool,
 }
@@ -70,6 +72,7 @@ impl Ui {
 
         let screen_texture =
             render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false);
+        let tilemap_texture = render.new_texture(128, 192, &[], false);
         let white_texture = render.new_texture(1, 1, &[255, 255, 255, 255], false);
 
         // create the gui, and the gui_render
@@ -83,6 +86,7 @@ impl Ui {
             camera,
             style,
             screen_texture,
+            tilemap_texture,
             event_table: Rc::new(RefCell::new(EventTable::new())),
             is_animating: false,
             force_render: true,
@@ -91,6 +95,7 @@ impl Ui {
         create_gui(
             &mut ui.gui,
             screen_texture,
+            tilemap_texture,
             ui.event_table.clone(),
             &ui.style,
         );
@@ -134,9 +139,14 @@ impl Ui {
         }
     }
 
-    pub fn frame_update(&mut self, img_data: &[u8]) {
+    pub fn update_screen_texture(&mut self, img_data: &[u8]) {
         self.render
             .update_texture(self.screen_texture, &img_data, None);
+    }
+
+    pub fn update_tilemap_texture(&mut self, img_data: &[u8]) {
+        self.render
+            .update_texture(self.tilemap_texture, &img_data, None);
     }
 
     pub fn render(&mut self, window_id: WindowId) {
@@ -185,6 +195,7 @@ impl Ui {
 pub fn create_gui(
     gui: &mut Gui,
     screen_texture: u32,
+    tilemap_texture: u32,
     event_table: Rc<RefCell<EventTable>>,
     style: &Style,
 ) {
@@ -258,6 +269,7 @@ pub fn create_gui(
                         open_debug_panel(
                             ctx,
                             screen_texture,
+                            tilemap_texture,
                             split_view,
                             root,
                             &sty,
@@ -314,6 +326,7 @@ fn close_debug_panel(
 fn open_debug_panel(
     ctx: &mut crui::Context,
     screen_texture: u32,
+    tilemap_texture: u32,
     split_view: crui::Id,
     root: crui::Id,
     style: &Style,
@@ -382,26 +395,19 @@ fn open_debug_panel(
         ))
         .build(ctx);
 
-    let disas_page = ctx
-        .create_control()
-        .parent(tab_page)
-        .active(false)
-        .build(ctx);
-    disassembler_viewer::build(disas_page, ctx, &mut *event_table.borrow_mut(), &style);
-
-    let _disas_tab = ctx
+    let ppu_page = ctx.create_control().parent(tab_page).build(ctx);
+    ppu_viewer::build(ppu_page, ctx, &mut *event_table.borrow_mut(), &style, tilemap_texture);
+    let _ppu_tab = ctx
         .create_control()
         .parent(tab_header)
         .child(ctx, |cb, _| {
-            cb.graphic(
-                Text::new("disassembly2".to_string(), (0, 0), style.text_style.clone()).into(),
-            )
-            .layout(FitText)
+            cb.graphic(Text::new("ppu".to_string(), (0, 0), style.text_style.clone()).into())
+                .layout(FitText)
         })
         .layout(MarginLayout::default())
         .behaviour(TabButton::new(
-            tab_group,
-            disas_page,
+            tab_group.clone(),
+            ppu_page,
             false,
             style.tab_style.clone(),
         ))

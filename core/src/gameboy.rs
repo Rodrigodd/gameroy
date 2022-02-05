@@ -306,11 +306,24 @@ impl GameBoy {
         match address {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.read(address),
+            // Video RAM
+            0x8000..=0x9FFF => self.memory[address as usize],
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.read(address),
-            0x8000..=0xFEFF | 0xFF80..=0xFFFE => self.memory[address as usize],
-            // IO Registers
-            0xFF00..=0xFF7F | 0xFFFF => self.read_io(address as u8),
+            // Work RAM
+            0xC000..=0xDFFF => self.memory[address as usize],
+            // ECHO RAM
+            0xE000..=0xFDFF => unreachable!(),
+            // Sprite Attribute table
+            0xFE00..=0xFE9F => self.memory[address as usize],
+            // Not Usable
+            0xFEA0..=0xFEFF => 0xff,
+            // I/O registers
+            0xFF00..=0xFF7F => self.read_io(address as u8),
+            // Hight RAM
+            0xFF80..=0xFFFE => self.memory[address as usize],
+            // IE Register
+            0xFFFF => self.read_io(address as u8),
         }
     }
 
@@ -325,11 +338,24 @@ impl GameBoy {
         match address {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.write(address, value),
+            // Video RAM
+            0x8000..=0x9FFF => self.memory[address as usize] = value,
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.write(address, value),
-            // IO Registers
-            0xFF00..=0xFF7F | 0xFFFF => self.write_io(address as u8, value),
-            _ => self.memory[address as usize] = value,
+            // Work RAM
+            0xC000..=0xDFFF => self.memory[address as usize] = value,
+            // ECHO RAM
+            0xE000..=0xFDFF => unreachable!(),
+            // Sprite Attribute table
+            0xFE00..=0xFE9F => self.memory[address as usize] = value,
+            // Not Usable
+            0xFEA0..=0xFEFF => {}
+            // I/O registers
+            0xFF00..=0xFF7F => self.write_io(address as u8, value),
+            // Hight RAM
+            0xFF80..=0xFFFE => self.memory[address as usize] = value,
+            // IE Register
+            0xFFFF => self.write_io(address as u8, value),
         }
     }
 

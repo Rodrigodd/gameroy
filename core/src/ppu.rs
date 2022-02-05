@@ -854,11 +854,7 @@ pub fn draw_sprites(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
         let t = data[2];
         let f = data[3];
 
-        let palette = if f & 0x10 != 0 {
-            ppu.obp1
-        } else {
-            ppu.obp0
-        };
+        let palette = if f & 0x10 != 0 { ppu.obp1 } else { ppu.obp0 };
 
         if sy < 0 || sx < 0 {
             continue;

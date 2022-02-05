@@ -344,6 +344,11 @@ impl Debugger {
                 return RunResult::ReachTargetAddress;
             }
         }
+
+        // clear the audio output
+        let clock_count = inter.0.clock_count;
+        let _ = inter.0.sound.borrow_mut().get_output(clock_count);
+
         if let Some(clock) = self.target_clock {
             if gb.clock_count >= clock {
                 self.target_clock = None;

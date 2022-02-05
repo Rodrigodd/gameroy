@@ -793,7 +793,7 @@ impl Ppu {
 }
 
 pub fn draw_tile(
-    rom: &[u8],
+    ppu: &Ppu,
     draw_pixel: &mut impl FnMut(i32, i32, u8),
     tx: i32,
     ty: i32,
@@ -801,10 +801,10 @@ pub fn draw_tile(
     palette: u8,
     alpha: bool,
 ) {
-    let i = index * 0x10 + 0x8000;
+    let i = index * 0x10;
     for y in 0..8 {
-        let a = rom[i + y as usize * 2];
-        let b = rom[i + y as usize * 2 + 1];
+        let a = ppu.vram[i + y as usize * 2];
+        let b = ppu.vram[i + y as usize * 2 + 1];
         for x in 0..8 {
             let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
             if alpha && color == 0 {
@@ -816,60 +816,58 @@ pub fn draw_tile(
     }
 }
 
-pub fn draw_tiles(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
+pub fn draw_tiles(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
     for i in 0..0x180 {
         let tx = 8 * (i % 16);
         let ty = 8 * (i / 16);
 
-        draw_tile(rom, draw_pixel, tx, ty, i as usize, palette, false);
+        draw_tile(ppu, draw_pixel, tx, ty, i as usize, palette, false);
     }
 }
 
-pub fn draw_background(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
+pub fn draw_background(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
     for i in 0..(32 * 32) {
-        let t = rom[0x9800 + i as usize];
+        let t = ppu.vram[0x1800 + i as usize];
         let tx = 8 * (i % 32);
         let ty = 8 * (i / 32);
 
-        draw_tile(rom, draw_pixel, tx, ty, t as usize, palette, false);
+        draw_tile(ppu, draw_pixel, tx, ty, t as usize, palette, false);
     }
 }
 
-pub fn draw_window(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
+pub fn draw_window(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
     for i in 0..(32 * 32) {
-        let t = rom[0x9C00 + i as usize];
+        let t = ppu.vram[0x1C00 + i as usize];
         let tx = 8 * (i % 32);
         let ty = 8 * (i / 32);
 
-        draw_tile(rom, draw_pixel, tx, ty, t as usize, palette, false);
+        draw_tile(ppu, draw_pixel, tx, ty, t as usize, palette, false);
     }
 }
 
-pub fn draw_sprites(rom: &[u8], draw_pixel: &mut impl FnMut(i32, i32, u8)) {
+pub fn draw_sprites(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
     for i in 0..40 {
-        let i = 0xFE00 + i as usize * 4;
-        let data = &rom[i..i + 4];
+        let i = i as usize * 4;
+        let data = &ppu.oam[i..i + 4];
         let sy = data[0] as i32 - 16;
         let sx = data[1] as i32 - 8;
         let t = data[2];
         let f = data[3];
 
         let palette = if f & 0x10 != 0 {
-            // OBP1
-            rom[0xFF49]
+            ppu.obp1
         } else {
-            // OBP0
-            rom[0xFF48]
+            ppu.obp0
         };
 
         if sy < 0 || sx < 0 {
             continue;
         }
-        draw_tile(rom, draw_pixel, sx, sy, t as usize, palette, true);
+        draw_tile(ppu, draw_pixel, sx, sy, t as usize, palette, true);
     }
 }
 
-pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
+pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
     // Draw Background
     if true {
         let scx = ppu.scx();
@@ -885,7 +883,7 @@ pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, 
                 let i = x as usize + y as usize * 32;
                 // BG Tile Map Select
                 let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
-                let mut tile = rom[address + i as usize] as usize;
+                let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
 
                 // if is using 8800 method
                 if ppu.lcdc & 0x10 == 0 {
@@ -895,7 +893,7 @@ pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, 
                     }
                 }
 
-                draw_tile(rom, draw_pixel, tx, ty, tile, ppu.bgp, false);
+                draw_tile(ppu, draw_pixel, tx, ty, tile, ppu.bgp, false);
             }
         }
     }
@@ -912,7 +910,7 @@ pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, 
                 let i = x as usize + y as usize * 32;
                 // BG Tile Map Select
                 let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
-                let mut tile = rom[address + i as usize] as usize;
+                let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
 
                 // if is using 8800 method
                 if ppu.lcdc & 0x10 == 0 {
@@ -922,17 +920,17 @@ pub fn draw_screen(rom: &[u8], ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, 
                     }
                 }
 
-                draw_tile(rom, draw_pixel, tx, ty, tile, ppu.bgp, false);
+                draw_tile(ppu, draw_pixel, tx, ty, tile, ppu.bgp, false);
             }
         }
     }
     // Draw Sprites, if enabled
     if ppu.lcdc & 0x02 != 0 {
-        draw_sprites(rom, draw_pixel);
+        draw_sprites(ppu, draw_pixel);
     }
 }
 
-pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
+pub fn draw_scan_line(ppu: &mut Ppu) {
     // Draw background
     if ppu.lcdc & 0x01 != 0 {
         // (py, px) is a pixel in the background map
@@ -946,7 +944,7 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
 
             // BG Tile Map Select
             let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
-            let mut tile = rom[address + i as usize] as usize;
+            let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
 
             // if is using 8800 method
             if ppu.lcdc & 0x10 == 0 {
@@ -959,10 +957,10 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
             {
                 let palette = ppu.bgp;
                 let alpha = false;
-                let i = tile * 0x10 + 0x8000;
+                let i = tile * 0x10;
                 let y = py % 8;
-                let a = rom[i + y as usize * 2];
-                let b = rom[i + y as usize * 2 + 1];
+                let a = ppu.vram[i + y as usize * 2];
+                let b = ppu.vram[i + y as usize * 2 + 1];
                 let x = px % 8;
                 let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
                 if alpha && color == 0 {
@@ -991,7 +989,7 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
 
             // BG Tile Map Select
             let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
-            let mut tile = rom[address + i as usize] as usize;
+            let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
 
             // if is using 8800 method
             if ppu.lcdc & 0x10 == 0 {
@@ -1004,10 +1002,10 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
             {
                 let palette = ppu.bgp;
                 let alpha = false;
-                let i = tile * 0x10 + 0x8000;
+                let i = tile * 0x10;
                 let y = py % 8;
-                let a = rom[i + y as usize * 2];
-                let b = rom[i + y as usize * 2 + 1];
+                let a = ppu.vram[i + y as usize * 2];
+                let b = ppu.vram[i + y as usize * 2 + 1];
                 let x = px % 8;
                 let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
                 if alpha && color == 0 {
@@ -1042,18 +1040,16 @@ pub fn draw_scan_line(rom: &[u8], ppu: &mut Ppu) {
             };
 
             let palette = if flags & 0x10 != 0 {
-                // OBP1
-                rom[0xFF49]
+                ppu.obp1
             } else {
-                // OBP0
-                rom[0xFF48]
+                ppu.obp0
             };
 
             {
                 let y = py % 8;
-                let i = tile * 0x10 + 0x8000;
-                let a = rom[i + y as usize * 2];
-                let b = rom[i + y as usize * 2 + 1];
+                let i = tile * 0x10;
+                let a = ppu.vram[i + y as usize * 2];
+                let b = ppu.vram[i + y as usize * 2 + 1];
                 let ly = ppu.ly;
                 for x in 0.max(-sx)..8.min(160 - sx) {
                     let lx = sx + x;

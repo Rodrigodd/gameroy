@@ -396,7 +396,13 @@ fn open_debug_panel(
         .build(ctx);
 
     let ppu_page = ctx.create_control().parent(tab_page).build(ctx);
-    ppu_viewer::build(ppu_page, ctx, &mut *event_table.borrow_mut(), &style, tilemap_texture);
+    ppu_viewer::build(
+        ppu_page,
+        ctx,
+        &mut *event_table.borrow_mut(),
+        &style,
+        tilemap_texture,
+    );
     let _ppu_tab = ctx
         .create_control()
         .parent(tab_header)

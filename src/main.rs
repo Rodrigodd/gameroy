@@ -157,8 +157,8 @@ fn create_window(
 
     let (mut ui, window) = ui::Ui::new(wb, &event_loop);
 
-    let lcd_screen: Arc<Mutex<Vec<u8>>> =
-        Arc::new(Mutex::new(vec![0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+    let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+        Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     let lcd_screen_clone = lcd_screen.clone();
     let proxy = event_loop.create_proxy();
     gb.v_blank = Some(Box::new(move |gb| {
@@ -169,7 +169,7 @@ fn create_window(
         let _ = proxy.send_event(UserEvent::FrameUpdated);
     }));
 
-    let inter = Arc::new(Mutex::new(gb));
+    let gb = Arc::new(Mutex::new(gb));
     let proxy = event_loop.create_proxy();
 
     let (emu_channel, recv) = sync_channel(3);
@@ -195,18 +195,20 @@ fn create_window(
         }));
     }
 
-    ui.set::<Arc<Mutex<GameBoy>>>(inter.clone());
+    ui.set::<Arc<Mutex<GameBoy>>>(gb.clone());
     ui.set::<Arc<Mutex<Debugger>>>(debugger.clone());
     ui.set(emu_channel.clone());
     ui.set::<EventLoopProxy<UserEvent>>(proxy.clone());
     ui.set(AppState::new(debug));
 
-    let mut emu_thread = Some(
-        thread::Builder::new()
+    let mut emu_thread = {
+        let gb = gb.clone();
+        let join_handle = thread::Builder::new()
             .name("emulator".to_string())
-            .spawn(move || Emulator::run(inter, debugger, recv, proxy, movie, rom_path, save_path))
-            .unwrap(),
-    );
+            .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom_path, save_path))
+            .unwrap();
+        Some(join_handle)
+    };
 
     // winit event loop
     event_loop.run(move |event, _, control| {
@@ -240,24 +242,31 @@ fn create_window(
                             let lock = lcd_screen.lock();
                             lock.clone()
                         };
+                        const COLOR: [[u8; 3]; 4] =
+                            [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
                         let mut img_data = vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
                         for y in 0..SCREEN_HEIGHT {
                             for x in 0..SCREEN_WIDTH {
                                 let i = (x + y * SCREEN_WIDTH) as usize * 4;
                                 let c = screen[i / 4];
-                                const COLOR: [[u8; 3]; 4] =
-                                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
                                 img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
                             }
                         }
                         ui.update_screen_texture(&img_data);
-                        
-                        let mut img_data = vec![255; 128*194*4];
-                        for (i, a) in img_data.chunks_mut(4).enumerate() {
-                            a[0] = (i % 255) as u8;
-                            a[1] = (!i % 255) as u8;
-                            // a[2] = (i % 255) as u8;
-                        }
+
+                        let img_data = {
+                            let mut img_data = vec![255; 128 * 194 * 4];
+                            let gb = gb.lock();
+                            gameroy::ppu::draw_tiles(
+                                &gb.ppu,
+                                &mut |x, y, c| {
+                                    let i = (x + y * 128) as usize * 4;
+                                    img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+                                },
+                                gb.ppu.bgp,
+                            );
+                            img_data
+                        };
                         ui.update_tilemap_texture(&img_data);
 
                         ui.notify(event_table::FrameUpdated);

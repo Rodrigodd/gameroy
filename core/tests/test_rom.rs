@@ -131,10 +131,14 @@ mod blargg {
             inter.interpret_op();
         }
 
-        let signature = &inter.0.memory[0xA001..=0xA003];
-        if signature == [0xDE, 0xB0, 0x61] {
+        let signature = [
+            inter.0.read(0xA001),
+            inter.0.read(0xA002),
+            inter.0.read(0xA003),
+        ];
+        if signature != [0xDE, 0xB0, 0x61] {
             return Err(format!(
-                "invalid output to memory signature: {:?}",
+                "invalid output to memory signature: {:0x?}",
                 signature
             ));
         }

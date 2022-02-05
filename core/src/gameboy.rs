@@ -1,7 +1,7 @@
 use crate::cartridge::Cartridge;
 use crate::save_state::{LoadStateError, SaveState};
 use crate::sound_controller::SoundController;
-use crate::{consts, cpu::Cpu, disassembler::Trace, ppu::Ppu};
+use crate::{cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::io::{Read, Write};
@@ -102,7 +102,10 @@ pub struct GameBoy {
     pub trace: RefCell<Trace>,
     pub cpu: Cpu,
     pub cartridge: Cartridge,
-    pub memory: [u8; 0x10000],
+    /// C000-DFFF: Work RAM
+    pub wram: [u8; 0x2000],
+    /// FF80-FFFE: Hight RAM
+    pub hram: [u8; 0x7F],
     pub boot_rom: Option<[u8; 0x100]>,
     pub boot_rom_active: bool,
     pub clock_count: u64,
@@ -111,8 +114,19 @@ pub struct GameBoy {
     pub ppu: Ppu,
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
+    /// FF00: P1
+    pub joypad_io: u8,
     pub joypad: u8,
+    /// FF01: SB
+    pub serial_data: u8,
+    /// FF02: SC
+    pub serial_control: u8,
     pub serial_transfer: Box<dyn FnMut(u8) + Send>,
+    /// FF0F: IF
+    pub interrupt_flag: u8,
+    /// FFFF: IE
+    pub interrupt_enabled: u8,
+
     pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
 }
 
@@ -123,7 +137,8 @@ impl std::fmt::Debug for GameBoy {
             // .field("trace", &self.trace)
             // .field("cpu", &self.cpu)
             // .field("cartridge", &self.cartridge)
-            .field("memory", &self.memory)
+            .field("wram", &self.wram)
+            .field("hram", &self.hram)
             .field("boot_rom", &self.boot_rom)
             .field("boot_rom_active", &self.boot_rom_active)
             .field("clock_count", &self.clock_count)
@@ -131,6 +146,7 @@ impl std::fmt::Debug for GameBoy {
             // .field("sound", &self.sound)
             // .field("ppu", &self.ppu)
             .field("joypad", &self.joypad)
+            .field("joypad_io", &self.joypad_io)
             // .field("serial_transfer", &self.serial_transfer)
             // .field("v_blank", &self.v_blank)
             .finish()
@@ -143,7 +159,8 @@ impl PartialEq for GameBoy {
         // self.trace == other.trace &&
         self.cpu == other.cpu
             && self.cartridge == other.cartridge
-            && self.memory == other.memory
+            && self.wram == other.wram
+            && self.hram == other.hram
             && self.boot_rom == other.boot_rom
             && self.boot_rom_active == other.boot_rom_active
             && self.clock_count == other.clock_count
@@ -151,6 +168,7 @@ impl PartialEq for GameBoy {
             && self.sound == other.sound
             && self.ppu == other.ppu
             && self.joypad == other.joypad
+            && self.joypad_io == other.joypad_io
         // && self.serial_transfer == other.serial_transfer
         // && self.v_blank == other.v_blank
     }
@@ -160,7 +178,8 @@ impl SaveState for GameBoy {
         // self.trace.save_state(output)?;
         self.cpu.save_state(data)?;
         self.cartridge.save_state(data)?;
-        self.memory.save_state(data)?;
+        self.wram.save_state(data)?;
+        self.hram.save_state(data)?;
         // self.boot_rom.save_state(output)?;
         [&self.boot_rom_active].save_state(data)?;
         self.clock_count.save_state(data)?;
@@ -172,6 +191,7 @@ impl SaveState for GameBoy {
         }
         self.ppu.save_state(data)?;
         self.joypad.save_state(data)?;
+        self.joypad_io.save_state(data)?;
         // self.serial_transfer.save_state(data)?;
         // self.v_blank.save_state(data)
         Ok(())
@@ -181,7 +201,8 @@ impl SaveState for GameBoy {
         // self.trace.load_state(output)?;
         self.cpu.load_state(data)?;
         self.cartridge.load_state(data)?;
-        self.memory.load_state(data)?;
+        self.wram.load_state(data)?;
+        self.hram.load_state(data)?;
         // self.boot_rom.load_state(output)?;
         [&mut self.boot_rom_active].load_state(data)?;
         self.clock_count.load_state(data)?;
@@ -198,6 +219,7 @@ impl SaveState for GameBoy {
         }
         self.ppu.load_state(data)?;
         self.joypad.load_state(data)?;
+        self.joypad_io.load_state(data)?;
         // self.serial_transfer.load_state(data)?;
         // self.v_blank.load_state(data)
         Ok(())
@@ -209,18 +231,25 @@ impl GameBoy {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
             cartridge,
-            memory: [0; 0x10000],
+            wram: [0; 0x2000],
+            hram: [0; 0x7F],
             boot_rom,
             boot_rom_active: true,
             clock_count: 0,
             timer: Timer::default(),
             sound: RefCell::new(SoundController::default()),
             ppu: Ppu::default(),
+
             joypad: 0xFF,
+            joypad_io: 0xFF,
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
             }),
             v_blank: None,
+            serial_data: 0,
+            serial_control: 0,
+            interrupt_flag: 0,
+            interrupt_enabled: 0,
         };
 
         if this.boot_rom.is_none() {
@@ -238,13 +267,15 @@ impl GameBoy {
         }
         // TODO: Maybe I should reset the cartridge
         self.cpu = Cpu::default();
-        self.memory = [0; 0x10000];
+        self.wram = [0; 0x2000];
+        self.hram = [0; 0x7F];
         self.boot_rom_active = true;
         self.clock_count = 0;
         self.timer = Timer::default();
         self.sound = RefCell::new(SoundController::default());
         self.ppu = Ppu::default();
         self.joypad = 0xFF;
+        self.joypad_io = 0x00;
     }
 
     /// Reset the gameboy to its state after disabling the boot.
@@ -263,9 +294,11 @@ impl GameBoy {
             ime: crate::cpu::ImeState::Disabled,
             state: crate::cpu::CpuState::Running,
         };
-        self.memory
-            .load_state(&mut &include_bytes!("../after_boot/memory.sav")[..])
-            .unwrap();
+
+        self.wram = [0; 0x2000];
+        self.hram = [0; 0x7F];
+        self.hram[0x7a..=0x7c].copy_from_slice(&[0x39, 0x01, 0x2e]);
+
         self.boot_rom_active = false;
         self.clock_count = 23_233_156;
         self.timer = Timer {
@@ -285,10 +318,7 @@ impl GameBoy {
             .load_state(&mut &include_bytes!("../after_boot/ppu.sav")[..])
             .unwrap();
         self.joypad = 0xFF;
-    }
-
-    pub fn len(&self) -> usize {
-        self.memory.len()
+        self.joypad_io = 0x00;
     }
 
     pub fn read(&self, mut address: u16) -> u8 {
@@ -307,21 +337,21 @@ impl GameBoy {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.read(address),
             // Video RAM
-            0x8000..=0x9FFF => self.memory[address as usize],
+            0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000],
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.read(address),
             // Work RAM
-            0xC000..=0xDFFF => self.memory[address as usize],
+            0xC000..=0xDFFF => self.wram[address as usize - 0xC000],
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => self.memory[address as usize],
+            0xFE00..=0xFE9F => self.ppu.oam[address as usize - 0xFE00],
             // Not Usable
             0xFEA0..=0xFEFF => 0xff,
             // I/O registers
             0xFF00..=0xFF7F => self.read_io(address as u8),
             // Hight RAM
-            0xFF80..=0xFFFE => self.memory[address as usize],
+            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
             // IE Register
             0xFFFF => self.read_io(address as u8),
         }
@@ -331,29 +361,26 @@ impl GameBoy {
         if (0xE000..=0xFDFF).contains(&address) {
             address -= 0x2000;
         }
-        if address == 0xFF02 && value == 0x81 {
-            (self.serial_transfer)(self.memory[0xFF01]);
-        }
 
         match address {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.write(address, value),
             // Video RAM
-            0x8000..=0x9FFF => self.memory[address as usize] = value,
+            0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000] = value,
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.write(address, value),
             // Work RAM
-            0xC000..=0xDFFF => self.memory[address as usize] = value,
+            0xC000..=0xDFFF => self.wram[address as usize - 0xC000] = value,
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => self.memory[address as usize] = value,
+            0xFE00..=0xFE9F => self.ppu.oam[address as usize - 0xFE00] = value,
             // Not Usable
             0xFEA0..=0xFEFF => {}
             // I/O registers
             0xFF00..=0xFF7F => self.write_io(address as u8, value),
             // Hight RAM
-            0xFF80..=0xFFFE => self.memory[address as usize] = value,
+            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
             // IE Register
             0xFFFF => self.write_io(address as u8, value),
         }
@@ -363,7 +390,7 @@ impl GameBoy {
     pub fn tick(&mut self, count: u8) {
         self.clock_count += count as u64;
         if self.timer.update(self.clock_count) {
-            self.memory[consts::IF as usize] |= 1 << 2;
+            self.interrupt_flag |= 1 << 2;
         }
         Ppu::update(self);
     }
@@ -380,16 +407,29 @@ impl GameBoy {
 
     fn write_io(&mut self, address: u8, value: u8) {
         match address {
-            0x00 => self.memory[0xFF00] = 0b1100_1111 | (value & 0x30), // JOYPAD
+            0x00 => self.joypad_io = 0b1100_1111 | (value & 0x30), // JOYPAD
+            0x01 => self.serial_data = value,
+            0x02 => {
+                self.serial_control = value;
+                if value == 0x81 {
+                    (self.serial_transfer)(self.serial_data);
+                }
+            }
+            0x03 => {}
             0x04 => self.timer.write_div(value),
             0x05 => self.timer.write_tima(value),
             0x06 => self.timer.write_tma(value),
             0x07 => self.timer.write_tac(value),
-            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => {
+            0x08..=0x0e => {}
+            0x0f => self.interrupt_flag = value,
+            0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound
                     .borrow_mut()
                     .write(self.clock_count, address, value)
             }
+            0x15 => {}
+            0x1f => {}
+            0x27..=0x2f => {}
             0x40 => self.ppu.set_lcdc(value),
             0x41 => self.ppu.set_stat(value),
             0x42 => self.ppu.set_scy(value),
@@ -399,9 +439,10 @@ impl GameBoy {
             0x46 => {
                 // DMA Transfer
                 // TODO: this is not the proper behavior, of course
-                let start = (value as usize) << 8;
+                let start = (value as u16) << 8;
                 for (i, j) in (0xFE00..=0xFE9F).zip(start..start + 0x9F) {
-                    self.memory[i] = self.memory[j];
+                    let value = self.read(j);
+                    self.write(i, value);
                 }
             }
             0x47 => self.ppu.set_bgp(value),
@@ -409,12 +450,16 @@ impl GameBoy {
             0x49 => self.ppu.set_obp1(value),
             0x4a => self.ppu.set_wy(value),
             0x4b => self.ppu.set_wx(value),
-            0x4d => {}
-            0x50 if value & 0b1 != 0 => {
-                self.boot_rom_active = false;
-                self.cpu.pc = 0x100;
+            0x4c..=0x4f => {}
+            0x50 => {
+                if value & 0b1 != 0 {
+                    self.boot_rom_active = false;
+                    self.cpu.pc = 0x100;
+                }
             }
-            _ => self.memory[0xFF00 | address as usize] = value,
+            0x51..=0x7f => {}
+            0x80..=0xfe => self.hram[address as usize - 0x80] = value,
+            0xff => self.interrupt_enabled = value,
         }
     }
 
@@ -422,7 +467,7 @@ impl GameBoy {
         match address {
             0x00 => {
                 // JOYPAD
-                let v = self.memory[0xFF00];
+                let v = self.joypad_io;
                 let mut r = (v & 0x30) | 0b1100_0000;
                 if v & 0x10 != 0 {
                     r |= (self.joypad & 0xF0) >> 4;
@@ -432,31 +477,43 @@ impl GameBoy {
                 }
                 r
             }
+            0x01 => self.serial_data,
+            0x02 => self.serial_control,
+            0x03 => 0xff,
             0x04 => self.timer.read_div(),
             0x05 => self.timer.read_tima(),
             0x06 => self.timer.read_tma(),
             0x07 => self.timer.read_tac(),
-            0x10..=0x14 | 0x16..=0x1E | 0x20..=0x26 | 0x30..=0x3F => {
+            0x08..=0x0e => 0xff,
+            0x0f => self.interrupt_flag,
+            0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound.borrow_mut().read(self.clock_count, address)
             }
+            0x15 => 0xff,
+            0x1f => 0xff,
+            0x27..=0x2f => 0xff,
             0x40 => self.ppu.lcdc(),
             0x41 => self.ppu.stat(),
             0x42 => self.ppu.scy(),
             0x43 => self.ppu.scx(),
             0x44 => self.ppu.ly(),
             0x45 => self.ppu.lyc(),
-            // 0x44 => ((self.clock_count / 456) % 153) as u8,
+            0x46 => 0xff,
             0x47 => self.ppu.bgp(),
             0x48 => self.ppu.obp0(),
             0x49 => self.ppu.obp1(),
             0x4a => self.ppu.wy(),
             0x4b => self.ppu.wx(),
+            0x4c => 0xff,
             0x4d => 0xff,
-            0x80..=0xff | 0x0f => {
+            0x4e..=0x4f => 0xff,
+            0x50 => 0xff,
+            0x51..=0x7F => 0xff,
+            0x80..=0xfe => {
                 // high RAM, IF flag and IE flag
-                self.memory[0xFF00 | address as usize]
+                self.hram[address as usize - 0x80]
             }
-            _ => 0xff,
+            0xff => self.interrupt_enabled,
         }
     }
 }

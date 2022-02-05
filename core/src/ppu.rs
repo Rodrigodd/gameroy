@@ -114,6 +114,11 @@ impl SaveState for Sprite {
 
 #[derive(PartialEq, Eq)]
 pub struct Ppu {
+    /// 8000-9FFF: Video RAM
+    pub vram: [u8; 0x2000],
+    /// FE00-FE9F: Sprite Attribute table
+    pub oam: [u8; 0xA0],
+
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
     pub screen: [u8; 144 * 160],
@@ -176,6 +181,9 @@ pub struct Ppu {
 }
 impl SaveState for Ppu {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.vram.save_state(data)?;
+        self.oam.save_state(data)?;
+
         self.screen.save_state(data)?;
         self.sprite_buffer.save_state(data)?;
         self.sprite_buffer_len.save_state(data)?;
@@ -217,6 +225,9 @@ impl SaveState for Ppu {
     }
 
     fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        self.vram.load_state(data)?;
+        self.oam.load_state(data)?;
+
         self.screen.load_state(data)?;
         self.sprite_buffer.load_state(data)?;
         self.sprite_buffer_len.load_state(data)?;
@@ -276,6 +287,8 @@ impl Default for Ppu {
             obp1: Default::default(),
             wy: Default::default(),
             wx: Default::default(),
+            vram: [0; 0x2000],
+            oam: [0; 0xA0],
             last_clock_count: 0,
             background_fifo: Default::default(),
             sprite_fifo: Default::default(),
@@ -407,12 +420,12 @@ impl Ppu {
         self.wy
     }
 
-    fn search_objects(&mut self, memory: &mut [u8]) {
+    fn search_objects(&mut self) {
         self.sprite_buffer_len = 0;
         let sprite_height = if self.lcdc & 0x04 != 0 { 16 } else { 8 };
         for i in 0..40 {
-            let i = 0xFE00 + i as usize * 4;
-            let data = &memory[i..i + 4];
+            let i = i as usize * 4;
+            let data = &self.oam[i..i + 4];
             let sy = data[0];
             let sx = data[1];
             let t = data[2];
@@ -436,60 +449,58 @@ impl Ppu {
     }
 
     pub fn update(gb: &mut GameBoy) {
-        use crate::consts;
-
         for clock in gb.ppu.last_clock_count..gb.clock_count {
             gb.ppu.ly = ((clock / 456) % 153) as u8;
             let lx = clock % 456;
 
-            let set_stat_int = |s: &mut Self, memory: &mut [u8], i: u8| {
-                if s.stat & (1 << i) != 0 {
-                    memory[consts::IF as usize] |= 1 << 1;
+            let set_stat_int = |gb: &mut GameBoy, i: u8| {
+                if gb.ppu.stat & (1 << i) != 0 {
+                    gb.interrupt_flag |= 1 << 1;
                 }
             };
-            let set_mode = |s: &mut Self, memory: &mut [u8], mode: u8| {
+            let set_mode = |gb: &mut GameBoy, mode: u8| {
                 debug_assert!(mode <= 3);
-                s.stat = (s.stat & !0b11) | mode;
+                gb.ppu.stat = (gb.ppu.stat & !0b11) | mode;
 
                 match mode {
                     // H-Blank
                     0 => {
                         // draw_scan_line(memory, s);
-                        if s.is_in_window {
-                            s.wyc += 1;
+                        if gb.ppu.is_in_window {
+                            gb.ppu.wyc += 1;
                         }
                         // Mode 0 STAT Interrupt
-                        set_stat_int(s, memory, 3);
+                        set_stat_int(gb, 3);
                     }
                     // V-Blank
                     1 => {
-                        s.wyc = 0;
-                        s.reach_window = false;
+                        gb.ppu.wyc = 0;
+                        gb.ppu.reach_window = false;
                         // Mode 1 STAT Interrupt
-                        set_stat_int(s, memory, 4);
+                        set_stat_int(gb, 4);
                     }
                     // OAM search
                     2 => {
-                        s.search_objects(memory);
+                        gb.ppu.search_objects();
                         // Mode 2 STAT Interrupt
-                        set_stat_int(s, memory, 5);
+                        set_stat_int(gb, 5);
                     }
                     // Draw
                     3 => {
-                        s.background_fifo.clear();
-                        s.sprite_fifo.clear();
+                        gb.ppu.background_fifo.clear();
+                        gb.ppu.sprite_fifo.clear();
 
-                        s.fetcher_step = 0;
-                        s.fetcher_skipped_first_push = false;
-                        s.sprite_fetching = false;
-                        s.fetcher_cycle = false;
-                        s.fetcher_x = 0;
-                        if s.wy == s.ly {
-                            s.reach_window = true;
+                        gb.ppu.fetcher_step = 0;
+                        gb.ppu.fetcher_skipped_first_push = false;
+                        gb.ppu.sprite_fetching = false;
+                        gb.ppu.fetcher_cycle = false;
+                        gb.ppu.fetcher_x = 0;
+                        if gb.ppu.wy == gb.ppu.ly {
+                            gb.ppu.reach_window = true;
                         }
-                        s.is_in_window = false;
-                        s.curr_x = 0;
-                        s.discarting = true;
+                        gb.ppu.is_in_window = false;
+                        gb.ppu.curr_x = 0;
+                        gb.ppu.discarting = true;
                     }
                     4..=255 => unreachable!(),
                 }
@@ -502,7 +513,7 @@ impl Ppu {
                 // STAT Coincidente Flag
                 gb.ppu.stat |= 1 << 2;
                 // LY == LYC STAT Interrupt
-                set_stat_int(&mut gb.ppu, &mut gb.memory, 6)
+                set_stat_int(gb, 6)
             }
 
             // mode transition
@@ -510,35 +521,35 @@ impl Ppu {
                 // hblank
                 0 => {
                     if gb.ppu.ly == 144 {
-                        set_mode(&mut gb.ppu, &mut gb.memory, 1);
+                        set_mode(gb, 1);
 
                         // V-Blank Interrupt
                         if let Some(mut v_blank) = gb.v_blank.take() {
                             v_blank(gb);
                             gb.v_blank = Some(v_blank);
                         }
-                        gb.memory[consts::IF as usize] |= 1 << 0;
+                        gb.interrupt_flag |= 1 << 0;
                     } else if lx == 0 {
-                        set_mode(&mut gb.ppu, &mut gb.memory, 2);
+                        set_mode(gb, 2);
                     }
                 }
                 // vblank
                 1 => {
                     if gb.ppu.ly == 0 {
                         gb.ppu.wyc = 0;
-                        set_mode(&mut gb.ppu, &mut gb.memory, 2);
+                        set_mode(gb, 2);
                     }
                 }
                 // searching objects
                 2 => {
                     if lx == 80 {
-                        set_mode(&mut gb.ppu, &mut gb.memory, 3);
+                        set_mode(gb, 3);
                     }
                 }
                 // drawing
                 3 => {
                     if gb.ppu.curr_x == 160 {
-                        set_mode(&mut gb.ppu, &mut gb.memory, 0);
+                        set_mode(gb, 0);
                     }
                 }
 

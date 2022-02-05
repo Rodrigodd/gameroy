@@ -820,11 +820,11 @@ impl Interpreter<'_> {
     }
 
     pub fn interpret_op(&mut self) {
-        let interrupts: u8 = self.0.memory[consts::IF] & self.0.memory[consts::IE];
+        let interrupts: u8 = self.0.interrupt_flag & self.0.interrupt_enabled;
         if interrupts != 0 {
             if self.0.cpu.ime == ImeState::Enabled {
                 self.0.cpu.ime = ImeState::Disabled;
-                self.0.memory[consts::IF] = 0;
+                self.0.interrupt_flag = 0;
                 let address = [0x40, 0x48, 0x50, 0x58, 0x60][interrupts.trailing_zeros() as usize];
                 self.pushr(self.0.cpu.pc);
                 self.jump_to(address);

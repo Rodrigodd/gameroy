@@ -204,8 +204,11 @@ impl Debugger {
                     .save_state(&mut stf("cpu.sav"))
                     .map_err(|x| x.to_string())?;
                 // gb.cartridge.save_state(&mut stf("cpu.sav")).map_err(|x| x.to_string())?;
-                gb.memory
-                    .save_state(&mut stf("memory.sav"))
+                gb.wram
+                    .save_state(&mut stf("wram.sav"))
+                    .map_err(|x| x.to_string())?;
+                gb.hram
+                    .save_state(&mut stf("hram.sav"))
                     .map_err(|x| x.to_string())?;
                 // gb.boot_rom.save_state(output).map_err(|x| x.to_string())?;
                 [&gb.boot_rom_active]

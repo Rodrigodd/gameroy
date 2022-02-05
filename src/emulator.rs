@@ -288,9 +288,9 @@ impl Emulator {
                         }
                     },
                     EmulatorState::RunNoBreak => {
-                        let mut gb = self.gb.lock();
-                        let mut inter = Interpreter(&mut *gb);
                         if self.frame_limit {
+                            let mut gb = self.gb.lock();
+                            let mut inter = Interpreter(&mut *gb);
                             let elapsed = self.start_time.elapsed();
                             let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
                                 + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9))
@@ -320,6 +320,8 @@ impl Emulator {
                         } else {
                             // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                             loop {
+                                let mut gb = self.gb.lock();
+                                let mut inter = Interpreter(&mut *gb);
                                 let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
 
                                 while inter.0.clock_count < target_clock {

@@ -144,9 +144,8 @@ impl Ui {
             .update_texture(self.screen_texture, &img_data, None);
     }
 
-    pub fn update_tilemap_texture(&mut self, img_data: &[u8]) {
-        self.render
-            .update_texture(self.tilemap_texture, &img_data, None);
+    pub fn update_texture(&mut self, texture: u32, img_data: &[u8]) {
+        self.render.update_texture(texture, &img_data, None);
     }
 
     pub fn render(&mut self, window_id: WindowId) {

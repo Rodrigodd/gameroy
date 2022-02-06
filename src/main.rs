@@ -254,21 +254,6 @@ fn create_window(
                         }
                         ui.update_screen_texture(&img_data);
 
-                        let img_data = {
-                            let mut img_data = vec![255; 128 * 194 * 4];
-                            let gb = gb.lock();
-                            gameroy::ppu::draw_tiles(
-                                &gb.ppu,
-                                &mut |x, y, c| {
-                                    let i = (x + y * 128) as usize * 4;
-                                    img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-                                },
-                                gb.ppu.bgp,
-                            );
-                            img_data
-                        };
-                        ui.update_tilemap_texture(&img_data);
-
                         ui.notify(event_table::FrameUpdated);
                         window.request_redraw();
                     }
@@ -287,6 +272,7 @@ fn create_window(
                         ui.notify(event_table::Debug(value));
                         emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
+                    UpdateTexture(texture, data) => ui.update_texture(texture, &data),
                 }
             }
             Event::MainEventsCleared => {}
@@ -315,4 +301,5 @@ pub enum UserEvent {
     BreakpointsUpdated,
     WatchsUpdated,
     Debug(bool),
+    UpdateTexture(u32, Box<[u8]>),
 }

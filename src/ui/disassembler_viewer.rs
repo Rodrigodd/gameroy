@@ -371,7 +371,7 @@ impl ListBuilder for BreakpointList {
         let text = Self::get_text(ctx, index);
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
-                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()).into())
+                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()))
                     .layout(FitText)
                     .expand_x(true)
             })
@@ -441,7 +441,7 @@ impl ListBuilder for WatchsList {
         let (address, text) = Self::watch_text(ctx, index);
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
-                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()).into())
+                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()))
                     .layout(FitText)
                     .expand_x(true)
             })
@@ -543,7 +543,6 @@ PC: {:04x}",
                 (-1, 0),
                 style.text_style.clone(),
             )
-            .into(),
         )
         .layout(FitText)
         .build(ctx);
@@ -558,7 +557,7 @@ PC: {:04x}",
     let _break_header = ctx
         .create_control()
         .parent(breaks)
-        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()).into())
+        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()))
         .layout(FitText)
         .build(ctx);
 
@@ -587,7 +586,7 @@ PC: {:04x}",
     let _watchs_header = ctx
         .create_control()
         .parent(watchs)
-        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()).into())
+        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()))
         .layout(FitText)
         .build(ctx);
 
@@ -628,7 +627,7 @@ PC: {:04x}",
 
     ctx.create_control_reserved(label)
         .parent(text_field)
-        .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()).into())
+        .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()))
         .build(ctx);
 }
 

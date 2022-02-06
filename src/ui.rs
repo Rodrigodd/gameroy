@@ -302,7 +302,7 @@ pub fn create_gui(
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(gui, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]).into())
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
         })
         .build(gui);
     gui.set_focus(Some(screen_id));
@@ -324,7 +324,7 @@ fn close_debug_panel(
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]).into())
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
         })
         .build(ctx);
     ctx.set_focus(*screen_id);
@@ -357,7 +357,7 @@ fn open_debug_panel(
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]).into())
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
         })
         .build(ctx);
 
@@ -390,7 +390,7 @@ fn open_debug_panel(
         .parent(tab_header)
         .child(ctx, |cb, _| {
             cb.graphic(
-                Text::new("disassembly".to_string(), (0, 0), style.text_style.clone()).into(),
+                Text::new("disassembly".to_string(), (0, 0), style.text_style.clone()),
             )
             .layout(FitText)
         })
@@ -415,7 +415,7 @@ fn open_debug_panel(
         .create_control()
         .parent(tab_header)
         .child(ctx, |cb, _| {
-            cb.graphic(Text::new("ppu".to_string(), (0, 0), style.text_style.clone()).into())
+            cb.graphic(Text::new("ppu".to_string(), (0, 0), style.text_style.clone()))
                 .layout(FitText)
         })
         .layout(MarginLayout::default())

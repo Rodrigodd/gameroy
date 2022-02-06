@@ -127,7 +127,7 @@ pub fn build(
 
     ctx.create_control()
         .parent(content)
-        .graphic(Texture::new(textures.tilemap, [0.0, 0.0, 1.0, 1.0]).into())
+        .graphic(Texture::new(textures.tilemap, [0.0, 0.0, 1.0, 1.0]))
         .min_size([128.0, 196.0])
         .fill_x(crui::RectFill::ShrinkCenter)
         .fill_y(crui::RectFill::ShrinkCenter)
@@ -135,7 +135,7 @@ pub fn build(
 
     ctx.create_control()
         .parent(content)
-        .graphic(Texture::new(textures.background, [0.0, 0.0, 1.0, 1.0]).into())
+        .graphic(Texture::new(textures.background, [0.0, 0.0, 1.0, 1.0]))
         .min_size([256.0, 256.0])
         .fill_x(crui::RectFill::ShrinkCenter)
         .fill_y(crui::RectFill::ShrinkCenter)
@@ -143,7 +143,7 @@ pub fn build(
 
     ctx.create_control()
         .parent(content)
-        .graphic(Texture::new(textures.window, [0.0, 0.0, 1.0, 1.0]).into())
+        .graphic(Texture::new(textures.window, [0.0, 0.0, 1.0, 1.0]))
         .min_size([256.0, 256.0])
         .fill_x(crui::RectFill::ShrinkCenter)
         .fill_y(crui::RectFill::ShrinkCenter)

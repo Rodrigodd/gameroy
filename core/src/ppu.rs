@@ -825,23 +825,43 @@ pub fn draw_tiles(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8), palette:
     }
 }
 
-pub fn draw_background(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
+pub fn draw_background(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
     for i in 0..(32 * 32) {
-        let t = ppu.vram[0x1800 + i as usize];
         let tx = 8 * (i % 32);
         let ty = 8 * (i / 32);
+        // BG Tile Map Select
+        let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
+        let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
 
-        draw_tile(ppu, draw_pixel, tx, ty, t as usize, palette, false);
+        // if is using 8800 method
+        if ppu.lcdc & 0x10 == 0 {
+            tile += 0x100;
+            if tile >= 0x180 {
+                tile -= 0x100;
+            }
+        }
+
+        draw_tile(ppu, draw_pixel, tx, ty, tile, ppu.bgp, false);
     }
 }
 
-pub fn draw_window(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8), palette: u8) {
+pub fn draw_window(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
     for i in 0..(32 * 32) {
-        let t = ppu.vram[0x1C00 + i as usize];
         let tx = 8 * (i % 32);
         let ty = 8 * (i / 32);
+        // BG Tile Map Select
+        let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
+        let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
 
-        draw_tile(ppu, draw_pixel, tx, ty, t as usize, palette, false);
+        // if is using 8800 method
+        if ppu.lcdc & 0x10 == 0 {
+            tile += 0x100;
+            if tile >= 0x180 {
+                tile -= 0x100;
+            }
+        }
+
+        draw_tile(ppu, draw_pixel, tx, ty, tile, ppu.bgp, false);
     }
 }
 

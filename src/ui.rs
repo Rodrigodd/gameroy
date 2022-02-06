@@ -43,6 +43,15 @@ impl<'a> GuiRenderer for Render<'a> {
     }
 }
 
+#[derive(Clone)]
+pub struct Textures {
+    pub white: u32,
+    pub screen: u32,
+    pub tilemap: u32,
+    pub background: u32,
+    pub window: u32,
+}
+
 pub struct Ui {
     gui: Gui,
     gui_render: GuiRender,
@@ -50,8 +59,7 @@ pub struct Ui {
     camera: Camera,
     style: Style,
     pub event_table: Rc<RefCell<EventTable>>,
-    pub screen_texture: u32,
-    pub tilemap_texture: u32,
+    pub textures: Textures,
     pub is_animating: bool,
     pub force_render: bool,
 }
@@ -70,14 +78,19 @@ impl Ui {
         let mut fonts = Fonts::new();
         let style = Style::load(&mut fonts, &mut render).unwrap();
 
-        let screen_texture =
-            render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false);
-        let tilemap_texture = render.new_texture(128, 192, &[], false);
-        let white_texture = render.new_texture(1, 1, &[255, 255, 255, 255], false);
+        let textures = Textures {
+            white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
+            screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
+            tilemap: render.new_texture(128, 192, &[], false),
+            background: render.new_texture(256, 256, &[], false),
+            window: render.new_texture(256, 256, &[], false),
+        };
 
         // create the gui, and the gui_render
-        let gui = Gui::new(0.0, 0.0, fonts);
-        let gui_render = GuiRender::new(font_texture, white_texture, [128, 128]);
+        let mut gui = Gui::new(0.0, 0.0, fonts);
+        let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
+
+        gui.set(textures.clone());
 
         let mut ui = Self {
             gui,
@@ -85,20 +98,13 @@ impl Ui {
             render,
             camera,
             style,
-            screen_texture,
-            tilemap_texture,
+            textures: textures.clone(),
             event_table: Rc::new(RefCell::new(EventTable::new())),
             is_animating: false,
             force_render: true,
         };
 
-        create_gui(
-            &mut ui.gui,
-            screen_texture,
-            tilemap_texture,
-            ui.event_table.clone(),
-            &ui.style,
-        );
+        create_gui(&mut ui.gui, &textures, ui.event_table.clone(), &ui.style);
 
         ui.resize(window.inner_size(), window.id());
 
@@ -141,7 +147,7 @@ impl Ui {
 
     pub fn update_screen_texture(&mut self, img_data: &[u8]) {
         self.render
-            .update_texture(self.screen_texture, &img_data, None);
+            .update_texture(self.textures.screen, &img_data, None);
     }
 
     pub fn update_texture(&mut self, texture: u32, img_data: &[u8]) {
@@ -193,8 +199,7 @@ impl Ui {
 
 pub fn create_gui(
     gui: &mut Gui,
-    screen_texture: u32,
-    tilemap_texture: u32,
+    textures: &Textures,
     event_table: Rc<RefCell<EventTable>>,
     style: &Style,
 ) {
@@ -246,9 +251,10 @@ pub fn create_gui(
                                 sender.send(EmulatorEvent::Run).unwrap();
                             }
                             Pressed(F12) => {
+                                let textures = ctx.get::<Textures>().clone();
                                 close_debug_panel(
                                     ctx,
-                                    screen_texture,
+                                    &textures,
                                     &mut split_view,
                                     &mut screen_id,
                                     root,
@@ -266,11 +272,11 @@ pub fn create_gui(
                                 sender.send(EmulatorEvent::LoadState).unwrap();
                             }
                             Pressed(F12) => {
+                                let textures = ctx.get::<Textures>().clone();
                                 // Debug
                                 open_debug_panel(
                                     ctx,
-                                    screen_texture,
-                                    tilemap_texture,
+                                    &textures,
                                     split_view,
                                     root,
                                     &sty,
@@ -296,7 +302,7 @@ pub fn create_gui(
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(gui, |cb, _| {
-            cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]).into())
         })
         .build(gui);
     gui.set_focus(Some(screen_id));
@@ -304,7 +310,7 @@ pub fn create_gui(
 
 fn close_debug_panel(
     ctx: &mut crui::Context,
-    screen_texture: u32,
+    textures: &Textures,
     split_view: &mut crui::Id,
     screen_id: &mut crui::Id,
     root: crui::Id,
@@ -318,7 +324,7 @@ fn close_debug_panel(
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]).into())
         })
         .build(ctx);
     ctx.set_focus(*screen_id);
@@ -328,8 +334,7 @@ fn close_debug_panel(
 
 fn open_debug_panel(
     ctx: &mut crui::Context,
-    screen_texture: u32,
-    tilemap_texture: u32,
+    textures: &Textures,
     split_view: crui::Id,
     root: crui::Id,
     style: &Style,
@@ -352,7 +357,7 @@ fn open_debug_panel(
         .graphic(style.background.clone())
         .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
         .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(screen_texture, [0.0, 0.0, 1.0, 1.0]).into())
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]).into())
         })
         .build(ctx);
 
@@ -404,7 +409,7 @@ fn open_debug_panel(
         ctx,
         &mut *event_table.borrow_mut(),
         &style,
-        tilemap_texture,
+        textures,
     );
     let _ppu_tab = ctx
         .create_control()

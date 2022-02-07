@@ -17,8 +17,8 @@ use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
 use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
-    window::{Window, WindowBuilder, WindowId},
+    event_loop::{ControlFlow, EventLoopProxy},
+    window::{Window, WindowId},
 };
 
 mod disassembler_viewer;
@@ -64,9 +64,9 @@ pub struct Ui {
     pub force_render: bool,
 }
 impl Ui {
-    pub fn new<T>(wb: WindowBuilder, event_loop: &EventLoop<T>) -> (Self, Window) {
+    pub fn new(window: &Window) -> Self {
         // create the render and camera, and a texture for the glyphs rendering
-        let (window, mut render) = GLSpriteRender::new(wb, event_loop, true);
+        let mut render = GLSpriteRender::new(window, true).unwrap();
         let camera = {
             let size = window.inner_size();
             let width = size.width;
@@ -108,7 +108,7 @@ impl Ui {
 
         ui.resize(window.inner_size(), window.id());
 
-        (ui, window)
+        ui
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>, window: WindowId) {

@@ -153,9 +153,9 @@ fn create_window(
 ) {
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
-    let wb = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400));
+    let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400)).build(&event_loop).unwrap();
 
-    let (mut ui, window) = ui::Ui::new(wb, &event_loop);
+    let mut ui = ui::Ui::new(&window);
 
     let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));

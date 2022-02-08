@@ -175,7 +175,7 @@ pub struct Ppu {
     is_in_window: bool,
 
     // the current x position in the current scanline
-    curr_x: u8,
+    pub curr_x: u8,
     // if it is currenlty discarting pixels at the start of the scanline
     discarting: bool,
 }

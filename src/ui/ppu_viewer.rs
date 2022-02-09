@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crui::graphics::Texture;
-use crui::layouts::{HBoxLayout, VBoxLayout};
+use crui::graphics::{Graphic, Texture};
+use crui::layouts::{FitText, GridLayout, HBoxLayout, VBoxLayout};
 use crui::text::Text;
 use crui::widgets::{ScrollBar, ScrollView, ViewLayout};
-use crui::{Behaviour, BuilderContext, Context, Id, InputFlags, MouseEvent};
+use crui::{Behaviour, BuilderContext, Context, Id, InputFlags, MouseEvent, Color};
 use gameroy::gameboy::GameBoy;
 use parking_lot::Mutex;
 use winit::event_loop::EventLoopProxy;
@@ -52,6 +52,7 @@ impl Behaviour for TilemapViewer {
 }
 
 struct PpuViewer {
+    oam_tiles: [[Id; 2]; 40],
     _frame_updated_event: Handle<FrameUpdated>,
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
@@ -63,13 +64,12 @@ impl Behaviour for PpuViewer {
 
             let gb = ctx.get::<Arc<Mutex<GameBoy>>>();
             let proxy = &ctx.get::<EventLoopProxy<UserEvent>>();
-            // TODO: maybe I could clone the gameboy's ppu instead of keeping it lock for so long.
-            let gb = gb.lock();
+            let ppu = gb.lock().ppu.clone();
 
             if event.is::<EmulatorUpdated>() {
                 let mut debug_screen = vec![255; 160 * 144 * 4];
-                let screen = &gb.ppu.screen;
-                let curr_i = (gb.ppu.ly as usize * 160 + gb.ppu.curr_x as usize).min(160 * 144);
+                let screen = &ppu.screen;
+                let curr_i = (ppu.ly as usize * 160 + ppu.curr_x as usize).min(160 * 144);
 
                 for i in 0..curr_i {
                     let c = screen[i];
@@ -94,13 +94,13 @@ impl Behaviour for PpuViewer {
 
             let mut tiles = vec![255; 128 * 194 * 4];
             gameroy::ppu::draw_tiles(
-                &gb.ppu,
+                &ppu,
                 &mut |x, y, c| {
                     let i = (x + y * 128) as usize * 4;
                     let color = COLOR[c as usize];
                     tiles[i..i + 3].copy_from_slice(&color);
                 },
-                gb.ppu.bgp,
+                ppu.bgp,
             );
             proxy
                 .send_event(UserEvent::UpdateTexture(
@@ -110,7 +110,7 @@ impl Behaviour for PpuViewer {
                 .unwrap();
 
             let mut background = vec![255; 256 * 256 * 4];
-            gameroy::ppu::draw_background(&gb.ppu, &mut |x, y, c| {
+            gameroy::ppu::draw_background(&ppu, &mut |x, y, c| {
                 let i = (x + y * 256) as usize * 4;
                 background[i..i + 3].copy_from_slice(&COLOR[c as usize]);
             });
@@ -122,7 +122,7 @@ impl Behaviour for PpuViewer {
                 .unwrap();
 
             let mut window = vec![255; 256 * 256 * 4];
-            gameroy::ppu::draw_window(&gb.ppu, &mut |x, y, c| {
+            gameroy::ppu::draw_window(&ppu, &mut |x, y, c| {
                 let i = (x + y * 256) as usize * 4;
                 window[i..i + 3].copy_from_slice(&COLOR[c as usize]);
             });
@@ -132,6 +132,41 @@ impl Behaviour for PpuViewer {
                     window.into_boxed_slice(),
                 ))
                 .unwrap();
+
+            for (i, &[view, text]) in self.oam_tiles.iter().enumerate() {
+                let i = i * 4;
+                let data = &ppu.oam[i..i + 4];
+                let sy = data[0] as i32 - 16;
+                let sx = data[1] as i32 - 8;
+                let tile = data[2];
+                let flags = data[3];
+
+                // let palette = if flags & 0x10 != 0 {
+                //     ppu.obp1
+                // } else {
+                //     ppu.obp0
+                // };
+
+                // do a thing
+
+                let x = tile % 16;
+                let y = tile / 16;
+                let uv_rect = [x as f32 / 16.0, y as f32 / 24.0, 1.0 / 16.0, 1.0 / 16.0];
+
+                if let Graphic::Texture(t) = ctx.get_graphic_mut(view) {
+                    if sy < 0 || sx < 0 {
+                        t.color = 0xff0000ff.into();
+                    } else {
+                        t.color = Color::WHITE;
+                    }
+                    t.uv_rect = uv_rect;
+                }
+
+                ctx.get_graphic_mut(text).set_text(&format!(
+                    "x: {:02x} y: {:02x}\ntile: {:02x}\nflag: {:02x}",
+                    sx, sy, tile, flags
+                ))
+            }
         }
     }
 }
@@ -144,13 +179,6 @@ pub fn build(
     textures: &Textures,
 ) {
     let ppu_viewer = ctx.reserve();
-    ctx.create_control_reserved(ppu_viewer)
-        .parent(parent)
-        .behaviour(PpuViewer {
-            _frame_updated_event: event_table.register(ppu_viewer),
-            _emulator_updated_event: event_table.register(ppu_viewer),
-        })
-        .build(ctx);
 
     let scroll_view = ctx.reserve();
     let view = ctx
@@ -243,6 +271,50 @@ pub fn build(
         }
         format!("tile number: {:02x}\nx: {:02x} y: {:02x}", tile, x, y)
     });
+
+    let oam_viewer = ctx
+        .create_control()
+        .parent(content)
+        .layout(GridLayout::new([2.0; 2], [2.0; 4], 8))
+        .build(ctx);
+
+    let oam_tiles: [[Id; 2]; 40] = [(); 40].map(|_| [ctx.reserve(), ctx.reserve()]);
+
+    for &[view, text] in &oam_tiles {
+        let tile = ctx
+            .create_control()
+            .parent(oam_viewer)
+            .layout(VBoxLayout::default())
+            .graphic(style.background.clone())
+            .build(ctx);
+        let x = 0xa;
+        let y = 0xa;
+        let uv_rect = [x as f32 / 16.0, y as f32 / 24.0, 1.0 / 16.0, 1.0 / 16.0];
+        ctx.create_control_reserved(view)
+            .parent(tile)
+            .graphic(Texture::new(textures.tilemap, uv_rect))
+            .min_size([6.0 * 8.0, 6.0 * 8.0])
+            .fill_x(crui::RectFill::ShrinkCenter)
+            .build(ctx);
+        ctx.create_control_reserved(text)
+            .parent(tile)
+            .graphic(Text::new(
+                "x: 10 y: 10\ntile: aa\nflag: 00".to_string(),
+                (0, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitText)
+            .build(ctx);
+    }
+
+    ctx.create_control_reserved(ppu_viewer)
+        .parent(parent)
+        .behaviour(PpuViewer {
+            oam_tiles,
+            _frame_updated_event: event_table.register(ppu_viewer),
+            _emulator_updated_event: event_table.register(ppu_viewer),
+        })
+        .build(ctx);
 }
 
 fn build_tilemap_viewer(

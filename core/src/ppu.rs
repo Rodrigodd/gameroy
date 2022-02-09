@@ -1,7 +1,7 @@
 use crate::gameboy::GameBoy;
 use crate::save_state::{LoadStateError, SaveState};
 
-#[derive(PartialEq, Eq, Default)]
+#[derive(PartialEq, Eq, Default, Clone)]
 struct PixelFifo {
     queue: [u8; 16],
     /// next position to push
@@ -112,7 +112,7 @@ impl SaveState for Sprite {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Ppu {
     /// 8000-9FFF: Video RAM
     pub vram: [u8; 0x2000],

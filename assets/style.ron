@@ -1,5 +1,5 @@
 (
-    text_style: (color: "#00ff00", font_size: 16, font_id: "consola.ttf"),
+    text_style: (color: "#34ff30", font_size: 14, font_id: "consola.ttf"),
     split_background: Texture(
         texture: "white.png",
         color: "#001600",

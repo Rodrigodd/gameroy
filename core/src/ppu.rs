@@ -95,19 +95,19 @@ impl PixelFifo {
 pub struct Sprite {
     pub sx: u8,
     pub sy: u8,
-    pub t: u8,
+    pub tile: u8,
     pub flags: u8,
 }
 impl SaveState for Sprite {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        [self.sx, self.sy, self.t, self.flags].save_state(data)
+        [self.sx, self.sy, self.tile, self.flags].save_state(data)
     }
 
     fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
         let mut t = [0u8; 4];
         t.load_state(data)?;
         let [sx, sy, t, flags] = t;
-        *self = Self { sx, sy, t, flags };
+        *self = Self { sx, sy, tile: t, flags };
         Ok(())
     }
 }
@@ -435,7 +435,7 @@ impl Ppu {
                 && self.ly as u16 + 16 >= sy as u16
                 && self.ly as u16 + 16 < sy as u16 + sprite_height
             {
-                self.sprite_buffer[self.sprite_buffer_len as usize] = Sprite { sy, sx, t, flags };
+                self.sprite_buffer[self.sprite_buffer_len as usize] = Sprite { sy, sx, tile: t, flags };
                 self.sprite_buffer_len += 1;
             }
             if self.sprite_buffer_len == 10 {
@@ -594,9 +594,9 @@ impl Ppu {
                                 0 => {
                                     let tile = if tall != 0 {
                                         // sprite with 2 tiles of height
-                                        (sprite.t & !1) + py / 8
+                                        (sprite.tile & !1) + py / 8
                                     } else {
-                                        sprite.t
+                                        sprite.tile
                                     };
 
                                     gb.ppu.fetch_tile_number = tile;
@@ -1036,7 +1036,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
 
     // Draw Sprites, if enabled
     if ppu.lcdc & 0x02 != 0 {
-        for &Sprite { sy, sx, t, flags } in &ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize] {
+        for &Sprite { sy, sx, tile: t, flags } in &ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize] {
             let sy = sy as i32 - 16;
             let sx = sx as i32 - 8;
 

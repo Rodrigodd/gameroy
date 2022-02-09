@@ -57,7 +57,8 @@ impl Behaviour for TilemapViewer {
 }
 
 struct PpuViewer {
-    oam_tiles: [[Id; 2]; 40],
+    oam_sprites: [[Id; 2]; 40],
+    buffer_sprites: [[Id; 2]; 10],
     _frame_updated_event: Handle<FrameUpdated>,
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
@@ -131,7 +132,8 @@ impl PpuViewer {
                 window.into_boxed_slice(),
             ))
             .unwrap();
-        for (i, &[view, text]) in self.oam_tiles.iter().enumerate() {
+
+        for (i, &[view, text]) in self.oam_sprites.iter().enumerate() {
             let i = i * 4;
             let data = &ppu.oam[i..i + 4];
             let sy = data[0];
@@ -151,6 +153,34 @@ impl PpuViewer {
 
             if let Graphic::Texture(t) = ctx.get_graphic_mut(view) {
                 if sy < 16 || sx < 8 {
+                    t.color = 0xff0000ff.into();
+                } else {
+                    t.color = Color::WHITE;
+                }
+                t.uv_rect = uv_rect;
+            }
+
+            ctx.get_graphic_mut(text).set_text(&format!(
+                "x: {:02x} y: {:02x}\ntile: {:02x}\nflag: {:02x}",
+                sx, sy, tile, flags
+            ))
+        }
+
+        for (i, &[view, text]) in self.buffer_sprites.iter().enumerate() {
+            let gameroy::ppu::Sprite { sx, sy, tile, flags } = ppu.sprite_buffer[i];
+
+            // let palette = if flags & 0x10 != 0 {
+            //     ppu.obp1
+            // } else {
+            //     ppu.obp0
+            // };
+
+            let x = tile % 16;
+            let y = tile / 16;
+            let uv_rect = [x as f32 / 16.0, y as f32 / 24.0, 1.0 / 16.0, 1.0 / 24.0];
+
+            if let Graphic::Texture(t) = ctx.get_graphic_mut(view) {
+                if i >= ppu.sprite_buffer_len as usize {
                     t.color = 0xff0000ff.into();
                 } else {
                     t.color = Color::WHITE;
@@ -298,9 +328,9 @@ pub fn build(
         })
         .build(ctx);
 
-    let oam_tiles: [[Id; 2]; 40] = [(); 40].map(|_| [ctx.reserve(), ctx.reserve()]);
+    let oam_sprites: [[Id; 2]; 40] = [(); 40].map(|_| [ctx.reserve(), ctx.reserve()]);
 
-    for &[view, text] in &oam_tiles {
+    for &[view, text] in &oam_sprites {
         let tile = ctx
             .create_control()
             .parent(oam_viewer)
@@ -325,10 +355,55 @@ pub fn build(
             .build(ctx);
     }
 
+    let buffer_viewer = ctx.reserve();
+    ctx.create_control()
+        .parent(content)
+        .layout(VBoxLayout::default())
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "Sprites in Buffer".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitText)
+        })
+        .child_reserved(buffer_viewer, ctx, |cb, _| {
+            cb.layout(GridLayout::new([2.0; 2], [2.0; 4], 5))
+        })
+        .build(ctx);
+
+    let buffer_sprites: [[Id; 2]; 10] = [(); 10].map(|_| [ctx.reserve(), ctx.reserve()]);
+
+    for &[view, text] in &buffer_sprites {
+        let tile = ctx
+            .create_control()
+            .parent(buffer_viewer)
+            .layout(VBoxLayout::default())
+            .graphic(style.background.clone())
+            .build(ctx);
+        ctx.create_control_reserved(view)
+            .parent(tile)
+            .graphic(Texture::new(textures.tilemap, [0.0; 4]))
+            .min_size([6.0 * 8.0, 6.0 * 8.0])
+            .fill_x(crui::RectFill::ShrinkCenter)
+            .fill_y(crui::RectFill::ShrinkCenter)
+            .build(ctx);
+        ctx.create_control_reserved(text)
+            .parent(tile)
+            .graphic(Text::new(
+                "x: 10 y: 10\ntile: aa\nflag: 00".to_string(),
+                (0, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitText)
+            .build(ctx);
+    }
+
     ctx.create_control_reserved(ppu_viewer)
         .parent(parent)
         .behaviour(PpuViewer {
-            oam_tiles,
+            oam_sprites,
+            buffer_sprites,
             _frame_updated_event: event_table.register(ppu_viewer),
             _emulator_updated_event: event_table.register(ppu_viewer),
         })

@@ -33,6 +33,7 @@ pub struct Debugger {
     read_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
     execute_breakpoints: HashSet<u16>,
+    interrupt_breakpoint: bool,
     breakpoints: BTreeMap<u16, u8>,
     watchs: BTreeSet<u16>,
     /// Address to stop at
@@ -113,6 +114,15 @@ impl Debugger {
                 }
             }
             "break" => {
+                if args.len() == 2 {
+                    match args[1] {
+                        "interrupt" => {
+                            self.interrupt_breakpoint = true;
+                            return Ok(());
+                        }
+                        _ => {}
+                    }
+                }
                 if args.len() != 3 {
                     return Err(format!(
                         "'break' expect 3 arguments, receive {}",
@@ -337,6 +347,12 @@ impl Debugger {
         while inter.0.clock_count < target_clock {
             if self.check_break(&mut inter) {
                 return RunResult::ReachBreakpoint;
+            }
+            if self.interrupt_breakpoint {
+                let interrupts: u8 = inter.0.interrupt_flag & inter.0.interrupt_enabled;
+                if interrupts != 0 && inter.0.cpu.ime == crate::cpu::ImeState::Enabled {
+                    return RunResult::ReachBreakpoint;
+                }
             }
             inter.interpret_op();
             if Some(inter.0.cpu.pc) == self.target_address {

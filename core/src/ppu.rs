@@ -107,7 +107,12 @@ impl SaveState for Sprite {
         let mut t = [0u8; 4];
         t.load_state(data)?;
         let [sx, sy, t, flags] = t;
-        *self = Self { sx, sy, tile: t, flags };
+        *self = Self {
+            sx,
+            sy,
+            tile: t,
+            flags,
+        };
         Ok(())
     }
 }
@@ -435,7 +440,12 @@ impl Ppu {
                 && self.ly as u16 + 16 >= sy as u16
                 && self.ly as u16 + 16 < sy as u16 + sprite_height
             {
-                self.sprite_buffer[self.sprite_buffer_len as usize] = Sprite { sy, sx, tile: t, flags };
+                self.sprite_buffer[self.sprite_buffer_len as usize] = Sprite {
+                    sy,
+                    sx,
+                    tile: t,
+                    flags,
+                };
                 self.sprite_buffer_len += 1;
             }
             if self.sprite_buffer_len == 10 {
@@ -564,7 +574,11 @@ impl Ppu {
                     let is_in_window = gb.ppu.is_in_window;
 
                     let sprite_enable = gb.ppu.lcdc & 0x02 != 0;
-                    if gb.ppu.discarting == 0 && !gb.ppu.sprite_fetching && gb.ppu.sprite_buffer_len != 0 && sprite_enable {
+                    if gb.ppu.discarting == 0
+                        && !gb.ppu.sprite_fetching
+                        && gb.ppu.sprite_buffer_len != 0
+                        && sprite_enable
+                    {
                         let sprite = gb.ppu.sprite_buffer[gb.ppu.sprite_buffer_len as usize - 1];
                         if sprite.sx <= gb.ppu.curr_x + 8 {
                             gb.ppu.sprite_fetching = true;
@@ -732,6 +746,21 @@ impl Ppu {
                     }
 
                     if !gb.ppu.sprite_fetching {
+                        let window_enabled = gb.ppu.lcdc & 0x20 != 0;
+                        if !gb.ppu.is_in_window
+                            && window_enabled
+                            && gb.ppu.reach_window
+                            && gb.ppu.curr_x >= gb.ppu.wx.saturating_sub(7)
+                        {
+                            gb.ppu.is_in_window = true;
+                            if !gb.ppu.sprite_fetching {
+                                gb.ppu.fetcher_step = 0;
+                            }
+                            gb.ppu.discarting = 0;
+                            gb.ppu.fetcher_x = 0;
+                            gb.ppu.background_fifo.clear();
+                        }
+
                         if let Some(pixel) = gb.ppu.background_fifo.pop_front() {
                             if gb.ppu.discarting > 0 {
                                 gb.ppu.discarting -= 1;
@@ -761,21 +790,6 @@ impl Ppu {
                                 }
                                 debug_assert!(color < 4);
                                 gb.ppu.screen[i] = color;
-                            }
-
-                            let window_enabled = gb.ppu.lcdc & 0x20 != 0;
-                            if !gb.ppu.is_in_window
-                                && window_enabled
-                                && gb.ppu.reach_window
-                                && gb.ppu.curr_x >= gb.ppu.wx.saturating_sub(7)
-                            {
-                                gb.ppu.is_in_window = true;
-                                if !gb.ppu.sprite_fetching {
-                                    gb.ppu.fetcher_step = 0;
-                                }
-                                gb.ppu.discarting = 0;
-                                gb.ppu.fetcher_x = 0;
-                                gb.ppu.background_fifo.clear();
                             }
                         }
                     }
@@ -1033,7 +1047,13 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
 
     // Draw Sprites, if enabled
     if ppu.lcdc & 0x02 != 0 {
-        for &Sprite { sy, sx, tile: t, flags } in &ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize] {
+        for &Sprite {
+            sy,
+            sx,
+            tile: t,
+            flags,
+        } in &ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize]
+        {
             let sy = sy as i32 - 16;
             let sx = sx as i32 - 8;
 

@@ -327,7 +327,7 @@ impl Ppu {
 
     /// Set the ppu's stat.
     pub fn set_stat(&mut self, stat: u8) {
-        self.stat = stat;
+        self.stat = (stat & !0b11) | (self.stat & 0b11);
     }
 
     /// Get a reference to the ppu's stat.
@@ -357,7 +357,8 @@ impl Ppu {
 
     /// Set the ppu's ly.
     pub fn set_ly(&mut self, ly: u8) {
-        self.ly = ly;
+        // ly is read only
+        let _ = ly;
     }
 
     /// Get a reference to the ppu's ly.
@@ -767,7 +768,6 @@ impl Ppu {
                                 // Discart a pixel. Used for scrolling the background.
                             } else {
                                 let i = (ly as usize) * 160 + gb.ppu.curr_x as usize;
-                                gb.ppu.curr_x += 1;
                                 let background_enable = gb.ppu.lcdc & 0x01 != 0;
                                 let bcolor = if background_enable { pixel & 0b11 } else { 0 };
 
@@ -790,6 +790,7 @@ impl Ppu {
                                 }
                                 debug_assert!(color < 4);
                                 gb.ppu.screen[i] = color;
+                                gb.ppu.curr_x += 1;
                             }
                         }
                     }

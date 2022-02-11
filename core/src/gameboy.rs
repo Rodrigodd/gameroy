@@ -300,14 +300,14 @@ impl GameBoy {
         self.hram[0x7a..=0x7c].copy_from_slice(&[0x39, 0x01, 0x2e]);
 
         self.boot_rom_active = false;
-        self.clock_count = 23_233_156;
+        self.clock_count = 23_384_580;
         self.timer = Timer {
-            div: 0x82,
-            tima: 0xa4,
+            div: 0xd2,
+            tima: 0x00,
             tma: 0x00,
             tac: 0x00,
             last_counter_bit: false,
-            last_clock_count: 23_233_188,
+            last_clock_count: self.clock_count,
         };
         self.sound
             .borrow_mut()

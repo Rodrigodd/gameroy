@@ -176,8 +176,8 @@ pub struct Ppu {
 
     // the current x position in the current scanline
     pub curr_x: u8,
-    // if it is currenlty discarting pixels at the start of the scanline
-    discarting: bool,
+    // the number of pixels left to be discarted in the start of the current scanline
+    discarting: u8,
 }
 impl SaveState for Ppu {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
@@ -215,11 +215,11 @@ impl SaveState for Ppu {
             &self.fetcher_skipped_first_push,
             &self.sprite_fetching,
             &self.fetcher_cycle,
-            &self.discarting,
         ]
         .save_state(data)?;
 
         self.curr_x.save_state(data)?;
+        self.discarting.save_state(data)?;
 
         Ok(())
     }
@@ -259,11 +259,11 @@ impl SaveState for Ppu {
             &mut self.fetcher_skipped_first_push,
             &mut self.sprite_fetching,
             &mut self.fetcher_cycle,
-            &mut self.discarting,
         ]
         .load_state(data)?;
 
         self.curr_x.load_state(data)?;
+        self.discarting.load_state(data)?;
 
         Ok(())
     }
@@ -304,7 +304,7 @@ impl Default for Ppu {
             reach_window: false,
             is_in_window: false,
             curr_x: 0,
-            discarting: false,
+            discarting: 0,
         }
     }
 }
@@ -450,7 +450,7 @@ impl Ppu {
 
     pub fn update(gb: &mut GameBoy) {
         for clock in gb.ppu.last_clock_count..gb.clock_count {
-            gb.ppu.ly = ((clock / 456) % 153) as u8;
+            gb.ppu.ly = ((clock / 456) % 154) as u8;
             let lx = clock % 456;
 
             let set_stat_int = |gb: &mut GameBoy, i: u8| {
@@ -500,7 +500,7 @@ impl Ppu {
                         }
                         gb.ppu.is_in_window = false;
                         gb.ppu.curr_x = 0;
-                        gb.ppu.discarting = true;
+                        gb.ppu.discarting = gb.ppu.scx % 8;
                     }
                     4..=255 => unreachable!(),
                 }
@@ -564,7 +564,7 @@ impl Ppu {
                     let is_in_window = gb.ppu.is_in_window;
 
                     let sprite_enable = gb.ppu.lcdc & 0x02 != 0;
-                    if !gb.ppu.sprite_fetching && gb.ppu.sprite_buffer_len != 0 && sprite_enable {
+                    if gb.ppu.discarting == 0 && !gb.ppu.sprite_fetching && gb.ppu.sprite_buffer_len != 0 && sprite_enable {
                         let sprite = gb.ppu.sprite_buffer[gb.ppu.sprite_buffer_len as usize - 1];
                         if sprite.sx <= gb.ppu.curr_x + 8 {
                             gb.ppu.sprite_fetching = true;
@@ -733,16 +733,12 @@ impl Ppu {
 
                     if !gb.ppu.sprite_fetching {
                         if let Some(pixel) = gb.ppu.background_fifo.pop_front() {
-                            debug_assert!(ly < 144, "ly is {}", ly);
-                            debug_assert!(gb.ppu.curr_x < 160, "x is {}", gb.ppu.curr_x);
-                            if gb.ppu.discarting && gb.ppu.curr_x == gb.ppu.scx % 8 {
-                                gb.ppu.discarting = false;
-                                gb.ppu.curr_x = 0;
-                            }
-                            if gb.ppu.discarting {
-                                // discart pixel
+                            if gb.ppu.discarting > 0 {
+                                gb.ppu.discarting -= 1;
+                                // Discart a pixel. Used for scrolling the background.
                             } else {
                                 let i = (ly as usize) * 160 + gb.ppu.curr_x as usize;
+                                gb.ppu.curr_x += 1;
                                 let background_enable = gb.ppu.lcdc & 0x01 != 0;
                                 let bcolor = if background_enable { pixel & 0b11 } else { 0 };
 
@@ -766,7 +762,6 @@ impl Ppu {
                                 debug_assert!(color < 4);
                                 gb.ppu.screen[i] = color;
                             }
-                            gb.ppu.curr_x += 1;
 
                             let window_enabled = gb.ppu.lcdc & 0x20 != 0;
                             if !gb.ppu.is_in_window
@@ -778,7 +773,7 @@ impl Ppu {
                                 if !gb.ppu.sprite_fetching {
                                     gb.ppu.fetcher_step = 0;
                                 }
-                                gb.ppu.discarting = false;
+                                gb.ppu.discarting = 0;
                                 gb.ppu.fetcher_x = 0;
                                 gb.ppu.background_fifo.clear();
                             }
@@ -984,6 +979,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 }
                 let color = (palette >> (color * 2)) & 0b11;
                 // draw_pixel(lx as i32, ly as i32, color);
+                debug_assert!(color < 4);
                 ppu.screen[ly as usize * 160 + lx as usize] = color;
             };
         }
@@ -1029,6 +1025,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 }
                 let color = (palette >> (color * 2)) & 0b11;
                 // draw_pixel(lx as i32, ly as i32, color);
+                debug_assert!(color < 4);
                 ppu.screen[ly as usize * 160 + lx as usize] = color;
             };
         }
@@ -1080,6 +1077,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                         continue;
                     }
                     let color = (palette >> (color * 2)) & 0b11;
+                    debug_assert!(color < 4);
                     ppu.screen[ly as usize * 160 + lx as usize] = color;
                 }
             };

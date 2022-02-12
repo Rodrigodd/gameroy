@@ -46,7 +46,7 @@ mod blargg {
     }
 
     console! {
-        (instr_timing, "instr_timing/instr_timing.gb", 26_000_000);
+        (instr_timing, "instr_timing/instr_timing.gb", 26_500_000);
     }
 
     console! {
@@ -57,10 +57,10 @@ mod blargg {
     }
 
     memory! {
-        (mem_timing_2_01, "mem_timing-2/rom_singles/01-read_timing.gb", 25_200_000);
-        (mem_timing_2_02, "mem_timing-2/rom_singles/02-write_timing.gb", 25_200_000);
-        (mem_timing_2_03, "mem_timing-2/rom_singles/03-modify_timing.gb", 25_400_000);
-        (mem_timing_2, "mem_timing-2/mem_timing.gb", 34_900_000);
+        (mem_timing_2_01, "mem_timing-2/rom_singles/01-read_timing.gb", 25_500_000);
+        (mem_timing_2_02, "mem_timing-2/rom_singles/02-write_timing.gb", 25_300_000);
+        (mem_timing_2_03, "mem_timing-2/rom_singles/03-modify_timing.gb", 25_500_000);
+        (mem_timing_2, "mem_timing-2/mem_timing.gb", 35_000_000);
     }
 
     console! {
@@ -164,7 +164,7 @@ mod blargg {
                 }
                 String::from_utf8(string).unwrap()
             };
-            Err(format!("test rom failed({}): \n{}", status_code, string))
+            Err(format!("test rom failed({:02x}): \n{}", status_code, string))
         }
     }
 }
@@ -231,7 +231,7 @@ mod mattcurrie {
             Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
         let screen_clone = screen.clone();
         game_boy.v_blank = Some(Box::new(move |gb| {
-            *screen_clone.lock().unwrap() = gb.ppu.screen;
+            *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
         }));
 
         let mut inter = Interpreter(&mut game_boy);

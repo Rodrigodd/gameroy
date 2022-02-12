@@ -164,7 +164,7 @@ fn create_window(
     gb.v_blank = Some(Box::new(move |gb| {
         {
             let img_data = &mut lcd_screen_clone.lock();
-            img_data.copy_from_slice(&gb.ppu.screen);
+            img_data.copy_from_slice(&gb.ppu.borrow().screen);
         }
         let _ = proxy.send_event(UserEvent::FrameUpdated);
     }));

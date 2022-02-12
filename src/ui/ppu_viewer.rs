@@ -68,7 +68,7 @@ impl PpuViewer {
         const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
         let gb = ctx.get::<Arc<Mutex<GameBoy>>>();
         let proxy = &ctx.get::<EventLoopProxy<UserEvent>>();
-        let ppu = gb.lock().ppu.clone();
+        let ppu = gb.lock().ppu.borrow().clone();
         if emulator_updated {
             let mut debug_screen = vec![255; 160 * 144 * 4];
             let screen = &ppu.screen;
@@ -269,8 +269,8 @@ pub fn build(
         32,
         32,
         |x, y, ctx| {
-            let gb = ctx.get::<Arc<Mutex<GameBoy>>>();
-            let ppu = &gb.lock().ppu;
+            let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+            let ppu = gb.ppu.borrow();
 
             let i = y as u16 * 32 + x as u16;
             let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
@@ -291,8 +291,8 @@ pub fn build(
     );
 
     build_tilemap_viewer(ctx, textures.window, style, content, 32, 32, |x, y, ctx| {
-        let gb = ctx.get::<Arc<Mutex<GameBoy>>>();
-        let ppu = &gb.lock().ppu;
+        let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+        let ppu = gb.ppu.borrow();
 
         let i = y as u16 * 32 + x as u16;
         let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };

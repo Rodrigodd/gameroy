@@ -2,7 +2,6 @@ use crate::cartridge::Cartridge;
 use crate::save_state::{LoadStateError, SaveState};
 use crate::sound_controller::SoundController;
 use crate::{cpu::Cpu, disassembler::Trace, ppu::Ppu};
-use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::io::{Read, Write};
 
@@ -111,7 +110,7 @@ pub struct GameBoy {
     pub clock_count: u64,
     pub timer: Timer,
     pub sound: RefCell<SoundController>,
-    pub ppu: Ppu,
+    pub ppu: RefCell<Ppu>,
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     /// FF00: P1
@@ -238,7 +237,7 @@ impl GameBoy {
             clock_count: 0,
             timer: Timer::default(),
             sound: RefCell::new(SoundController::default()),
-            ppu: Ppu::default(),
+            ppu: Ppu::default().into(),
 
             joypad: 0xFF,
             joypad_io: 0xFF,
@@ -273,7 +272,7 @@ impl GameBoy {
         self.clock_count = 0;
         self.timer = Timer::default();
         self.sound = RefCell::new(SoundController::default());
-        self.ppu = Ppu::default();
+        self.ppu = Ppu::default().into();
         self.joypad = 0xFF;
         self.joypad_io = 0x00;
     }
@@ -314,7 +313,6 @@ impl GameBoy {
             .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
         self.ppu
-            .borrow_mut()
             .load_state(&mut &include_bytes!("../after_boot/ppu.sav")[..])
             .unwrap();
         self.joypad = 0xFF;
@@ -337,7 +335,7 @@ impl GameBoy {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.read(address),
             // Video RAM
-            0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000],
+            0x8000..=0x9FFF => self.ppu.borrow().vram[address as usize - 0x8000],
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.read(address),
             // Work RAM
@@ -345,7 +343,7 @@ impl GameBoy {
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => self.ppu.oam[address as usize - 0xFE00],
+            0xFE00..=0xFE9F => self.ppu.borrow().oam[address as usize - 0xFE00],
             // Not Usable
             0xFEA0..=0xFEFF => 0xff,
             // I/O registers
@@ -366,7 +364,7 @@ impl GameBoy {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.write(address, value),
             // Video RAM
-            0x8000..=0x9FFF => self.ppu.vram[address as usize - 0x8000] = value,
+            0x8000..=0x9FFF => self.ppu.borrow_mut().vram[address as usize - 0x8000] = value,
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.write(address, value),
             // Work RAM
@@ -374,7 +372,7 @@ impl GameBoy {
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => self.ppu.oam[address as usize - 0xFE00] = value,
+            0xFE00..=0xFE9F => self.ppu.borrow_mut().oam[address as usize - 0xFE00] = value,
             // Not Usable
             0xFEA0..=0xFEFF => {}
             // I/O registers
@@ -392,7 +390,17 @@ impl GameBoy {
         if self.timer.update(self.clock_count) {
             self.interrupt_flag |= 1 << 2;
         }
-        Ppu::update(self);
+        let (v_blank_interrupt, stat_interrupt) = Ppu::update(self);
+        if v_blank_interrupt {
+            if let Some(mut v_blank) = self.v_blank.take() {
+                v_blank(self);
+                self.v_blank = Some(v_blank);
+            }
+            self.interrupt_flag |= 1 << 0;
+        }
+        if stat_interrupt {
+            self.interrupt_flag |= 1 << 1;
+        }
     }
 
     pub fn read16(&self, address: u16) -> u16 {
@@ -430,12 +438,7 @@ impl GameBoy {
             0x15 => {}
             0x1f => {}
             0x27..=0x2f => {}
-            0x40 => self.ppu.set_lcdc(value),
-            0x41 => self.ppu.set_stat(value),
-            0x42 => self.ppu.set_scy(value),
-            0x43 => self.ppu.set_scx(value),
-            0x44 => self.ppu.set_ly(value),
-            0x45 => self.ppu.set_lyc(value),
+            0x40..=0x45 => Ppu::write(self, address, value),
             0x46 => {
                 // DMA Transfer
                 // TODO: this is not the proper behavior, of course
@@ -445,11 +448,7 @@ impl GameBoy {
                     self.write(i, value);
                 }
             }
-            0x47 => self.ppu.set_bgp(value),
-            0x48 => self.ppu.set_obp0(value),
-            0x49 => self.ppu.set_obp1(value),
-            0x4a => self.ppu.set_wy(value),
-            0x4b => self.ppu.set_wx(value),
+            0x47..=0x4b => Ppu::write(self, address, value),
             0x4c..=0x4f => {}
             0x50 => {
                 if value & 0b1 != 0 {
@@ -492,18 +491,9 @@ impl GameBoy {
             0x15 => 0xff,
             0x1f => 0xff,
             0x27..=0x2f => 0xff,
-            0x40 => self.ppu.lcdc(),
-            0x41 => self.ppu.stat(),
-            0x42 => self.ppu.scy(),
-            0x43 => self.ppu.scx(),
-            0x44 => self.ppu.ly(),
-            0x45 => self.ppu.lyc(),
+            0x40..=0x45 => Ppu::read(self, address),
             0x46 => 0xff,
-            0x47 => self.ppu.bgp(),
-            0x48 => self.ppu.obp0(),
-            0x49 => self.ppu.obp1(),
-            0x4a => self.ppu.wy(),
-            0x4b => self.ppu.wx(),
+            0x47..=0x4b => Ppu::read(self, address),
             0x4c => 0xff,
             0x4d => 0xff,
             0x4e..=0x4f => 0xff,

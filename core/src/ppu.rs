@@ -172,7 +172,6 @@ pub struct Ppu {
     /// the tile x position that the pixel fetcher is in
     fetcher_x: u8,
     fetch_tile_number: u8,
-    fetch_tile_address: u16,
     fetch_tile_data_low: u8,
     fetch_tile_data_hight: u8,
 
@@ -211,7 +210,6 @@ impl SaveState for std::cell::RefCell<Ppu> {
         this.fetcher_step.save_state(data)?;
         this.fetcher_x.save_state(data)?;
         this.fetch_tile_number.save_state(data)?;
-        this.fetch_tile_address.save_state(data)?;
         this.fetch_tile_data_low.save_state(data)?;
         this.fetch_tile_data_hight.save_state(data)?;
 
@@ -256,7 +254,6 @@ impl SaveState for std::cell::RefCell<Ppu> {
         this.fetcher_step.load_state(data)?;
         this.fetcher_x.load_state(data)?;
         this.fetch_tile_number.load_state(data)?;
-        this.fetch_tile_address.load_state(data)?;
         this.fetch_tile_data_low.load_state(data)?;
         this.fetch_tile_data_hight.load_state(data)?;
 
@@ -305,7 +302,6 @@ impl Default for Ppu {
             fetcher_skipped_first_push: false,
             fetcher_x: 0,
             fetch_tile_number: 0,
-            fetch_tile_address: 0,
             fetch_tile_data_low: 0,
             fetch_tile_data_hight: 0,
             reach_window: false,
@@ -548,6 +544,13 @@ impl Ppu {
                             } else {
                                 ly + 16 - sprite.sy
                             };
+
+                            // for steps 1 and 2
+                            let tile = ppu.fetch_tile_number as u16;
+                            let address = tile * 0x10 + 0x8000;
+                            let offset = (py % 8) as u16 * 2;
+                            let fetch_tile_address = address + offset;
+
                             match ppu.fetcher_step {
                                 // fetch tile number
                                 0 => {
@@ -563,19 +566,14 @@ impl Ppu {
                                 }
                                 // fetch tile data (low)
                                 1 => {
-                                    let tile = ppu.fetch_tile_number as u16;
-
-                                    let address = tile * 0x10 + 0x8000;
-                                    let offset = (py % 8) as u16 * 2;
-                                    ppu.fetch_tile_address = address + offset;
-                                    ppu.fetch_tile_data_low = ppu.vram[ppu.fetch_tile_address as usize - 0x8000];
+                                    ppu.fetch_tile_data_low =
+                                        ppu.vram[fetch_tile_address as usize - 0x8000];
                                     ppu.fetcher_step = 2;
                                 }
                                 // fetch tile data (hight)
                                 2 => {
-                                    // TODO: This read is really strictly after the previous read
-                                    // address, or I need to recompute the address?
-                                    ppu.fetch_tile_data_hight = ppu.vram[ppu.fetch_tile_address as usize + 1 - 0x8000];
+                                    ppu.fetch_tile_data_hight =
+                                        ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
 
                                     ppu.fetcher_step = 3;
                                 }
@@ -605,6 +603,25 @@ impl Ppu {
                                 4..=255 => unreachable!(),
                             }
                         } else {
+                            let fetch_tile_address =
+                                |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
+                                    let mut tile = ppu.fetch_tile_number as u16;
+                                    if ppu.lcdc & 0x10 == 0 {
+                                        tile += 0x100;
+                                        if tile >= 0x180 {
+                                            tile -= 0x100;
+                                        }
+                                    }
+                                    let address = tile * 0x10 + 0x8000;
+                                    let offset = if is_in_window {
+                                        2 * (ppu.wyc as u16 % 8)
+                                    } else {
+                                        2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
+                                    };
+                                    let fetch_tile_address = address + offset;
+                                    fetch_tile_address
+                                };
+
                             match ppu.fetcher_step {
                                 // fetch tile number
                                 0 => {
@@ -634,35 +651,24 @@ impl Ppu {
                                     };
 
                                     let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
-                                    ppu.fetch_tile_number = ppu.vram[(tile_map + offset) as usize - 0x8000];
+                                    ppu.fetch_tile_number =
+                                        ppu.vram[(tile_map + offset) as usize - 0x8000];
                                     ppu.fetcher_step = 1;
                                 }
                                 // fetch tile data (low)
                                 1 => {
-                                    let mut tile = ppu.fetch_tile_number as u16;
-                                    // if is using 8800 method
-                                    if ppu.lcdc & 0x10 == 0 {
-                                        tile += 0x100;
-                                        if tile >= 0x180 {
-                                            tile -= 0x100;
-                                        }
-                                    }
-
-                                    let address = tile * 0x10 + 0x8000;
-                                    let offset = if is_in_window {
-                                        2 * (ppu.wyc as u16 % 8)
-                                    } else {
-                                        2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
-                                    };
-                                    ppu.fetch_tile_address = address + offset;
-                                    ppu.fetch_tile_data_low = ppu.vram[ppu.fetch_tile_address as usize - 0x8000];
+                                    let fetch_tile_address =
+                                        fetch_tile_address(ppu, is_in_window, ly);
+                                    ppu.fetch_tile_data_low =
+                                        ppu.vram[fetch_tile_address as usize - 0x8000];
                                     ppu.fetcher_step = 2;
                                 }
                                 // fetch tile data (hight)
                                 2 => {
-                                    // TODO: This read is really strictly after the previous read
-                                    // address, or I need to recompute the address?
-                                    ppu.fetch_tile_data_hight = ppu.vram[ppu.fetch_tile_address as usize + 1 - 0x8000];
+                                    let fetch_tile_address =
+                                        fetch_tile_address(ppu, is_in_window, ly);
+                                    ppu.fetch_tile_data_hight =
+                                        ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
 
                                     if !ppu.fetcher_skipped_first_push {
                                         ppu.fetcher_skipped_first_push = true;

@@ -257,7 +257,12 @@ impl Emulator {
                             Interpreter(&mut *self.gb.lock()).interpret_op();
                         }
                     }
-                    Reset => self.gb.lock().reset(),
+                    Reset => {
+                        self.gb.lock().reset();
+                        self.state = EmulatorState::Idle;
+                        // This will send EmulatorUpdated to the gui
+                        self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+                    },
                 }
 
                 match self.state {

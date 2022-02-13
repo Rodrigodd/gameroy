@@ -125,11 +125,11 @@ fn main() {
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
-struct AppState {
+pub struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
     pub joypad: u8,
     /// If the emulation is in debug mode.
@@ -153,14 +153,15 @@ fn create_window(
 ) {
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
-    let window = WindowBuilder::new().with_inner_size(PhysicalSize::new(600, 400)).build(&event_loop).unwrap();
-
-    let mut ui = ui::Ui::new(&window);
+    let window = WindowBuilder::new()
+        .with_inner_size(PhysicalSize::new(600, 400))
+        .build(&event_loop)
+        .unwrap();
+    let proxy = event_loop.create_proxy();
 
     let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     let lcd_screen_clone = lcd_screen.clone();
-    let proxy = event_loop.create_proxy();
     gb.v_blank = Some(Box::new(move |gb| {
         {
             let img_data = &mut lcd_screen_clone.lock();
@@ -195,11 +196,14 @@ fn create_window(
         }));
     }
 
-    ui.set::<Arc<Mutex<GameBoy>>>(gb.clone());
-    ui.set::<Arc<Mutex<Debugger>>>(debugger.clone());
-    ui.set(emu_channel.clone());
-    ui.set::<EventLoopProxy<UserEvent>>(proxy.clone());
-    ui.set(AppState::new(debug));
+    let mut ui = ui::Ui::new(
+        &window,
+        proxy.clone(),
+        gb.clone(),
+        debugger.clone(),
+        emu_channel.clone(),
+        AppState::new(debug),
+    );
 
     let mut emu_thread = {
         let gb = gb.clone();

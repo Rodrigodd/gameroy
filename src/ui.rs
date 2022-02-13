@@ -1,8 +1,13 @@
-use std::{any::Any, cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
+use std::{
+    any::Any,
+    cell::RefCell,
+    rc::Rc,
+    sync::{mpsc::SyncSender, Arc},
+};
 
 use crate::{
     event_table::EventTable, layout::PixelPerfectLayout, split_view::SplitView, style::Style,
-    EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
+    AppState, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 use crui::{
     font::Fonts,
@@ -13,6 +18,8 @@ use crui::{
     widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
     BuilderContext, Gui, GuiRender,
 };
+use gameroy::{debugger::Debugger, gameboy::GameBoy};
+use parking_lot::Mutex;
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
 use winit::{
     dpi::PhysicalSize,
@@ -64,7 +71,14 @@ pub struct Ui {
     pub force_render: bool,
 }
 impl Ui {
-    pub fn new(window: &Window) -> Self {
+    pub fn new(
+        window: &Window,
+        proxy: EventLoopProxy<UserEvent>,
+        gb: Arc<Mutex<GameBoy>>,
+        debugger: Arc<Mutex<Debugger>>,
+        emu_channel: SyncSender<EmulatorEvent>,
+        app_state: AppState,
+    ) -> Self {
         // create the render and camera, and a texture for the glyphs rendering
         let mut render = GLSpriteRender::new(window, true).unwrap();
         let camera = {
@@ -91,6 +105,12 @@ impl Ui {
         let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
 
         gui.set(textures.clone());
+        gui.set::<EventLoopProxy<UserEvent>>(proxy);
+        gui.set::<Arc<Mutex<GameBoy>>>(gb);
+        gui.set::<Arc<Mutex<Debugger>>>(debugger);
+        gui.set(emu_channel);
+        let debug = app_state.debug;
+        gui.set(app_state);
 
         let mut ui = Self {
             gui,
@@ -104,7 +124,13 @@ impl Ui {
             force_render: true,
         };
 
-        create_gui(&mut ui.gui, &textures, ui.event_table.clone(), &ui.style);
+        create_gui(
+            &mut ui.gui,
+            &textures,
+            ui.event_table.clone(),
+            &ui.style,
+            debug,
+        );
 
         ui.resize(window.inner_size(), window.id());
 
@@ -191,10 +217,6 @@ impl Ui {
     pub fn get<T: Any>(&mut self) -> &mut T {
         self.gui.get_mut()
     }
-
-    pub fn set<T: Any>(&mut self, value: T) {
-        self.gui.set(value);
-    }
 }
 
 pub fn create_gui(
@@ -202,12 +224,14 @@ pub fn create_gui(
     textures: &Textures,
     event_table: Rc<RefCell<EventTable>>,
     style: &Style,
+    debug: bool,
 ) {
     let mut screen_id = gui.reserve_id();
     let mut split_view = gui.reserve_id();
     let root = gui.reserve_id();
 
     let sty = style.clone();
+    let event_table_clone = event_table.clone();
     gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent(move |event, _, ctx| {
             use crui::KeyboardEvent::*;
@@ -297,15 +321,27 @@ pub fn create_gui(
         }))
         .build(gui);
 
-    gui.create_control_reserved(screen_id)
-        .parent(root)
-        .graphic(style.background.clone())
-        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-        .child(gui, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
-        })
-        .build(gui);
-    gui.set_focus(Some(screen_id));
+    if debug {
+        open_debug_panel(
+            &mut gui.get_context(),
+            textures,
+            split_view,
+            root,
+            style,
+            &mut screen_id,
+            event_table_clone,
+        );
+    } else {
+        gui.create_control_reserved(screen_id)
+            .parent(root)
+            .graphic(style.background.clone())
+            .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+            .child(gui, |cb, _| {
+                cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
+            })
+            .build(gui);
+        gui.set_focus(Some(screen_id));
+    }
 }
 
 fn close_debug_panel(
@@ -389,9 +425,11 @@ fn open_debug_panel(
         .create_control()
         .parent(tab_header)
         .child(ctx, |cb, _| {
-            cb.graphic(
-                Text::new("disassembly".to_string(), (0, 0), style.text_style.clone()),
-            )
+            cb.graphic(Text::new(
+                "disassembly".to_string(),
+                (0, 0),
+                style.text_style.clone(),
+            ))
             .layout(FitText)
         })
         .layout(MarginLayout::default())
@@ -415,8 +453,12 @@ fn open_debug_panel(
         .create_control()
         .parent(tab_header)
         .child(ctx, |cb, _| {
-            cb.graphic(Text::new("ppu".to_string(), (0, 0), style.text_style.clone()))
-                .layout(FitText)
+            cb.graphic(Text::new(
+                "ppu".to_string(),
+                (0, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitText)
         })
         .layout(MarginLayout::default())
         .behaviour(TabButton::new(

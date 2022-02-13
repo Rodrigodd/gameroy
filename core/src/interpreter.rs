@@ -822,6 +822,7 @@ impl Interpreter<'_> {
     pub fn interpret_op(&mut self) {
         let interrupts: u8 = self.0.interrupt_flag & self.0.interrupt_enabled;
         if interrupts != 0 {
+            let mut interrupt_handled = false;
             if self.0.cpu.ime == ImeState::Enabled {
                 self.0.cpu.ime = ImeState::Disabled;
                 self.0.interrupt_flag = 0;
@@ -829,10 +830,15 @@ impl Interpreter<'_> {
                 self.pushr(self.0.cpu.pc);
                 self.jump_to(address);
                 self.0.tick(20);
+                interrupt_handled = true;
             }
             if self.0.cpu.state == CpuState::Halt {
                 self.0.tick(4);
                 self.0.cpu.state = CpuState::Running;
+            }
+            // return, to allow detecting the interrupt
+            if interrupt_handled {
+                return;
             }
         }
         if self.0.cpu.ime == ImeState::ToBeEnable {

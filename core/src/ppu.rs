@@ -158,6 +158,8 @@ pub struct Ppu {
 
     /// Last clock cycle where the PPU was updated
     last_clock_count: u64,
+    /// The current internal clock of the PPU, used to indicate the current ly and lx.
+    internal_clock: u64,
 
     background_fifo: PixelFifo,
     sprite_fifo: PixelFifo,
@@ -294,6 +296,7 @@ impl Default for Ppu {
             vram: [0; 0x2000],
             oam: [0; 0xA0],
             last_clock_count: 0,
+            internal_clock: 0,
             background_fifo: Default::default(),
             sprite_fifo: Default::default(),
             sprite_fetching: false,
@@ -319,7 +322,23 @@ impl Ppu {
         debug_assert!(!v && !s);
         let this = &mut *gb.ppu.borrow_mut();
         match address {
-            0x40 => this.lcdc = value,
+            0x40 => {
+                if value & 0x80 != this.lcdc & 0x80 {
+                    if value & 0x80 == 0 {
+                        // disable ppu
+                        this.ly = 0;
+                        this.internal_clock = 0;
+                        // set to mode 0
+                        this.stat &= !0b11;
+                    } else {
+                        debug_assert_eq!(this.ly, 0);
+                        debug_assert_eq!(this.internal_clock, 0);
+                        debug_assert_eq!(this.stat & 0b11, 0b00);
+                        this.stat |= 0b10;
+                    }
+                }
+                this.lcdc = value
+            }
             0x41 => this.stat = (value & !0b11) | (this.stat & 0b11),
             0x42 => this.scy = value,
             0x43 => this.scx = value,
@@ -401,11 +420,19 @@ impl Ppu {
     #[must_use]
     pub fn update(gb: &GameBoy) -> (bool, bool) {
         let ppu = &mut *gb.ppu.borrow_mut();
+
+        if ppu.lcdc & 0x80 == 0 {
+            // ppu is disabled
+            ppu.last_clock_count = gb.clock_count;
+            return (false, false);
+        }
+
         let mut v_blank_interrupt = false;
         let mut stat_interrupt = false;
         for clock in ppu.last_clock_count..gb.clock_count {
-            ppu.ly = ((clock / 456) % 154) as u8;
-            let lx = clock % 456;
+            ppu.ly = ((ppu.internal_clock / 456) % 154) as u8;
+            let lx = ppu.internal_clock % 456;
+            ppu.internal_clock += 1;
 
             let mut set_stat_int = |ppu: &mut Ppu, i: u8| {
                 if ppu.stat & (1 << i) != 0 {

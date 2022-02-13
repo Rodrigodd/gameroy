@@ -57,10 +57,10 @@ mod blargg {
     }
 
     memory! {
-        (mem_timing_2_01, "mem_timing-2/rom_singles/01-read_timing.gb", 25_500_000);
-        (mem_timing_2_02, "mem_timing-2/rom_singles/02-write_timing.gb", 25_300_000);
-        (mem_timing_2_03, "mem_timing-2/rom_singles/03-modify_timing.gb", 25_500_000);
-        (mem_timing_2, "mem_timing-2/mem_timing.gb", 35_000_000);
+        (mem_timing_2_01, "mem_timing-2/rom_singles/01-read_timing.gb", 26_500_000);
+        (mem_timing_2_02, "mem_timing-2/rom_singles/02-write_timing.gb", 25_400_000);
+        (mem_timing_2_03, "mem_timing-2/rom_singles/03-modify_timing.gb", 30_500_000);
+        (mem_timing_2, "mem_timing-2/mem_timing.gb", 36_000_000);
     }
 
     console! {
@@ -164,7 +164,10 @@ mod blargg {
                 }
                 String::from_utf8(string).unwrap()
             };
-            Err(format!("test rom failed({:02x}): \n{}", status_code, string))
+            Err(format!(
+                "test rom failed({:02x}): \n{}",
+                status_code, string
+            ))
         }
     }
 }
@@ -241,6 +244,7 @@ mod mattcurrie {
                 break;
             }
         }
+        println!("final clock_count: {}", inter.0.clock_count);
 
         if inter.0.clock_count >= timeout {
             println!("reach timeout!!");
@@ -251,8 +255,11 @@ mod mattcurrie {
         let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
 
         if img_data != reference_img_data {
-            panic!("screen don't match with expected image");
-            let path = rom_path.file_stem().unwrap().to_string_lossy().to_string() + "_output.png";
+            let path: PathBuf = ("test_output/".to_string()
+                + &rom_path.file_stem().unwrap().to_string_lossy()
+                + "_output.png")
+                .into();
+            path.parent().map(|x| std::fs::create_dir_all(x).unwrap());
             image::save_buffer(
                 &path,
                 &img_data,
@@ -261,6 +268,7 @@ mod mattcurrie {
                 image::ColorType::Rgb8,
             )
             .unwrap();
+            panic!("screen don't match with expected image");
         }
     }
 
@@ -282,7 +290,7 @@ mod mattcurrie {
         m2_win_en_toggle(
             "mealybug-tearoom-tests/ppu/m2_win_en_toggle.gb",
             "mealybug-tearoom-tests/ppu/m2_win_en_toggle_dmg_blob.png",
-            24_065_976,
+            30_222_844,
         );
         m3_bgp_change(
             "mealybug-tearoom-tests/ppu/m3_bgp_change.gb",

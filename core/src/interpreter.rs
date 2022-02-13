@@ -825,8 +825,9 @@ impl Interpreter<'_> {
             let mut interrupt_handled = false;
             if self.0.cpu.ime == ImeState::Enabled {
                 self.0.cpu.ime = ImeState::Disabled;
-                self.0.interrupt_flag = 0;
-                let address = [0x40, 0x48, 0x50, 0x58, 0x60][interrupts.trailing_zeros() as usize];
+                let interrupt = interrupts.trailing_zeros() as usize;
+                self.0.interrupt_flag &= !(1 << interrupt);
+                let address = [0x40, 0x48, 0x50, 0x58, 0x60][interrupt];
                 self.pushr(self.0.cpu.pc);
                 self.jump_to(address);
                 self.0.tick(20);

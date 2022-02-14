@@ -472,7 +472,7 @@ impl Ppu {
 
         let mut v_blank_interrupt = false;
         let mut stat_interrupt = false;
-        for clock in ppu.last_clock_count..gb.clock_count {
+        for _clock in ppu.last_clock_count..gb.clock_count {
             ppu.ly = ((ppu.internal_clock / 456) % 154) as u8;
             let lx = ppu.internal_clock % 456;
             ppu.internal_clock += 1;

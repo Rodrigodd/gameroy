@@ -470,6 +470,9 @@ impl Ppu {
                         ppu.reach_window = false;
                         // Mode 1 STAT Interrupt
                         set_stat_int(ppu, 4);
+                        // Entering VBlank state triggers the OAM interrupt (I discovery this in
+                        // SameBoy source code)
+                        set_stat_int(ppu, 5);
                     }
                     // OAM search
                     2 => {

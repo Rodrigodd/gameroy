@@ -73,27 +73,29 @@ impl SoundSource for Buffer {
     }
 }
 
-struct Joypad {
+struct Timeline {
     /// Current pressed keys by the user
-    current: u8,
-    movie: Option<Vbm>,
-    frame: usize,
+    current_joypad: u8,
+    /// Current frame being emulated
+    current_frame: usize,
+    /// The state of the joypad for each frame
+    joypad_timeline: Vec<u8>,
 }
-impl Joypad {
+impl Timeline {
+    /// Get next joypad and increase the current frame.
     fn get_next_joypad(&mut self) -> u8 {
-        if let Some(movie) = &self.movie {
-            self.frame += 1;
-            let skip = 333;
-
-            if self.frame >= skip {
-                let joy = !(movie.controller_data[self.frame - skip] as u8);
-                ((joy & 0x0F) << 4) | (joy >> 4)
-            } else {
-                0xff
-            }
+        let joy = if self.current_frame < self.joypad_timeline.len() {
+            self.joypad_timeline[self.current_frame]
         } else {
-            self.current
-        }
+            // if we are several frames behind, fill then with zeros
+            let diff = self.current_frame - self.joypad_timeline.len();
+            self.joypad_timeline.extend((0..diff).map(|_| 0xff));
+
+            self.joypad_timeline.push(self.current_joypad);
+            self.current_joypad
+        };
+        self.current_frame += 1;
+        joy
     }
 }
 
@@ -102,7 +104,7 @@ pub struct Emulator {
     recv: Receiver<EmulatorEvent>,
     proxy: EventLoopProxy<UserEvent>,
 
-    joypad: Arc<ParkMutex<Joypad>>,
+    joypad: Arc<ParkMutex<Timeline>>,
 
     rom_path: PathBuf,
     save_path: PathBuf,
@@ -140,17 +142,34 @@ impl Emulator {
         // println!("{}", buffer.sample_rate);
         // std::process::exit(0);
 
-        gb.lock().sound.borrow_mut().sample_frequency = audio.sample_rate() as u64;
 
         let mut sound = audio.new_sound(buffer).unwrap();
         sound.set_loop(true);
         sound.play();
         std::mem::forget(sound);
 
-        let joypad = Arc::new(ParkMutex::new(Joypad {
-            current: 0xff,
-            movie,
-            frame: 0,
+        let clock_count = {
+            let gb = gb.lock();
+            gb.sound.borrow_mut().sample_frequency = audio.sample_rate() as u64;
+            gb.clock_count
+        };
+
+        let frame_clock_count = 154*456;
+        let current_frame = (clock_count / frame_clock_count) as usize;
+        const BOOT_FRAMES: u64 = 23_384_580 / (154*456);
+        let joypad = Arc::new(ParkMutex::new(Timeline {
+            current_joypad: 0xff,
+            joypad_timeline: movie.map_or(Vec::new(), |m| {
+                (0..BOOT_FRAMES)
+                    .map(|_| 0)
+                    .chain(m.controller_data.into_iter())
+                    .map(|x| {
+                        let joy = !(x as u8);
+                        ((joy & 0x0F) << 4) | (joy >> 4)
+                    })
+                    .collect()
+            }),
+            current_frame,
         }));
         {
             let game_boy = &mut gb.lock();
@@ -234,7 +253,7 @@ impl Emulator {
                         }
                     }
                     SetJoypad(joypad) => {
-                        self.joypad.lock().current = joypad;
+                        self.joypad.lock().current_joypad = joypad;
                     }
                     Debug(value) => {
                         self.debug = value;
@@ -262,7 +281,7 @@ impl Emulator {
                         self.state = EmulatorState::Idle;
                         // This will send EmulatorUpdated to the gui
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
-                    },
+                    }
                 }
 
                 match self.state {

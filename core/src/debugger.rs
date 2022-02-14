@@ -238,6 +238,7 @@ impl Debugger {
                         .map_err(|x| x.to_string())?;
                 }
                 gb.ppu
+                    .borrow()
                     .save_state(&mut stf("ppu.sav"))
                     .map_err(|x| x.to_string())?;
                 gb.joypad

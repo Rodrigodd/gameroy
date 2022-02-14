@@ -188,6 +188,49 @@ fn save_state() {
     println!("test seed: {:08x}", seed);
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut count = 0;
+
+    let assert_eq = |a: &GameBoy, b: &GameBoy| {
+        if a != b {
+            println!();
+            println!();
+            if a.cpu != b.cpu {
+                println!("cpu don't match")
+            }
+            if a.cartridge != b.cartridge {
+                println!("cartridge don't match")
+            }
+            if a.wram != b.wram {
+                println!("wram don't match")
+            }
+            if a.hram != b.hram {
+                println!("hram don't match")
+            }
+            if a.boot_rom_active != b.boot_rom_active {
+                println!("boot_rom_active don't match")
+            }
+            if a.clock_count != b.clock_count {
+                println!("clock_count don't match")
+            }
+            if a.timer != b.timer {
+                println!("timer don't match")
+            }
+            if a.sound != b.sound {
+                println!("sound don't match")
+            }
+            if a.ppu != b.ppu {
+                println!("ppu don't match: {:?}", a.ppu);
+                println!("                 {:?}", b.ppu);
+            }
+            if a.joypad != b.joypad {
+                println!("joypad don't match")
+            }
+            if a.joypad_io != b.joypad_io {
+                println!("joypad_io don't match")
+            }
+            panic!("SaveState desync!!");
+        }
+    };
+
     while inter.0.clock_count < timeout {
         let r = rng.gen_range(100_000..300_000);
         for _ in 0..r {
@@ -199,7 +242,7 @@ fn save_state() {
         let cartridge = Cartridge::new(rom.clone()).unwrap();
         let mut gb = GameBoy::new(None, cartridge);
         gb.load_state(&mut Cursor::new(&mut vec)).unwrap();
-        assert_eq!(inter.0, &gb);
+        assert_eq(inter.0, &gb);
         count += 1;
     }
     println!("number of loads: {}", count);

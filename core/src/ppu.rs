@@ -1,7 +1,7 @@
 use crate::gameboy::GameBoy;
 use crate::save_state::{LoadStateError, SaveState};
 
-#[derive(PartialEq, Eq, Default, Clone)]
+#[derive(PartialEq, Eq, Default, Clone, Debug)]
 struct PixelFifo {
     queue: [u8; 16],
     /// next position to push
@@ -91,7 +91,7 @@ impl PixelFifo {
     }
 }
 
-#[derive(PartialEq, Eq, Default, Clone, Copy)]
+#[derive(PartialEq, Eq, Default, Clone, Copy, Debug)]
 pub struct Sprite {
     pub sx: u8,
     pub sy: u8,
@@ -185,91 +185,134 @@ pub struct Ppu {
     // the number of pixels left to be discarted in the start of the current scanline
     discarting: u8,
 }
-impl SaveState for std::cell::RefCell<Ppu> {
+
+impl std::fmt::Debug for Ppu {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ppu")
+            .field("vram", &"[...]")
+            .field("oam", &"[...]")
+            .field("screen", &"[...]")
+            .field("sprite_buffer", &self.sprite_buffer)
+            .field("sprite_buffer_len", &self.sprite_buffer_len)
+            .field("wyc", &self.wyc)
+            .field("lcdc", &self.lcdc)
+            .field("stat", &self.stat)
+            .field("scy", &self.scy)
+            .field("scx", &self.scx)
+            .field("ly", &self.ly)
+            .field("lyc", &self.lyc)
+            .field("bgp", &self.bgp)
+            .field("obp0", &self.obp0)
+            .field("obp1", &self.obp1)
+            .field("wy", &self.wy)
+            .field("wx", &self.wx)
+            .field("last_clock_count", &self.last_clock_count)
+            .field("internal_clock", &self.internal_clock)
+            .field("background_fifo", &self.background_fifo)
+            .field("sprite_fifo", &self.sprite_fifo)
+            .field("fetcher_step", &self.fetcher_step)
+            .field(
+                "fetcher_skipped_first_push",
+                &self.fetcher_skipped_first_push,
+            )
+            .field("sprite_fetching", &self.sprite_fetching)
+            .field("fetcher_cycle", &self.fetcher_cycle)
+            .field("fetcher_x", &self.fetcher_x)
+            .field("fetch_tile_number", &self.fetch_tile_number)
+            .field("fetch_tile_data_low", &self.fetch_tile_data_low)
+            .field("fetch_tile_data_hight", &self.fetch_tile_data_hight)
+            .field("reach_window", &self.reach_window)
+            .field("is_in_window", &self.is_in_window)
+            .field("curr_x", &self.curr_x)
+            .field("discarting", &self.discarting)
+            .finish()
+    }
+}
+impl SaveState for Ppu {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        let this = self.borrow();
-        this.vram.save_state(data)?;
-        this.oam.save_state(data)?;
+        self.vram.save_state(data)?;
+        self.oam.save_state(data)?;
 
-        this.screen.save_state(data)?;
-        this.sprite_buffer.save_state(data)?;
-        this.sprite_buffer_len.save_state(data)?;
-        this.wyc.save_state(data)?;
-        this.lcdc.save_state(data)?;
-        this.stat.save_state(data)?;
-        this.scy.save_state(data)?;
-        this.scx.save_state(data)?;
-        this.ly.save_state(data)?;
-        this.lyc.save_state(data)?;
-        this.bgp.save_state(data)?;
-        this.wy.save_state(data)?;
-        this.wx.save_state(data)?;
-        this.last_clock_count.save_state(data)?;
+        self.screen.save_state(data)?;
+        self.sprite_buffer.save_state(data)?;
+        self.sprite_buffer_len.save_state(data)?;
+        self.wyc.save_state(data)?;
+        self.lcdc.save_state(data)?;
+        self.stat.save_state(data)?;
+        self.scy.save_state(data)?;
+        self.scx.save_state(data)?;
+        self.ly.save_state(data)?;
+        self.lyc.save_state(data)?;
+        self.bgp.save_state(data)?;
+        self.wy.save_state(data)?;
+        self.wx.save_state(data)?;
+        self.last_clock_count.save_state(data)?;
+        self.internal_clock.save_state(data)?;
 
-        this.background_fifo.save_state(data)?;
-        this.sprite_fifo.save_state(data)?;
+        self.background_fifo.save_state(data)?;
+        self.sprite_fifo.save_state(data)?;
 
-        this.fetcher_step.save_state(data)?;
-        this.fetcher_x.save_state(data)?;
-        this.fetch_tile_number.save_state(data)?;
-        this.fetch_tile_data_low.save_state(data)?;
-        this.fetch_tile_data_hight.save_state(data)?;
+        self.fetcher_step.save_state(data)?;
+        self.fetcher_x.save_state(data)?;
+        self.fetch_tile_number.save_state(data)?;
+        self.fetch_tile_data_low.save_state(data)?;
+        self.fetch_tile_data_hight.save_state(data)?;
 
         [
-            &this.reach_window,
-            &this.is_in_window,
-            &this.fetcher_skipped_first_push,
-            &this.sprite_fetching,
-            &this.fetcher_cycle,
+            &self.reach_window,
+            &self.is_in_window,
+            &self.fetcher_skipped_first_push,
+            &self.sprite_fetching,
+            &self.fetcher_cycle,
         ]
         .save_state(data)?;
 
-        this.curr_x.save_state(data)?;
-        this.discarting.save_state(data)?;
+        self.curr_x.save_state(data)?;
+        self.discarting.save_state(data)?;
 
         Ok(())
     }
 
     fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-        let this = &mut *self.borrow_mut();
-        this.vram.load_state(data)?;
-        this.oam.load_state(data)?;
+        self.vram.load_state(data)?;
+        self.oam.load_state(data)?;
 
-        this.screen.load_state(data)?;
-        this.sprite_buffer.load_state(data)?;
-        this.sprite_buffer_len.load_state(data)?;
-        this.wyc.load_state(data)?;
-        this.lcdc.load_state(data)?;
-        this.stat.load_state(data)?;
-        this.scy.load_state(data)?;
-        this.scx.load_state(data)?;
-        this.ly.load_state(data)?;
-        this.lyc.load_state(data)?;
-        this.bgp.load_state(data)?;
-        this.wy.load_state(data)?;
-        this.wx.load_state(data)?;
-        this.last_clock_count.load_state(data)?;
+        self.screen.load_state(data)?;
+        self.sprite_buffer.load_state(data)?;
+        self.sprite_buffer_len.load_state(data)?;
+        self.wyc.load_state(data)?;
+        self.lcdc.load_state(data)?;
+        self.stat.load_state(data)?;
+        self.scy.load_state(data)?;
+        self.scx.load_state(data)?;
+        self.ly.load_state(data)?;
+        self.lyc.load_state(data)?;
+        self.bgp.load_state(data)?;
+        self.wy.load_state(data)?;
+        self.wx.load_state(data)?;
+        self.last_clock_count.load_state(data)?;
+        self.internal_clock.load_state(data)?;
 
-        this.background_fifo.load_state(data)?;
-        this.sprite_fifo.load_state(data)?;
+        self.background_fifo.load_state(data)?;
+        self.sprite_fifo.load_state(data)?;
 
-        this.fetcher_step.load_state(data)?;
-        this.fetcher_x.load_state(data)?;
-        this.fetch_tile_number.load_state(data)?;
-        this.fetch_tile_data_low.load_state(data)?;
-        this.fetch_tile_data_hight.load_state(data)?;
+        self.fetcher_step.load_state(data)?;
+        self.fetcher_x.load_state(data)?;
+        self.fetch_tile_number.load_state(data)?;
+        self.fetch_tile_data_low.load_state(data)?;
+        self.fetch_tile_data_hight.load_state(data)?;
 
         [
-            &mut this.reach_window,
-            &mut this.is_in_window,
-            &mut this.fetcher_skipped_first_push,
-            &mut this.sprite_fetching,
-            &mut this.fetcher_cycle,
+            &mut self.reach_window,
+            &mut self.is_in_window,
+            &mut self.fetcher_skipped_first_push,
+            &mut self.sprite_fetching,
+            &mut self.fetcher_cycle,
         ]
         .load_state(data)?;
 
-        this.curr_x.load_state(data)?;
-        this.discarting.load_state(data)?;
+        self.curr_x.load_state(data)?;
+        self.discarting.load_state(data)?;
 
         Ok(())
     }

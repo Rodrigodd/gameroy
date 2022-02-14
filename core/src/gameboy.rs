@@ -188,7 +188,11 @@ impl SaveState for GameBoy {
             sound.update(self.clock_count);
             sound.save_state(data)?;
         }
-        self.ppu.save_state(data)?;
+        {
+            // Ppu::update(self);
+            let ppu = self.ppu.borrow();
+            ppu.save_state(data)?;
+        }
         self.joypad.save_state(data)?;
         self.joypad_io.save_state(data)?;
         // self.serial_transfer.save_state(data)?;
@@ -216,7 +220,11 @@ impl SaveState for GameBoy {
                 ));
             }
         }
-        self.ppu.load_state(data)?;
+        {
+            // Ppu::update(self);
+            let mut ppu = self.ppu.borrow_mut();
+            ppu.load_state(data)?;
+        }
         self.joypad.load_state(data)?;
         self.joypad_io.load_state(data)?;
         // self.serial_transfer.load_state(data)?;
@@ -313,6 +321,7 @@ impl GameBoy {
             .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
         self.ppu
+            .borrow_mut()
             .load_state(&mut &include_bytes!("../after_boot/ppu.sav")[..])
             .unwrap();
         self.joypad = 0xFF;

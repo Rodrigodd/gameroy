@@ -110,7 +110,7 @@ impl Cursor {
             return (op, len);
         };
 
-        let rom = &rom.cartridge.rom();
+        let rom = &rom.cartridge.rom;
 
         let i = bank as usize * 0x4000 + offset;
 

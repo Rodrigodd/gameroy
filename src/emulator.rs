@@ -375,7 +375,7 @@ impl Emulator {
         println!("exiting emulator thread");
 
         print!("saving game data to {}... ", self.save_path.display());
-        match std::fs::write(&self.save_path, self.gb.lock().cartridge.ram_mut()) {
+        match std::fs::write(&self.save_path, &mut self.gb.lock().cartridge.ram) {
             Ok(_) => println!("success"),
             Err(x) => println!("error: {}", x),
         }

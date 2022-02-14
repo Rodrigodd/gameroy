@@ -90,7 +90,7 @@ fn main() {
         println!("loading save at {}", save_path.display());
         let saved_ram = std::fs::read(&save_path);
         match saved_ram {
-            Ok(save) => *cartridge.ram_mut() = save,
+            Ok(save) => cartridge.ram = save,
             Err(err) => {
                 println!("load save failed: {}", err);
             }

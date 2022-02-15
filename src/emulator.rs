@@ -10,6 +10,7 @@ use gameroy::{
 use parking_lot::Mutex as ParkMutex;
 use std::{
     collections::VecDeque,
+    io::Write,
     path::PathBuf,
     sync::{
         mpsc::{Receiver, TryRecvError},
@@ -26,6 +27,7 @@ pub enum EmulatorEvent {
     Kill,
     RunFrame,
     FrameLimit(bool),
+    Rewind(bool),
     SetJoypad(u8),
     Debug(bool),
     Step,
@@ -73,17 +75,215 @@ impl SoundSource for Buffer {
     }
 }
 
+#[cfg(test)]
+mod test {
+    use std::io::Write;
+
+    use super::CircularBuffer;
+    #[test]
+    fn circular_buffer() {
+        let mut buffer = CircularBuffer {
+            buffer: vec![0; 9].into(),
+            head: 0,
+            tail: 0,
+        };
+        eprintln!("{:?}", buffer);
+        assert_eq!(buffer.free_len(), 8);
+
+        eprintln!("{:?}", buffer);
+        let w = buffer.write(&[0, 1, 2, 3]).unwrap();
+        assert_eq!(w, 4);
+        assert_eq!(buffer.free_len(), 4);
+
+        eprintln!("{:?}", buffer);
+        let w = buffer.write(&[4, 5]).unwrap();
+        assert_eq!(w, 2);
+        assert_eq!(buffer.free_len(), 2);
+
+        eprintln!("{:?}", buffer);
+        let w = buffer.write(&[6, 7, 8, 9]).unwrap();
+        assert_eq!(w, 2);
+        assert_eq!(buffer.free_len(), 0);
+
+        eprintln!("{:?}", buffer);
+        buffer.tail = 2;
+        assert_eq!(buffer.free_len(), 2);
+
+        eprintln!("{:?}", buffer);
+        let w = buffer.write(&[10, 11, 12, 13]).unwrap();
+        assert_eq!(w, 2);
+        assert_eq!(buffer.free_len(), 0);
+
+        eprintln!("{:?}", buffer);
+        buffer.tail += 4;
+        assert_eq!(buffer.free_len(), 4);
+
+        eprintln!("{:?}", buffer);
+        let w = buffer.write(&[14, 15]).unwrap();
+        assert_eq!(w, 2);
+        assert_eq!(buffer.free_len(), 2);
+
+        eprintln!("{:?}", buffer);
+        let w = buffer.write(&[16, 17, 18, 19]).unwrap();
+        assert_eq!(w, 2);
+        assert_eq!(buffer.free_len(), 0);
+
+        eprintln!("{:?}", buffer);
+        assert_eq!(&*buffer.buffer, &[11, 14, 15, 16, 17, 5, 6, 7, 10])
+    }
+}
+
+#[derive(Debug)]
+// this buffer is empty if head == tail, and full if head == tail - 1.
+struct CircularBuffer {
+    /// The underline buffer.The
+    buffer: Box<[u8]>,
+    /// Next byte to write to. This is index of the first byte of the free area.
+    head: usize,
+    /// Next byte to read from. First byte of the used area.
+    tail: usize,
+}
+impl CircularBuffer {
+    fn new(capacity: usize) -> Self {
+        Self {
+            buffer: vec![0; capacity].into(),
+            head: 0,
+            tail: 0,
+        }
+    }
+
+    /// Return true if there is no more free space.
+    fn is_full(&self) -> bool {
+        (self.head + 1) % self.buffer.len() == self.tail
+    }
+
+    /// Return true if the used space is empty.
+    fn is_empty(&self) -> bool {
+        self.head == self.tail
+    }
+    /// The length of free space in the buffer.
+    fn free_len(&self) -> usize {
+        let len = self.buffer.len();
+        let l = self.tail + len - self.head;
+        if l == len {
+            len - 1
+        } else {
+            l % len - 1
+        }
+    }
+
+    /// Copy the slice in the given circular range, to the given vector.
+    fn copy_slice(&self, (start, end): (usize, usize), out: &mut Vec<u8>) {
+        if start <= end {
+            out.extend_from_slice(&self.buffer[start..end]);
+        } else {
+            out.extend_from_slice(&self.buffer[start..]);
+            out.extend_from_slice(&self.buffer[0..end]);
+        }
+    }
+}
+impl std::io::Write for CircularBuffer {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.is_full() {
+            return Ok(0);
+        }
+        let len = self.buffer.len();
+        // end of the free area is tail - 1, wrapping around
+        let end = (self.tail + len - 1) % len;
+        if self.head < end {
+            let w = self.buffer[self.head..end].as_mut().write(buf)?;
+            self.head += w;
+            Ok(w)
+        } else {
+            let mut write = self.buffer[self.head..].as_mut().write(buf)?;
+            if write == self.buffer.len() - self.head {
+                let w = self.buffer[0..end].as_mut().write(&buf[write..])?;
+                write += w;
+                self.head = w;
+            } else {
+                self.head += write;
+            }
+            Ok(write)
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 struct Timeline {
+    /// a buffer for transiente use.
+    buffer: Vec<u8>,
+    /// Stores multiples savestates, for the savestate timeline.
+    savestate_buffer: CircularBuffer,
+    /// a list of pairs (frame, circular_range), listing the game state for each frame. The data is
+    /// stored in the savestate_buffer.
+    savestate_timeline: VecDeque<(usize, (usize, usize))>,
     /// Current pressed keys by the user
     current_joypad: u8,
     /// Current frame being emulated
     current_frame: usize,
     /// The state of the joypad for each frame
     joypad_timeline: Vec<u8>,
+
+    /// If the emulator is currently rewinding.
+    rewinding: bool,
 }
 impl Timeline {
+    fn new(current_frame: usize, joypad_timeline: Vec<u8>) -> Self {
+        let kib = 2usize.pow(10);
+        let mib = 2usize.pow(20);
+        Self {
+            buffer: Vec::with_capacity(64 * kib),
+            current_frame,
+            joypad_timeline,
+            savestate_buffer: CircularBuffer::new(32 * mib),
+            savestate_timeline: VecDeque::new(),
+            current_joypad: 0xff,
+            rewinding: false,
+        }
+    }
+
+    fn save_state(&mut self, gb: &GameBoy) {
+        self.buffer.clear();
+        gb.save_state(&mut self.buffer).unwrap();
+        // println!("{:.3} KiB", (self.buffer.len() as f32) * 2f32.powi(-10));
+        while self.savestate_buffer.free_len() < self.buffer.len() {
+            let (_, (_, end)) = self
+                .savestate_timeline
+                .pop_front()
+                .expect("not enough size to save state");
+            self.savestate_buffer.tail = end;
+        }
+        let start = self.savestate_buffer.head;
+        self.savestate_buffer.write_all(&self.buffer).unwrap();
+        let end = self.savestate_buffer.head;
+        self.savestate_timeline
+            .push_back((self.current_frame, (start, end)));
+    }
+
+    fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
+        let (last_frame, range) = if let Some(x) = self.savestate_timeline.pop_back() {
+            x
+        } else {
+            debug_assert!(self.savestate_buffer.is_empty());
+            return false;
+        };
+        println!("load last frame {}", last_frame);
+
+        self.buffer.clear();
+        debug_assert!(self.savestate_buffer.head == range.1);
+        self.savestate_buffer.copy_slice(range, &mut self.buffer);
+        self.savestate_buffer.head = range.0;
+        gb.load_state(&mut std::io::Cursor::new(&self.buffer))
+            .unwrap();
+        self.current_frame = last_frame;
+        true
+    }
+
     /// Get next joypad and increase the current frame.
-    fn get_next_joypad(&mut self) -> u8 {
+    fn next_frame(&mut self, gb: &GameBoy) -> u8 {
         let joy = if self.current_frame < self.joypad_timeline.len() {
             self.joypad_timeline[self.current_frame]
         } else {
@@ -94,7 +294,15 @@ impl Timeline {
             self.joypad_timeline.push(self.current_joypad);
             self.current_joypad
         };
+        self.save_state(gb);
         self.current_frame += 1;
+        if self.current_frame % 30 == 0 {
+            println!(
+                "saved frames: {:3}, free_len: {:4}",
+                self.savestate_timeline.len(),
+                self.savestate_buffer.free_len()
+            );
+        }
         joy
     }
 }
@@ -113,6 +321,7 @@ pub struct Emulator {
     state: EmulatorState,
     // When true, the program will sync the time that passed, and the time that is emulated.
     frame_limit: bool,
+    rewind: bool,
     // The instant in time that the gameboy supposedly was turned on.
     // Change when frame_limit is disabled.
     start_time: Instant,
@@ -142,7 +351,6 @@ impl Emulator {
         // println!("{}", buffer.sample_rate);
         // std::process::exit(0);
 
-
         let mut sound = audio.new_sound(buffer).unwrap();
         sound.set_loop(true);
         sound.play();
@@ -154,39 +362,37 @@ impl Emulator {
             gb.clock_count
         };
 
-        let frame_clock_count = 154*456;
+        let frame_clock_count = 154 * 456;
         let current_frame = (clock_count / frame_clock_count) as usize;
-        const BOOT_FRAMES: u64 = 23_384_580 / (154*456);
-        let joypad = Arc::new(ParkMutex::new(Timeline {
-            current_joypad: 0xff,
-            joypad_timeline: movie.map_or(Vec::new(), |m| {
-                (0..BOOT_FRAMES)
-                    .map(|_| 0)
-                    .chain(m.controller_data.into_iter())
-                    .map(|x| {
-                        let joy = !(x as u8);
-                        ((joy & 0x0F) << 4) | (joy >> 4)
-                    })
-                    .collect()
-            }),
+        const BOOT_FRAMES: u64 = 23_384_580 / (154 * 456);
+        let joypad_timeline = movie.map_or(Vec::new(), |m| {
+            (0..BOOT_FRAMES)
+                .map(|_| 0)
+                .chain(m.controller_data.into_iter())
+                .map(|x| {
+                    let joy = !(x as u8);
+                    ((joy & 0x0F) << 4) | (joy >> 4)
+                })
+                .collect()
+        });
+        let joypad = Arc::new(ParkMutex::new(Timeline::new(
             current_frame,
-        }));
+            joypad_timeline,
+        )));
         {
             let game_boy = &mut gb.lock();
             let mut old = game_boy.v_blank.take();
             let joypad = joypad.clone();
             game_boy.v_blank = Some(Box::new(move |gb| {
-                gb.joypad = joypad.lock().get_next_joypad();
                 old.as_mut().map(|x| x(gb));
+                let joypad = &mut *joypad.lock();
+                if !joypad.rewinding {
+                    gb.joypad = joypad.next_frame(gb);
+                }
             }));
         }
 
-        let start_time = {
-            let gb = gb.lock();
-            let secs = gb.clock_count / CLOCK_SPEED;
-            let nanos = (gb.clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
-            Instant::now() - Duration::new(secs, nanos as u32)
-        };
+        let start_time = Instant::now() - clock_to_duration(gb.lock().clock_count);
 
         Self {
             gb,
@@ -198,6 +404,7 @@ impl Emulator {
             debug: false,
             state: EmulatorState::Idle,
             frame_limit: true,
+            rewind: false,
             start_time,
             debugger,
             _audio: audio,
@@ -245,12 +452,15 @@ impl Emulator {
                     FrameLimit(value) => {
                         self.frame_limit = value;
                         if self.frame_limit {
-                            let gb = self.gb.lock();
-                            let secs = gb.clock_count / CLOCK_SPEED;
-                            let nanos =
-                                (gb.clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
-                            self.start_time = Instant::now() - Duration::new(secs, nanos as u32);
+                            self.start_time =
+                                Instant::now() - clock_to_duration(self.gb.lock().clock_count);
                         }
+                    }
+                    Rewind(value) => {
+                        self.rewind = value;
+                        let joypad = &mut *self.joypad.lock();
+                        joypad.rewinding = value;
+                        joypad.joypad_timeline.clear();
                     }
                     SetJoypad(joypad) => {
                         self.joypad.lock().current_joypad = joypad;
@@ -312,7 +522,16 @@ impl Emulator {
                         }
                     },
                     EmulatorState::RunNoBreak => {
-                        if self.frame_limit {
+                        if self.rewind {
+                            let gb = &mut *self.gb.lock();
+                            self.joypad.lock().load_last_frame(gb);
+                            {
+                                let mut c = gb.v_blank.take();
+                                c.as_mut().map(|c| c(gb));
+                                gb.v_blank = c;
+                            }
+                            self.state = EmulatorState::Idle;
+                        } else if self.frame_limit {
                             let mut gb = self.gb.lock();
                             let mut inter = Interpreter(&mut *gb);
                             let elapsed = self.start_time.elapsed();
@@ -394,4 +613,10 @@ impl Emulator {
 
         self.last_buffer_len = lock.len();
     }
+}
+
+fn clock_to_duration(clock_count: u64) -> Duration {
+    let secs = clock_count / CLOCK_SPEED;
+    let nanos = (clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
+    Duration::new(secs, nanos as u32)
 }

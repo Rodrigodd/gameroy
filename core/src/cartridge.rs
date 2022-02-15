@@ -52,7 +52,7 @@ pub struct Cartridge {
 }
 impl SaveState for Cartridge {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.rom.save_state(data)?;
+        // self.rom.save_state(data)?;
         self.ram.save_state(data)?;
         match &self.mbc {
             MBC::None(x) => x.save_state(data),
@@ -63,7 +63,7 @@ impl SaveState for Cartridge {
     }
 
     fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.rom.load_state(data)?;
+        // self.rom.load_state(data)?;
         self.ram.load_state(data)?;
         match &mut self.mbc {
             MBC::None(x) => x.load_state(data),

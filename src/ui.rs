@@ -311,6 +311,9 @@ pub fn create_gui(
                             Pressed(LShift) | Release(LShift) => sender
                                 .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
                                 .unwrap(),
+                            Pressed(R) | Release(R) => sender
+                                .send(EmulatorEvent::Rewind(matches!(event, Pressed(_))))
+                                .unwrap(),
 
                             _ => {}
                         }

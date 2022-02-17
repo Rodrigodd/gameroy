@@ -111,10 +111,10 @@ pub struct GameBoy {
     pub timer: Timer,
     pub sound: RefCell<SoundController>,
     pub ppu: RefCell<Ppu>,
-    /// JoyPad state. 0 bit means pressed.
-    /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     /// FF00: P1
     pub joypad_io: u8,
+    /// JoyPad state. 0 bit means pressed.
+    /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     pub joypad: u8,
     /// FF01: SB
     pub serial_data: u8,

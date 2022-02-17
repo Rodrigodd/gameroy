@@ -4,7 +4,7 @@ use crate::{
     gameboy::GameBoy,
 };
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum Condition {
     None,
     Z,
@@ -137,16 +137,20 @@ impl Interpreter<'_> {
         );
     }
 
-    fn jump(&mut self, c: Condition, address: u16) {
-        // JP cc, nn
+    fn check_condition(&self, c: Condition) -> bool {
         use Condition::*;
-        let c = match c {
+        match c {
             None => true,
             Z => self.0.cpu.f.z(),
             NZ => !self.0.cpu.f.z(),
             C => self.0.cpu.f.c(),
             NC => !self.0.cpu.f.c(),
-        };
+        }
+    }
+
+    fn jump(&mut self, c: Condition, address: u16) {
+        // JP cc, nn
+        let c = self.check_condition(c);
         if c {
             self.jump_to(address);
             self.0.tick(4); // Extra 1 M-cycle for jump
@@ -155,14 +159,7 @@ impl Interpreter<'_> {
 
     fn jump_rel(&mut self, c: Condition, r8: i8) {
         // JP cc, nn
-        use Condition::*;
-        let c = match c {
-            None => true,
-            Z => self.0.cpu.f.z(),
-            NZ => !self.0.cpu.f.z(),
-            C => self.0.cpu.f.c(),
-            NC => !self.0.cpu.f.c(),
-        };
+        let c = self.check_condition(c);
         if c {
             let pc = (self.0.cpu.pc as i16 + r8 as i16) as u16;
             self.jump_to(pc);
@@ -213,14 +210,7 @@ impl Interpreter<'_> {
 
     fn call(&mut self, c: Condition, address: u16) {
         // JP cc, nn
-        use Condition::*;
-        let c = match c {
-            None => true,
-            Z => self.0.cpu.f.z(),
-            NZ => !self.0.cpu.f.z(),
-            C => self.0.cpu.f.c(),
-            NC => !self.0.cpu.f.c(),
-        };
+        let c = self.check_condition(c);
         if c {
             self.pushr(self.0.cpu.pc);
             self.jump_to(address);
@@ -229,15 +219,8 @@ impl Interpreter<'_> {
 
     fn ret(&mut self, cond: Condition) {
         // JP cc, nn
-        use Condition::*;
-        let c = match cond {
-            None => true,
-            Z => self.0.cpu.f.z(),
-            NZ => !self.0.cpu.f.z(),
-            C => self.0.cpu.f.c(),
-            NC => !self.0.cpu.f.c(),
-        };
-        if cond != None {
+        let c = self.check_condition(cond);
+        if cond != Condition::None {
             self.0.tick(4); // 1 M-cycle for condition check (I think?)
         }
         if c {

@@ -768,8 +768,19 @@ impl Interpreter<'_> {
             }
             x if x & 0b11100111 == 0b11000010 => {
                 // JP cc, $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                Some(dest)
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = u16::from_le_bytes([op[1], op[2]]);
+                    Some(dest)
+                } else {
+                    None
+                }
             }
             0x18 => {
                 // JR $rr
@@ -778,15 +789,62 @@ impl Interpreter<'_> {
             }
             x if x & 0b1110_0111 == 0b0010_0000 => {
                 // JR cc, $rr
-                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-                Some(dest)
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                    Some(dest)
+                } else {
+                    None
+                }
             }
-            x if x == 0xCD || x & 0b11100111 == 0b11000100 => {
-                // CALL $aaaa or CALL cc, $aaaa
+            0xCD => {
+                // CALL $aaaa
                 let dest = u16::from_le_bytes([op[1], op[2]]);
                 Some(dest)
             }
+            x if x & 0b11100111 == 0b11000100 => {
+                // CALL cc, $aaaa
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = u16::from_le_bytes([op[1], op[2]]);
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
+            x @ (0xC0 | 0xC8 | 0xD0 | 0xD8) => {
+                // RET cc
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = u16::from_le_bytes([
+                        self.0.read(sub16(self.0.cpu.sp, 1)),
+                        self.0.read(sub16(self.0.cpu.sp, 2)),
+                    ]);
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
             0xC9 | 0xD9 => {
+                // RET or RETI
                 let dest = u16::from_le_bytes([
                     self.0.read(sub16(self.0.cpu.sp, 1)),
                     self.0.read(sub16(self.0.cpu.sp, 2)),

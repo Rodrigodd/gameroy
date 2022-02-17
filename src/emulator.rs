@@ -31,6 +31,7 @@ pub enum EmulatorEvent {
     SetJoypad(u8),
     Debug(bool),
     Step,
+    StepBack,
     Run,
     Reset,
     SaveState,
@@ -263,8 +264,9 @@ impl Timeline {
             .push_back((self.current_frame, (start, end)));
     }
 
+    /// Load the save sate of the last frame in the given GameBoy.
     fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
-        let (last_frame, range) = if let Some(x) = self.savestate_timeline.pop_back() {
+        let &(last_frame, range) = if let Some(x) = self.savestate_timeline.back() {
             x
         } else {
             debug_assert!(self.savestate_buffer.is_empty());
@@ -275,9 +277,21 @@ impl Timeline {
         self.buffer.clear();
         debug_assert!(self.savestate_buffer.head == range.1);
         self.savestate_buffer.copy_slice(range, &mut self.buffer);
-        self.savestate_buffer.head = range.0;
         gb.load_state(&mut std::io::Cursor::new(&self.buffer))
             .unwrap();
+        true
+    }
+
+    /// Remove the save state of the last frame
+    fn pop_last_frame(&mut self) -> bool {
+        let (last_frame, range) = if let Some(x) = self.savestate_timeline.pop_back() {
+            x
+        } else {
+            debug_assert!(self.savestate_buffer.is_empty());
+            return false;
+        };
+
+        self.savestate_buffer.head = range.0;
         self.current_frame = last_frame;
         true
     }
@@ -479,6 +493,18 @@ impl Emulator {
                             self.set_state(EmulatorState::Idle);
                         }
                     }
+                    StepBack => {
+                        if self.debug {
+                            let clock_count = {
+                                let gb = &mut *self.gb.lock();
+                                let clock_count = gb.clock_count;
+                                self.joypad.lock().load_last_frame(gb);
+                                clock_count
+                            };
+                            self.debugger.lock().target_clock = Some(clock_count - 1);
+                            self.set_state(EmulatorState::Run);
+                        }
+                    }
                     Run => {
                         if self.debug {
                             self.set_state(EmulatorState::Run);
@@ -524,7 +550,12 @@ impl Emulator {
                     EmulatorState::RunNoBreak => {
                         if self.rewind {
                             let gb = &mut *self.gb.lock();
-                            self.joypad.lock().load_last_frame(gb);
+                            {
+                                let joypad = &mut *self.joypad.lock();
+                                if joypad.load_last_frame(gb) {
+                                    joypad.pop_last_frame();
+                                }
+                            }
                             {
                                 let mut c = gb.v_blank.take();
                                 c.as_mut().map(|c| c(gb));

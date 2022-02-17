@@ -188,6 +188,7 @@ fn create_window(
             use DebuggerEvent::*;
             match event {
                 Step => emu_channel.send(EmulatorEvent::Step).unwrap(),
+                StepBack => emu_channel.send(EmulatorEvent::StepBack).unwrap(),
                 Reset => emu_channel.send(EmulatorEvent::Reset).unwrap(),
                 Run => emu_channel.send(EmulatorEvent::Run).unwrap(),
                 BreakpointsUpdate => proxy.send_event(UserEvent::BreakpointsUpdated).unwrap(),

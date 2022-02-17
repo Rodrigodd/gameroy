@@ -269,6 +269,9 @@ pub fn create_gui(
                                 sender.send(EmulatorEvent::LoadState).unwrap();
                             }
                             Pressed(F7) => {
+                                sender.send(EmulatorEvent::StepBack).unwrap();
+                            }
+                            Pressed(F8) => {
                                 sender.send(EmulatorEvent::Step).unwrap();
                             }
                             Pressed(F9) => {

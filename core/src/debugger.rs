@@ -21,6 +21,7 @@ pub enum RunResult {
 
 pub enum DebuggerEvent {
     Step,
+    StepBack,
     Reset,
     Run,
     BreakpointsUpdate,
@@ -37,9 +38,9 @@ pub struct Debugger {
     breakpoints: BTreeMap<u16, u8>,
     watchs: BTreeSet<u16>,
     /// Address to stop at
-    target_address: Option<u16>,
+    pub target_address: Option<u16>,
     /// Clock to stop at
-    target_clock: Option<u64>,
+    pub target_clock: Option<u64>,
     /// Callback called when self is mutated
     pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent) + Send>>,
 }
@@ -57,6 +58,7 @@ impl Debugger {
         self.target_clock = None;
         match args[0] {
             "step" | "" => callback(self, Step),
+            "stepback" => callback(self, StepBack),
             "reset" => callback(self, Reset),
             "runto" => {
                 if args.len() != 2 {

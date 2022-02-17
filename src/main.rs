@@ -154,7 +154,7 @@ fn create_window(
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(600, 400))
+        .with_inner_size(PhysicalSize::new(768, 400))
         .build(&event_loop)
         .unwrap();
     let proxy = event_loop.create_proxy();

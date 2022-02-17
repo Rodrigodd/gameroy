@@ -384,7 +384,7 @@ fn open_debug_panel(
     event_table: Rc<RefCell<EventTable>>,
 ) {
     let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
-    split_layout.split = 0.5;
+    split_layout.split = 0.333;
     ctx.create_control_reserved(split_view)
         .parent(root)
         .graphic(style.split_background.clone())

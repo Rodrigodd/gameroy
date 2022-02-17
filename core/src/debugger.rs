@@ -345,7 +345,15 @@ impl Debugger {
         } else {
             target_clock
         };
-        while inter.0.clock_count < target_clock {
+        loop {
+            // break before exceeding the target clock
+            let next_count = inter.next_interpret_cycle_count() as u64;
+            let op = inter.0.read(inter.0.cpu.pc);
+
+            if inter.0.clock_count + next_count > target_clock {
+                break;
+            }
+
             if self.check_break(&mut inter) {
                 return RunResult::ReachBreakpoint;
             }
@@ -355,7 +363,11 @@ impl Debugger {
                     return RunResult::ReachBreakpoint;
                 }
             }
+            let before = inter.0.clock_count;
             inter.interpret_op();
+            let elapsed = inter.0.clock_count - before;
+            debug_assert_eq!(next_count, elapsed, "for op {:02x} predicited {}, found {}", op, next_count, elapsed);
+
             if Some(inter.0.cpu.pc) == self.target_address {
                 self.target_address = None;
                 return RunResult::ReachTargetAddress;
@@ -367,7 +379,7 @@ impl Debugger {
         let _ = inter.0.sound.borrow_mut().get_output(clock_count);
 
         if let Some(clock) = self.target_clock {
-            if gb.clock_count >= clock {
+            if clock == target_clock {
                 self.target_clock = None;
                 RunResult::ReachTargetClock
             } else {

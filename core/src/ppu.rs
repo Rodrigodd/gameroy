@@ -244,6 +244,8 @@ impl SaveState for Ppu {
         self.ly.save_state(data)?;
         self.lyc.save_state(data)?;
         self.bgp.save_state(data)?;
+        self.obp0.save_state(data)?;
+        self.obp1.save_state(data)?;
         self.wy.save_state(data)?;
         self.wx.save_state(data)?;
         self.last_clock_count.save_state(data)?;
@@ -288,6 +290,8 @@ impl SaveState for Ppu {
         self.ly.load_state(data)?;
         self.lyc.load_state(data)?;
         self.bgp.load_state(data)?;
+        self.obp0.load_state(data)?;
+        self.obp1.load_state(data)?;
         self.wy.load_state(data)?;
         self.wx.load_state(data)?;
         self.last_clock_count.load_state(data)?;
@@ -359,6 +363,64 @@ impl Default for Ppu {
 }
 
 impl Ppu {
+    pub fn reset_after_boot(&mut self) {
+        let mut ppu_state = &include_bytes!("../after_boot/ppu.sav")[..];
+        *self = Self {
+            #[rustfmt::skip]
+            vram: {
+                let mut vram = [0; 0x2000];
+                vram.load_state(&mut ppu_state).unwrap();
+                vram
+
+            },
+            oam: {
+                let mut oam = [0; 0xA0];
+                oam.load_state(&mut ppu_state).unwrap();
+                oam
+
+            },
+            screen: {
+                let mut screen = [0; 0x5A00];
+                screen.load_state(&mut ppu_state).unwrap();
+                screen
+
+            },
+            sprite_buffer: [Sprite::default(); 10],
+            sprite_buffer_len: 0,
+            wyc: 0,
+            lcdc: 0x91,
+            stat: 0x05,
+            scy: 0,
+            scx: 0,
+            ly: 0x99,
+            lyc: 0,
+            bgp: 0xfc,
+            obp0: 0,
+            obp1: 0,
+            wy: 0,
+            wx: 0,
+            last_clock_count: 23_440_356,
+            internal_clock: 23_173_892,
+
+            background_fifo: PixelFifo::default(),
+            sprite_fifo: PixelFifo::default(),
+
+            fetcher_step: 0x03,
+            fetcher_x: 0x14,
+            fetch_tile_number: 0,
+            fetch_tile_data_low: 0,
+            fetch_tile_data_hight: 0,
+
+            reach_window: false,
+            is_in_window: false,
+            fetcher_skipped_first_push: true,
+            sprite_fetching: false,
+            fetcher_cycle: false,
+
+            curr_x: 0xa0,
+            discarting: 0,
+        }
+    }
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {
         // for now, ppu update on read or write,should never trigger a interrupt.
         let (v, s) = Self::update(gb);

@@ -193,9 +193,14 @@ impl SaveState for GameBoy {
             let ppu = self.ppu.borrow();
             ppu.save_state(data)?;
         }
-        self.joypad.save_state(data)?;
         self.joypad_io.save_state(data)?;
+        self.joypad.save_state(data)?;
+
+        self.serial_data.save_state(data)?;
+        self.serial_control.save_state(data)?;
         // self.serial_transfer.save_state(data)?;
+        self.interrupt_flag.save_state(data)?;
+        self.interrupt_enabled.save_state(data)?;
         // self.v_blank.save_state(data)
         Ok(())
     }
@@ -225,10 +230,16 @@ impl SaveState for GameBoy {
             let mut ppu = self.ppu.borrow_mut();
             ppu.load_state(data)?;
         }
-        self.joypad.load_state(data)?;
         self.joypad_io.load_state(data)?;
+        self.joypad.load_state(data)?;
+
+        self.serial_data.load_state(data)?;
+        self.serial_control.load_state(data)?;
         // self.serial_transfer.load_state(data)?;
+        self.interrupt_flag.load_state(data)?;
+        self.interrupt_enabled.load_state(data)?;
         // self.v_blank.load_state(data)
+
         Ok(())
     }
 }
@@ -322,8 +333,7 @@ impl GameBoy {
             .unwrap();
         self.ppu
             .borrow_mut()
-            .load_state(&mut &include_bytes!("../after_boot/ppu.sav")[..])
-            .unwrap();
+            .reset_after_boot();
         self.joypad = 0xFF;
         self.joypad_io = 0x00;
     }

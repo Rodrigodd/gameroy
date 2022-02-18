@@ -175,8 +175,9 @@ mod blargg {
 #[test]
 /// Run cpu_instrs for a random ammount of instructions, do a save state, and compare the load
 /// state with the original. They should always be equal.
-fn save_state() {
-    let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+fn save_state1() {
+    // let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+    let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
@@ -189,63 +190,134 @@ fn save_state() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut count = 0;
 
-    let assert_eq = |a: &GameBoy, b: &GameBoy| {
-        if a != b {
-            println!();
-            println!();
-            if a.cpu != b.cpu {
-                println!("cpu don't match")
-            }
-            if a.cartridge != b.cartridge {
-                println!("cartridge don't match")
-            }
-            if a.wram != b.wram {
-                println!("wram don't match")
-            }
-            if a.hram != b.hram {
-                println!("hram don't match")
-            }
-            if a.boot_rom_active != b.boot_rom_active {
-                println!("boot_rom_active don't match")
-            }
-            if a.clock_count != b.clock_count {
-                println!("clock_count don't match")
-            }
-            if a.timer != b.timer {
-                println!("timer don't match")
-            }
-            if a.sound != b.sound {
-                println!("sound don't match")
-            }
-            if a.ppu != b.ppu {
-                println!("ppu don't match: {:?}", a.ppu);
-                println!("                 {:?}", b.ppu);
-            }
-            if a.joypad != b.joypad {
-                println!("joypad don't match")
-            }
-            if a.joypad_io != b.joypad_io {
-                println!("joypad_io don't match")
-            }
-            panic!("SaveState desync!!");
-        }
-    };
-
+    let mut vec = Vec::new();
     while inter.0.clock_count < timeout {
+        // run for a random ammount
         let r = rng.gen_range(100_000..300_000);
         for _ in 0..r {
             inter.interpret_op();
         }
+
+        // save state
         use std::io::Cursor;
-        let mut vec = Vec::new();
+        vec.clear();
         inter.0.save_state(&mut vec).unwrap();
+
+        // load state
         let cartridge = Cartridge::new(rom.clone()).unwrap();
         let mut gb = GameBoy::new(None, cartridge);
         gb.load_state(&mut Cursor::new(&mut vec)).unwrap();
-        assert_eq(inter.0, &gb);
+
+        // compare
+        if !assert_gb_eq(inter.0, &gb) {
+            panic!("SaveState desync!!");
+        }
+
         count += 1;
     }
     println!("number of loads: {}", count);
+}
+
+#[test]
+/// Do save a save state, run cpu_instrs for a random ammount of instructions, load the save state,
+/// run the same ammount of instructions, and compare with the first one. They should always be
+/// equal.
+fn save_state2() {
+    // let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+    let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
+    let rom = std::fs::read(rom_path).unwrap();
+
+    let cartridge = Cartridge::new(rom.clone()).unwrap();
+    let mut game_boy = GameBoy::new(None, cartridge);
+
+    let mut inter = Interpreter(&mut game_boy);
+    let timeout = 250_400_000;
+    let seed = rand::random();
+    println!("test seed: {:08x}", seed);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let mut count = 0;
+
+    while inter.0.clock_count < timeout {
+        // save state
+        let mut save_state = Vec::new();
+        inter.0.save_state(&mut save_state).unwrap();
+
+        // run random number of instructions
+        let r = rng.gen_range(100_000..300_000);
+        println!("steps: {}", r);
+        for _ in 0..r {
+            inter.interpret_op();
+        }
+
+        // load state
+        use std::io::Cursor;
+        let cartridge = Cartridge::new(rom.clone()).unwrap();
+        let mut gb = GameBoy::new(None, cartridge);
+        gb.load_state(&mut Cursor::new(&mut save_state)).unwrap();
+
+        // run same number of instructions
+        for _ in 0..r {
+            Interpreter(&mut gb).interpret_op();
+        }
+
+        // compare them!!
+        if !assert_gb_eq(inter.0, &gb) {
+            panic!("SaveState desync!!");
+        }
+        count += 1;
+    }
+    println!("number of loads: {}", count);
+}
+
+fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
+    if a != b {
+        println!();
+        println!();
+        if a.cpu != b.cpu {
+            println!("cpu don't match: {:?}", a.cpu);
+            println!("                 {:?}", b.cpu);
+        }
+        if a.cartridge != b.cartridge {
+            println!("cartridge don't match")
+        }
+        if a.wram != b.wram {
+            println!("wram don't match")
+        }
+        if a.hram != b.hram {
+            println!("hram don't match")
+        }
+        if a.boot_rom_active != b.boot_rom_active {
+            println!("boot_rom_active don't match")
+        }
+        if a.clock_count != b.clock_count {
+            println!("clock_count don't match")
+        }
+        if a.timer != b.timer {
+            println!("timer don't match")
+        }
+        if a.sound != b.sound {
+            println!("sound don't match")
+        }
+        if a.ppu != b.ppu {
+            println!("ppu don't match: {:?}", a.ppu);
+            println!("                 {:?}", b.ppu);
+        }
+        if a.joypad != b.joypad {
+            println!("joypad don't match: {:02x}", a.joypad);
+            println!("                    {:02x}", b.joypad);
+        }
+        if a.joypad_io != b.joypad_io {
+            println!("joypad_io don't match")
+        }
+        // let mut vec = Vec::new();
+        // a.save_state(&mut vec);
+        // std::fs::write("gameboy_a.dump.bin", &vec);
+        // vec.clear();
+        // b.save_state(&mut vec);
+        // std::fs::write("gameboy_b.dump.bin", vec);
+        return false;
+    }
+    true
 }
 
 mod mattcurrie {

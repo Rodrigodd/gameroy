@@ -167,7 +167,12 @@ impl PpuViewer {
         }
 
         for (i, &[view, text]) in self.buffer_sprites.iter().enumerate() {
-            let gameroy::ppu::Sprite { sx, sy, tile, flags } = ppu.sprite_buffer[i];
+            let gameroy::ppu::Sprite {
+                sx,
+                sy,
+                tile,
+                flags,
+            } = ppu.sprite_buffer[i];
 
             // let palette = if flags & 0x10 != 0 {
             //     ppu.obp1

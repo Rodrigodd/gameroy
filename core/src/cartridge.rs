@@ -116,7 +116,7 @@ impl Cartridge {
 
     /// The number of banks in this cartridge. A cartridge without bank switching have 2 banks.
     pub fn num_banks(&self) -> u8 {
-            (self.rom.len() / 0x4000) as u8
+        (self.rom.len() / 0x4000) as u8
     }
 
     /// The current selected rom bank

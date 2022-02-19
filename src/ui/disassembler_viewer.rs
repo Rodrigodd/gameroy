@@ -528,22 +528,20 @@ pub fn build(
     let _reg_view = ctx
         .create_control_reserved(reg_id)
         .parent(right_panel)
-        .graphic(
-            Text::new(
-                format!(
-                    "\
+        .graphic(Text::new(
+            format!(
+                "\
 AF: {:02x} {:02x}
 BC: {:02x} {:02x}
 DE: {:02x} {:02x}
 HL: {:02x} {:02x}
 SP: {:04x}
 PC: {:04x}",
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                ),
-                (-1, 0),
-                style.text_style.clone(),
-            )
-        )
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ),
+            (-1, 0),
+            style.text_style.clone(),
+        ))
         .layout(FitText)
         .build(ctx);
 
@@ -557,7 +555,11 @@ PC: {:04x}",
     let _break_header = ctx
         .create_control()
         .parent(breaks)
-        .graphic(Text::new("breakpoints".to_string(), (-1, 0), style.text_style.clone()))
+        .graphic(Text::new(
+            "breakpoints".to_string(),
+            (-1, 0),
+            style.text_style.clone(),
+        ))
         .layout(FitText)
         .build(ctx);
 
@@ -586,7 +588,11 @@ PC: {:04x}",
     let _watchs_header = ctx
         .create_control()
         .parent(watchs)
-        .graphic(Text::new("watchs".to_string(), (-1, 0), style.text_style.clone()))
+        .graphic(Text::new(
+            "watchs".to_string(),
+            (-1, 0),
+            style.text_style.clone(),
+        ))
         .layout(FitText)
         .build(ctx);
 

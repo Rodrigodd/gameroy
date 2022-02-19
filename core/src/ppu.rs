@@ -377,13 +377,11 @@ impl Ppu {
                 let mut oam = [0; 0xA0];
                 oam.load_state(&mut ppu_state).unwrap();
                 oam
-
             },
             screen: {
                 let mut screen = [0; 0x5A00];
                 screen.load_state(&mut ppu_state).unwrap();
                 screen
-
             },
             sprite_buffer: [Sprite::default(); 10],
             sprite_buffer_len: 0,

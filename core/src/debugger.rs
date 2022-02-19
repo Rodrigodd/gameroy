@@ -368,7 +368,11 @@ impl Debugger {
             let before = inter.0.clock_count;
             inter.interpret_op();
             let elapsed = inter.0.clock_count - before;
-            debug_assert_eq!(next_count, elapsed, "for op {:02x} predicited {}, found {}", op, next_count, elapsed);
+            debug_assert_eq!(
+                next_count, elapsed,
+                "for op {:02x} predicited {}, found {}",
+                op, next_count, elapsed
+            );
 
             if Some(inter.0.cpu.pc) == self.target_address {
                 self.target_address = None;

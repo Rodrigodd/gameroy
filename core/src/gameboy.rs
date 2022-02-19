@@ -348,9 +348,7 @@ impl GameBoy {
             .borrow_mut()
             .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
-        self.ppu
-            .borrow_mut()
-            .reset_after_boot();
+        self.ppu.borrow_mut().reset_after_boot();
         self.joypad = 0xFF;
         self.joypad_io = 0x00;
     }

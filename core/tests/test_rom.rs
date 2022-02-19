@@ -268,6 +268,68 @@ fn save_state2() {
     }
     println!("number of loads: {}", count);
 }
+#[test]
+/// Do a save state in the v_blank callback, run a random number of instructions, load that save
+/// state, run the same number of instructions, and compare with the first one. They should always
+/// be equal.
+fn save_state3() {
+    // let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+    let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
+    let rom = std::fs::read(rom_path).unwrap();
+
+    let cartridge = Cartridge::new(rom.clone()).unwrap();
+    let mut game_boy = GameBoy::new(None, cartridge);
+
+    let v_blank_state = Arc::new(Mutex::new(None));
+
+    // also test in v_blank(I do this in the emulator), because if a v_blank call happens before a
+    // state mutation, there will be a SaveState desync after loading that save.
+    game_boy.v_blank = Some(Box::new({
+        let v_blank_state = v_blank_state.clone();
+        move |original| {
+            // save state
+            let mut state = Vec::new();
+            original.save_state(&mut state).unwrap();
+            *v_blank_state.lock().unwrap() = Some(state);
+        }
+    }));
+
+    let mut inter = Interpreter(&mut game_boy);
+    let timeout = 250_400_000;
+    let seed = rand::random();
+    println!("test seed: {:08x}", seed);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let mut count = 0;
+
+    while inter.0.clock_count < timeout {
+        // run random number of instructions
+        let r = rng.gen_range(100_000..300_000);
+        println!("steps: {}", r);
+        for _ in 0..r {
+            inter.interpret_op();
+        }
+
+        // load state
+        if let Some(save_state) = v_blank_state.lock().unwrap().take() {
+            use std::io::Cursor;
+            let cartridge = Cartridge::new(rom.clone()).unwrap();
+            let mut gb = GameBoy::new(None, cartridge);
+            gb.load_state(&mut Cursor::new(save_state)).unwrap();
+
+            // run to the current state
+            while gb.clock_count < inter.0.clock_count {
+                Interpreter(&mut gb).interpret_op();
+            }
+
+            // compare them!!
+            if !assert_gb_eq(inter.0, &gb) {
+                panic!("SaveState desync!!");
+            }
+            count += 1;
+        }
+    }
+    println!("number of loads: {}", count);
+}
 
 fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
     if a != b {

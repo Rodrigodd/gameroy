@@ -126,6 +126,9 @@ pub struct GameBoy {
     /// FFFF: IE
     pub interrupt_enabled: u8,
 
+    /// This trigger control if in the next interpret the v_blank callback will be called.
+    pub v_blank_trigger: bool,
+    /// A callback that is called after a v_blank. This is called at the
     pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
 }
 
@@ -263,11 +266,12 @@ impl GameBoy {
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
             }),
-            v_blank: None,
             serial_data: 0,
             serial_control: 0,
             interrupt_flag: 0,
             interrupt_enabled: 0,
+            v_blank_trigger: false,
+            v_blank: None,
         };
 
         if this.boot_rom.is_none() {
@@ -275,6 +279,14 @@ impl GameBoy {
         }
 
         this
+    }
+
+    /// call the v_blank callback
+    pub fn call_v_blank_callback(&mut self) {
+        if let Some(mut v_blank) = self.v_blank.take() {
+            v_blank(self);
+            self.v_blank = Some(v_blank);
+        }
     }
 
     /// Reset the gameboy to its stating state.
@@ -410,15 +422,12 @@ impl GameBoy {
             self.interrupt_flag |= 1 << 2;
         }
         let (v_blank_interrupt, stat_interrupt) = Ppu::update(self);
-        if v_blank_interrupt {
-            if let Some(mut v_blank) = self.v_blank.take() {
-                v_blank(self);
-                self.v_blank = Some(v_blank);
-            }
-            self.interrupt_flag |= 1 << 0;
-        }
         if stat_interrupt {
             self.interrupt_flag |= 1 << 1;
+        }
+        if v_blank_interrupt {
+            self.interrupt_flag |= 1 << 0;
+            self.v_blank_trigger = true;
         }
     }
 

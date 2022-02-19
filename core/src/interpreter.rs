@@ -945,6 +945,10 @@ impl Interpreter<'_> {
     }
 
     pub fn interpret_op(&mut self) {
+        if self.0.v_blank_trigger {
+            self.0.v_blank_trigger = false;
+            self.0.call_v_blank_callback();
+        }
         let interrupts: u8 = self.0.interrupt_flag & self.0.interrupt_enabled;
         if interrupts != 0 {
             let mut interrupt_handled = false;

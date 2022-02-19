@@ -1,7 +1,7 @@
 use crate::save_state::{LoadStateError, SaveState};
 use std::fmt;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CpuState {
     Running = 0,
     Halt = 1,
@@ -30,7 +30,7 @@ impl Default for CpuState {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ImeState {
     /// Interrupts are disable
     Disabled = 0,
@@ -63,7 +63,7 @@ impl Default for ImeState {
 }
 
 #[repr(C)]
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct Cpu {
     pub a: u8,
     pub f: Flags,
@@ -158,7 +158,7 @@ impl Cpu {
     }
 }
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct Flags(pub u8);
 impl Flags {
     pub fn z(&self) -> bool {

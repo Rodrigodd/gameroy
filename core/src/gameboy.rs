@@ -5,7 +5,7 @@ use crate::{cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::{Read, Write};
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, Debug, PartialEq, Eq)]
 pub struct Timer {
     pub div: u16,
     pub tima: u8,
@@ -137,14 +137,14 @@ impl std::fmt::Debug for GameBoy {
         // TODO: derive Debug for fields when the time arrive.
         f.debug_struct("GameBoy")
             // .field("trace", &self.trace)
-            // .field("cpu", &self.cpu)
+            .field("cpu", &self.cpu)
             // .field("cartridge", &self.cartridge)
             .field("wram", &self.wram)
             .field("hram", &self.hram)
             .field("boot_rom", &self.boot_rom)
             .field("boot_rom_active", &self.boot_rom_active)
             .field("clock_count", &self.clock_count)
-            // .field("timer", &self.timer)
+            .field("timer", &self.timer)
             // .field("sound", &self.sound)
             // .field("ppu", &self.ppu)
             .field("joypad", &self.joypad)

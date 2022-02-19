@@ -218,9 +218,9 @@ struct Timeline {
     buffer: Vec<u8>,
     /// Stores multiples savestates, for the savestate timeline.
     savestate_buffer: CircularBuffer,
-    /// a list of pairs (frame, circular_range), listing the game state for each frame. The data is
-    /// stored in the savestate_buffer.
-    savestate_timeline: VecDeque<(usize, (usize, usize))>,
+    /// a list of pairs (frame, clock_count, circular_range), listing the game state for each
+    /// frame. The data is stored in the savestate_buffer.
+    savestate_timeline: VecDeque<(usize, u64, (usize, usize))>,
     /// Current pressed keys by the user
     current_joypad: u8,
     /// Current frame being emulated
@@ -251,7 +251,7 @@ impl Timeline {
         gb.save_state(&mut self.buffer).unwrap();
         // println!("{:.3} KiB", (self.buffer.len() as f32) * 2f32.powi(-10));
         while self.savestate_buffer.free_len() < self.buffer.len() {
-            let (_, (_, end)) = self
+            let (_, _, (_, end)) = self
                 .savestate_timeline
                 .pop_front()
                 .expect("not enough size to save state");
@@ -261,30 +261,35 @@ impl Timeline {
         self.savestate_buffer.write_all(&self.buffer).unwrap();
         let end = self.savestate_buffer.head;
         self.savestate_timeline
-            .push_back((self.current_frame, (start, end)));
+            .push_back((self.current_frame, gb.clock_count, (start, end)));
+    }
+
+    fn last_frame_clock_count(&self) -> Option<u64> {
+        self.savestate_timeline.back().map(|&(_, x, _)| x)
     }
 
     /// Load the save sate of the last frame in the given GameBoy.
     fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
-        let &(last_frame, range) = if let Some(x) = self.savestate_timeline.back() {
+        let &(last_frame, clock_count, range) = if let Some(x) = self.savestate_timeline.back() {
             x
         } else {
             debug_assert!(self.savestate_buffer.is_empty());
             return false;
         };
-        println!("load last frame {}", last_frame);
 
         self.buffer.clear();
         debug_assert!(self.savestate_buffer.head == range.1);
         self.savestate_buffer.copy_slice(range, &mut self.buffer);
         gb.load_state(&mut std::io::Cursor::new(&self.buffer))
             .unwrap();
+        debug_assert_eq!(gb.clock_count, clock_count);
         true
     }
 
     /// Remove the save state of the last frame
     fn pop_last_frame(&mut self) -> bool {
-        let (last_frame, range) = if let Some(x) = self.savestate_timeline.pop_back() {
+        let (last_frame, _clock_count, range) = if let Some(x) = self.savestate_timeline.pop_back()
+        {
             x
         } else {
             debug_assert!(self.savestate_buffer.is_empty());
@@ -449,6 +454,7 @@ impl Emulator {
                             .write(true)
                             .open(self.rom_path.with_extension("save_state"))
                             .unwrap();
+                        println!("save state");
                         self.gb.lock().save_state(&mut save_state).unwrap();
                     }
                     LoadState => {
@@ -456,6 +462,8 @@ impl Emulator {
                             std::fs::File::open(self.rom_path.with_extension("save_state"))
                                 .unwrap();
                         self.gb.lock().load_state(&mut save_state).unwrap();
+                        println!("load state");
+                        self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
                     }
                     Kill => break 'event_loop,
                     RunFrame => {
@@ -495,14 +503,25 @@ impl Emulator {
                     }
                     StepBack => {
                         if self.debug {
-                            let clock_count = {
-                                let gb = &mut *self.gb.lock();
+                            let mut gb = self.gb.lock();
+                            let mut joypad = self.joypad.lock();
+                            if let Some(last_clock_count) = joypad.last_frame_clock_count() {
                                 let clock_count = gb.clock_count;
-                                self.joypad.lock().load_last_frame(gb);
-                                clock_count
-                            };
-                            self.debugger.lock().target_clock = Some(clock_count - 1);
-                            self.set_state(EmulatorState::Run);
+                                // currently, the maximum number of clocks that interpret_op
+                                // elapses is 32, so if the last_frame_clock_count is recent than
+                                // that, this could be after the last instruction. So pop it.
+                                if last_clock_count > clock_count - 32 {
+                                    joypad.pop_last_frame();
+                                }
+                                if joypad.load_last_frame(&mut *gb) {
+                                    drop(joypad);
+                                    drop(gb);
+                                    self.debugger.lock().target_clock = Some(clock_count - 1);
+                                    self.set_state(EmulatorState::Run);
+                                }
+                            } else {
+                                println!("there is no last frame");
+                            }
                         }
                     }
                     Run => {

@@ -169,12 +169,17 @@ impl PartialEq for GameBoy {
             && self.timer == other.timer
             && self.sound == other.sound
             && self.ppu == other.ppu
-            && self.joypad == other.joypad
             && self.joypad_io == other.joypad_io
-        // && self.serial_transfer == other.serial_transfer
+            && self.joypad == other.joypad
+            && self.serial_data == other.serial_data
+            && self.serial_control == other.serial_control
+            // && self.serial_transfer == other.serial_transfer
+            && self.interrupt_flag == other.interrupt_flag
+            && self.interrupt_enabled == other.interrupt_enabled
         // && self.v_blank == other.v_blank
     }
 }
+
 impl SaveState for GameBoy {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
         // self.trace.save_state(output)?;

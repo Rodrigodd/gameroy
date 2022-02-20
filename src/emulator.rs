@@ -271,7 +271,7 @@ impl Timeline {
 
     /// Load the save sate of the last frame in the given GameBoy.
     fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
-        let &(last_frame, clock_count, range) = if let Some(x) = self.savestate_timeline.back() {
+        let &(_last_frame, clock_count, range) = if let Some(x) = self.savestate_timeline.back() {
             x
         } else {
             debug_assert!(self.savestate_buffer.is_empty());

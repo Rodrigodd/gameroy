@@ -926,7 +926,7 @@ impl Interpreter<'_> {
                         // CALL cc, $aaaa
                         12
                     }
-                    x @ (0xC0 | 0xC8 | 0xD0 | 0xD8) => {
+                    0xC0 | 0xC8 | 0xD0 | 0xD8 => {
                         // RET cc
                         12
                     }

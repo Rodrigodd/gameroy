@@ -13,6 +13,8 @@ use rand::{Rng, SeedableRng};
 const SCREEN_HEIGHT: usize = 144;
 const SCREEN_WIDTH: usize = 160;
 
+const TEST_ROM_PATH: &str = "tests/gameboy-test-roms/";
+
 mod blargg {
     use super::*;
 
@@ -84,7 +86,7 @@ mod blargg {
     }
 
     fn test_rom_serial(path: &str, timeout: u64) -> Result<(), String> {
-        let rom_path = "../roms/blargg/".to_string() + path;
+        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + path;
         let rom = std::fs::read(rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();
@@ -124,7 +126,7 @@ mod blargg {
     }
 
     fn test_rom_memory(path: &str, timeout: u64) -> Result<(), String> {
-        let rom_path = "../roms/blargg/".to_string() + path;
+        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + path;
         let rom = std::fs::read(rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();
@@ -181,7 +183,7 @@ mod blargg {
 /// Run cpu_instrs for a random ammount of instructions, do a save state, and compare the load
 /// state with the original. They should always be equal.
 fn save_state1() {
-    // let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+    // let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs.gb";
     let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
     let rom = std::fs::read(rom_path).unwrap();
 
@@ -228,7 +230,7 @@ fn save_state1() {
 /// run the same ammount of instructions, and compare with the first one. They should always be
 /// equal.
 fn save_state2() {
-    // let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+    // let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs.gb";
     let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
     let rom = std::fs::read(rom_path).unwrap();
 
@@ -278,7 +280,7 @@ fn save_state2() {
 /// state, run the same number of instructions, and compare with the first one. They should always
 /// be equal.
 fn save_state3() {
-    // let rom_path = "../roms/blargg/cpu_instrs/cpu_instrs.gb";
+    // let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs.gb";
     let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
     let rom = std::fs::read(rom_path).unwrap();
 
@@ -405,8 +407,8 @@ mod mattcurrie {
     }
 
     fn test_screen(rom: &str, reference: &str, timeout: u64) {
-        let rom_path = PathBuf::from("../roms/".to_string() + rom);
-        let reference_path = "../roms/".to_string() + reference;
+        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+        let reference_path = TEST_ROM_PATH.to_string() + reference;
         let rom = std::fs::read(&rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();

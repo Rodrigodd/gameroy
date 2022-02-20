@@ -9,9 +9,8 @@ use std::{
 use parking_lot::Mutex;
 
 use gameroy::{
-    cartridge::Cartridge,
     debugger::{Debugger, DebuggerEvent},
-    gameboy::{self, GameBoy},
+    gameboy::{self, cartridge::Cartridge, GameBoy},
     parser::Vbm,
 };
 

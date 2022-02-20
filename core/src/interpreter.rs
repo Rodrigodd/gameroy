@@ -1,7 +1,9 @@
 use crate::{
     consts,
-    cpu::{CpuState, ImeState},
-    gameboy::GameBoy,
+    gameboy::{
+        cpu::{CpuState, ImeState},
+        GameBoy,
+    },
 };
 
 #[derive(PartialEq, Eq, Clone, Copy)]

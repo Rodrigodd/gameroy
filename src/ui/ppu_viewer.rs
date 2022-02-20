@@ -95,7 +95,7 @@ impl PpuViewer {
                 .unwrap();
         }
         let mut tiles = vec![255; 128 * 194 * 4];
-        gameroy::ppu::draw_tiles(
+        gameroy::gameboy::ppu::draw_tiles(
             &ppu,
             &mut |x, y, c| {
                 let i = (x + y * 128) as usize * 4;
@@ -111,7 +111,7 @@ impl PpuViewer {
             ))
             .unwrap();
         let mut background = vec![255; 256 * 256 * 4];
-        gameroy::ppu::draw_background(&ppu, &mut |x, y, c| {
+        gameroy::gameboy::ppu::draw_background(&ppu, &mut |x, y, c| {
             let i = (x + y * 256) as usize * 4;
             background[i..i + 3].copy_from_slice(&COLOR[c as usize]);
         });
@@ -122,7 +122,7 @@ impl PpuViewer {
             ))
             .unwrap();
         let mut window = vec![255; 256 * 256 * 4];
-        gameroy::ppu::draw_window(&ppu, &mut |x, y, c| {
+        gameroy::gameboy::ppu::draw_window(&ppu, &mut |x, y, c| {
             let i = (x + y * 256) as usize * 4;
             window[i..i + 3].copy_from_slice(&COLOR[c as usize]);
         });
@@ -167,7 +167,7 @@ impl PpuViewer {
         }
 
         for (i, &[view, text]) in self.buffer_sprites.iter().enumerate() {
-            let gameroy::ppu::Sprite {
+            let gameroy::gameboy::ppu::Sprite {
                 sx,
                 sy,
                 tile,

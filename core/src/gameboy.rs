@@ -1,101 +1,22 @@
-use crate::cartridge::Cartridge;
-use crate::save_state::{LoadStateError, SaveState};
-use crate::sound_controller::SoundController;
-use crate::{cpu::Cpu, disassembler::Trace, ppu::Ppu};
 use std::cell::RefCell;
 use std::io::{Read, Write};
 
-#[derive(Default, Debug, PartialEq, Eq)]
-pub struct Timer {
-    pub div: u16,
-    pub tima: u8,
-    tma: u8,
-    tac: u8,
-    last_counter_bit: bool,
+pub mod timer;
+use self::timer::Timer;
 
-    /// The last clock cycle where Timer was updated
-    last_clock_count: u64,
-}
-impl SaveState for Timer {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        self.div.save_state(data)?;
-        self.tima.save_state(data)?;
-        self.tma.save_state(data)?;
-        self.tac.save_state(data)?;
-        [&self.last_counter_bit].save_state(data)?;
-        self.last_clock_count.save_state(data)?;
-        Ok(())
-    }
+pub mod ppu;
+pub mod cpu;
+pub mod sound_controller;
+pub mod cartridge;
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.div.load_state(data)?;
-        self.tima.load_state(data)?;
-        self.tma.load_state(data)?;
-        self.tac.load_state(data)?;
-        [&mut self.last_counter_bit].load_state(data)?;
-        self.last_clock_count.load_state(data)?;
-        Ok(())
-    }
-}
-// TODO: At some point, I want this timer to be lazy evaluated.
-impl Timer {
-    /// Advance the timer by one cycle
-    /// Return true if there is a interrupt
-    pub fn update(&mut self, clock_count: u64) -> bool {
-        let mut interrupt = false;
-        for _ in self.last_clock_count..clock_count {
-            self.div = self.div.wrapping_add(1);
+use crate::{
+    save_state::{LoadStateError, SaveState},
+    disassembler::Trace,
+};
+use self::cartridge::Cartridge;
+use self::sound_controller::SoundController;
+use self::{cpu::Cpu, ppu::Ppu};
 
-            let f = [9, 3, 5, 7][(self.tac & 0b11) as usize];
-            let counter_bit = ((self.div >> f) as u8 & (self.tac >> 2)) & 0b1 != 0;
-
-            // faling edge
-            if self.last_counter_bit && !counter_bit {
-                let (v, o) = self.tima.overflowing_add(1);
-                self.tima = v;
-                // TODO: TIMA, on overflow, should keep the value 0 for 4 cycles
-                // before the overflow be detected. A write in this interval would cancel it.
-                if o {
-                    self.tima = self.tma;
-                    interrupt = true;
-                }
-            }
-
-            self.last_counter_bit = counter_bit;
-        }
-        self.last_clock_count = clock_count;
-
-        interrupt
-    }
-
-    fn read_div(&self) -> u8 {
-        (self.div >> 8) as u8
-    }
-    fn write_div(&mut self, _div: u8) {
-        self.div = 0;
-    }
-
-    fn read_tima(&self) -> u8 {
-        self.tima
-    }
-    fn write_tima(&mut self, tima: u8) {
-        self.tima = tima;
-    }
-
-    fn read_tma(&self) -> u8 {
-        self.tma
-    }
-    fn write_tma(&mut self, tma: u8) {
-        self.tma = tma;
-    }
-
-    fn read_tac(&self) -> u8 {
-        self.tac
-    }
-    fn write_tac(&mut self, tac: u8) {
-        self.tac = tac;
-    }
-}
 
 pub struct GameBoy {
     pub trace: RefCell<Trace>,
@@ -317,7 +238,7 @@ impl GameBoy {
     pub fn reset_after_boot(&mut self) {
         self.cpu = Cpu {
             a: 0x01,
-            f: crate::cpu::Flags(0xb0),
+            f: cpu::Flags(0xb0),
             b: 0x00,
             c: 0x13,
             d: 0x00,
@@ -326,8 +247,8 @@ impl GameBoy {
             l: 0x4d,
             sp: 0xfffe,
             pc: 0x0100,
-            ime: crate::cpu::ImeState::Disabled,
-            state: crate::cpu::CpuState::Running,
+            ime: cpu::ImeState::Disabled,
+            state: cpu::CpuState::Running,
         };
 
         self.wram = [0; 0x2000];

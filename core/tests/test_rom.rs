@@ -1,6 +1,8 @@
-use gameroy::cartridge::Cartridge;
 use gameroy::save_state::SaveState;
-use gameroy::{gameboy::GameBoy, interpreter::Interpreter};
+use gameroy::{
+    gameboy::{cartridge::Cartridge, GameBoy},
+    interpreter::Interpreter,
+};
 use rand::{Rng, SeedableRng};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

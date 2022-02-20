@@ -364,7 +364,7 @@ impl Default for Ppu {
 
 impl Ppu {
     pub fn reset_after_boot(&mut self) {
-        let mut ppu_state = &include_bytes!("../after_boot/ppu.sav")[..];
+        let mut ppu_state = &include_bytes!("../../after_boot/ppu.sav")[..];
         *self = Self {
             #[rustfmt::skip]
             vram: {

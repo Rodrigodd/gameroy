@@ -633,3 +633,158 @@ mod mattcurrie {
         // );
     }
 }
+
+mod mooneye {
+    macro_rules! registers {
+        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test]
+            fn $test() {
+                test_rom($rom, $timeout);
+            })*
+        };
+    }
+
+    const CLOCK_SPEED: u64 = 2u64.pow(22);
+
+    registers! {
+      add_sp_e_timing("acceptance/add_sp_e_timing", 120*CLOCK_SPEED);
+      boot_div_dmg0("acceptance/boot_div-dmg0", 120*CLOCK_SPEED);
+      boot_div_dmg_abc_mgb("acceptance/boot_div-dmgABCmgb", 120*CLOCK_SPEED);
+      boot_hwio_dmg0("acceptance/boot_hwio-dmg0", 120*CLOCK_SPEED);
+      boot_hwio_dmg_abc_mgb("acceptance/boot_hwio-dmgABCmgb", 120*CLOCK_SPEED);
+      boot_regs_dmg0("acceptance/boot_regs-dmg0", 120*CLOCK_SPEED);
+      boot_regs_dmg_abc("acceptance/boot_regs-dmgABC", 120*CLOCK_SPEED);
+      call_cc_timing("acceptance/call_cc_timing", 120*CLOCK_SPEED);
+      call_cc_timing2("acceptance/call_cc_timing2", 120*CLOCK_SPEED);
+      call_timing("acceptance/call_timing", 120*CLOCK_SPEED);
+      call_timing2("acceptance/call_timing2", 120*CLOCK_SPEED);
+      di_timing_gs("acceptance/di_timing-GS", 120*CLOCK_SPEED);
+      div_timing("acceptance/div_timing", 120*CLOCK_SPEED);
+      ei_sequence("acceptance/ei_sequence", 120*CLOCK_SPEED);
+      ei_timing("acceptance/ei_timing", 120*CLOCK_SPEED);
+      halt_ime0_ei("acceptance/halt_ime0_ei", 120*CLOCK_SPEED);
+      halt_ime0_nointr_timing("acceptance/halt_ime0_nointr_timing", 120*CLOCK_SPEED);
+      halt_ime1_timing("acceptance/halt_ime1_timing", 120*CLOCK_SPEED);
+      halt_ime1_timing2_gs("acceptance/halt_ime1_timing2-GS", 120*CLOCK_SPEED);
+      if_ie_registers("acceptance/if_ie_registers", 120*CLOCK_SPEED);
+      intr_timing("acceptance/intr_timing", 120*CLOCK_SPEED);
+      jp_cc_timing("acceptance/jp_cc_timing", 120*CLOCK_SPEED);
+      jp_timing("acceptance/jp_timing", 120*CLOCK_SPEED);
+      ld_hl_sp_e_timing("acceptance/ld_hl_sp_e_timing", 120*CLOCK_SPEED);
+      oam_dma_restart("acceptance/oam_dma_restart", 120*CLOCK_SPEED);
+      oam_dma_start("acceptance/oam_dma_start", 120*CLOCK_SPEED);
+      oam_dma_timing("acceptance/oam_dma_timing", 120*CLOCK_SPEED);
+      pop_timing("acceptance/pop_timing", 120*CLOCK_SPEED);
+      push_timing("acceptance/push_timing", 120*CLOCK_SPEED);
+      rapid_di_ei("acceptance/rapid_di_ei", 120*CLOCK_SPEED);
+      ret_timing("acceptance/ret_timing", 120*CLOCK_SPEED);
+      reti_timing("acceptance/reti_timing", 120*CLOCK_SPEED);
+      ret_cc_timing("acceptance/ret_cc_timing", 120*CLOCK_SPEED);
+      reti_intr_timing("acceptance/reti_intr_timing", 120*CLOCK_SPEED);
+      rst_timing("acceptance/rst_timing", 120*CLOCK_SPEED);
+      bits_mem_oam("acceptance/bits/mem_oam", 120*CLOCK_SPEED);
+      bits_reg_f("acceptance/bits/reg_f", 120*CLOCK_SPEED);
+      bits_unused_hwio_gs("acceptance/bits/unused_hwio-GS", 120*CLOCK_SPEED);
+      instr_daa("acceptance/instr/daa", 120*CLOCK_SPEED);
+      interrupts_ie_push("acceptance/interrupts/ie_push", 120*CLOCK_SPEED);
+      oam_dma_basic("acceptance/oam_dma/basic", 120*CLOCK_SPEED);
+      oam_dma_reg_read("acceptance/oam_dma/reg_read", 120*CLOCK_SPEED);
+      oam_dma_sources_gs("acceptance/oam_dma/sources-GS", 120*CLOCK_SPEED);
+      ppu_hblank_ly_scx_timing_gs("acceptance/ppu/hblank_ly_scx_timing-GS", 120*CLOCK_SPEED);
+      ppu_intr_1_2_timing_gs("acceptance/ppu/intr_1_2_timing-GS", 120*CLOCK_SPEED);
+      ppu_intr_2_0_timing("acceptance/ppu/intr_2_0_timing", 120*CLOCK_SPEED);
+      ppu_intr_2_mode0_timing("acceptance/ppu/intr_2_mode0_timing", 120*CLOCK_SPEED);
+      ppu_stat_lyc_onoff("acceptance/ppu/stat_lyc_onoff", 120*CLOCK_SPEED);
+      ppu_intr_2_mode0_timing_sprites("acceptance/ppu/intr_2_mode0_timing_sprites", 120*CLOCK_SPEED);
+      ppu_intr_2_mode3_timing("acceptance/ppu/intr_2_mode3_timing", 120*CLOCK_SPEED);
+      ppu_intr_2_oam_ok_timing("acceptance/ppu/intr_2_oam_ok_timing", 120*CLOCK_SPEED);
+      ppu_lcdon_timing_gs("acceptance/ppu/lcdon_timing-GS", 120*CLOCK_SPEED);
+      ppu_lcdon_write_timing_gs("acceptance/ppu/lcdon_write_timing-GS", 120*CLOCK_SPEED);
+      ppu_stat_irq_blocking("acceptance/ppu/stat_irq_blocking", 120*CLOCK_SPEED);
+      ppu_vblank_stat_intr_gs("acceptance/ppu/vblank_stat_intr-GS", 120*CLOCK_SPEED);
+      serial_boot_sclk_align_dmg_abc_mgb("acceptance/serial/boot_sclk_align-dmgABCmgb", 120*CLOCK_SPEED);
+      timer_div_write("acceptance/timer/div_write", 120*CLOCK_SPEED);
+      timer_rapid_toggle("acceptance/timer/rapid_toggle", 120*CLOCK_SPEED);
+      timer_tim00("acceptance/timer/tim00", 120*CLOCK_SPEED);
+      timer_tim00_div_trigger("acceptance/timer/tim00_div_trigger", 120*CLOCK_SPEED);
+      timer_tim01("acceptance/timer/tim01", 120*CLOCK_SPEED);
+      timer_tim01_div_trigger("acceptance/timer/tim01_div_trigger", 120*CLOCK_SPEED);
+      timer_tim10("acceptance/timer/tim10", 120*CLOCK_SPEED);
+      timer_tim10_div_trigger("acceptance/timer/tim10_div_trigger", 120*CLOCK_SPEED);
+      timer_tim11("acceptance/timer/tim11", 120*CLOCK_SPEED);
+      timer_tim11_div_trigger("acceptance/timer/tim11_div_trigger", 120*CLOCK_SPEED);
+      timer_tima_reload("acceptance/timer/tima_reload", 120*CLOCK_SPEED);
+      timer_tima_write_reloading("acceptance/timer/tima_write_reloading", 120*CLOCK_SPEED);
+      timer_tma_write_reloading("acceptance/timer/tma_write_reloading", 120*CLOCK_SPEED);
+      mbc1_bits_ramg("emulator-only/mbc1/bits_ramg", 120*CLOCK_SPEED);
+      mbc1_bits_bank1("emulator-only/mbc1/bits_bank1", 120*CLOCK_SPEED);
+      mbc1_bits_bank2("emulator-only/mbc1/bits_bank2", 120*CLOCK_SPEED);
+      mbc1_bits_mode("emulator-only/mbc1/bits_mode", 120*CLOCK_SPEED);
+      mbc1_rom_512kb("emulator-only/mbc1/rom_512kb", 120*CLOCK_SPEED);
+      mbc1_rom_1mb("emulator-only/mbc1/rom_1Mb", 120*CLOCK_SPEED);
+      mbc1_rom_2mb("emulator-only/mbc1/rom_2Mb", 120*CLOCK_SPEED);
+      mbc1_rom_4mb("emulator-only/mbc1/rom_4Mb", 120*CLOCK_SPEED);
+      mbc1_rom_8mb("emulator-only/mbc1/rom_8Mb", 120*CLOCK_SPEED);
+      mbc1_rom_16mb("emulator-only/mbc1/rom_16Mb", 120*CLOCK_SPEED);
+      mbc1_ram_64kb("emulator-only/mbc1/ram_64kb", 120*CLOCK_SPEED);
+      mbc1_ram_25kb("emulator-only/mbc1/ram_256kb", 120*CLOCK_SPEED);
+      mbc1_multicart_rom_8mb("emulator-only/mbc1/multicart_rom_8Mb", 120*CLOCK_SPEED);
+      mbc2_bits_ramg("emulator-only/mbc2/bits_ramg", 120*CLOCK_SPEED);
+      mbc2_bits_romb("emulator-only/mbc2/bits_romb", 120*CLOCK_SPEED);
+      mbc2_bits_unused("emulator-only/mbc2/bits_unused", 120*CLOCK_SPEED);
+      mbc2_rom_512kb("emulator-only/mbc2/rom_512kb", 120*CLOCK_SPEED);
+      mbc2_rom_1mb("emulator-only/mbc2/rom_1Mb", 120*CLOCK_SPEED);
+      mbc2_rom_2mb("emulator-only/mbc2/rom_2Mb", 120*CLOCK_SPEED);
+      mbc2_ram("emulator-only/mbc2/ram", 120*CLOCK_SPEED);
+      mbc5_rom_512kb("emulator-only/mbc5/rom_512kb", 120*CLOCK_SPEED);
+      mbc5_rom_1mb("emulator-only/mbc5/rom_1Mb", 120*CLOCK_SPEED);
+      mbc5_rom_2mb("emulator-only/mbc5/rom_2Mb", 120*CLOCK_SPEED);
+      mbc5_rom_4mb("emulator-only/mbc5/rom_4Mb", 120*CLOCK_SPEED);
+      mbc5_rom_8mb("emulator-only/mbc5/rom_8Mb", 120*CLOCK_SPEED);
+      mbc5_rom_16mb("emulator-only/mbc5/rom_16Mb", 120*CLOCK_SPEED);
+      mbc5_rom_32mb("emulator-only/mbc5/rom_32Mb", 120*CLOCK_SPEED);
+      mbc5_rom_64mb("emulator-only/mbc5/rom_64Mb", 120*CLOCK_SPEED);
+    }
+
+    fn test_rom(rom: &str, timeout: u64) {
+        use super::*;
+        use std::path::PathBuf;
+        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + "mooneye-test-suite/" + rom + ".gb").into();
+        let rom = std::fs::read(&rom_path).unwrap();
+
+        let cartridge = Cartridge::new(rom).unwrap();
+
+        let mut game_boy = GameBoy::new(None, cartridge);
+        let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+        let screen_clone = screen.clone();
+        game_boy.v_blank = Some(Box::new(move |gb| {
+            *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
+        }));
+
+        let mut inter = Interpreter(&mut game_boy);
+        while inter.0.clock_count < timeout {
+            inter.interpret_op();
+            if inter.0.read(inter.0.cpu.pc) == 0x40 {
+                break;
+            }
+        }
+        println!("final clock_count: {}", inter.0.clock_count);
+
+        if inter.0.clock_count >= timeout {
+            panic!("reach timeout!!");
+        }
+        let regs = game_boy.cpu;
+
+        if regs.a != 0 {
+            panic!(
+                "{} assertion failures in hardware test",
+                regs.a
+            );
+        }
+        if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34
+        {
+            panic!("Hardware test failed");
+        }
+    }
+}

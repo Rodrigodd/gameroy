@@ -1,5 +1,7 @@
-use crate::gameboy::GameBoy;
-use crate::save_state::{LoadStateError, SaveState};
+use crate::{
+    gameboy::GameBoy,
+    save_state::{LoadStateError, SaveState},
+};
 
 #[derive(PartialEq, Eq, Default, Clone, Debug)]
 struct PixelFifo {

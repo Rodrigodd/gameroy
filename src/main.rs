@@ -6,13 +6,12 @@ use std::{
     thread,
 };
 
-use parking_lot::Mutex;
-
 use gameroy::{
     debugger::{Debugger, DebuggerEvent},
     gameboy::{self, cartridge::Cartridge, GameBoy},
     parser::Vbm,
 };
+use parking_lot::Mutex;
 
 mod emulator;
 mod event_table;

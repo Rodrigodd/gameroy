@@ -5,10 +5,6 @@ use std::{
     sync::{mpsc::SyncSender, Arc},
 };
 
-use crate::{
-    event_table::EventTable, layout::PixelPerfectLayout, split_view::SplitView, style::Style,
-    AppState, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
-};
 use crui::{
     font::Fonts,
     graphics::Texture,
@@ -26,6 +22,11 @@ use winit::{
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoopProxy},
     window::{Window, WindowId},
+};
+
+use crate::{
+    event_table::EventTable, layout::PixelPerfectLayout, split_view::SplitView, style::Style,
+    AppState, EmulatorEvent, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH,
 };
 
 mod disassembler_viewer;

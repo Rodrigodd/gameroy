@@ -1,5 +1,4 @@
-use crui::{Behaviour, InputFlags, Layout, MouseEvent};
-use crui::{Id, LayoutContext, MinSizeContext};
+use crui::{Behaviour, Id, InputFlags, Layout, LayoutContext, MinSizeContext, MouseEvent};
 use winit::window::CursorIcon;
 
 /// Layout two controls side by side, allowing to resize the size of each control by dragging the

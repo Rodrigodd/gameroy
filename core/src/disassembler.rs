@@ -1,9 +1,11 @@
-use crate::consts;
-use crate::gameboy::GameBoy;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
-use std::fmt::Write;
-use std::ops::Range;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    fmt::Write,
+    ops::Range,
+};
+
+use crate::{consts, gameboy::GameBoy};
 
 struct ReallySigned(i8);
 

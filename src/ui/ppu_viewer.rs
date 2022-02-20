@@ -1,19 +1,22 @@
 use std::sync::Arc;
 
-use crui::graphics::{Graphic, Texture};
-use crui::layouts::{FitText, GridLayout, HBoxLayout, VBoxLayout};
-use crui::text::Text;
-use crui::widgets::{ScrollBar, ScrollView, ViewLayout};
-use crui::{Behaviour, BuilderContext, Color, Context, Id, InputFlags, MouseEvent};
+use crui::{
+    graphics::{Graphic, Texture},
+    layouts::{FitText, GridLayout, HBoxLayout, VBoxLayout},
+    text::Text,
+    widgets::{ScrollBar, ScrollView, ViewLayout},
+    Behaviour, BuilderContext, Color, Context, Id, InputFlags, MouseEvent,
+};
 use gameroy::gameboy::GameBoy;
 use parking_lot::Mutex;
 use winit::event_loop::EventLoopProxy;
 
-use crate::style::Style;
-use crate::UserEvent;
-
-use crate::event_table::{EmulatorUpdated, EventTable, FrameUpdated, Handle};
-use crate::ui::Textures;
+use crate::{
+    event_table::{EmulatorUpdated, EventTable, FrameUpdated, Handle},
+    style::Style,
+    ui::Textures,
+    UserEvent,
+};
 
 struct TilemapViewer {
     info_text: Id,

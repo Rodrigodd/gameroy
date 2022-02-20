@@ -1,13 +1,5 @@
 use std::{any::Any, ops::Range, sync::Arc};
 
-use parking_lot::Mutex;
-
-// use std::{rc::Rc, cell::RefCell};
-use crate::{
-    event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
-    fold_view::FoldView,
-    style::Style,
-};
 use crui::{
     graphics::{Graphic, Text},
     layouts::{FitText, HBoxLayout, VBoxLayout},
@@ -23,6 +15,14 @@ use gameroy::{
     debugger::{break_flags, Debugger},
     disassembler::{Address, Directive},
     gameboy::GameBoy,
+};
+use parking_lot::Mutex;
+
+// use std::{rc::Rc, cell::RefCell};
+use crate::{
+    event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
+    fold_view::FoldView,
+    style::Style,
 };
 
 struct Callback;

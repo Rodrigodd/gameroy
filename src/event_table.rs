@@ -1,8 +1,10 @@
-use std::any::{Any, TypeId};
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::marker::PhantomData;
-use std::rc::{Rc, Weak};
+use std::{
+    any::{Any, TypeId},
+    cell::RefCell,
+    collections::HashMap,
+    marker::PhantomData,
+    rc::{Rc, Weak},
+};
 
 use crui::{Context, Id};
 

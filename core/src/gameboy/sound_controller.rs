@@ -1,5 +1,7 @@
-use crate::consts::CLOCK_SPEED;
-use crate::save_state::{LoadStateError, SaveState};
+use crate::{
+    consts::CLOCK_SPEED,
+    save_state::{LoadStateError, SaveState},
+};
 
 // based on https://nightshade256.github.io/2021/03/27/gb-sound-emulation.html, https://gbdev.gg8.se/wiki/articles/Gameboy_sound_hardware
 // and https://github.com/LIJI32/SameBoy source code.

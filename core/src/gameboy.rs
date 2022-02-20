@@ -1,22 +1,22 @@
-use std::cell::RefCell;
-use std::io::{Read, Write};
-
-pub mod timer;
-use self::timer::Timer;
-
-pub mod ppu;
-pub mod cpu;
-pub mod sound_controller;
-pub mod cartridge;
+use std::{
+    cell::RefCell,
+    io::{Read, Write},
+};
 
 use crate::{
-    save_state::{LoadStateError, SaveState},
     disassembler::Trace,
+    save_state::{LoadStateError, SaveState},
 };
-use self::cartridge::Cartridge;
-use self::sound_controller::SoundController;
-use self::{cpu::Cpu, ppu::Ppu};
 
+pub mod cartridge;
+pub mod cpu;
+pub mod ppu;
+pub mod sound_controller;
+pub mod timer;
+
+use self::{
+    cartridge::Cartridge, cpu::Cpu, ppu::Ppu, sound_controller::SoundController, timer::Timer,
+};
 
 pub struct GameBoy {
     pub trace: RefCell<Trace>,

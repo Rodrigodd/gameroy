@@ -1,5 +1,6 @@
-use crate::save_state::{LoadStateError, SaveState};
 use std::fmt;
+
+use crate::save_state::{LoadStateError, SaveState};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CpuState {

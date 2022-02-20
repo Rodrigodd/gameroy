@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use crate::gameboy::GameBoy;
-use crate::interpreter::Interpreter;
-use crate::save_state::SaveState;
+use crate::{gameboy::GameBoy, interpreter::Interpreter, save_state::SaveState};
 
 pub mod break_flags {
     pub const WRITE: u8 = 1 << 0;

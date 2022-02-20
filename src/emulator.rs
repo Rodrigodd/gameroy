@@ -1,13 +1,3 @@
-use audio_engine::{AudioEngine, SoundSource};
-use gameroy::{
-    consts::CLOCK_SPEED,
-    debugger::{Debugger, RunResult},
-    gameboy::GameBoy,
-    interpreter::Interpreter,
-    parser::Vbm,
-    save_state::SaveState,
-};
-use parking_lot::Mutex as ParkMutex;
 use std::{
     collections::VecDeque,
     io::Write,
@@ -18,6 +8,17 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use audio_engine::{AudioEngine, SoundSource};
+use gameroy::{
+    consts::CLOCK_SPEED,
+    debugger::{Debugger, RunResult},
+    gameboy::GameBoy,
+    interpreter::Interpreter,
+    parser::Vbm,
+    save_state::SaveState,
+};
+use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
 
 use super::UserEvent;

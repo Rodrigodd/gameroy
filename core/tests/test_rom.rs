@@ -1,11 +1,14 @@
-use gameroy::save_state::SaveState;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
+
 use gameroy::{
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
+    save_state::SaveState,
 };
 use rand::{Rng, SeedableRng};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
 const SCREEN_HEIGHT: usize = 144;
 const SCREEN_WIDTH: usize = 160;

@@ -1,5 +1,6 @@
-use crate::save_state::{LoadStateError, SaveState};
 use std::io::{Read, Write};
+
+use crate::save_state::{LoadStateError, SaveState};
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Timer {
@@ -93,4 +94,3 @@ impl Timer {
         self.tac = tac;
     }
 }
-

@@ -21,12 +21,12 @@ impl fmt::LowerHex for ReallySigned {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Address {
     /// The bank where this address belongs
-    pub bank: u8,
+    pub bank: u16,
     /// The address in the bank, in range 0x0000..=0x3FFF
     pub address: u16,
 }
 impl Address {
-    pub fn new(bank: u8, address: u16) -> Self {
+    pub fn new(bank: u16, address: u16) -> Self {
         assert!(
             (0x0000..=0x3FFF).contains(&address),
             "address {:04x} is out of rom address range",
@@ -36,7 +36,7 @@ impl Address {
         Self { bank, address }
     }
 
-    pub fn from_pc(bank: Option<u8>, address: u16) -> Option<Self> {
+    pub fn from_pc(bank: Option<u16>, address: u16) -> Option<Self> {
         if address <= 0x3FFF {
             // it is in the main bank
             Some(Self::new(0, address))
@@ -86,7 +86,7 @@ impl Label {
 
 struct Cursor {
     /// The currently active bank, if know
-    bank: Option<u8>,
+    bank: Option<u16>,
     /// The program counter, can have any value in the entire range
     pc: u16,
     /// The currently value of register A, if know
@@ -177,7 +177,7 @@ impl Trace {
     /// Disassembly some opcodes above and below, respecting code_ranges
     pub fn print_around(
         &mut self,
-        bank: u8,
+        bank: u16,
         curr: u16,
         rom: &GameBoy,
         w: &mut impl Write,
@@ -247,14 +247,14 @@ impl Trace {
         Ok(())
     }
 
-    pub fn is_already_traced(&self, bank: u8, start: u16) -> bool {
+    pub fn is_already_traced(&self, bank: u16, start: u16) -> bool {
         start > 0x3FFF || self.get_curr_code_range(bank, start).is_some()
     }
 
     pub fn trace_starting_at(
         &mut self,
         gameboy: &GameBoy,
-        bank: u8,
+        bank: u16,
         start: u16,
         label: Option<String>,
     ) {
@@ -278,7 +278,7 @@ impl Trace {
         }
     }
 
-    fn get_curr_code_range(&self, bank: u8, pc: u16) -> Option<Range<Address>> {
+    fn get_curr_code_range(&self, bank: u16, pc: u16) -> Option<Range<Address>> {
         let address = Address::from_pc(Some(bank), pc)?;
         self.code_ranges
             .binary_search_by(|range| {
@@ -385,7 +385,7 @@ impl Trace {
         }
     }
 
-    fn add_label(&mut self, bank: Option<u8>, pc: u16) -> Option<&mut Label> {
+    fn add_label(&mut self, bank: Option<u16>, pc: u16) -> Option<&mut Label> {
         // the address may not be in the rom
         match Address::from_pc(bank, pc) {
             Some(address) => Some(
@@ -402,7 +402,7 @@ impl Trace {
         }
     }
 
-    fn add_jump(&mut self, from: Address, bank: Option<u8>, pc: u16) {
+    fn add_jump(&mut self, from: Address, bank: Option<u16>, pc: u16) {
         match self.add_label(bank, pc) {
             Some(x) => {
                 let to = x.address;
@@ -528,7 +528,7 @@ impl Trace {
 
 fn compute_step(
     cursors: &std::cell::RefCell<&mut Vec<Cursor>>,
-    bank: Option<u8>,
+    bank: Option<u16>,
     pc: u16,
     len: u8,
     reg_a: Option<u8>,
@@ -594,7 +594,7 @@ fn compute_step(
             let address = u16::from_le_bytes([op[1], op[2]]);
             if address >= 0x2000 && address <= 0x3FFF {
                 if let Some(a) = reg_a {
-                    bank = Some(a & 0x1F);
+                    bank = Some(a as u16 & 0x1F);
                 } else {
                     bank = None;
                 }

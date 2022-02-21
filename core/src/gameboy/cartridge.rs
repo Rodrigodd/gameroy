@@ -159,7 +159,7 @@ impl Cartridge {
     }
 
     /// The current selected rom bank
-    pub fn curr_bank(&self) -> u8 {
+    pub fn curr_bank(&self) -> u16 {
         match &self.mbc {
             MBC::None(_) => 1,
             MBC::MBC1(x) => x.curr_bank(&self.rom),
@@ -254,7 +254,7 @@ impl MBC1 {
         }
     }
 
-    fn curr_bank(&self, rom: &[u8]) -> u8 {
+    fn curr_bank(&self, rom: &[u8]) -> u16 {
         let mut bank = self.selected_bank;
 
         // cannot adress a bank where the 5-bit bank register is 0
@@ -262,7 +262,7 @@ impl MBC1 {
 
         // mask upper bits if the bank is out of bounds
         bank %= (rom.len() / 0x4000) as u8;
-        bank
+        bank as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -394,9 +394,9 @@ impl MBC2 {
             ram_enabled: false,
         }
     }
-    fn curr_bank(&self, rom: &[u8]) -> u8 {
+    fn curr_bank(&self, rom: &[u8]) -> u16 {
         debug_assert!(self.selected_bank != 0);
-        self.selected_bank % (rom.len() / 0x4000) as u8
+        (self.selected_bank % (rom.len() / 0x4000) as u8) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -490,8 +490,8 @@ impl SaveState for MBC3 {
     }
 }
 impl MBC3 {
-    fn curr_bank(&self, _rom: &[u8]) -> u8 {
-        self.selected_bank
+    fn curr_bank(&self, _rom: &[u8]) -> u16 {
+        self.selected_bank as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {

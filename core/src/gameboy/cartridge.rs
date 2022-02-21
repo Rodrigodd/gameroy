@@ -74,17 +74,55 @@ impl SaveState for Cartridge {
     }
 }
 impl Cartridge {
-    pub fn new(mut rom: Vec<u8>) -> Result<Self, String> {
-        if rom.len() < 0x8000 {
-            rom.resize(0x8000, 0);
-        }
-
+    pub fn new(rom: Vec<u8>) -> Result<Self, String> {
         // Cartridge Type
         let mbc_kind = rom[0x0147];
 
+        let rom_sizes = [
+            2 * 0x4000, // no ROM Banking
+            4 * 0x4000,
+            8 * 0x4000,
+            16 * 0x4000,
+            32 * 0x4000,
+            64 * 0x4000,
+            128 * 0x4000,
+            256 * 0x4000,
+            512 * 0x4000,
+            // 72 * 0x2000,
+            // 80 * 0x2000,
+            // 96 * 0x2000,
+        ];
+        let rom_size_type = rom[0x0148];
+        let rom_size = rom_sizes
+            .get(rom_size_type as usize)
+            .copied()
+            .ok_or_else(|| format!("Rom size '{:02x}' is no supported", rom_size_type))?;
+
+        if rom_size != rom.len() {
+            return Err(format!(
+                "In the rom header the expected size is '{}' bytes, but the given rom has '{}' bytes",
+                rom_size,
+                rom.len()
+            ));
+        }
+
+        let ram_sizes = [
+            0,
+            0x800,
+            1 * 0x2000, // Single Bank
+            4 * 0x2000,
+            16 * 0x2000,
+            8 * 0x2000,
+        ];
+        let ram_size_type = rom[0x0149];
+        let ram_size = ram_sizes
+            .get(ram_size_type as usize)
+            .copied()
+            .ok_or_else(|| format!("Ram size '{:02x}' is no supported", ram_size_type))?;
+
         Ok(Self {
             rom,
-            ram: vec![0; 0x8000],
+            ram: vec![0; ram_size],
             mbc: match mbc_kind {
                 0 => MBC::None(MBC0 {}),
                 1 | 2 | 3 => MBC::MBC1(MBC1 {

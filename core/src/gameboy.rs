@@ -183,7 +183,7 @@ impl GameBoy {
             boot_rom,
             boot_rom_active: true,
             clock_count: 0,
-            timer: Timer::default(),
+            timer: Timer::new(),
             sound: RefCell::new(SoundController::default()),
             ppu: Ppu::default().into(),
 
@@ -227,7 +227,7 @@ impl GameBoy {
         self.hram = [0; 0x7F];
         self.boot_rom_active = true;
         self.clock_count = 0;
-        self.timer = Timer::default();
+        self.timer = Timer::new();
         self.sound = RefCell::new(SoundController::default());
         self.ppu = Ppu::default().into();
         self.joypad = 0xFF;
@@ -257,21 +257,26 @@ impl GameBoy {
 
         self.boot_rom_active = false;
         self.clock_count = 23_384_580;
+        self.ppu.borrow_mut().reset_after_boot();
+
+        self.joypad = 0xFF;
+
+        self.joypad_io = 0xCF;
+        self.serial_data = 0x00;
+        self.serial_control = 0x7E;
         self.timer = Timer {
-            div: 0xd2,
+            div: 0xabcc,
             tima: 0x00,
             tma: 0x00,
-            tac: 0x00,
+            tac: 0xf8,
             last_counter_bit: false,
             last_clock_count: self.clock_count,
         };
+        self.interrupt_flag = 0xE1;
         self.sound
             .borrow_mut()
             .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
-        self.ppu.borrow_mut().reset_after_boot();
-        self.joypad = 0xFF;
-        self.joypad_io = 0x00;
     }
 
     pub fn read(&self, mut address: u16) -> u8 {

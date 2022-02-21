@@ -43,6 +43,18 @@ impl SaveState for Timer {
 
 // TODO: At some point, I want this timer to be lazy evaluated.
 impl Timer {
+    pub fn new() -> Self {
+        Self {
+            // Starting div with this value to make it have the correct DIV phase after boot
+            // has finished. May change depending on changes in timing precision.
+            div: 0xFFE8,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0x00,
+            last_counter_bit: false,
+            last_clock_count: 0,
+        }
+    }
     /// Advance the timer by one cycle
     /// Return true if there is a interrupt
     pub(crate) fn update(&mut self, clock_count: u64) -> bool {

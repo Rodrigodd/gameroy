@@ -179,7 +179,8 @@ BC: {:02x} {:02x}
 DE: {:02x} {:02x}
 HL: {:02x} {:02x}
 SP: {:04x}
-PC: {:04x}",
+PC: {:04x}
+DIV:{:04x}",
                 decimal_mark(gb.clock_count),
                 cpu.a,
                 cpu.f.0,
@@ -190,7 +191,8 @@ PC: {:04x}",
                 cpu.h,
                 cpu.l,
                 cpu.sp,
-                cpu.pc
+                cpu.pc,
+                gb.timer.div,
             );
 
             let trace = gb.trace.borrow();

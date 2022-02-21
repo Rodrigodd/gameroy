@@ -69,7 +69,13 @@ impl DissasemblerList {
         let curr = direc.address;
         let mut text = format!(
             "{:04x} {:16} ",
-            curr.address,
+            {
+                let mut address = curr.address;
+                if address < 0x4000 && curr.bank != 0 {
+                    address += 0x4000;
+                }
+                address
+            },
             trace
                 .labels
                 .get(&curr)

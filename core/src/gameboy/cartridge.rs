@@ -77,6 +77,25 @@ impl Cartridge {
     pub fn new(rom: Vec<u8>) -> Result<Self, String> {
         // Cartridge Type
         let mbc_kind = rom[0x0147];
+        let mbc = match mbc_kind {
+            0 => MBC::None(MBC0 {}),
+            1 | 2 | 3 => MBC::MBC1(MBC1::new()),
+            5 | 6 => MBC::MBC2(MBC2::new()),
+            0x0F | 0x10 | 0x11 | 0x12 | 0x13 => MBC::MBC3(MBC3 {
+                selected_bank: 0,
+                ram_enabled: false,
+                ram_bank: 0,
+                rtc: [0; 5],
+                latch_clock_data: 0,
+            }),
+            _ => {
+                return Err(format!(
+                    "MBC type '{}' ({:02x}) is not supported",
+                    mbc_type_name(mbc_kind),
+                    mbc_kind
+                ))
+            }
+        };
 
         let rom_sizes = [
             2 * 0x4000, // no ROM Banking
@@ -115,36 +134,22 @@ impl Cartridge {
             8 * 0x2000,
         ];
         let ram_size_type = rom[0x0149];
-        let ram_size = ram_sizes
-            .get(ram_size_type as usize)
-            .copied()
-            .ok_or_else(|| format!("Ram size '{:02x}' is no supported", ram_size_type))?;
+        let ram_size = if let MBC::MBC2(_) = mbc {
+            if ram_size_type != 0 {
+                return Err(format!("Cartridge use MBC2, with a integrated ram (type '00'), but report the ram type '{:02x}'", ram_size_type));
+            }
+            0x200
+        } else {
+            ram_sizes
+                .get(ram_size_type as usize)
+                .copied()
+                .ok_or_else(|| format!("Ram size '{:02x}' is no supported", ram_size_type))?
+        };
 
         Ok(Self {
             rom,
             ram: vec![0; ram_size],
-            mbc: match mbc_kind {
-                0 => MBC::None(MBC0 {}),
-                1 | 2 | 3 => MBC::MBC1(MBC1::new()),
-                5 | 6 => MBC::MBC2(MBC2 {
-                    selected_bank: 0,
-                    ram_enabled: false,
-                }),
-                0x0F | 0x10 | 0x11 | 0x12 | 0x13 => MBC::MBC3(MBC3 {
-                    selected_bank: 0,
-                    ram_enabled: false,
-                    ram_bank: 0,
-                    rtc: [0; 5],
-                    latch_clock_data: 0,
-                }),
-                _ => {
-                    return Err(format!(
-                        "MBC type '{}' ({:02x}) is not supported",
-                        mbc_type_name(mbc_kind),
-                        mbc_kind
-                    ))
-                }
-            },
+            mbc,
         })
     }
 
@@ -383,8 +388,15 @@ impl SaveState for MBC2 {
     }
 }
 impl MBC2 {
-    fn curr_bank(&self, _rom: &[u8]) -> u8 {
-        self.selected_bank
+    fn new() -> Self {
+        Self {
+            selected_bank: 1,
+            ram_enabled: false,
+        }
+    }
+    fn curr_bank(&self, rom: &[u8]) -> u8 {
+        debug_assert!(self.selected_bank != 0);
+        self.selected_bank % (rom.len() / 0x4000) as u8
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -419,7 +431,7 @@ impl MBC2 {
             0x0000..=0x3FFF => {
                 if (address >> 8) & 0x1 == 0 {
                     // RAM Enable
-                    self.ram_enabled = value == 0x0A;
+                    self.ram_enabled = (value & 0x0F) == 0x0A;
                 } else {
                     // ROM Bank Number
                     // The lower 4 bits control the selected bank.
@@ -432,11 +444,11 @@ impl MBC2 {
             0x4000..=0x7FFF => {}
             // 512x4bits RAM
             0xA000..=0xBFFF => {
-                let address = address & 0x1FF; // only the bottom 9 bits are used
                 if !self.ram_enabled {
                     return;
                 }
-                // upper 4bits are undefined
+                let address = address & 0x1FF; // only the bottom 9 bits are used
+                                               // upper 4bits are undefined
                 ram[address as usize] = value | 0xF0;
             }
             _ => unreachable!("write cartridge out of bounds"),

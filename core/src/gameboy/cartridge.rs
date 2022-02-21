@@ -42,6 +42,7 @@ enum MBC {
     MBC1(MBC1),
     MBC2(MBC2),
     MBC3(MBC3),
+    MBC5(MBC5),
 }
 
 #[derive(PartialEq, Eq)]
@@ -59,6 +60,7 @@ impl SaveState for Cartridge {
             MBC::MBC1(x) => x.save_state(data),
             MBC::MBC2(x) => x.save_state(data),
             MBC::MBC3(x) => x.save_state(data),
+            MBC::MBC5(x) => x.save_state(data),
         }
     }
 
@@ -70,6 +72,7 @@ impl SaveState for Cartridge {
             MBC::MBC1(x) => x.load_state(data),
             MBC::MBC2(x) => x.load_state(data),
             MBC::MBC3(x) => x.load_state(data),
+            MBC::MBC5(x) => x.load_state(data),
         }
     }
 }
@@ -88,6 +91,7 @@ impl Cartridge {
                 rtc: [0; 5],
                 latch_clock_data: 0,
             }),
+            0x19 | 0x1A | 0x1B | 0x1C | 0x1D | 0x1E => MBC::MBC5(MBC5::new()),
             _ => {
                 return Err(format!(
                     "MBC type '{}' ({:02x}) is not supported",
@@ -165,6 +169,7 @@ impl Cartridge {
             MBC::MBC1(x) => x.curr_bank(&self.rom),
             MBC::MBC2(x) => x.curr_bank(&self.rom),
             MBC::MBC3(x) => x.curr_bank(&self.rom),
+            MBC::MBC5(x) => x.curr_bank(&self.rom),
         }
     }
 
@@ -174,6 +179,7 @@ impl Cartridge {
             MBC::MBC1(x) => x.read(address, &self.rom, &self.ram),
             MBC::MBC2(x) => x.read(address, &self.rom, &self.ram),
             MBC::MBC3(x) => x.read(address, &self.rom, &self.ram),
+            MBC::MBC5(x) => x.read(address, &self.rom, &self.ram),
         }
     }
 
@@ -183,6 +189,7 @@ impl Cartridge {
             MBC::MBC1(x) => x.write(address, value, &self.rom, &mut self.ram),
             MBC::MBC2(x) => x.write(address, value, &self.rom, &mut self.ram),
             MBC::MBC3(x) => x.write(address, value, &self.rom, &mut self.ram),
+            MBC::MBC5(x) => x.write(address, value, &self.rom, &mut self.ram),
         }
     }
 }
@@ -604,6 +611,92 @@ impl MBC3 {
                         // I don't know what happen here
                     }
                 }
+            }
+            _ => unreachable!("write cartridge out of bounds"),
+        }
+    }
+}
+
+/// Cartridge with a MBC5 chip
+#[derive(PartialEq, Eq)]
+struct MBC5 {
+    selected_bank: u16,
+    selected_ram_bank: u8,
+    ram_enabled: bool,
+}
+impl SaveState for MBC5 {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        self.selected_bank.save_state(data)?;
+        [&self.ram_enabled].save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.selected_bank.load_state(data)?;
+        [&mut self.ram_enabled].load_state(data)?;
+        Ok(())
+    }
+}
+impl MBC5 {
+    fn new() -> Self {
+        Self {
+            selected_bank: 1,
+            selected_ram_bank: 0,
+            ram_enabled: false,
+        }
+    }
+    fn curr_bank(&self, rom: &[u8]) -> u16 {
+        self.selected_bank % (rom.len() / 0x4000) as u16
+    }
+
+    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+        match address {
+            // ROM Bank 00
+            0x0000..=0x3FFF => rom[address as usize],
+            // ROM Bank 01-0F
+            0x4000..=0x7FFF => {
+                let bank = self.curr_bank(rom);
+
+                let address_start = 0x4000 * bank as usize;
+                rom[address as usize - 0x4000 + address_start]
+            }
+            // RAM banks
+            0xA000..=0xBFFF => {
+                if !self.ram_enabled {
+                    return 0xff;
+                }
+                let start_address = (self.selected_ram_bank as usize * 0x2000) % ram.len();
+                ram[address as usize - 0xA000 + start_address]
+            }
+            _ => unreachable!("read cartridge out of bounds"),
+        }
+    }
+
+    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut Vec<u8>) {
+        match address {
+            // RAM Enable
+            0x0000..=0x1FFF => {
+                self.ram_enabled = value == 0x0A;
+            }
+            // lower ROM Bank
+            0x2000..=0x2FFF => {
+                self.selected_bank = (self.selected_bank & 0xFF00) | value as u16;
+            }
+            // upper ROM Bank
+            0x3000..=0x3FFF => {
+                // write the to bit-8 of the bank register
+                self.selected_bank = (self.selected_bank & 0x00FF) | ((value as u16 & 0b1) << 8)
+            }
+            0x4000..=0x5FFF => {
+                self.selected_ram_bank = value & 0x0F;
+            }
+            // RAM banks
+            0xA000..=0xBFFF => {
+                if !self.ram_enabled {
+                    return;
+                }
+                let start_address = (self.selected_ram_bank as usize * 0x2000) % ram.len();
+                ram[address as usize - 0xA000 + start_address] = value;
             }
             _ => unreachable!("write cartridge out of bounds"),
         }

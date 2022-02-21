@@ -125,11 +125,7 @@ impl Cartridge {
             ram: vec![0; ram_size],
             mbc: match mbc_kind {
                 0 => MBC::None(MBC0 {}),
-                1 | 2 | 3 => MBC::MBC1(MBC1 {
-                    selected_bank: 0,
-                    mode: false,
-                    ram_enabled: false,
-                }),
+                1 | 2 | 3 => MBC::MBC1(MBC1::new()),
                 5 | 6 => MBC::MBC2(MBC2 {
                     selected_bank: 0,
                     ram_enabled: false,
@@ -225,7 +221,7 @@ impl MBC0 {
 /// Cartridge with a MBC1 chip
 #[derive(PartialEq, Eq)]
 struct MBC1 {
-    // the banking register, including second 2-bit
+    // the banking register. Includes the 5-bit register 1, and the 2-bit register 2.
     selected_bank: u8,
     // false is mode 0, true is mode 1
     mode: bool,
@@ -245,19 +241,19 @@ impl SaveState for MBC1 {
     }
 }
 impl MBC1 {
+    fn new() -> Self {
+        Self {
+            selected_bank: 1,
+            mode: false,
+            ram_enabled: false,
+        }
+    }
+
     fn curr_bank(&self, rom: &[u8]) -> u8 {
-        let mut bank = if self.mode {
-            // Mode 1
-            self.selected_bank & 0x1F
-        } else {
-            // Mode 0
-            self.selected_bank & 0x7F
-        };
+        let mut bank = self.selected_bank;
 
         // cannot adress a bank where the 5-bit bank register is 0
-        if bank & 0x1F == 0 {
-            bank += 1;
-        }
+        debug_assert!(bank & 0x1F != 0);
 
         // mask upper bits if the bank is out of bounds
         bank %= (rom.len() / 0x4000) as u8;
@@ -267,7 +263,16 @@ impl MBC1 {
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
         match address {
             // ROM Bank X0
-            0x0000..=0x3FFF => rom[address as usize],
+            0x0000..=0x3FFF => {
+                if self.mode {
+                    let bank = self.selected_bank & 0x60;
+
+                    let address_start = (0x4000 * bank as usize) % rom.len();
+                    rom[address as usize + address_start]
+                } else {
+                    rom[address as usize]
+                }
+            }
             // ROM Bank 01-7F
             0x4000..=0x7FFF => {
                 let bank = self.curr_bank(rom);
@@ -281,17 +286,21 @@ impl MBC1 {
                     return 0xff;
                 }
                 let start_address = if self.mode {
+                    // Mode 1
+
                     // Large ROM have >= 1MiB
                     let large_rom = rom.len() >= 0x10_0000;
                     if large_rom {
                         0
                     } else {
-                        0x2000 * ((self.selected_bank >> 5) & 0x3) as usize
+                        0x2000 * ((self.selected_bank >> 5) & 0x03) as usize
                     }
                 } else {
+                    // Mode 0
                     0
                 };
-                ram[address as usize - 0xA000 + start_address]
+                let ram_address = (address as usize - 0xA000 + start_address) % ram.len();
+                ram[ram_address]
             }
             _ => unreachable!("read cartridge out of bounds"),
         }
@@ -308,12 +317,19 @@ impl MBC1 {
             // ROM Bank Number
             0x2000..=0x3FFF => {
                 // only lower 5 bits are written
-                self.selected_bank = (self.selected_bank & 0xE0) | value & 0x1F;
+                let value = value & 0x1F;
+                let value = if value == 0 {
+                    // Write 0 became 1 (5-bit register cannot be 0)
+                    1
+                } else {
+                    value
+                };
+                self.selected_bank = (self.selected_bank & 0x60) | (value & 0x1F);
             }
             // RAM Bank Number - or - Upper Bits of ROM Bank Number
             0x4000..=0x5FFF => {
                 // only higher 2 bits are written
-                self.selected_bank = (self.selected_bank & 0x1F) | value & 0x3 << 5;
+                self.selected_bank = (self.selected_bank & 0x1F) | ((value & 0x3) << 5);
             }
             // Banking Mode Select
             0x6000..=0x7FFF => {
@@ -325,17 +341,21 @@ impl MBC1 {
                     return;
                 }
                 let start_address = if self.mode {
+                    // Mode 1
+
                     // Large ROM have >= 1MiB
                     let large_rom = rom.len() >= 0x10_0000;
                     if large_rom {
                         0
                     } else {
-                        0x2000 * ((self.selected_bank >> 5) & 0x3) as usize
+                        0x2000 * ((self.selected_bank >> 5) & 0x03) as usize
                     }
                 } else {
+                    // Mode 0
                     0
                 };
-                ram[address as usize - 0xA000 + start_address] = value;
+                let ram_address = (address as usize - 0xA000 + start_address) % ram.len();
+                ram[ram_address] = value;
             }
             _ => unreachable!("write cartridge out of bounds"),
         }

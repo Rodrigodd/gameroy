@@ -188,12 +188,12 @@ impl GameBoy {
             ppu: Ppu::default().into(),
 
             joypad: 0xFF,
-            joypad_io: 0xFF,
+            joypad_io: 0x00,
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
             }),
             serial_data: 0,
-            serial_control: 0,
+            serial_control: 0x7E,
             interrupt_flag: 0,
             interrupt_enabled: 0,
             v_blank_trigger: false,
@@ -370,7 +370,7 @@ impl GameBoy {
             0x00 => self.joypad_io = 0b1100_1111 | (value & 0x30), // JOYPAD
             0x01 => self.serial_data = value,
             0x02 => {
-                self.serial_control = value;
+                self.serial_control = value | 0x7E;
                 if value == 0x81 {
                     (self.serial_transfer)(self.serial_data);
                 }
@@ -415,13 +415,16 @@ impl GameBoy {
         match address {
             0x00 => {
                 // JOYPAD
-                let v = self.joypad_io;
-                let mut r = (v & 0x30) | 0b1100_0000;
+                let v = self.joypad_io & 0x30;
+                let mut r = v | 0b1100_0000;
                 if v & 0x10 != 0 {
-                    r |= (self.joypad & 0xF0) >> 4;
+                    r |= (self.joypad >> 4) & 0x0F;
                 }
                 if v & 0x20 != 0 {
                     r |= self.joypad & 0x0F;
+                }
+                if v == 0 {
+                    r |= 0x0F;
                 }
                 r
             }
@@ -430,7 +433,7 @@ impl GameBoy {
             0x03 => 0xff,
             0x04..=0x07 => self.timer.read(address),
             0x08..=0x0e => 0xff,
-            0x0f => self.interrupt_flag,
+            0x0f => self.interrupt_flag | 0xE0,
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound.borrow_mut().read(self.clock_count, address)
             }

@@ -77,7 +77,7 @@ impl Timer {
             0x04 => (self.div >> 8) as u8,
             0x05 => self.tima,
             0x06 => self.tma,
-            0x07 => self.tac,
+            0x07 => self.tac | 0xF8,
             _ => unreachable!("out of Timer memory map"),
         }
     }

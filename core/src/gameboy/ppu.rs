@@ -466,7 +466,7 @@ impl Ppu {
                 drop(this);
                 let (v, s) = Self::update(gb);
                 debug_assert!(!v && !s);
-                gb.ppu.borrow().stat
+                gb.ppu.borrow().stat | 0x80
             }
             0x42 => this.scy,
             0x43 => this.scx,
@@ -549,11 +549,12 @@ impl Ppu {
             let ly = ppu.ly;
             let lyc = ppu.lyc;
             if ly != 0 && (lx == 4 && ly == lyc || ly == 153 && lx == 12 && 0 == lyc) {
-                // STAT Coincidente Flag
-                ppu.stat |= 1 << 2;
                 // LY == LYC STAT Interrupt
                 set_stat_int(ppu, 6)
             }
+            // STAT Coincidente Flag
+            ppu.stat = (ppu.stat & !0x04) | (((ly ==ppu.lyc) as u8) << 2);
+            
 
             let mut set_mode = |ppu: &mut Ppu, mode: u8| {
                 debug_assert!(mode <= 3);

@@ -648,11 +648,8 @@ mod mooneye {
 
     registers! {
       add_sp_e_timing("acceptance/add_sp_e_timing", 120*CLOCK_SPEED);
-      boot_div_dmg0("acceptance/boot_div-dmg0", 120*CLOCK_SPEED);
       boot_div_dmg_abc_mgb("acceptance/boot_div-dmgABCmgb", 120*CLOCK_SPEED);
-      boot_hwio_dmg0("acceptance/boot_hwio-dmg0", 120*CLOCK_SPEED);
       boot_hwio_dmg_abc_mgb("acceptance/boot_hwio-dmgABCmgb", 120*CLOCK_SPEED);
-      boot_regs_dmg0("acceptance/boot_regs-dmg0", 120*CLOCK_SPEED);
       boot_regs_dmg_abc("acceptance/boot_regs-dmgABC", 120*CLOCK_SPEED);
       call_cc_timing("acceptance/call_cc_timing", 120*CLOCK_SPEED);
       call_cc_timing2("acceptance/call_cc_timing2", 120*CLOCK_SPEED);

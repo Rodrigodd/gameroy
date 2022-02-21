@@ -376,10 +376,7 @@ impl GameBoy {
                 }
             }
             0x03 => {}
-            0x04 => self.timer.write_div(value),
-            0x05 => self.timer.write_tima(value),
-            0x06 => self.timer.write_tma(value),
-            0x07 => self.timer.write_tac(value),
+            0x04..=0x07 => self.timer.write(address, value),
             0x08..=0x0e => {}
             0x0f => self.interrupt_flag = value,
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
@@ -431,10 +428,7 @@ impl GameBoy {
             0x01 => self.serial_data,
             0x02 => self.serial_control,
             0x03 => 0xff,
-            0x04 => self.timer.read_div(),
-            0x05 => self.timer.read_tima(),
-            0x06 => self.timer.read_tma(),
-            0x07 => self.timer.read_tac(),
+            0x04..=0x07 => self.timer.read(address),
             0x08..=0x0e => 0xff,
             0x0f => self.interrupt_flag,
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {

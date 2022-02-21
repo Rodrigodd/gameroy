@@ -4,10 +4,16 @@ use crate::save_state::{LoadStateError, SaveState};
 
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Timer {
+    /// FF04: DIV register
     pub div: u16,
+    /// FF05: TIMA register
     pub tima: u8,
+    /// FF06: TMA register
     pub tma: u8,
+    /// FF07: TAC register
     pub tac: u8,
+
+    /// The value of the counter bit in the last cycle, for edge detection.
     pub last_counter_bit: bool,
     /// The last clock cycle where Timer was updated
     pub last_clock_count: u64,
@@ -66,31 +72,23 @@ impl Timer {
         interrupt
     }
 
-    pub(crate) fn read_div(&self) -> u8 {
-        (self.div >> 8) as u8
-    }
-    pub(crate) fn write_div(&mut self, _div: u8) {
-        self.div = 0;
-    }
-
-    pub(crate) fn read_tima(&self) -> u8 {
-        self.tima
-    }
-    pub(crate) fn write_tima(&mut self, tima: u8) {
-        self.tima = tima;
+    pub fn read(&self, address: u8) -> u8 {
+        match address {
+            0x04 => (self.div >> 8) as u8,
+            0x05 => self.tima,
+            0x06 => self.tma,
+            0x07 => self.tac,
+            _ => unreachable!("out of Timer memory map"),
+        }
     }
 
-    pub(crate) fn read_tma(&self) -> u8 {
-        self.tma
-    }
-    pub(crate) fn write_tma(&mut self, tma: u8) {
-        self.tma = tma;
-    }
-
-    pub(crate) fn read_tac(&self) -> u8 {
-        self.tac
-    }
-    pub(crate) fn write_tac(&mut self, tac: u8) {
-        self.tac = tac;
+    pub fn write(&mut self, address: u8, value: u8) {
+        match address {
+            0x04 => self.div = 0,
+            0x05 => self.tima = value,
+            0x06 => self.tma = value,
+            0x07 => self.tac = value,
+            _ => unreachable!("out of Timer memory map"),
+        }
     }
 }

@@ -271,6 +271,7 @@ impl GameBoy {
             tac: 0xf8,
             last_counter_bit: false,
             last_clock_count: self.clock_count,
+            loading: 0,
         };
         self.interrupt_flag = 0xE1;
         self.sound

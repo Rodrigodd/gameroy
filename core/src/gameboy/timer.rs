@@ -17,6 +17,9 @@ pub struct Timer {
     pub last_counter_bit: bool,
     /// The last clock cycle where Timer was updated
     pub last_clock_count: u64,
+    /// Keep track of TIMA reloading. TIMA is reloading if < 4, reloading is scheduled if >= 4, and
+    /// there is no reload if = 0.
+    pub loading: u8,
 }
 
 impl SaveState for Timer {
@@ -53,25 +56,35 @@ impl Timer {
             tac: 0x00,
             last_counter_bit: false,
             last_clock_count: 0,
+            loading: 0,
         }
     }
     /// Advance the timer by one cycle
     /// Return true if there is a interrupt
     pub(crate) fn update(&mut self, clock_count: u64) -> bool {
         let mut interrupt = false;
-        for _ in self.last_clock_count..clock_count {
+        for _clock in self.last_clock_count..clock_count {
             self.div = self.div.wrapping_add(1);
 
             let f = [9, 3, 5, 7][(self.tac & 0b11) as usize];
             let counter_bit = ((self.div >> f) as u8 & (self.tac >> 2)) & 0b1 != 0;
 
+
             // faling edge
             if self.last_counter_bit && !counter_bit {
-                let (v, o) = self.tima.overflowing_add(1);
+                let (v, overflow) = self.tima.overflowing_add(1);
                 self.tima = v;
-                // TODO: TIMA, on overflow, should keep the value 0 for 4 cycles
-                // before the overflow be detected. A write in this interval would cancel it.
-                if o {
+                // TIMA, on overflow, keep the value 00 for 4 cycles before the overflow is
+                // detected. A write in this interval would cancel it.
+                if overflow {
+                    self.loading = 8;
+                }
+            }
+
+            // loading TIMA
+            if self.loading != 0 {
+                self.loading -= 1;
+                if self.loading <= 4 { 
                     self.tima = self.tma;
                     interrupt = true;
                 }
@@ -97,7 +110,17 @@ impl Timer {
     pub fn write(&mut self, address: u8, value: u8) {
         match address {
             0x04 => self.div = 0,
-            0x05 => self.tima = value,
+            0x05 => {
+                if self.loading > 4 {
+                    // cancel reloading
+                    self.loading = 0;
+                    self.tima = value
+                } else if self.loading == 0 {
+                    self.tima = value
+                } else {
+                    // ignored while reloading
+                }
+            },
             0x06 => self.tma = value,
             0x07 => self.tac = value,
             _ => unreachable!("out of Timer memory map"),

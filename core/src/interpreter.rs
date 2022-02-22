@@ -956,11 +956,38 @@ impl Interpreter<'_> {
             let mut interrupt_handled = false;
             if self.0.cpu.ime == ImeState::Enabled {
                 self.0.cpu.ime = ImeState::Disabled;
-                let interrupt = interrupts.trailing_zeros() as usize;
-                self.0.interrupt_flag &= !(1 << interrupt);
-                let address = [0x40, 0x48, 0x50, 0x58, 0x60][interrupt];
-                self.pushr(self.0.cpu.pc);
-                self.jump_to(address);
+                let mut interrupt = 8;
+                let mut address = 0x00;
+                // The push could overwrite IE, canceling the jump, but only it first write. PC is
+                // set to 0x0000 instead.
+                {
+                    let value = self.0.cpu.pc;
+                    let [lsb, msb] = value.to_le_bytes();
+                    self.0.tick(4); // 1 M-cycle with SP in address buss
+                    self.0.write(sub16(self.0.cpu.sp, 1), msb);
+                    if self.0.interrupt_enabled & self.0.interrupt_flag != 0 {
+                        interrupt = (self.0.interrupt_flag & self.0.interrupt_enabled)
+                            .trailing_zeros() as usize;
+                        address = [
+                            0x40, // V-Blank
+                            0x48, // STAT
+                            0x50, // Timer
+                            0x58, // Serial
+                            0x60, // Joypad
+                        ][interrupt];
+                    }
+                    self.0.tick(4); // 1 M-cycle with SP-1 in address buss
+                    self.0.write(sub16(self.0.cpu.sp, 2), lsb);
+                    self.0.tick(4); // 1 M-cycle with SP-2 in address buss
+                    self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
+                };
+
+                if interrupt != 8 {
+                    self.0.interrupt_flag &= !(1 << interrupt);
+                    self.jump_to(address);
+                } else {
+                    self.jump_to(0x0000);
+                }
                 self.0.tick(20);
                 interrupt_handled = true;
             }

@@ -44,6 +44,8 @@ pub struct GameBoy {
     pub serial_transfer: Box<dyn FnMut(u8) + Send>,
     /// FF0F: IF
     pub interrupt_flag: u8,
+    /// FF46: DMA register
+    pub dma: u8,
     /// FFFF: IE
     pub interrupt_enabled: u8,
 
@@ -195,6 +197,7 @@ impl GameBoy {
             serial_data: 0,
             serial_control: 0x7E,
             interrupt_flag: 0,
+            dma: 0xff,
             interrupt_enabled: 0,
             v_blank_trigger: false,
             v_blank: None,
@@ -396,9 +399,13 @@ impl GameBoy {
             0x40..=0x45 => Ppu::write(self, address, value),
             0x46 => {
                 // DMA Transfer
-                // TODO: this is not the proper behavior, of course
+                self.dma = value;
+                let mut value = value;
+                if value >= 0xFE {
+                    value -= 0x20;
+                }
                 let start = (value as u16) << 8;
-                for (i, j) in (0xFE00..=0xFE9F).zip(start..start + 0x9F) {
+                for (i, j) in (0xFE00..=0xFE9F).zip(start..=start + 0x9F) {
                     let value = self.read(j);
                     self.write(i, value);
                 }
@@ -447,7 +454,7 @@ impl GameBoy {
             0x1f => 0xff,
             0x27..=0x2f => 0xff,
             0x40..=0x45 => Ppu::read(self, address),
-            0x46 => 0xff,
+            0x46 => self.dma,
             0x47..=0x4b => Ppu::read(self, address),
             0x4c => 0xff,
             0x4d => 0xff,

@@ -413,7 +413,7 @@ impl GameBoy {
             0x47..=0x4b => Ppu::write(self, address, value),
             0x4c..=0x4f => {}
             0x50 => {
-                if value & 0b1 != 0 {
+                if self.boot_rom_active && value & 0b1 != 0 {
                     self.boot_rom_active = false;
                     self.cpu.pc = 0x100;
                 }

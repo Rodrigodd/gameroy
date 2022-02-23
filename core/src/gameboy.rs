@@ -291,6 +291,33 @@ impl GameBoy {
             .unwrap();
     }
 
+    fn update_dma(&self) {
+        if self.dma_running.get() {
+            let elapsed = self.clock_count.wrapping_sub(self.dma_started);
+            if elapsed >= 8 {
+                self.block_oam.set(true);
+            }
+            // 8 cycles delay + 160 machine cycles
+            if elapsed >= 8 + 160 * 4 {
+                println!("finish DMA");
+                // Finish running
+                self.block_oam.set(false);
+                self.dma_running.set(false);
+
+                // copy memory
+                let mut value = self.dma;
+                if value >= 0xFE {
+                    value -= 0x20;
+                }
+                let start = (value as u16) << 8;
+                for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
+                    let value = self.read(j);
+                    self.ppu.borrow_mut().oam[i] = value;
+                }
+            }
+        }
+    }
+
     pub fn read(&self, mut address: u16) -> u8 {
         if self.boot_rom_active {
             if address < 0x100 {
@@ -316,36 +343,9 @@ impl GameBoy {
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
             0xFE00..=0xFE9F => {
-                if self.dma_running.get() {
-                    let elapsed = self.clock_count.wrapping_sub(self.dma_started);
-                    dbg!(elapsed);
-                    if elapsed >= 8 {
-                        self.block_oam.set(true);
-                    }
-                    // 8 cycles delay + 160 machine cycles
-                    if elapsed >= 8 + 160 * 4 {
-                        println!("finish DMA");
-                        // Finish running
-                        self.block_oam.set(false);
-                        self.dma_running.set(false);
-
-                        // copy memory
-                        let mut value = self.dma;
-                        if value >= 0xFE {
-                            value -= 0x20;
-                        }
-                        let start = (value as u16) << 8;
-                        for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
-                            let value = self.read(j);
-                            self.ppu.borrow_mut().oam[i] = value;
-                        }
-                    }
-
-                    if self.block_oam.get() {
-                        0xff
-                    } else {
-                        self.ppu.borrow().oam[address as usize - 0xFE00]
-                    }
+                self.update_dma();
+                if self.block_oam.get() {
+                    0xff
                 } else {
                     self.ppu.borrow().oam[address as usize - 0xFE00]
                 }
@@ -378,7 +378,15 @@ impl GameBoy {
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => self.ppu.borrow_mut().oam[address as usize - 0xFE00] = value,
+            0xFE00..=0xFE9F => {
+                self.update_dma();
+                if !self.block_oam.get() {
+                    println!("write OAM {:02x}", value);
+                    self.ppu.borrow_mut().oam[address as usize - 0xFE00] = value;
+                } else {
+                    println!("write OAM {:02x} block", value);
+                }
+            }
             // Not Usable
             0xFEA0..=0xFEFF => {}
             // I/O registers

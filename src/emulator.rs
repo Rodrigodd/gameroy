@@ -509,9 +509,9 @@ impl Emulator {
                             if let Some(last_clock_count) = joypad.last_frame_clock_count() {
                                 let clock_count = gb.clock_count;
                                 // currently, the maximum number of clocks that interpret_op
-                                // elapses is 32, so if the last_frame_clock_count is recent than
+                                // elapses is 24, so if the last_frame_clock_count is recent than
                                 // that, this could be after the last instruction. So pop it.
-                                if last_clock_count > clock_count - 32 {
+                                if last_clock_count > clock_count - 24 {
                                     joypad.pop_last_frame();
                                 }
                                 if joypad.load_last_frame(&mut *gb) {

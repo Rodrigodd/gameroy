@@ -956,6 +956,7 @@ impl Interpreter<'_> {
             let mut interrupt_handled = false;
             if self.0.cpu.ime == ImeState::Enabled {
                 self.0.cpu.ime = ImeState::Disabled;
+                self.0.tick(4);
                 let mut interrupt = 8;
                 let mut address = 0x00;
                 // The push could overwrite IE, canceling the jump, but only it first write. PC is
@@ -988,7 +989,7 @@ impl Interpreter<'_> {
                 } else {
                     self.jump_to(0x0000);
                 }
-                self.0.tick(20);
+                self.0.tick(4);
                 interrupt_handled = true;
             }
             if self.0.cpu.state == CpuState::Halt {

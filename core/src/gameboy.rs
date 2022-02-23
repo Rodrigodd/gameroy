@@ -299,7 +299,6 @@ impl GameBoy {
             }
             // 8 cycles delay + 160 machine cycles
             if elapsed >= 8 + 160 * 4 {
-                println!("finish DMA");
                 // Finish running
                 self.block_oam.set(false);
                 self.dma_running.set(false);
@@ -381,10 +380,7 @@ impl GameBoy {
             0xFE00..=0xFE9F => {
                 self.update_dma();
                 if !self.block_oam.get() {
-                    println!("write OAM {:02x}", value);
                     self.ppu.borrow_mut().oam[address as usize - 0xFE00] = value;
-                } else {
-                    println!("write OAM {:02x} block", value);
                 }
             }
             // Not Usable
@@ -459,7 +455,6 @@ impl GameBoy {
                     self.block_oam.set(true);
                 }
                 self.dma_running.set(true);
-                println!("start DMA");
             }
             0x47..=0x4b => Ppu::write(self, address, value),
             0x4c..=0x4f => {}

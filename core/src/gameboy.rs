@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     io::{Read, Write},
 };
 
@@ -46,6 +46,11 @@ pub struct GameBoy {
     pub interrupt_flag: u8,
     /// FF46: DMA register
     pub dma: u8,
+    /// The cycle in wich the last DMA tranfers was requested.
+    pub dma_started: u64,
+    /// If the DMA is running, including the intial delay.
+    pub dma_running: Cell<bool>,
+    pub block_oam: Cell<bool>,
     /// FFFF: IE
     pub interrupt_enabled: u8,
 
@@ -198,6 +203,9 @@ impl GameBoy {
             serial_control: 0x7E,
             interrupt_flag: 0,
             dma: 0xff,
+            dma_started: 0x7fff_ffff_ffff_ffff,
+            dma_running: Cell::new(false),
+            block_oam: Cell::new(false),
             interrupt_enabled: 0,
             v_blank_trigger: false,
             v_blank: None,
@@ -307,7 +315,41 @@ impl GameBoy {
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => self.ppu.borrow().oam[address as usize - 0xFE00],
+            0xFE00..=0xFE9F => {
+                if self.dma_running.get() {
+                    let elapsed = self.clock_count.wrapping_sub(self.dma_started);
+                    dbg!(elapsed);
+                    if elapsed >= 8 {
+                        self.block_oam.set(true);
+                    }
+                    // 8 cycles delay + 160 machine cycles
+                    if elapsed >= 8 + 160 * 4 {
+                        println!("finish DMA");
+                        // Finish running
+                        self.block_oam.set(false);
+                        self.dma_running.set(false);
+
+                        // copy memory
+                        let mut value = self.dma;
+                        if value >= 0xFE {
+                            value -= 0x20;
+                        }
+                        let start = (value as u16) << 8;
+                        for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
+                            let value = self.read(j);
+                            self.ppu.borrow_mut().oam[i] = value;
+                        }
+                    }
+
+                    if self.block_oam.get() {
+                        0xff
+                    } else {
+                        self.ppu.borrow().oam[address as usize - 0xFE00]
+                    }
+                } else {
+                    self.ppu.borrow().oam[address as usize - 0xFE00]
+                }
+            }
             // Not Usable
             0xFEA0..=0xFEFF => 0xff,
             // I/O registers
@@ -400,15 +442,16 @@ impl GameBoy {
             0x46 => {
                 // DMA Transfer
                 self.dma = value;
-                let mut value = value;
-                if value >= 0xFE {
-                    value -= 0x20;
+                self.dma_started = self.clock_count;
+                if self.dma_running.get() {
+                    // HACK: if a DMA requested was make right before this one, this dma_started
+                    // rewritten will cancel the oam_block of that DMA. The fix this, I will hackly
+                    // block the oam here, but this will block the oam 4 cycles early, but I think
+                    // this will not be observable.
+                    self.block_oam.set(true);
                 }
-                let start = (value as u16) << 8;
-                for (i, j) in (0xFE00..=0xFE9F).zip(start..=start + 0x9F) {
-                    let value = self.read(j);
-                    self.write(i, value);
-                }
+                self.dma_running.set(true);
+                println!("start DMA");
             }
             0x47..=0x4b => Ppu::write(self, address, value),
             0x4c..=0x4f => {}

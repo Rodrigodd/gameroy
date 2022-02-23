@@ -2143,8 +2143,9 @@ impl Interpreter<'_> {
             }
             0xfb => {
                 // EI 1:4 - - - -
-                // TODO: this need to be delayed by one instruction
-                self.0.cpu.ime = ImeState::ToBeEnable;
+                if self.0.cpu.ime == ImeState::Disabled {
+                    self.0.cpu.ime = ImeState::ToBeEnable;
+                }
                 return;
             }
             0xfc => {

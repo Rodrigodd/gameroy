@@ -871,7 +871,7 @@ impl Interpreter<'_> {
         if interrupts != 0 {
             let mut interrupt_handled = false;
             if self.0.cpu.ime == ImeState::Enabled {
-                count += 32;
+                count += 20;
                 interrupt_handled = true;
             }
             if self.0.cpu.state == CpuState::Halt {
@@ -943,6 +943,7 @@ impl Interpreter<'_> {
             }
         }
 
+        debug_assert!(count <= 24);
         count
     }
 

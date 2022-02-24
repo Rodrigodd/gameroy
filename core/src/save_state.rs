@@ -4,6 +4,7 @@ use std::io::{Read, Write};
 pub enum LoadStateError {
     InvalidImeState(u8),
     InvalidState(u8),
+    InvalidPpuMode(u8),
     InvalidBool(u8),
     InvalidBoolBitArray(u8, u8),
     SoundControllerDesync(u64, u64),

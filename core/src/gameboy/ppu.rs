@@ -119,6 +119,33 @@ impl SaveState for Sprite {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
+enum Mode {
+    HBlank = 0,
+    VBlank = 1,
+    OamSearch = 2,
+    Draw = 3,
+}
+impl SaveState for Mode {
+    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        (*self as u8).save_state(data)
+    }
+
+    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+        let mut v = 0u8;
+        v.load_state(data)?;
+        *self = match v {
+            0 => Self::HBlank,
+            1 => Self::VBlank,
+            2 => Self::OamSearch,
+            3 => Self::Draw,
+            _ => return Err(LoadStateError::InvalidPpuMode(v)),
+        };
+        Ok(())
+    }
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub struct Ppu {
     /// 8000-9FFF: Video RAM
@@ -157,6 +184,8 @@ pub struct Ppu {
     pub wy: u8,
     /// FF4B: Window X Position
     pub wx: u8,
+
+    mode: Mode,
 
     /// Last clock cycle where the PPU was updated
     last_clock_count: u64,
@@ -250,6 +279,7 @@ impl SaveState for Ppu {
         self.obp1.save_state(data)?;
         self.wy.save_state(data)?;
         self.wx.save_state(data)?;
+        self.mode.save_state(data)?;
         self.last_clock_count.save_state(data)?;
         self.internal_clock.save_state(data)?;
 
@@ -296,6 +326,7 @@ impl SaveState for Ppu {
         self.obp1.load_state(data)?;
         self.wy.load_state(data)?;
         self.wx.load_state(data)?;
+        self.mode.load_state(data)?;
         self.last_clock_count.load_state(data)?;
         self.internal_clock.load_state(data)?;
 
@@ -327,6 +358,8 @@ impl SaveState for Ppu {
 impl Default for Ppu {
     fn default() -> Self {
         Self {
+            vram: [0; 0x2000],
+            oam: [0; 0xA0],
             screen: [0; 144 * 160],
             sprite_buffer: Default::default(),
             sprite_buffer_len: Default::default(),
@@ -342,8 +375,7 @@ impl Default for Ppu {
             obp1: Default::default(),
             wy: Default::default(),
             wx: Default::default(),
-            vram: [0; 0x2000],
-            oam: [0; 0xA0],
+            mode: Mode::HBlank,
             last_clock_count: 0,
             internal_clock: 0,
             background_fifo: Default::default(),
@@ -399,6 +431,7 @@ impl Ppu {
             obp1: 0,
             wy: 0,
             wx: 0,
+            mode: Mode::VBlank,
             last_clock_count: 23_440_356,
             internal_clock: 23_173_892,
 
@@ -553,41 +586,29 @@ impl Ppu {
                 set_stat_int(ppu, 6)
             }
             // STAT Coincidente Flag
-            ppu.stat = (ppu.stat & !0x04) | (((ly ==ppu.lyc) as u8) << 2);
-            
+            ppu.stat = (ppu.stat & !0x04) | (((ly == ppu.lyc) as u8) << 2);
 
-            let mut set_mode = |ppu: &mut Ppu, mode: u8| {
-                debug_assert!(mode <= 3);
-                ppu.stat = (ppu.stat & !0b11) | mode;
+            let set_mode = |ppu: &mut Ppu, mode: Mode| {
+                ppu.mode = mode;
 
                 match mode {
-                    // H-Blank
-                    0 => {
+                    Mode::HBlank => {
                         // draw_scan_line(memory, s);
                         if ppu.is_in_window {
                             ppu.wyc += 1;
                         }
-                        // Mode 0 STAT Interrupt
-                        set_stat_int(ppu, 3);
                     }
                     // V-Blank
-                    1 => {
+                    Mode::VBlank => {
                         ppu.wyc = 0;
                         ppu.reach_window = false;
-                        // Mode 1 STAT Interrupt
-                        set_stat_int(ppu, 4);
-                        // Entering VBlank state triggers the OAM interrupt (I discovery this in
-                        // SameBoy source code)
-                        set_stat_int(ppu, 5);
                     }
                     // OAM search
-                    2 => {
+                    Mode::OamSearch => {
                         ppu.search_objects();
-                        // Mode 2 STAT Interrupt
-                        set_stat_int(ppu, 5);
                     }
                     // Draw
-                    3 => {
+                    Mode::Draw => {
                         ppu.background_fifo.clear();
                         ppu.sprite_fifo.clear();
 
@@ -603,51 +624,70 @@ impl Ppu {
                         ppu.curr_x = 0;
                         ppu.discarting = ppu.scx % 8;
                     }
-                    4..=255 => unreachable!(),
                 }
             };
 
             // mode transition
-            match ppu.stat & 0b11 {
-                // hblank
-                0 => {
+            match ppu.mode {
+                Mode::HBlank => {
                     if ppu.ly == 144 {
-                        set_mode(ppu, 1);
-
-                        // V-Blank Interrupt
-                        v_blank_interrupt = true;
+                        set_mode(ppu, Mode::VBlank);
                     } else if lx == 0 {
-                        set_mode(ppu, 2);
+                        set_mode(ppu, Mode::OamSearch);
                     }
                 }
-                // vblank
-                1 => {
+                Mode::VBlank => {
                     if ppu.ly == 0 {
                         ppu.wyc = 0;
-                        set_mode(ppu, 2);
+                        set_mode(ppu, Mode::OamSearch);
                     }
                 }
-                // searching objects
-                2 => {
+                Mode::OamSearch => {
                     if lx == 80 {
-                        set_mode(ppu, 3);
+                        set_mode(ppu, Mode::Draw);
                     }
                 }
-                // drawing
-                3 => {
+                Mode::Draw => {
                     if ppu.curr_x == 160 {
-                        set_mode(ppu, 0);
+                        set_mode(ppu, Mode::HBlank);
                     }
                 }
-
-                4..=255 => unreachable!(),
             }
             // mode operation
-            match ppu.stat & 0b11 {
-                0 => {}
-                1 => {}
-                2 => {}
-                3 => {
+            match ppu.mode {
+                Mode::HBlank => {
+                    if ppu.curr_x == 164 {
+                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                        // Mode 0 STAT Interrupt
+                        set_stat_int(ppu, 3);
+                    }
+                    if ppu.curr_x < 164 {
+                        ppu.curr_x += 1;
+                    }
+                }
+                Mode::VBlank => {
+                    if lx == 0 && ly == 144 {
+                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                        // Mode 1 STAT Interrupt
+                        set_stat_int(ppu, 4);
+                        // Entering VBlank state also triggers the OAM STAT interrupt
+                        set_stat_int(ppu, 5);
+                        // V-Blank Interrupt
+                        v_blank_interrupt = true;
+                    }
+                }
+                Mode::OamSearch => {
+                    if lx == 0 {
+                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                        // Mode 2 STAT Interrupt
+                        set_stat_int(ppu, 5);
+                    }
+                }
+                Mode::Draw => {
+                    if lx == 80 {
+                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                    }
+
                     let is_in_window = ppu.is_in_window;
 
                     let sprite_enable = ppu.lcdc & 0x02 != 0;
@@ -879,7 +919,6 @@ impl Ppu {
                         }
                     }
                 }
-                4..=255 => unreachable!(),
             }
         }
         ppu.last_clock_count = gb.clock_count;

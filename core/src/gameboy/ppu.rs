@@ -165,6 +165,12 @@ pub struct Ppu {
     /// FF40: LCD Control Register
     pub lcdc: u8,
     /// FF41: LCD Status Register
+    /// Bit 6 - LYC=LY STAT Interrupt source
+    /// Bit 5 - Mode 2 OAM STAT Interrupt source
+    /// Bit 4 - Mode 1 VBlank STAT Interrupt source
+    /// Bit 3 - Mode 0 HBlank STAT Interrupt source
+    /// Bit 2 - LYC=LY Flag
+    /// Bit 1-0 - Mode Flag
     pub stat: u8,
     /// FF42: Scroll Y Register
     pub scy: u8,
@@ -186,6 +192,7 @@ pub struct Ppu {
     pub wx: u8,
 
     mode: Mode,
+    stat_signal: bool,
 
     /// Last clock cycle where the PPU was updated
     last_clock_count: u64,
@@ -298,6 +305,7 @@ impl SaveState for Ppu {
             &self.fetcher_skipped_first_push,
             &self.sprite_fetching,
             &self.fetcher_cycle,
+            &self.stat_signal,
         ]
         .save_state(data)?;
 
@@ -345,6 +353,7 @@ impl SaveState for Ppu {
             &mut self.fetcher_skipped_first_push,
             &mut self.sprite_fetching,
             &mut self.fetcher_cycle,
+            &mut self.stat_signal,
         ]
         .load_state(data)?;
 
@@ -376,6 +385,7 @@ impl Default for Ppu {
             wy: Default::default(),
             wx: Default::default(),
             mode: Mode::HBlank,
+            stat_signal: false,
             last_clock_count: 0,
             internal_clock: 0,
             background_fifo: Default::default(),
@@ -432,6 +442,7 @@ impl Ppu {
             wy: 0,
             wx: 0,
             mode: Mode::VBlank,
+            stat_signal: false,
             last_clock_count: 23_440_356,
             internal_clock: 23_173_892,
 
@@ -572,22 +583,6 @@ impl Ppu {
             let lx = ppu.internal_clock % 456;
             ppu.internal_clock += 1;
 
-            let mut set_stat_int = |ppu: &mut Ppu, i: u8| {
-                if ppu.stat & (1 << i) != 0 {
-                    stat_interrupt = true;
-                }
-            };
-
-            // LY==LYC Interrupt
-            let ly = ppu.ly;
-            let lyc = ppu.lyc;
-            if ly != 0 && (lx == 4 && ly == lyc || ly == 153 && lx == 12 && 0 == lyc) {
-                // LY == LYC STAT Interrupt
-                set_stat_int(ppu, 6)
-            }
-            // STAT Coincidente Flag
-            ppu.stat = (ppu.stat & !0x04) | (((ly == ppu.lyc) as u8) << 2);
-
             let set_mode = |ppu: &mut Ppu, mode: Mode| {
                 ppu.mode = mode;
 
@@ -658,20 +653,14 @@ impl Ppu {
                 Mode::HBlank => {
                     if ppu.curr_x == 164 {
                         ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
-                        // Mode 0 STAT Interrupt
-                        set_stat_int(ppu, 3);
                     }
                     if ppu.curr_x < 164 {
                         ppu.curr_x += 1;
                     }
                 }
                 Mode::VBlank => {
-                    if lx == 0 && ly == 144 {
+                    if lx == 0 && ppu.ly == 144 {
                         ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
-                        // Mode 1 STAT Interrupt
-                        set_stat_int(ppu, 4);
-                        // Entering VBlank state also triggers the OAM STAT interrupt
-                        set_stat_int(ppu, 5);
                         // V-Blank Interrupt
                         v_blank_interrupt = true;
                     }
@@ -679,8 +668,6 @@ impl Ppu {
                 Mode::OamSearch => {
                     if lx == 0 {
                         ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
-                        // Mode 2 STAT Interrupt
-                        set_stat_int(ppu, 5);
                     }
                 }
                 Mode::Draw => {
@@ -688,241 +675,258 @@ impl Ppu {
                         ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
                     }
 
-                    let is_in_window = ppu.is_in_window;
-
-                    let sprite_enable = ppu.lcdc & 0x02 != 0;
-                    if ppu.discarting == 0
-                        && !ppu.sprite_fetching
-                        && ppu.sprite_buffer_len != 0
-                        && sprite_enable
-                    {
-                        let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
-                        if sprite.sx <= ppu.curr_x + 8 {
-                            ppu.sprite_fetching = true;
-                            ppu.sprite_buffer_len -= 1;
-                            ppu.fetcher_step = 0;
-                            ppu.fetcher_cycle = false;
-                            break;
-                        }
-                    }
-
-                    ppu.fetcher_cycle = !ppu.fetcher_cycle;
-                    // Pixel Fetching
-                    if ppu.fetcher_cycle {
-                        if ppu.sprite_fetching {
-                            let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize];
-                            let tall = ppu.lcdc & 0x04;
-                            let flip_y = sprite.flags & 0x40;
-                            let flip_x = sprite.flags & 0x20 != 0;
-                            let py = if flip_y != 0 {
-                                let height = if tall != 0 { 16 } else { 8 };
-                                (height - 1) - (ly + 16 - sprite.sy)
-                            } else {
-                                ly + 16 - sprite.sy
-                            };
-
-                            // for steps 1 and 2
-                            let tile = ppu.fetch_tile_number as u16;
-                            let address = tile * 0x10 + 0x8000;
-                            let offset = (py % 8) as u16 * 2;
-                            let fetch_tile_address = address + offset;
-
-                            match ppu.fetcher_step {
-                                // fetch tile number
-                                0 => {
-                                    let tile = if tall != 0 {
-                                        // sprite with 2 tiles of height
-                                        (sprite.tile & !1) + py / 8
-                                    } else {
-                                        sprite.tile
-                                    };
-
-                                    ppu.fetch_tile_number = tile;
-                                    ppu.fetcher_step = 1;
-                                }
-                                // fetch tile data (low)
-                                1 => {
-                                    ppu.fetch_tile_data_low =
-                                        ppu.vram[fetch_tile_address as usize - 0x8000];
-                                    ppu.fetcher_step = 2;
-                                }
-                                // fetch tile data (hight)
-                                2 => {
-                                    ppu.fetch_tile_data_hight =
-                                        ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
-
-                                    ppu.fetcher_step = 3;
-                                }
-                                // push to fifo
-                                3 => {
-                                    let tile_low = if flip_x {
-                                        ppu.fetch_tile_data_low.reverse_bits()
-                                    } else {
-                                        ppu.fetch_tile_data_low
-                                    };
-                                    let tile_hight = if flip_x {
-                                        ppu.fetch_tile_data_hight.reverse_bits()
-                                    } else {
-                                        ppu.fetch_tile_data_hight
-                                    };
-                                    let cut_off = if sprite.sx < 8 { 8 - sprite.sx } else { 0 };
-                                    ppu.sprite_fifo.push_sprite(
-                                        tile_low,
-                                        tile_hight,
-                                        cut_off,
-                                        sprite.flags & 0x10 != 0,
-                                        sprite.flags & 0x80 != 0,
-                                    );
-                                    ppu.fetcher_step = 0;
-                                    ppu.sprite_fetching = false;
-                                }
-                                4..=255 => unreachable!(),
-                            }
-                        } else {
-                            let fetch_tile_address =
-                                |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
-                                    let mut tile = ppu.fetch_tile_number as u16;
-                                    if ppu.lcdc & 0x10 == 0 {
-                                        tile += 0x100;
-                                        if tile >= 0x180 {
-                                            tile -= 0x100;
-                                        }
-                                    }
-                                    let address = tile * 0x10 + 0x8000;
-                                    let offset = if is_in_window {
-                                        2 * (ppu.wyc as u16 % 8)
-                                    } else {
-                                        2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
-                                    };
-                                    let fetch_tile_address = address + offset;
-                                    fetch_tile_address
-                                };
-
-                            match ppu.fetcher_step {
-                                // fetch tile number
-                                0 => {
-                                    let tile_map = if !is_in_window {
-                                        if ppu.lcdc & 0x08 != 0 {
-                                            0x9C00
-                                        } else {
-                                            0x9800
-                                        }
-                                    } else {
-                                        if ppu.lcdc & 0x40 != 0 {
-                                            0x9C00
-                                        } else {
-                                            0x9800
-                                        }
-                                    };
-
-                                    let tx = if is_in_window {
-                                        ppu.fetcher_x
-                                    } else {
-                                        (ppu.fetcher_x + (ppu.scx / 8)) & 0x1f
-                                    };
-                                    let ty = if is_in_window {
-                                        ppu.wyc / 8
-                                    } else {
-                                        (ly.wrapping_add(ppu.scy) & 0xff) / 8
-                                    };
-
-                                    let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
-                                    ppu.fetch_tile_number =
-                                        ppu.vram[(tile_map + offset) as usize - 0x8000];
-                                    ppu.fetcher_step = 1;
-                                }
-                                // fetch tile data (low)
-                                1 => {
-                                    let fetch_tile_address =
-                                        fetch_tile_address(ppu, is_in_window, ly);
-                                    ppu.fetch_tile_data_low =
-                                        ppu.vram[fetch_tile_address as usize - 0x8000];
-                                    ppu.fetcher_step = 2;
-                                }
-                                // fetch tile data (hight)
-                                2 => {
-                                    let fetch_tile_address =
-                                        fetch_tile_address(ppu, is_in_window, ly);
-                                    ppu.fetch_tile_data_hight =
-                                        ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
-
-                                    if !ppu.fetcher_skipped_first_push {
-                                        ppu.fetcher_skipped_first_push = true;
-                                        ppu.fetcher_step = 0;
-                                    } else {
-                                        ppu.fetcher_step = 3;
-                                    }
-                                }
-                                // push to fifo
-                                3 => {
-                                    if !ppu.background_fifo.is_empty() {
-                                        ppu.fetcher_step = 3;
-                                    } else {
-                                        let low = ppu.fetch_tile_data_low;
-                                        let hight = ppu.fetch_tile_data_hight;
-                                        ppu.background_fifo.push_background(low, hight);
-                                        ppu.fetcher_x += 1;
-                                        ppu.fetcher_step = 0;
-                                    }
-                                }
-                                4..=255 => unreachable!(),
-                            }
-                        }
-                    }
-
-                    if !ppu.sprite_fetching {
-                        let window_enabled = ppu.lcdc & 0x20 != 0;
-                        if !ppu.is_in_window
-                            && window_enabled
-                            && ppu.reach_window
-                            && ppu.curr_x >= ppu.wx.saturating_sub(7)
-                        {
-                            ppu.is_in_window = true;
-                            if !ppu.sprite_fetching {
-                                ppu.fetcher_step = 0;
-                            }
-                            ppu.discarting = 0;
-                            ppu.fetcher_x = 0;
-                            ppu.background_fifo.clear();
-                        }
-
-                        if let Some(pixel) = ppu.background_fifo.pop_front() {
-                            if ppu.discarting > 0 {
-                                ppu.discarting -= 1;
-                                // Discart a pixel. Used for scrolling the background.
-                            } else {
-                                let i = (ly as usize) * 160 + ppu.curr_x as usize;
-                                let background_enable = ppu.lcdc & 0x01 != 0;
-                                let bcolor = if background_enable { pixel & 0b11 } else { 0 };
-
-                                // background color, with pallete applied
-                                let palette = ppu.bgp;
-                                let mut color = (palette >> (bcolor * 2)) & 0b11;
-
-                                let sprite_pixel = ppu.sprite_fifo.pop_front();
-                                if let Some(sprite_pixel) = sprite_pixel {
-                                    let scolor = sprite_pixel & 0b11;
-                                    let background_priority = (sprite_pixel >> 3) & 0x01 != 0;
-                                    if scolor == 0 || background_priority && bcolor != 0 {
-                                        // use background color
-                                    } else {
-                                        // use sprite color
-                                        let palette = (sprite_pixel >> 4) & 0x1;
-                                        let palette = [ppu.obp0, ppu.obp1][palette as usize];
-                                        color = (palette >> (scolor * 2)) & 0b11;
-                                    }
-                                }
-                                debug_assert!(color < 4);
-                                ppu.screen[i] = color;
-                                ppu.curr_x += 1;
-                            }
-                        }
-                    }
+                    tick_lcd_fifo(ppu, ppu.ly);
                 }
             }
+
+            let stat_mode = ppu.stat & 0b11;
+
+            let mut stat_line = false;
+            match stat_mode {
+                0 => stat_line |= ppu.stat & 0x08 != 0,
+                // VBlank also trigger OAM STAT interrupt
+                1 => stat_line |= ppu.stat & 0x30 != 0,
+                2 => stat_line |= ppu.stat & 0x20 != 0,
+                3 => {}
+                4..=255 => unreachable!(),
+            }
+
+            // LY==LYC Interrupt
+            let ly = ppu.ly;
+            let lyc = ppu.lyc;
+            let compare = lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0;
+            if ly == 0 || (lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0) {
+                // LY == LYC STAT Interrupt
+                stat_line |= ppu.stat & (1 << 6) != 0;
+            }
+            // STAT Coincidente Flag
+            ppu.stat = (ppu.stat & !0x04) | ((compare as u8) << 2);
+
+            // on rising edge
+            if !ppu.stat_signal && stat_line {
+                stat_interrupt = true;
+            }
+            ppu.stat_signal = stat_line;
         }
         ppu.last_clock_count = gb.clock_count;
         (v_blank_interrupt, stat_interrupt)
+    }
+}
+
+fn tick_lcd_fifo(ppu: &mut Ppu, ly: u8) {
+    let is_in_window = ppu.is_in_window;
+    let sprite_enable = ppu.lcdc & 0x02 != 0;
+    if ppu.discarting == 0 && !ppu.sprite_fetching && ppu.sprite_buffer_len != 0 && sprite_enable {
+        let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
+        if sprite.sx <= ppu.curr_x + 8 {
+            ppu.sprite_fetching = true;
+            ppu.sprite_buffer_len -= 1;
+            ppu.fetcher_step = 0;
+            ppu.fetcher_cycle = false;
+        }
+    }
+    ppu.fetcher_cycle = !ppu.fetcher_cycle;
+    // Pixel Fetching
+    if ppu.fetcher_cycle {
+        if ppu.sprite_fetching {
+            let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize];
+            let tall = ppu.lcdc & 0x04;
+            let flip_y = sprite.flags & 0x40;
+            let flip_x = sprite.flags & 0x20 != 0;
+            let py = if flip_y != 0 {
+                let height = if tall != 0 { 16 } else { 8 };
+                (height - 1) - (ly + 16 - sprite.sy)
+            } else {
+                ly + 16 - sprite.sy
+            };
+
+            // for steps 1 and 2
+            let tile = ppu.fetch_tile_number as u16;
+            let address = tile * 0x10 + 0x8000;
+            let offset = (py % 8) as u16 * 2;
+            let fetch_tile_address = address + offset;
+
+            match ppu.fetcher_step {
+                // fetch tile number
+                0 => {
+                    let tile = if tall != 0 {
+                        // sprite with 2 tiles of height
+                        (sprite.tile & !1) + py / 8
+                    } else {
+                        sprite.tile
+                    };
+
+                    ppu.fetch_tile_number = tile;
+                    ppu.fetcher_step = 1;
+                }
+                // fetch tile data (low)
+                1 => {
+                    ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
+                    ppu.fetcher_step = 2;
+                }
+                // fetch tile data (hight)
+                2 => {
+                    ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
+
+                    ppu.fetcher_step = 3;
+                }
+                // push to fifo
+                3 => {
+                    let tile_low = if flip_x {
+                        ppu.fetch_tile_data_low.reverse_bits()
+                    } else {
+                        ppu.fetch_tile_data_low
+                    };
+                    let tile_hight = if flip_x {
+                        ppu.fetch_tile_data_hight.reverse_bits()
+                    } else {
+                        ppu.fetch_tile_data_hight
+                    };
+                    let cut_off = if sprite.sx < 8 { 8 - sprite.sx } else { 0 };
+                    ppu.sprite_fifo.push_sprite(
+                        tile_low,
+                        tile_hight,
+                        cut_off,
+                        sprite.flags & 0x10 != 0,
+                        sprite.flags & 0x80 != 0,
+                    );
+                    ppu.fetcher_step = 0;
+                    ppu.sprite_fetching = false;
+                }
+                4..=255 => unreachable!(),
+            }
+        } else {
+            let fetch_tile_address = |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
+                let mut tile = ppu.fetch_tile_number as u16;
+                if ppu.lcdc & 0x10 == 0 {
+                    tile += 0x100;
+                    if tile >= 0x180 {
+                        tile -= 0x100;
+                    }
+                }
+                let address = tile * 0x10 + 0x8000;
+                let offset = if is_in_window {
+                    2 * (ppu.wyc as u16 % 8)
+                } else {
+                    2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
+                };
+                let fetch_tile_address = address + offset;
+                fetch_tile_address
+            };
+
+            match ppu.fetcher_step {
+                // fetch tile number
+                0 => {
+                    let tile_map = if !is_in_window {
+                        if ppu.lcdc & 0x08 != 0 {
+                            0x9C00
+                        } else {
+                            0x9800
+                        }
+                    } else {
+                        if ppu.lcdc & 0x40 != 0 {
+                            0x9C00
+                        } else {
+                            0x9800
+                        }
+                    };
+
+                    let tx = if is_in_window {
+                        ppu.fetcher_x
+                    } else {
+                        (ppu.fetcher_x + (ppu.scx / 8)) & 0x1f
+                    };
+                    let ty = if is_in_window {
+                        ppu.wyc / 8
+                    } else {
+                        (ly.wrapping_add(ppu.scy) & 0xff) / 8
+                    };
+
+                    let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
+                    ppu.fetch_tile_number = ppu.vram[(tile_map + offset) as usize - 0x8000];
+                    ppu.fetcher_step = 1;
+                }
+                // fetch tile data (low)
+                1 => {
+                    let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
+                    ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
+                    ppu.fetcher_step = 2;
+                }
+                // fetch tile data (hight)
+                2 => {
+                    let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
+                    ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
+
+                    if !ppu.fetcher_skipped_first_push {
+                        ppu.fetcher_skipped_first_push = true;
+                        ppu.fetcher_step = 0;
+                    } else {
+                        ppu.fetcher_step = 3;
+                    }
+                }
+                // push to fifo
+                3 => {
+                    if !ppu.background_fifo.is_empty() {
+                        ppu.fetcher_step = 3;
+                    } else {
+                        let low = ppu.fetch_tile_data_low;
+                        let hight = ppu.fetch_tile_data_hight;
+                        ppu.background_fifo.push_background(low, hight);
+                        ppu.fetcher_x += 1;
+                        ppu.fetcher_step = 0;
+                    }
+                }
+                4..=255 => unreachable!(),
+            }
+        }
+    }
+    if !ppu.sprite_fetching {
+        let window_enabled = ppu.lcdc & 0x20 != 0;
+        if !ppu.is_in_window
+            && window_enabled
+            && ppu.reach_window
+            && ppu.curr_x >= ppu.wx.saturating_sub(7)
+        {
+            ppu.is_in_window = true;
+            if !ppu.sprite_fetching {
+                ppu.fetcher_step = 0;
+            }
+            ppu.discarting = 0;
+            ppu.fetcher_x = 0;
+            ppu.background_fifo.clear();
+        }
+
+        if let Some(pixel) = ppu.background_fifo.pop_front() {
+            if ppu.discarting > 0 {
+                ppu.discarting -= 1;
+                // Discart a pixel. Used for scrolling the background.
+            } else {
+                let i = (ly as usize) * 160 + ppu.curr_x as usize;
+                let background_enable = ppu.lcdc & 0x01 != 0;
+                let bcolor = if background_enable { pixel & 0b11 } else { 0 };
+
+                // background color, with pallete applied
+                let palette = ppu.bgp;
+                let mut color = (palette >> (bcolor * 2)) & 0b11;
+
+                let sprite_pixel = ppu.sprite_fifo.pop_front();
+                if let Some(sprite_pixel) = sprite_pixel {
+                    let scolor = sprite_pixel & 0b11;
+                    let background_priority = (sprite_pixel >> 3) & 0x01 != 0;
+                    if scolor == 0 || background_priority && bcolor != 0 {
+                        // use background color
+                    } else {
+                        // use sprite color
+                        let palette = (sprite_pixel >> 4) & 0x1;
+                        let palette = [ppu.obp0, ppu.obp1][palette as usize];
+                        color = (palette >> (scolor * 2)) & 0b11;
+                    }
+                }
+                debug_assert!(color < 4);
+                ppu.screen[i] = color;
+                ppu.curr_x += 1;
+            }
+        }
     }
 }
 

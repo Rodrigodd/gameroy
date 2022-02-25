@@ -162,6 +162,7 @@ pub struct Ppu {
     pub sprite_buffer_len: u8,
     /// Window Internal Line Counter
     pub wyc: u8,
+
     /// FF40: LCD Control Register
     pub lcdc: u8,
     /// FF41: LCD Status Register
@@ -197,7 +198,7 @@ pub struct Ppu {
     /// Last clock cycle where the PPU was updated
     last_clock_count: u64,
     /// The current internal clock of the PPU, used to indicate the current ly and lx.
-    internal_clock: u64,
+    pub internal_clock: u64,
 
     background_fifo: PixelFifo,
     sprite_fifo: PixelFifo,
@@ -618,7 +619,6 @@ impl Ppu {
                             ppu.reach_window = true;
                         }
                         ppu.is_in_window = false;
-                        ppu.curr_x = 0;
                         ppu.discarting = ppu.scx % 8;
                     }
                 }

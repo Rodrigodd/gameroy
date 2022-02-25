@@ -53,7 +53,8 @@ struct JumpToAddress {
 struct DissasemblerList {
     text_style: TextStyle,
     list: Id,
-    reg: Id,
+    cpu: Id,
+    ppu: Id,
     pc: Option<Address>,
     directives: Vec<Directive>,
     items_are_dirty: bool,
@@ -171,16 +172,16 @@ impl ListBuilder for DissasemblerList {
             }
 
             let cpu = &gb.cpu;
-            let reg_text = format!(
+            let cpu_text = format!(
                 "\
 clock: {}
-AF: {:02x} {:02x}
-BC: {:02x} {:02x}
-DE: {:02x} {:02x}
-HL: {:02x} {:02x}
-SP: {:04x}
-PC: {:04x}
-DIV:{:04x}",
+ AF: {:02x} {:02x}
+ BC: {:02x} {:02x}
+ DE: {:02x} {:02x}
+ HL: {:02x} {:02x}
+ SP: {:04x}
+ PC: {:04x}
+ DIV:{:04x}",
                 decimal_mark(gb.clock_count),
                 cpu.a,
                 cpu.f.0,
@@ -194,6 +195,44 @@ DIV:{:04x}",
                 cpu.pc,
                 gb.timer.div,
             );
+
+            if let Graphic::Text(text) = ctx.get_graphic_mut(self.cpu) {
+                text.set_string(&cpu_text);
+            }
+
+            let ppu = gb.ppu.borrow();
+            let ppu_text = format!(
+                " LCDC:{:02x}
+ STAT:{:02x}
+ SCY: {:02x}
+ SCX: {:02x}
+ LYC: {:02x}
+ LY:  {:02x}
+ LX:  {:02x}
+ BGP: {:02x}
+ OBP0:{:02x}
+ OBP1:{:02x}
+ WYC: {:02x}
+ WY:  {:02x}
+ WX:  {:02x}",
+                ppu.lcdc,
+                ppu.stat,
+                ppu.scy,
+                ppu.scx,
+                ppu.lyc,
+                ppu.ly,
+                ppu.internal_clock % 456,
+                ppu.bgp,
+                ppu.obp0,
+                ppu.obp1,
+                ppu.wyc,
+                ppu.wy,
+                ppu.wx,
+            );
+
+            if let Graphic::Text(text) = ctx.get_graphic_mut(self.ppu) {
+                text.set_string(&ppu_text);
+            }
 
             let trace = gb.trace.borrow();
 
@@ -239,10 +278,6 @@ DIV:{:04x}",
                     },
                 );
             };
-
-            if let Graphic::Text(text) = ctx.get_graphic_mut(self.reg) {
-                text.set_string(&reg_text);
-            }
         } else if let Some(JumpToAddress { from_address }) = event.downcast_ref::<JumpToAddress>() {
             let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
             let trace = gb.trace.borrow_mut();
@@ -486,6 +521,7 @@ pub fn build(
     let diss_view_id = ctx.reserve();
     let list_id = ctx.reserve();
     let reg_id = ctx.reserve();
+    let ppu_id = ctx.reserve();
 
     let vbox = ctx
         .create_control_reserved(diss_view_id)
@@ -513,7 +549,8 @@ pub fn build(
         DissasemblerList {
             text_style: style.text_style.clone(),
             list: list_id,
-            reg: reg_id,
+            cpu: reg_id,
+            ppu: ppu_id,
             pc: None,
             directives: Vec::new(),
             items_are_dirty: true,
@@ -537,19 +574,35 @@ pub fn build(
         .create_control_reserved(reg_id)
         .parent(right_panel)
         .graphic(Text::new(
-            format!(
-                "\
-AF: {:02x} {:02x}
-BC: {:02x} {:02x}
-DE: {:02x} {:02x}
-HL: {:02x} {:02x}
-SP: {:04x}
-PC: {:04x}",
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-            ),
+            String::new(),
             (-1, 0),
             style.text_style.clone(),
         ))
+        .layout(FitText)
+        .build(ctx);
+
+    let ppu = ctx
+        .create_control()
+        .parent(right_panel)
+        .behaviour(FoldView { fold: true })
+        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
+        .build(ctx);
+    
+    let _ppu_header = ctx
+        .create_control()
+        .parent(ppu)
+        .graphic(Text::new(
+            "ppu:".to_string(),
+            (-1, 0),
+            style.text_style.clone(),
+        ))
+        .layout(FitText)
+        .build(ctx);
+
+    let _ppu_view = ctx
+        .create_control_reserved(ppu_id)
+        .parent(ppu)
+        .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
         .layout(FitText)
         .build(ctx);
 

@@ -596,11 +596,13 @@ impl Ppu {
                     // V-Blank
                     Mode::VBlank => {
                         ppu.wyc = 0;
+                        ppu.curr_x = 0;
                         ppu.reach_window = false;
                     }
                     // OAM search
                     Mode::OamSearch => {
                         ppu.search_objects();
+                        ppu.curr_x = 0;
                     }
                     // Draw
                     Mode::Draw => {

@@ -75,7 +75,7 @@ impl PpuViewer {
         if emulator_updated {
             let mut debug_screen = vec![255; 160 * 144 * 4];
             let screen = &ppu.screen;
-            let curr_i = (ppu.ly as usize * 160 + ppu.curr_x as usize).min(160 * 144);
+            let curr_i = (ppu.ly as usize * 160 + ppu.curr_x.min(160) as usize).min(160 * 144);
 
             for i in 0..curr_i {
                 let c = screen[i];

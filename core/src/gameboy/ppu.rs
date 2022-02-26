@@ -653,7 +653,10 @@ impl Ppu {
             // mode operation
             match ppu.mode {
                 Mode::HBlank => {
-                    if ppu.curr_x == 164 {
+                    // I am not sure if the stat mode only change 3 cycles after LCD drawings ends,
+                    // or there is a inaccuracy in the drawing timing, but the mooneye::ppu_hblank
+                    // passed.
+                    if ppu.curr_x == 163 {
                         ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
                     }
                     if ppu.curr_x < 164 {

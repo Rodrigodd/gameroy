@@ -174,8 +174,9 @@ fn create_window(
     let (emu_channel, recv) = sync_channel(3);
     if debug {
         proxy.send_event(UserEvent::Debug(debug)).unwrap();
+    } else {
+        emu_channel.send(EmulatorEvent::RunFrame).unwrap();
     }
-    emu_channel.send(EmulatorEvent::RunFrame).unwrap();
 
     let debugger = Arc::new(Mutex::new(Debugger::default()));
 

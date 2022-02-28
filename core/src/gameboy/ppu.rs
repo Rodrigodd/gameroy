@@ -120,11 +120,14 @@ impl SaveState for Sprite {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-#[repr(u8)]
 enum Mode {
     HBlank = 0,
     VBlank = 1,
-    OamSearch = 2,
+    // Oam mode is divide in two, the OamSearchEntry changes the stat mode at lx = 4 and become the
+    // second. The second one is necessary in ppu on for setting the mode without changing the stat
+    // mode.
+    OamSearchEntry = 2,
+    OamSearch = 4,
     Draw = 3,
 }
 impl SaveState for Mode {
@@ -138,7 +141,8 @@ impl SaveState for Mode {
         *self = match v {
             0 => Self::HBlank,
             1 => Self::VBlank,
-            2 => Self::OamSearch,
+            2 => Self::OamSearchEntry,
+            4 => Self::OamSearch,
             3 => Self::Draw,
             _ => return Err(LoadStateError::InvalidPpuMode(v)),
         };
@@ -481,15 +485,16 @@ impl Ppu {
                         // set to mode 0
                         this.stat &= !0b11;
                     } else {
+                        // enable ppu
                         debug_assert_eq!(this.ly, 0);
                         debug_assert_eq!(this.internal_clock, 0);
                         debug_assert_eq!(this.stat & 0b11, 0b00);
-                        this.stat |= 0b10;
+                        this.mode = Mode::OamSearch;
                     }
                 }
                 this.lcdc = value
             }
-            0x41 => this.stat = (value & !0b11) | (this.stat & 0b11),
+            0x41 => this.stat = 0x80 | (value & !0b11) | (this.stat & 0b11),
             0x42 => this.scy = value,
             0x43 => this.scx = value,
             0x44 => {} // ly is read only
@@ -601,10 +606,11 @@ impl Ppu {
                         ppu.reach_window = false;
                     }
                     // OAM search
-                    Mode::OamSearch => {
+                    Mode::OamSearchEntry => {
                         ppu.search_objects();
                         ppu.curr_x = 0;
                     }
+                    Mode::OamSearch => {}
                     // Draw
                     Mode::Draw => {
                         ppu.background_fifo.clear();
@@ -630,15 +636,16 @@ impl Ppu {
                     if ppu.ly == 144 {
                         set_mode(ppu, Mode::VBlank);
                     } else if lx == 0 {
-                        set_mode(ppu, Mode::OamSearch);
+                        set_mode(ppu, Mode::OamSearchEntry);
                     }
                 }
                 Mode::VBlank => {
                     if ppu.ly == 0 {
                         ppu.wyc = 0;
-                        set_mode(ppu, Mode::OamSearch);
+                        set_mode(ppu, Mode::OamSearchEntry);
                     }
                 }
+                Mode::OamSearchEntry => {}
                 Mode::OamSearch => {
                     if lx == 80 {
                         set_mode(ppu, Mode::Draw);
@@ -657,7 +664,7 @@ impl Ppu {
                     // or there is a inaccuracy in the drawing timing, but the mooneye::ppu_hblank
                     // passed.
                     if ppu.curr_x == 163 {
-                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                        ppu.stat = (ppu.stat & !0b11) | 0b00;
                     }
                     if ppu.curr_x < 164 {
                         ppu.curr_x += 1;
@@ -665,19 +672,21 @@ impl Ppu {
                 }
                 Mode::VBlank => {
                     if lx == 0 && ppu.ly == 144 {
-                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                        ppu.stat = (ppu.stat & !0b11) | 0b01;
                         // V-Blank Interrupt
                         v_blank_interrupt = true;
                     }
                 }
-                Mode::OamSearch => {
-                    if lx == 0 {
-                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                Mode::OamSearchEntry => {
+                    if lx == 4 {
+                        ppu.stat = (ppu.stat & !0b11) | 0b10;
+                        ppu.mode = Mode::OamSearch;
                     }
                 }
+                Mode::OamSearch => {}
                 Mode::Draw => {
                     if lx == 80 {
-                        ppu.stat = (ppu.stat & !0b11) | ppu.mode as u8;
+                        ppu.stat = (ppu.stat & !0b11) | 0b11;
                     }
 
                     tick_lcd_fifo(ppu, ppu.ly);
@@ -700,7 +709,7 @@ impl Ppu {
             let ly = ppu.ly;
             let lyc = ppu.lyc;
             let compare = lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0;
-            if ly == 0 || (lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0) {
+            if ly == 0 && lyc == 0 || (lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0) {
                 // LY == LYC STAT Interrupt
                 stat_line |= ppu.stat & (1 << 6) != 0;
             }

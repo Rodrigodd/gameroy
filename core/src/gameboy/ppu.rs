@@ -698,8 +698,16 @@ impl Ppu {
             let mut stat_line = false;
             match stat_mode {
                 0 => stat_line |= ppu.stat & 0x08 != 0,
-                // VBlank also trigger OAM STAT interrupt
-                1 => stat_line |= ppu.stat & 0x30 != 0,
+                1 => {
+                    // little hack: only signal the stat interrupt for Mode 1 if ly != 0 to avoid
+                    // "stat irq blocking" of the Mode 2 in the first scanline. This allow passing
+                    // the 'mooneye::ppu_intr_1_2_timing_gs' test, but the proper behaviour is not
+                    // documented.
+                    if ppu.ly != 0 {
+                        // VBlank also trigger OAM STAT interrupt
+                        stat_line |= ppu.stat & 0x30 != 0;
+                    }
+                }
                 2 => stat_line |= ppu.stat & 0x20 != 0,
                 3 => {}
                 4..=255 => unreachable!(),

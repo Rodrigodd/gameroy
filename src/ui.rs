@@ -11,8 +11,8 @@ use crui::{
     layouts::{FitText, HBoxLayout, MarginLayout, VBoxLayout},
     render::GuiRenderer,
     text::Text,
-    widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
-    BuilderContext, Gui, GuiRender,
+    widgets::{ButtonGroup, OnKeyboardEvent, ScrollBar, ScrollView, TabButton, ViewLayout},
+    BuilderContext, Gui, GuiRender, Id,
 };
 use gameroy::{debugger::Debugger, gameboy::GameBoy};
 use parking_lot::Mutex;
@@ -384,12 +384,10 @@ fn open_debug_panel(
     screen_id: &mut crui::Id,
     event_table: Rc<RefCell<EventTable>>,
 ) {
-    let mut split_layout = SplitView::new(4.0, [2.0; 4], false);
-    split_layout.split = 0.333;
     ctx.create_control_reserved(split_view)
         .parent(root)
         .graphic(style.split_background.clone())
-        .behaviour_and_layout(split_layout)
+        .behaviour_and_layout(SplitView::new(0.333, 4.0, [2.0; 4], false))
         .build(ctx);
     ctx.remove(*screen_id);
 
@@ -478,4 +476,45 @@ fn open_debug_panel(
 
     let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
     proxy.send_event(UserEvent::Debug(true)).unwrap();
+}
+
+fn scroll_viewer(
+    ctx: &mut dyn BuilderContext,
+    scroll_view: Id,
+    content: Id,
+    style: &Style,
+) -> crui::ControlBuilder {
+    let view = ctx
+        .create_control()
+        .parent(scroll_view)
+        .layout(ViewLayout::new(false, true))
+        .build(ctx);
+    let _content = ctx
+        .create_control_reserved(content)
+        .parent(view)
+        .layout(VBoxLayout::new(10.0, [2.0; 4], -1))
+        .build(ctx);
+    let v_handle = ctx.reserve();
+    let v_scroll = ctx
+        .create_control()
+        .parent(scroll_view)
+        .behaviour(ScrollBar::new(
+            v_handle,
+            scroll_view,
+            true,
+            style.scrollbar.clone(),
+        ))
+        .min_size([12.0, 12.0])
+        .build(ctx);
+    let v_handle = ctx
+        .create_control_reserved(v_handle)
+        .parent(v_scroll)
+        .build(ctx);
+    ctx.create_control_reserved(scroll_view)
+        .behaviour_and_layout(ScrollView::new(
+            view,
+            content,
+            None,
+            Some((v_scroll, v_handle)),
+        ))
 }

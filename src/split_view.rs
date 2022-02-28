@@ -14,11 +14,11 @@ pub struct SplitView {
     dragging_delta: f32,
 }
 impl SplitView {
-    pub fn new(spacing: f32, margins: [f32; 4], vertical: bool) -> Self {
+    pub fn new(split: f32, spacing: f32, margins: [f32; 4], vertical: bool) -> Self {
         Self {
             spacing,
             margins,
-            split: 0.5,
+            split,
             vertical,
             left_min_size: 0.0,
             right_min_size: 0.0,
@@ -39,9 +39,9 @@ impl SplitView {
         let free_space = self.free_space(rect);
 
         let split_pos = self.left_min_size + self.split * free_space;
-        let mouse_pos = mouse_pos[self.vertical as usize];
+        let mouse_pos = mouse_pos[self.vertical as usize] - rect[self.vertical as usize];
 
-        (split_pos - mouse_pos).abs() < 5.0
+        (split_pos - mouse_pos).abs() < self.spacing + 2.0
     }
 
     fn mouse_to_split_pos(&self, mouse_pos: [f32; 2], rect: [f32; 4]) -> f32 {
@@ -96,8 +96,8 @@ impl Layout for SplitView {
             return;
         }
 
-        let left_child = ctx.get_active_children(this).get(0).cloned();
-        let right_child = ctx.get_active_children(this).get(1).cloned();
+        let left_child = ctx.get_active_children(this).get(0).copied();
+        let right_child = ctx.get_active_children(this).get(1).copied();
 
         let rect = ctx.get_layouting(this);
         let height = rect.get_height() - self.margins[1] - self.margins[3];
@@ -125,14 +125,13 @@ impl Layout for SplitView {
         } else {
             let reserved_width = self.left_min_size + self.right_min_size;
             let free_width = (width - reserved_width - self.spacing).max(0.0);
-            let left_right = top + self.left_min_size + free_width * self.split;
+            let left_right = left + self.left_min_size + free_width * self.split;
             if let Some(left_child) = left_child {
                 ctx.set_designed_rect(left_child, [left, top, left_right, bottom]);
             }
             if let Some(right_child) = right_child {
                 let left = left_right + self.spacing;
-                let right_right = left + self.right_min_size + free_width * (1.0 - self.split);
-                ctx.set_designed_rect(right_child, [left, top, right_right, bottom]);
+                ctx.set_designed_rect(right_child, [left, top, right, bottom]);
             }
         }
     }

@@ -4,7 +4,6 @@ use crui::{
     graphics::{Graphic, Texture},
     layouts::{FitText, GridLayout, HBoxLayout, VBoxLayout},
     text::Text,
-    widgets::{ScrollBar, ScrollView, ViewLayout},
     Behaviour, BuilderContext, Color, Context, Id, InputFlags, MouseEvent,
 };
 use gameroy::gameboy::GameBoy;
@@ -17,6 +16,8 @@ use crate::{
     ui::Textures,
     UserEvent,
 };
+
+use super::scroll_viewer;
 
 struct TilemapViewer {
     info_text: Id,
@@ -220,44 +221,11 @@ pub fn build(
     textures: &Textures,
 ) {
     let ppu_viewer = ctx.reserve();
-
     let scroll_view = ctx.reserve();
-    let view = ctx
-        .create_control()
-        .parent(scroll_view)
-        .layout(ViewLayout::new(false, true))
-        .build(ctx);
-    let content = ctx
-        .create_control()
-        .parent(view)
-        .layout(VBoxLayout::new(10.0, [2.0; 4], -1))
-        .build(ctx);
+    let content = ctx.reserve();
 
-    let v_handle = ctx.reserve();
-    let v_scroll = ctx
-        .create_control()
-        .parent(scroll_view)
-        .behaviour(ScrollBar::new(
-            v_handle,
-            scroll_view,
-            true,
-            style.scrollbar.clone(),
-        ))
-        .min_size([12.0, 12.0])
-        .build(ctx);
-    let v_handle = ctx
-        .create_control_reserved(v_handle)
-        .parent(v_scroll)
-        .build(ctx);
-
-    ctx.create_control_reserved(scroll_view)
+    scroll_viewer(ctx, scroll_view, content, style)
         .parent(ppu_viewer)
-        .behaviour_and_layout(ScrollView::new(
-            view,
-            content,
-            None,
-            Some((v_scroll, v_handle)),
-        ))
         .build(ctx);
 
     build_tilemap_viewer(ctx, textures.tilemap, style, content, 16, 24, |x, y, _| {

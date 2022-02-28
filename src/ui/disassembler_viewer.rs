@@ -22,6 +22,7 @@ use parking_lot::Mutex;
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
+    split_view::SplitView,
     style::Style,
 };
 
@@ -536,7 +537,7 @@ pub fn build(
     let h_box = ctx
         .create_control()
         .parent(vbox)
-        .layout(HBoxLayout::default())
+        .behaviour_and_layout(SplitView::new(1.0, 20.0, [2.0; 4], false))
         .expand_y(true)
         .build(ctx);
 
@@ -563,21 +564,18 @@ pub fn build(
     let caret = ctx.reserve();
     let label = ctx.reserve();
 
-    let right_panel = ctx
-        .create_control()
+    let scroll_view = ctx.reserve();
+    let right_panel = ctx.reserve();
+    super::scroll_viewer(ctx, scroll_view, right_panel, style)
         .parent(h_box)
-        .layout(VBoxLayout::new(1.0, [2.0; 4], -1))
+        .min_size([100.0, 0.0])
         .graphic(style.split_background.clone())
         .build(ctx);
 
     let _reg_view = ctx
         .create_control_reserved(reg_id)
         .parent(right_panel)
-        .graphic(Text::new(
-            String::new(),
-            (-1, 0),
-            style.text_style.clone(),
-        ))
+        .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
         .layout(FitText)
         .build(ctx);
 
@@ -587,7 +585,7 @@ pub fn build(
         .behaviour(FoldView { fold: true })
         .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
         .build(ctx);
-    
+
     let _ppu_header = ctx
         .create_control()
         .parent(ppu)
@@ -679,6 +677,7 @@ pub fn build(
         .behaviour(TextField::new(
             caret,
             label,
+            false,
             style.text_field.clone(),
             Callback,
         ))

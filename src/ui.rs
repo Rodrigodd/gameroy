@@ -234,7 +234,7 @@ pub fn create_gui(
     let sty = style.clone();
     let event_table_clone = event_table.clone();
     gui.create_control_reserved(root)
-        .behaviour(OnKeyboardEvent(move |event, _, ctx| {
+        .behaviour(OnKeyboardEvent::new(move |event, _, ctx| {
             use crui::KeyboardEvent::*;
             use winit::event::VirtualKeyCode::*;
             let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();

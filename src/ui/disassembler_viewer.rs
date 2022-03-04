@@ -1,6 +1,7 @@
-use std::{any::Any, ops::Range, sync::Arc};
+use std::{any::Any, ops::Range, sync::Arc, usize};
 
 use crui::{
+    event::SetValue,
     graphics::{Graphic, Text},
     layouts::{FitText, HBoxLayout, VBoxLayout},
     style::ButtonStyle,
@@ -17,6 +18,7 @@ use gameroy::{
     gameboy::GameBoy,
 };
 use parking_lot::Mutex;
+use winit::event::VirtualKeyCode;
 
 // use std::{rc::Rc, cell::RefCell};
 use crate::{
@@ -26,7 +28,19 @@ use crate::{
     style::Style,
 };
 
-struct Callback;
+struct Callback {
+    /// A list of past submitted texts, that allow to be reused by pressing UpArrow.
+    history: Vec<String>,
+    curr: usize,
+}
+impl Callback {
+    fn new() -> Self {
+        Self {
+            history: Vec::new(),
+            curr: 0,
+        }
+    }
+}
 impl TextFieldCallback for Callback {
     fn on_submit(&mut self, _this: Id, ctx: &mut Context, text: &mut String) {
         let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
@@ -39,12 +53,56 @@ impl TextFieldCallback for Callback {
             Ok(_) => {}
             Err(x) => eprintln!("{}", x),
         }
+
+        if !text.trim().is_empty() {
+            // don't add to history if it is the same text again and again
+            if self.history.last() != Some(text) {
+                self.history.push(text.clone());
+            }
+        }
+        self.curr = self.history.len();
+
         text.clear();
     }
 
     fn on_change(&mut self, _this: Id, _ctx: &mut Context, _text: &str) {}
 
     fn on_unfocus(&mut self, _this: Id, _ctx: &mut Context, _text: &mut String) {}
+
+    fn on_keyboard_event(
+        &mut self,
+        event: crui::KeyboardEvent,
+        this: Id,
+        ctx: &mut Context,
+    ) -> bool {
+        use crui::KeyboardEvent::*;
+        match event {
+            Pressed(VirtualKeyCode::Up) if self.curr > 0 => {
+                self.curr -= 1;
+                let text = match self.history.get(self.curr) {
+                    Some(x) => x.clone(),
+                    None => String::new(),
+                };
+                ctx.send_event_to(this, SetValue(text));
+                true
+            }
+            Pressed(VirtualKeyCode::Down) if self.curr < self.history.len() => {
+                self.curr += 1;
+                let text = match self.history.get(self.curr) {
+                    Some(x) => x.clone(),
+                    None => String::new(),
+                };
+                ctx.send_event_to(this, SetValue(text));
+                true
+            }
+            Pressed(VirtualKeyCode::Escape) => {
+                self.curr = self.history.len();
+                ctx.send_event_to(this, SetValue(String::new()));
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 struct JumpToAddress {
@@ -283,7 +341,6 @@ clock: {}
             let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
             let trace = gb.trace.borrow_mut();
             let jump_to = trace.jumps.get(&from_address).unwrap();
-            dbg!(&jump_to);
             let pos = self
                 .directives
                 .binary_search_by(|x| x.address.cmp(&jump_to));
@@ -679,7 +736,7 @@ pub fn build(
             label,
             false,
             style.text_field.clone(),
-            Callback,
+            Callback::new(),
         ))
         .min_size([20.0; 2])
         .focus(true)

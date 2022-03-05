@@ -61,11 +61,11 @@ pub struct Textures {
 }
 
 pub struct Ui {
-    gui: Gui,
+    pub gui: Gui,
     gui_render: GuiRender,
     render: GLSpriteRender,
     camera: Camera,
-    style: Style,
+    pub style: Style,
     pub event_table: Rc<RefCell<EventTable>>,
     pub textures: Textures,
     pub is_animating: bool,
@@ -124,6 +124,10 @@ impl Ui {
         self.camera.set_width(width);
         self.camera.set_height(height);
         self.camera.set_position(width / 2.0, height / 2.0);
+    }
+
+    pub fn clear(&mut self) {
+        self.gui.clear_controls()
     }
 
     pub fn new_events(&mut self, control: &mut ControlFlow, window: &Window) {

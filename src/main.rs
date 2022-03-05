@@ -1,7 +1,7 @@
 use std::{
     fs::File,
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{mpsc::sync_channel, Arc},
     thread,
 };
@@ -34,11 +34,12 @@ fn main() {
 
     let mut diss = false;
     let mut debug = false;
-    let mut rom_path = "roms/test.gb".to_string();
+    let mut rom_path = None;
     let mut boot_rom_path = None; //"bootrom/dmg_boot.bin";
     let mut movie = None;
 
-    let mut args = std::env::args();
+    // Skip the command name
+    let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-d" | "--disassembly" => diss = true,
@@ -58,12 +59,64 @@ fn main() {
                 return;
             }
             _ => {
-                rom_path = arg;
+                println!("rom path is {}", arg);
+                rom_path = Some(arg);
             }
         }
     }
-    let rom_path = PathBuf::from(rom_path);
 
+    if let Some(rom_path) = rom_path {
+        let rom_path = PathBuf::from(rom_path);
+
+        if diss {
+            let (_, mut game_boy) =
+                load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
+            game_boy.boot_rom_active = false;
+
+            let mut string = String::new();
+            game_boy
+                .trace
+                .borrow_mut()
+                .fmt(&game_boy, &mut string)
+                .unwrap();
+            println!("{}", string);
+
+            return;
+        }
+
+        // create winit's window and event_loop
+        let event_loop = EventLoop::with_user_event();
+        let window = WindowBuilder::new()
+            .with_inner_size(PhysicalSize::new(768u32, 400))
+            .build(&event_loop)
+            .unwrap();
+
+        let mut ui = ui::Ui::new(&window);
+
+        let proxy = event_loop.create_proxy();
+
+        let (save_path, game_boy) =
+            load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
+        let emu = EmulatorApp::new(game_boy, proxy, debug, &mut ui, movie, rom_path, save_path);
+        start_event_loop(event_loop, window, ui, Box::new(emu));
+    } else {
+        // create winit's window and event_loop
+        let event_loop = EventLoop::with_user_event();
+        let window = WindowBuilder::new()
+            .with_inner_size(PhysicalSize::new(768u32, 400))
+            .build(&event_loop)
+            .unwrap();
+
+        let mut ui = ui::Ui::new(&window);
+
+        // let proxy = event_loop.create_proxy();
+
+        let rom_loading = RomLoadingApp::new(&mut ui);
+        start_event_loop(event_loop, window, ui, Box::new(rom_loading));
+    }
+}
+
+fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, GameBoy) {
     let rom = std::fs::read(&rom_path).unwrap();
 
     let boot_rom = if let Some(boot_rom_path) = boot_rom_path {
@@ -81,9 +134,8 @@ fn main() {
     } else {
         None
     };
-
     let mut cartridge = Cartridge::new(rom).unwrap();
-    let mut save_path = rom_path.clone();
+    let mut save_path = rom_path.to_path_buf();
     if save_path.set_extension("sav") {
         println!("loading save at {}", save_path.display());
         let saved_ram = std::fs::read(&save_path);
@@ -94,8 +146,7 @@ fn main() {
             }
         }
     }
-    let mut game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
-
+    let game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
     {
         let mut trace = game_boy.trace.borrow_mut();
 
@@ -105,26 +156,15 @@ fn main() {
         trace.trace_starting_at(&game_boy, 0, 0x50, Some("RST_0x50".into()));
         trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
         trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
-
-        if diss {
-            game_boy.boot_rom_active = false;
-
-            let mut string = String::new();
-            trace.fmt(&game_boy, &mut string).unwrap();
-            println!("{}", string);
-
-            return;
-        }
     }
-
-    create_window(game_boy, movie, rom_path, save_path, debug);
+    (save_path, game_boy)
 }
 
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    window::{Window, WindowBuilder},
 };
 
 pub struct AppState {
@@ -142,26 +182,13 @@ impl AppState {
     }
 }
 
-fn create_window(
-    gb: GameBoy,
-    movie: Option<Vbm>,
-    rom_path: PathBuf,
-    save_path: PathBuf,
-    debug: bool,
+fn start_event_loop(
+    event_loop: EventLoop<UserEvent>,
+    window: Window,
+    mut ui: ui::Ui,
+    mut app: Box<dyn App>,
 ) {
-    // create winit's window and event_loop
-    let event_loop = EventLoop::with_user_event();
-    let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(768u32, 400))
-        .build(&event_loop)
-        .unwrap();
-
-    let mut ui = ui::Ui::new(&window);
-
     let proxy = event_loop.create_proxy();
-
-    let mut emu = EmulatorApp::new(gb, proxy, debug, &mut ui, movie, rom_path, save_path);
-
     // winit event loop
     event_loop.run(move |event, _, control| {
         match event {
@@ -169,7 +196,9 @@ fn create_window(
                 ui.new_events(control, &window);
             }
             Event::WindowEvent {
-                event, window_id, ..
+                ref event,
+                window_id,
+                ..
             } => {
                 ui.window_event(&event, &window);
                 match event {
@@ -177,11 +206,10 @@ fn create_window(
                         *control = ControlFlow::Exit;
                     }
                     WindowEvent::Resized(size) => {
-                        ui.resize(size, window_id);
+                        ui.resize(size.clone(), window_id);
                     }
                     _ => {}
                 }
-                return;
             }
             Event::MainEventsCleared => {}
             Event::RedrawRequested(window_id) => {
@@ -192,10 +220,82 @@ fn create_window(
                     *control = ControlFlow::Poll;
                 }
             }
+            Event::UserEvent(UserEvent::LoadRom(rom_path)) => {
+                ui.clear();
+                let (save_path, game_boy) = load_gameboy(&rom_path, None);
+                let emu = EmulatorApp::new(
+                    game_boy,
+                    proxy.clone(),
+                    false,
+                    &mut ui,
+                    None,
+                    rom_path,
+                    save_path,
+                );
+                app = Box::new(emu);
+                return;
+            }
             _ => {}
         }
-        emu.handle_event(event, &mut ui, &window);
+        app.handle_event(event, &mut ui, &window, &proxy);
     });
+}
+
+trait App {
+    fn handle_event(
+        &mut self,
+        event: Event<UserEvent>,
+        ui: &mut ui::Ui,
+        window: &winit::window::Window,
+        proxy: &EventLoopProxy<UserEvent>,
+    );
+}
+
+struct RomLoadingApp;
+impl RomLoadingApp {
+    fn new(ui: &mut ui::Ui) -> Self {
+        let gui = &mut ui.gui;
+        gui.create_control()
+            .graphic(crui::text::Text::new(
+                "Drop the game rom file here to load it".to_string(),
+                (0, 0),
+                ui.style.text_style.clone(),
+            ))
+            .build(gui);
+        Self
+    }
+}
+impl App for RomLoadingApp {
+    fn handle_event(
+        &mut self,
+        event: Event<UserEvent>,
+        _ui: &mut ui::Ui,
+        _window: &winit::window::Window,
+        proxy: &EventLoopProxy<UserEvent>,
+    ) {
+        match event {
+            // Event::WindowEvent {
+            //     event: WindowEvent::HoveredFile(path),
+            //     ..
+            // } => {
+            //     println!("The file {:?} is hovering", path);
+            // }
+            // Event::WindowEvent {
+            //     event: WindowEvent::HoveredFileCancelled,
+            //     ..
+            // } => {
+            //     println!("The file hovering was cancel");
+            // }
+            Event::WindowEvent {
+                event: WindowEvent::DroppedFile(path),
+                ..
+            } => {
+                println!("The file {:?} was dropped", path);
+                proxy.send_event(UserEvent::LoadRom(path)).unwrap();
+            }
+            _ => {}
+        }
+    }
 }
 
 struct EmulatorApp {
@@ -273,11 +373,14 @@ impl EmulatorApp {
             emu_thread,
         }
     }
+}
+impl App for EmulatorApp {
     fn handle_event(
         &mut self,
         event: Event<UserEvent>,
         ui: &mut ui::Ui,
         window: &winit::window::Window,
+        _proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
             Event::RedrawRequested(_) => {
@@ -330,6 +433,7 @@ impl EmulatorApp {
                         self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
+                    LoadRom(_) => unreachable!(),
                 }
             }
             _ => {}
@@ -346,4 +450,5 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
+    LoadRom(PathBuf),
 }

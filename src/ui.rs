@@ -72,14 +72,7 @@ pub struct Ui {
     pub force_render: bool,
 }
 impl Ui {
-    pub fn new(
-        window: &Window,
-        proxy: EventLoopProxy<UserEvent>,
-        gb: Arc<Mutex<GameBoy>>,
-        debugger: Arc<Mutex<Debugger>>,
-        emu_channel: SyncSender<EmulatorEvent>,
-        app_state: AppState,
-    ) -> Self {
+    pub fn new(window: &Window) -> Self {
         // create the render and camera, and a texture for the glyphs rendering
         let mut render = GLSpriteRender::new(window, true).unwrap();
         let camera = {
@@ -102,16 +95,8 @@ impl Ui {
         };
 
         // create the gui, and the gui_render
-        let mut gui = Gui::new(0.0, 0.0, fonts);
+        let gui = Gui::new(0.0, 0.0, fonts);
         let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
-
-        gui.set(textures.clone());
-        gui.set::<EventLoopProxy<UserEvent>>(proxy);
-        gui.set::<Arc<Mutex<GameBoy>>>(gb);
-        gui.set::<Arc<Mutex<Debugger>>>(debugger);
-        gui.set(emu_channel);
-        let debug = app_state.debug;
-        gui.set(app_state);
 
         let mut ui = Self {
             gui,
@@ -124,14 +109,6 @@ impl Ui {
             is_animating: false,
             force_render: true,
         };
-
-        create_gui(
-            &mut ui.gui,
-            &textures,
-            ui.event_table.clone(),
-            &ui.style,
-            debug,
-        );
 
         ui.resize(window.inner_size(), window.id());
 
@@ -220,6 +197,31 @@ impl Ui {
     }
 }
 
+pub fn create_emulator_ui(
+    ui: &mut Ui,
+    proxy: EventLoopProxy<UserEvent>,
+    gb: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, GameBoy>>,
+    debugger: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, Debugger>>,
+    emu_channel: SyncSender<EmulatorEvent>,
+    app_state: AppState,
+) {
+    ui.gui.set(ui.textures.clone());
+    ui.gui.set::<EventLoopProxy<UserEvent>>(proxy);
+    ui.gui.set::<Arc<Mutex<GameBoy>>>(gb);
+    ui.gui.set::<Arc<Mutex<Debugger>>>(debugger);
+    ui.gui.set(emu_channel);
+    let debug = app_state.debug;
+    ui.gui.set(app_state);
+
+    create_gui(
+        &mut ui.gui,
+        &ui.textures,
+        ui.event_table.clone(),
+        &ui.style,
+        debug,
+    );
+}
+
 pub fn create_gui(
     gui: &mut Gui,
     textures: &Textures,
@@ -227,9 +229,9 @@ pub fn create_gui(
     style: &Style,
     debug: bool,
 ) {
+    let root = gui.reserve_id();
     let mut screen_id = gui.reserve_id();
     let mut split_view = gui.reserve_id();
-    let root = gui.reserve_id();
 
     let sty = style.clone();
     let event_table_clone = event_table.clone();

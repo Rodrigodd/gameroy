@@ -143,7 +143,7 @@ impl AppState {
 }
 
 fn create_window(
-    mut gb: GameBoy,
+    gb: GameBoy,
     movie: Option<Vbm>,
     rom_path: PathBuf,
     save_path: PathBuf,
@@ -152,77 +152,21 @@ fn create_window(
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let window = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(768, 400))
+        .with_inner_size(PhysicalSize::new(768u32, 400))
         .build(&event_loop)
         .unwrap();
+
+    let mut ui = ui::Ui::new(&window);
+
     let proxy = event_loop.create_proxy();
 
-    let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
-        Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-    let lcd_screen_clone = lcd_screen.clone();
-    gb.v_blank = Some(Box::new(move |gb| {
-        {
-            let img_data = &mut lcd_screen_clone.lock();
-            img_data.copy_from_slice(&gb.ppu.borrow().screen);
-        }
-        let _ = proxy.send_event(UserEvent::FrameUpdated);
-    }));
-
-    let gb = Arc::new(Mutex::new(gb));
-    let proxy = event_loop.create_proxy();
-
-    let (emu_channel, recv) = sync_channel(3);
-    if debug {
-        proxy.send_event(UserEvent::Debug(debug)).unwrap();
-    } else {
-        emu_channel.send(EmulatorEvent::RunFrame).unwrap();
-    }
-
-    let debugger = Arc::new(Mutex::new(Debugger::default()));
-
-    {
-        let proxy = proxy.clone();
-        let emu_channel = emu_channel.clone();
-        debugger.lock().callback = Some(Box::new(move |_, event| {
-            use DebuggerEvent::*;
-            match event {
-                Step => emu_channel.send(EmulatorEvent::Step).unwrap(),
-                StepBack => emu_channel.send(EmulatorEvent::StepBack).unwrap(),
-                Reset => emu_channel.send(EmulatorEvent::Reset).unwrap(),
-                Run => emu_channel.send(EmulatorEvent::Run).unwrap(),
-                BreakpointsUpdate => proxy.send_event(UserEvent::BreakpointsUpdated).unwrap(),
-                WatchsUpdate => proxy.send_event(UserEvent::WatchsUpdated).unwrap(),
-            }
-        }));
-    }
-
-    let mut ui = ui::Ui::new(
-        &window,
-        proxy.clone(),
-        gb.clone(),
-        debugger.clone(),
-        emu_channel.clone(),
-        AppState::new(debug),
-    );
-
-    let mut emu_thread = {
-        let gb = gb.clone();
-        let join_handle = thread::Builder::new()
-            .name("emulator".to_string())
-            .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom_path, save_path))
-            .unwrap();
-        Some(join_handle)
-    };
+    let mut emu = EmulatorApp::new(gb, proxy, debug, &mut ui, movie, rom_path, save_path);
 
     // winit event loop
     event_loop.run(move |event, _, control| {
         match event {
             Event::NewEvents(_) => {
                 ui.new_events(control, &window);
-            }
-            Event::LoopDestroyed => {
-                emu_channel.send(EmulatorEvent::Kill).unwrap();
-                emu_thread.take().unwrap().join().unwrap();
             }
             Event::WindowEvent {
                 event, window_id, ..
@@ -237,13 +181,122 @@ fn create_window(
                     }
                     _ => {}
                 }
+                return;
+            }
+            Event::MainEventsCleared => {}
+            Event::RedrawRequested(window_id) => {
+                // render the gui
+                ui.render(window_id);
+
+                if ui.is_animating {
+                    *control = ControlFlow::Poll;
+                }
+            }
+            _ => {}
+        }
+        emu.handle_event(event, &mut ui, &window);
+    });
+}
+
+struct EmulatorApp {
+    lcd_screen: Arc<
+        parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
+    >,
+    emu_channel: std::sync::mpsc::SyncSender<EmulatorEvent>,
+    emu_thread: Option<thread::JoinHandle<()>>,
+}
+impl EmulatorApp {
+    fn new(
+        mut gb: GameBoy,
+        proxy: winit::event_loop::EventLoopProxy<UserEvent>,
+        debug: bool,
+        ui: &mut ui::Ui,
+        movie: Option<Vbm>,
+        rom_path: PathBuf,
+        save_path: PathBuf,
+    ) -> EmulatorApp {
+        let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+        gb.v_blank = Some(Box::new({
+            let lcd_screen = lcd_screen.clone();
+            let proxy = proxy.clone();
+            move |gb| {
+                {
+                    let img_data = &mut lcd_screen.lock();
+                    img_data.copy_from_slice(&gb.ppu.borrow().screen);
+                }
+                let _ = proxy.send_event(UserEvent::FrameUpdated);
+            }
+        }));
+        let gb = Arc::new(Mutex::new(gb));
+        let (emu_channel, recv) = sync_channel(3);
+        if debug {
+            proxy.send_event(UserEvent::Debug(debug)).unwrap();
+        } else {
+            emu_channel.send(EmulatorEvent::RunFrame).unwrap();
+        }
+        let debugger = Arc::new(Mutex::new(Debugger::default()));
+        {
+            let proxy = proxy.clone();
+            let emu_channel = emu_channel.clone();
+            debugger.lock().callback = Some(Box::new(move |_, event| {
+                use DebuggerEvent::*;
+                match event {
+                    Step => emu_channel.send(EmulatorEvent::Step).unwrap(),
+                    StepBack => emu_channel.send(EmulatorEvent::StepBack).unwrap(),
+                    Reset => emu_channel.send(EmulatorEvent::Reset).unwrap(),
+                    Run => emu_channel.send(EmulatorEvent::Run).unwrap(),
+                    BreakpointsUpdate => proxy.send_event(UserEvent::BreakpointsUpdated).unwrap(),
+                    WatchsUpdate => proxy.send_event(UserEvent::WatchsUpdated).unwrap(),
+                }
+            }));
+        }
+        ui::create_emulator_ui(
+            ui,
+            proxy.clone(),
+            gb.clone(),
+            debugger.clone(),
+            emu_channel.clone(),
+            AppState::new(debug),
+        );
+        let emu_thread = {
+            let gb = gb.clone();
+            let join_handle = thread::Builder::new()
+                .name("emulator".to_string())
+                .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom_path, save_path))
+                .unwrap();
+            Some(join_handle)
+        };
+        EmulatorApp {
+            lcd_screen,
+            emu_channel,
+            emu_thread,
+        }
+    }
+    fn handle_event(
+        &mut self,
+        event: Event<UserEvent>,
+        ui: &mut ui::Ui,
+        window: &winit::window::Window,
+    ) {
+        match event {
+            Event::RedrawRequested(_) => {
+                let joypad = ui.get::<AppState>().joypad;
+                self.emu_channel
+                    .send(EmulatorEvent::SetJoypad(joypad))
+                    .unwrap();
+                self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
+            }
+            Event::LoopDestroyed => {
+                self.emu_channel.send(EmulatorEvent::Kill).unwrap();
+                self.emu_thread.take().unwrap().join().unwrap();
             }
             Event::UserEvent(event) => {
                 use UserEvent::*;
                 match event {
                     FrameUpdated => {
                         let screen: &[u8] = &{
-                            let lock = lcd_screen.lock();
+                            let lock = self.lcd_screen.lock();
                             lock.clone()
                         };
                         const COLOR: [[u8; 3]; 4] =
@@ -274,27 +327,14 @@ fn create_window(
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
                         ui.notify(event_table::Debug(value));
-                        emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
+                        self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
                 }
             }
-            Event::MainEventsCleared => {}
-            Event::RedrawRequested(window_id) => {
-                // render the gui
-                ui.render(window_id);
-
-                if ui.is_animating {
-                    *control = ControlFlow::Poll;
-                }
-
-                let joypad = ui.get::<AppState>().joypad;
-                emu_channel.send(EmulatorEvent::SetJoypad(joypad)).unwrap();
-                emu_channel.send(EmulatorEvent::RunFrame).unwrap();
-            }
             _ => {}
         }
-    });
+    }
 }
 
 #[derive(Debug)]

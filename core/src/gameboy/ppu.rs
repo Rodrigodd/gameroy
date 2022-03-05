@@ -582,6 +582,8 @@ impl Ppu {
             return (false, false);
         }
 
+        gb.update_dma(ppu);
+
         let mut v_blank_interrupt = false;
         let mut stat_interrupt = false;
         for _clock in ppu.last_clock_count..gb.clock_count {

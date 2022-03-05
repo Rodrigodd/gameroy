@@ -291,7 +291,7 @@ impl GameBoy {
             .unwrap();
     }
 
-    fn update_dma(&self) {
+    pub fn update_dma(&self, ppu: &mut Ppu) {
         if self.dma_running.get() {
             let elapsed = self.clock_count.wrapping_sub(self.dma_started);
             if elapsed >= 8 {
@@ -311,7 +311,7 @@ impl GameBoy {
                 let start = (value as u16) << 8;
                 for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
                     let value = self.read(j);
-                    self.ppu.borrow_mut().oam[i] = value;
+                    ppu.oam[i] = value;
                 }
             }
         }
@@ -342,7 +342,7 @@ impl GameBoy {
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
             0xFE00..=0xFE9F => {
-                self.update_dma();
+                self.update_dma(&mut *self.ppu.borrow_mut());
                 if self.block_oam.get() {
                     0xff
                 } else {
@@ -378,7 +378,7 @@ impl GameBoy {
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
             0xFE00..=0xFE9F => {
-                self.update_dma();
+                self.update_dma(&mut *self.ppu.borrow_mut());
                 if !self.block_oam.get() {
                     self.ppu.borrow_mut().oam[address as usize - 0xFE00] = value;
                 }
@@ -449,7 +449,7 @@ impl GameBoy {
                 self.dma_started = self.clock_count;
                 if self.dma_running.get() {
                     // HACK: if a DMA requested was make right before this one, this dma_started
-                    // rewritten will cancel the oam_block of that DMA. The fix this, I will hackly
+                    // rewritten would cancel the oam_block of that DMA. To fix this, I will hackly
                     // block the oam here, but this will block the oam 4 cycles early, but I think
                     // this will not be observable.
                     self.block_oam.set(true);

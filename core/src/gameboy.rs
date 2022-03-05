@@ -310,7 +310,11 @@ impl GameBoy {
                 }
                 let start = (value as u16) << 8;
                 for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
-                    let value = self.read(j);
+                    // avoid borrowing the ppu twice
+                    let value = match j {
+                        0x8000..=0x9FFF => ppu.vram[j as usize - 0x8000],
+                        j => self.read(j),
+                    };
                     ppu.oam[i] = value;
                 }
             }

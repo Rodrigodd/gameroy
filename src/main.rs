@@ -29,41 +29,31 @@ extern crate crui;
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 
+use clap::{arg, Command};
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let mut diss = false;
-    let mut debug = false;
-    let mut rom_path = None;
-    let mut boot_rom_path = None; //"bootrom/dmg_boot.bin";
-    let mut movie = None;
+    let matches = Command::new("GameRoy")
+        .version("0.1")
+        .author("Rodrigo Moraes")
+        .about("A Game Boy emulator and debugger (and disassembler?).")
+        .arg(arg!(-d - -debug "start the emulation in debug mode").required(false))
+        .arg(arg!(--disassembly "output to stdout the dissasembly of the rom").required(false))
+        .arg(arg!(--movie <PATH> "play the given .vbm file").required(false))
+        .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
+        .arg(arg!(<ROM_PATH> "path to the game rom to be emulated"))
+        .get_matches();
 
-    // Skip the command name
-    let mut args = std::env::args().skip(1);
-    while let Some(arg) = args.next() {
-        match arg.as_str() {
-            "-d" | "--disassembly" => diss = true,
-            "-b" | "--debug" => debug = true,
-            "-m" | "--movie" => {
-                let path = args.next().expect("expected path to the movie");
-                let mut file = std::fs::File::open(path).unwrap();
-                let vbm = gameroy::parser::vbm(&mut file).unwrap();
-                movie = Some(vbm);
-            }
-            "--boot-rom" => {
-                let path = args.next().expect("expected path to the movie");
-                boot_rom_path = Some(path);
-            }
-            _ if arg.starts_with("-") => {
-                eprintln!("unknown argument {}", arg);
-                return;
-            }
-            _ => {
-                log::info!("rom path is {}", arg);
-                rom_path = Some(arg);
-            }
-        }
-    }
+    let debug = matches.is_present("debug");
+    let diss = matches.is_present("disassembly");
+    let boot_rom_path = matches.value_of("boot_rom");
+    let rom_path = matches.value_of("ROM_PATH");
+    let movie = matches.value_of("movie").map(|path| {
+        let mut file = std::fs::File::open(path).unwrap();
+        let vbm = gameroy::parser::vbm(&mut file).unwrap();
+        vbm
+    });
 
     if let Some(rom_path) = rom_path {
         let rom_path = PathBuf::from(rom_path);
@@ -117,6 +107,7 @@ fn main() {
 }
 
 fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, GameBoy) {
+    log::info!("loading rom: {:?}", rom_path);
     let rom = std::fs::read(&rom_path).unwrap();
 
     let boot_rom = if let Some(boot_rom_path) = boot_rom_path {
@@ -142,7 +133,7 @@ fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, Game
         match saved_ram {
             Ok(save) => cartridge.ram = save,
             Err(err) => {
-                log::info!("load save failed: {}", err);
+                log::error!("load save failed: {}", err);
             }
         }
     }

@@ -704,6 +704,7 @@ dependencies = [
  "env_logger",
  "gameroy-core",
  "image",
+ "log",
  "parking_lot",
  "ron",
  "serde",

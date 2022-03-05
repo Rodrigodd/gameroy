@@ -30,7 +30,7 @@ const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
 
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let mut diss = false;
     let mut debug = false;
@@ -59,7 +59,7 @@ fn main() {
                 return;
             }
             _ => {
-                println!("rom path is {}", arg);
+                log::info!("rom path is {}", arg);
                 rom_path = Some(arg);
             }
         }
@@ -137,12 +137,12 @@ fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, Game
     let mut cartridge = Cartridge::new(rom).unwrap();
     let mut save_path = rom_path.to_path_buf();
     if save_path.set_extension("sav") {
-        println!("loading save at {}", save_path.display());
+        log::info!("loading save at {}", save_path.display());
         let saved_ram = std::fs::read(&save_path);
         match saved_ram {
             Ok(save) => cartridge.ram = save,
             Err(err) => {
-                println!("load save failed: {}", err);
+                log::info!("load save failed: {}", err);
             }
         }
     }
@@ -290,7 +290,7 @@ impl App for RomLoadingApp {
                 event: WindowEvent::DroppedFile(path),
                 ..
             } => {
-                println!("The file {:?} was dropped", path);
+                log::info!("The file {:?} was dropped", path);
                 proxy.send_event(UserEvent::LoadRom(path)).unwrap();
             }
             _ => {}

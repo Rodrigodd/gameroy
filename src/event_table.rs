@@ -42,7 +42,7 @@ impl<E: Event> Drop for Handle<E> {
             Some(x) => x,
             None => return,
         };
-        println!(">> unregister!!");
+        log::warn!(">> unregister!!");
         event_table.unregister(self.id);
     }
 }

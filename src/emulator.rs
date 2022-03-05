@@ -317,7 +317,7 @@ impl Timeline {
         self.save_state(gb);
         self.current_frame += 1;
         if self.current_frame % 30 == 0 {
-            println!(
+            log::trace!(
                 "saved frames: {:3}, free_len: {:4}",
                 self.savestate_timeline.len(),
                 self.savestate_buffer.free_len()
@@ -455,7 +455,7 @@ impl Emulator {
                             .write(true)
                             .open(self.rom_path.with_extension("save_state"))
                             .unwrap();
-                        println!("save state");
+                        log::info!("save state");
                         self.gb.lock().save_state(&mut save_state).unwrap();
                     }
                     LoadState => {
@@ -463,7 +463,7 @@ impl Emulator {
                             std::fs::File::open(self.rom_path.with_extension("save_state"))
                                 .unwrap();
                         self.gb.lock().load_state(&mut save_state).unwrap();
-                        println!("load state");
+                        log::info!("load state");
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
                     }
                     Kill => break 'event_loop,
@@ -521,7 +521,7 @@ impl Emulator {
                                     self.set_state(EmulatorState::Run);
                                 }
                             } else {
-                                println!("there is no last frame");
+                                log::warn!("there is no last frame");
                             }
                         }
                     }
@@ -642,12 +642,12 @@ impl Emulator {
             }
         }
 
-        println!("exiting emulator thread");
+        log::info!("exiting emulator thread");
 
-        print!("saving game data to {}... ", self.save_path.display());
+        log::info!("saving game data to {}... ", self.save_path.display());
         match std::fs::write(&self.save_path, &mut self.gb.lock().cartridge.ram) {
-            Ok(_) => println!("success"),
-            Err(x) => println!("error: {}", x),
+            Ok(_) => log::info!("save success"),
+            Err(x) => log::error!("saving failed: {}", x),
         }
     }
 

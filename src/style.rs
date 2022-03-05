@@ -23,7 +23,7 @@ impl<'a, R: SpriteRender> StyleLoaderCallback for Loader<'a, R> {
         let data = match image::open(&path) {
             Ok(x) => x,
             Err(_) => {
-                eprintln!("not found texture in '{}'", path);
+                log::error!("not found texture in '{}'", path);
                 return (0, 0, 0);
             }
         };

@@ -17,7 +17,7 @@ use crate::{
     UserEvent,
 };
 
-use super::scroll_viewer;
+use crate::ui::scroll_viewer;
 
 struct TilemapViewer {
     info_text: Id,

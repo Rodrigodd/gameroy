@@ -42,7 +42,7 @@ fn main() {
         .arg(arg!(--disassembly "output to stdout the dissasembly of the rom").required(false))
         .arg(arg!(--movie <PATH> "play the given .vbm file").required(false))
         .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
-        .arg(arg!(<ROM_PATH> "path to the game rom to be emulated"))
+        .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
         .get_matches();
 
     let debug = matches.is_present("debug");
@@ -246,16 +246,12 @@ struct RomLoadingApp;
 impl RomLoadingApp {
     fn new(ui: &mut ui::Ui) -> Self {
         let gui = &mut ui.gui;
-        gui.create_control()
-            .graphic(crui::text::Text::new(
-                "Drop the game rom file here to load it".to_string(),
-                (0, 0),
-                ui.style.text_style.clone(),
-            ))
-            .build(gui);
+        let style = &ui.style;
+        ui::create_rom_loading_ui(gui, style);
         Self
     }
 }
+
 impl App for RomLoadingApp {
     fn handle_event(
         &mut self,
@@ -265,18 +261,6 @@ impl App for RomLoadingApp {
         proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
-            // Event::WindowEvent {
-            //     event: WindowEvent::HoveredFile(path),
-            //     ..
-            // } => {
-            //     println!("The file {:?} is hovering", path);
-            // }
-            // Event::WindowEvent {
-            //     event: WindowEvent::HoveredFileCancelled,
-            //     ..
-            // } => {
-            //     println!("The file hovering was cancel");
-            // }
             Event::WindowEvent {
                 event: WindowEvent::DroppedFile(path),
                 ..

@@ -623,7 +623,7 @@ pub fn build(
 
     let scroll_view = ctx.reserve();
     let right_panel = ctx.reserve();
-    super::scroll_viewer(ctx, scroll_view, right_panel, style)
+    crate::ui::scroll_viewer(ctx, scroll_view, right_panel, style)
         .parent(h_box)
         .min_size([100.0, 0.0])
         .graphic(style.split_background.clone())

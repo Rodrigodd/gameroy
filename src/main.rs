@@ -81,7 +81,8 @@ fn main() {
             .build(&event_loop)
             .unwrap();
 
-        let mut ui = ui::Ui::new(&window);
+        let proxy = event_loop.create_proxy();
+        let mut ui = ui::Ui::new(&window, proxy);
 
         let proxy = event_loop.create_proxy();
 
@@ -97,7 +98,8 @@ fn main() {
             .build(&event_loop)
             .unwrap();
 
-        let mut ui = ui::Ui::new(&window);
+        let proxy = event_loop.create_proxy();
+        let mut ui = ui::Ui::new(&window, proxy);
 
         // let proxy = event_loop.create_proxy();
 
@@ -328,7 +330,6 @@ impl EmulatorApp {
         }
         ui::create_emulator_ui(
             ui,
-            proxy.clone(),
             gb.clone(),
             debugger.clone(),
             emu_channel.clone(),

@@ -4,19 +4,25 @@ use crui::{
     font::Fonts,
     layouts::VBoxLayout,
     render::GuiRenderer,
-    widgets::{ScrollBar, ScrollView, ViewLayout},
-    BuilderContext, Gui, GuiRender, Id,
+    widgets::{ListBuilder, ScrollBar, ScrollView, ViewLayout},
+    BuilderContext, ControlBuilder, Gui, GuiRender, Id,
 };
 
 use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
 use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
-    event_loop::ControlFlow,
+    event_loop::{ControlFlow, EventLoopProxy},
     window::{Window, WindowId},
 };
 
-use crate::{event_table::EventTable, style::Style, SCREEN_HEIGHT, SCREEN_WIDTH};
+use crate::{event_table::EventTable, style::Style, SCREEN_HEIGHT, SCREEN_WIDTH, UserEvent};
+
+mod emulator_ui;
+pub use emulator_ui::create_emulator_ui;
+
+mod rom_loading_ui;
+pub use rom_loading_ui::create_rom_loading_ui;
 
 struct Render<'a>(&'a mut GLSpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
@@ -58,7 +64,7 @@ pub struct Ui {
     pub force_render: bool,
 }
 impl Ui {
-    pub fn new(window: &Window) -> Self {
+    pub fn new(window: &Window, proxy: EventLoopProxy<UserEvent>) -> Self {
         // create the render and camera, and a texture for the glyphs rendering
         let mut render = GLSpriteRender::new(window, true).unwrap();
         let camera = {
@@ -81,8 +87,12 @@ impl Ui {
         };
 
         // create the gui, and the gui_render
-        let gui = Gui::new(0.0, 0.0, fonts);
+        let mut gui = Gui::new(0.0, 0.0, fonts);
         let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
+
+        gui.set(proxy);
+        gui.set(textures.clone());
+        gui.set(style.clone());
 
         let mut ui = Self {
             gui,
@@ -228,8 +238,64 @@ fn scroll_viewer(
         ))
 }
 
-mod emulator_ui;
-pub use emulator_ui::create_emulator_ui;
+pub fn list(
+    cb: ControlBuilder,
+    ctx: &mut (impl BuilderContext + ?Sized),
+    style: &Style,
+    list_builder: impl ListBuilder + 'static,
+) -> ControlBuilder {
+    use crui::widgets::List;
+    let scroll_view = cb.id();
+    let view = ctx
+        .create_control()
+        .parent(scroll_view)
+        .layout(ViewLayout::new(false, true))
+        .build(ctx);
+    let h_scroll_bar_handle = ctx.reserve();
+    let h_scroll_bar = ctx
+        .create_control()
+        .min_size([10.0, 10.0])
+        .parent(scroll_view)
+        .behaviour(ScrollBar::new(
+            h_scroll_bar_handle,
+            scroll_view,
+            false,
+            style.scrollbar.clone(),
+        ))
+        .build(ctx);
+    let h_scroll_bar_handle = ctx
+        .create_control_reserved(h_scroll_bar_handle)
+        .min_size([10.0, 10.0])
+        .parent(h_scroll_bar)
+        .build(ctx);
+    let v_scroll_bar_handle = ctx.reserve();
+    let v_scroll_bar = ctx
+        .create_control()
+        .min_size([10.0, 10.0])
+        // .graphic(style.scroll_background.clone())
+        .parent(scroll_view)
+        .behaviour(ScrollBar::new(
+            v_scroll_bar_handle,
+            scroll_view,
+            true,
+            style.scrollbar.clone(),
+        ))
+        .build(ctx);
+    let v_scroll_bar_handle = ctx
+        .create_control_reserved(v_scroll_bar_handle)
+        .min_size([10.0, 10.0])
+        .parent(v_scroll_bar)
+        .build(ctx);
 
-mod rom_loading_ui;
-pub use rom_loading_ui::create_rom_loading_ui;
+    cb.behaviour_and_layout(List::new(
+        10.0,
+        0.0,
+        [10.0, 0.0, 0.0, 0.0],
+        view,
+        v_scroll_bar,
+        v_scroll_bar_handle,
+        h_scroll_bar,
+        h_scroll_bar_handle,
+        list_builder,
+    ))
+}

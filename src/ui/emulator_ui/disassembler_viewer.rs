@@ -4,7 +4,6 @@ use crui::{
     event::SetValue,
     graphics::{Graphic, Text},
     layouts::{FitText, HBoxLayout, VBoxLayout},
-    style::ButtonStyle,
     text::{Span, TextStyle},
     widgets::{
         Button, InteractiveText, ListBuilder, SetScrollPosition, TextField, TextFieldCallback,
@@ -25,7 +24,7 @@ use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
     split_view::SplitView,
-    style::Style,
+    style::Style, ui,
 };
 
 struct Callback {
@@ -110,7 +109,6 @@ struct JumpToAddress {
 }
 
 struct DissasemblerList {
-    text_style: TextStyle,
     list: Id,
     cpu: Id,
     ppu: Id,
@@ -122,6 +120,7 @@ struct DissasemblerList {
 impl DissasemblerList {
     fn graphic(
         &mut self,
+        style: TextStyle,
         direc: Directive,
         trace: std::cell::Ref<gameroy::disassembler::Trace>,
         pc: Option<Address>,
@@ -165,7 +164,6 @@ impl DissasemblerList {
             &mut text,
         )
         .unwrap();
-        let style = self.text_style.clone();
         let label_range = if let Some(start) = text.find("<l>") {
             let end = text.find("</l>").unwrap() - 3;
             text.replace_range(start..start + 3, "");
@@ -379,7 +377,8 @@ clock: {}
 
         let trace = inter.trace.borrow();
         let directive = self.directives[index].clone();
-        let (graphic, label_range) = self.graphic(directive.clone(), trace, self.pc);
+        let style = ctx.get::<Style>().text_style.clone();
+        let (graphic, label_range) = self.graphic(style, directive.clone(), trace, self.pc);
         let cb = cb.graphic(graphic).layout(FitText);
         let mut span = 0;
         if let Some(label_range) = label_range {
@@ -427,8 +426,6 @@ clock: {}
 }
 
 struct BreakpointList {
-    text_style: TextStyle,
-    button_style: std::rc::Rc<ButtonStyle>,
     _breakpoints_updated_event: Handle<BreakpointsUpdated>,
 }
 impl BreakpointList {
@@ -470,15 +467,16 @@ impl ListBuilder for BreakpointList {
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
         let text = Self::get_text(ctx, index);
+        let Style { text_style, delete_button, .. } = ctx.get::<Style>().clone();
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
-                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()))
+                cb.graphic(Text::new(text, (-1, 0), text_style))
                     .layout(FitText)
                     .expand_x(true)
             })
             .child(ctx, |cb, _| {
                 cb.behaviour(Button::new(
-                    self.button_style.clone(),
+                    delete_button,
                     true,
                     move |_, ctx| {
                         let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
@@ -502,8 +500,6 @@ impl ListBuilder for BreakpointList {
 }
 
 struct WatchsList {
-    text_style: TextStyle,
-    button_style: std::rc::Rc<ButtonStyle>,
     _watchs_updated_event: Handle<WatchsUpdated>,
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
@@ -540,15 +536,16 @@ impl ListBuilder for WatchsList {
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
         let (address, text) = Self::watch_text(ctx, index);
+        let Style { text_style, delete_button, .. } = ctx.get::<Style>().clone();
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
-                cb.graphic(Text::new(text, (-1, 0), self.text_style.clone()))
+                cb.graphic(Text::new(text, (-1, 0), text_style))
                     .layout(FitText)
                     .expand_x(true)
             })
             .child(ctx, |cb, _| {
                 cb.behaviour(Button::new(
-                    self.button_style.clone(),
+                    delete_button,
                     true,
                     move |_, ctx| {
                         let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
@@ -600,12 +597,11 @@ pub fn build(
 
     let ignore_min_width = ctx.create_control().parent(h_box).expand_x(true).build(ctx);
 
-    list(
+    ui::list(
         ctx.create_control_reserved(list_id),
         ctx,
         style,
         DissasemblerList {
-            text_style: style.text_style.clone(),
             list: list_id,
             cpu: reg_id,
             ppu: ppu_id,
@@ -623,7 +619,7 @@ pub fn build(
 
     let scroll_view = ctx.reserve();
     let right_panel = ctx.reserve();
-    crate::ui::scroll_viewer(ctx, scroll_view, right_panel, style)
+    ui::scroll_viewer(ctx, scroll_view, right_panel, style)
         .parent(h_box)
         .min_size([100.0, 0.0])
         .graphic(style.split_background.clone())
@@ -680,15 +676,13 @@ pub fn build(
         .build(ctx);
 
     let break_list = ctx.reserve();
-    list(
+    ui::list(
         ctx.create_control_reserved(break_list)
             .parent(breaks)
             .min_size([50.0, 100.0]),
         ctx,
         style,
         BreakpointList {
-            text_style: style.text_style.clone(),
-            button_style: style.delete_button.clone(),
             _breakpoints_updated_event: event_table.register(break_list),
         },
     )
@@ -713,15 +707,13 @@ pub fn build(
         .build(ctx);
 
     let watchs_list = ctx.reserve();
-    list(
+    ui::list(
         ctx.create_control_reserved(watchs_list)
             .parent(watchs)
             .min_size([50.0, 100.0]),
         ctx,
         style,
         WatchsList {
-            text_style: style.text_style.clone(),
-            button_style: style.delete_button.clone(),
             _watchs_updated_event: event_table.register(watchs_list),
             _emulator_updated_event: event_table.register(watchs_list),
         },
@@ -754,64 +746,3 @@ pub fn build(
         .build(ctx);
 }
 
-fn list(
-    cb: ControlBuilder,
-    ctx: &mut (impl BuilderContext + ?Sized),
-    style: &Style,
-    list_builder: impl ListBuilder + 'static,
-) -> ControlBuilder {
-    use crui::widgets::{List, ScrollBar, ViewLayout};
-    let scroll_view = cb.id();
-    let view = ctx
-        .create_control()
-        .parent(scroll_view)
-        .layout(ViewLayout::new(false, true))
-        .build(ctx);
-    let h_scroll_bar_handle = ctx.reserve();
-    let h_scroll_bar = ctx
-        .create_control()
-        .min_size([10.0, 10.0])
-        .parent(scroll_view)
-        .behaviour(ScrollBar::new(
-            h_scroll_bar_handle,
-            scroll_view,
-            false,
-            style.scrollbar.clone(),
-        ))
-        .build(ctx);
-    let h_scroll_bar_handle = ctx
-        .create_control_reserved(h_scroll_bar_handle)
-        .min_size([10.0, 10.0])
-        .parent(h_scroll_bar)
-        .build(ctx);
-    let v_scroll_bar_handle = ctx.reserve();
-    let v_scroll_bar = ctx
-        .create_control()
-        .min_size([10.0, 10.0])
-        // .graphic(style.scroll_background.clone())
-        .parent(scroll_view)
-        .behaviour(ScrollBar::new(
-            v_scroll_bar_handle,
-            scroll_view,
-            true,
-            style.scrollbar.clone(),
-        ))
-        .build(ctx);
-    let v_scroll_bar_handle = ctx
-        .create_control_reserved(v_scroll_bar_handle)
-        .min_size([10.0, 10.0])
-        .parent(v_scroll_bar)
-        .build(ctx);
-
-    cb.behaviour_and_layout(List::new(
-        10.0,
-        0.0,
-        [10.0, 0.0, 0.0, 0.0],
-        view,
-        v_scroll_bar,
-        v_scroll_bar_handle,
-        h_scroll_bar,
-        h_scroll_bar_handle,
-        list_builder,
-    ))
-}

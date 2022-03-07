@@ -28,14 +28,11 @@ mod ppu_viewer;
 
 pub fn create_emulator_ui(
     ui: &mut Ui,
-    proxy: EventLoopProxy<UserEvent>,
     gb: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, GameBoy>>,
     debugger: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, Debugger>>,
     emu_channel: SyncSender<EmulatorEvent>,
     app_state: AppState,
 ) {
-    ui.gui.set(ui.textures.clone());
-    ui.gui.set::<EventLoopProxy<UserEvent>>(proxy);
     ui.gui.set::<Arc<Mutex<GameBoy>>>(gb);
     ui.gui.set::<Arc<Mutex<Debugger>>>(debugger);
     ui.gui.set(emu_channel);

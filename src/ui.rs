@@ -242,6 +242,7 @@ pub fn list(
     cb: ControlBuilder,
     ctx: &mut (impl BuilderContext + ?Sized),
     style: &Style,
+    margin: [f32; 4],
     list_builder: impl ListBuilder + 'static,
 ) -> ControlBuilder {
     use crui::widgets::List;
@@ -290,7 +291,7 @@ pub fn list(
     cb.behaviour_and_layout(List::new(
         10.0,
         0.0,
-        [10.0, 0.0, 0.0, 0.0],
+        margin,
         view,
         v_scroll_bar,
         v_scroll_bar_handle,

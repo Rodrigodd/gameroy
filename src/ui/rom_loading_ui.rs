@@ -41,7 +41,6 @@ impl ListBuilder for RomList {
         let style = &ctx.get::<Style>().clone();
         let RomEntry { name, path } = self.roms[index].clone();
         cb.layout(HBoxLayout::new(4.0, [0.0; 4], -1))
-            .graphic(style.background.clone())
             .child(ctx, |cb, ctx| {
                 let path = path.clone();
                 cb.behaviour(Button::new(
@@ -103,5 +102,7 @@ pub fn create_rom_loading_ui(gui: &mut crui::Gui, style: &Style) {
             Some(RomEntry { name, path })
         })
         .collect();
-    crate::ui::list(gui.create_control(), gui, style, RomList { roms }).build(gui);
+    crate::ui::list(gui.create_control(), gui, style, [0.0; 4], RomList { roms })
+        .graphic(style.background.clone())
+        .build(gui);
 }

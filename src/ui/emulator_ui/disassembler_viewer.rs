@@ -601,6 +601,7 @@ pub fn build(
         ctx.create_control_reserved(list_id),
         ctx,
         style,
+        [0.0; 4],
         DissasemblerList {
             list: list_id,
             cpu: reg_id,
@@ -682,6 +683,7 @@ pub fn build(
             .min_size([50.0, 100.0]),
         ctx,
         style,
+        [10.0, 0.0, 0.0, 0.0],
         BreakpointList {
             _breakpoints_updated_event: event_table.register(break_list),
         },
@@ -713,6 +715,7 @@ pub fn build(
             .min_size([50.0, 100.0]),
         ctx,
         style,
+        [10.0, 0.0, 0.0, 0.0],
         WatchsList {
             _watchs_updated_event: event_table.register(watchs_list),
             _emulator_updated_event: event_table.register(watchs_list),

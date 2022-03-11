@@ -196,6 +196,8 @@ pub struct Ppu {
     /// FF4B: Window X Position
     pub wx: u8,
 
+    state: u8,
+
     mode: Mode,
     stat_signal: bool,
 
@@ -291,6 +293,7 @@ impl SaveState for Ppu {
         self.obp1.save_state(data)?;
         self.wy.save_state(data)?;
         self.wx.save_state(data)?;
+        self.state.save_state(data)?;
         self.mode.save_state(data)?;
         self.last_clock_count.save_state(data)?;
         self.internal_clock.save_state(data)?;
@@ -339,6 +342,7 @@ impl SaveState for Ppu {
         self.obp1.load_state(data)?;
         self.wy.load_state(data)?;
         self.wx.load_state(data)?;
+        self.state.load_state(data)?;
         self.mode.load_state(data)?;
         self.last_clock_count.load_state(data)?;
         self.internal_clock.load_state(data)?;
@@ -389,6 +393,7 @@ impl Default for Ppu {
             obp1: Default::default(),
             wy: Default::default(),
             wx: Default::default(),
+            state: 0,
             mode: Mode::HBlank,
             stat_signal: false,
             last_clock_count: 0,
@@ -446,10 +451,11 @@ impl Ppu {
             obp1: 0,
             wy: 0,
             wx: 0,
-            mode: Mode::VBlank,
+            state: 23,
+            mode: Mode::OamSearch,
             stat_signal: false,
-            last_clock_count: 23_440_356,
-            internal_clock: 23_173_892,
+            last_clock_count: 23_440_377,
+            internal_clock: 23_435_361,
 
             background_fifo: PixelFifo::default(),
             sprite_fifo: PixelFifo::default(),
@@ -484,6 +490,7 @@ impl Ppu {
                         this.internal_clock = 0;
                         // set to mode 0
                         this.stat &= !0b11;
+                        this.state = 0;
                     } else {
                         // enable ppu
                         debug_assert_eq!(this.ly, 0);
@@ -569,11 +576,261 @@ impl Ppu {
         self.sprite_buffer[0..self.sprite_buffer_len as usize].sort_by_key(|x| !x.sx);
     }
 
+    pub fn state_update(gb: &GameBoy) -> (bool, bool) {
+        let ppu = &mut *gb.ppu.borrow_mut();
+        if ppu.lcdc & 0x80 == 0 {
+            // ppu is disabled
+            ppu.last_clock_count = gb.clock_count;
+            return (false, false);
+        }
+
+        gb.update_dma(ppu);
+
+        let mut state = ppu.state;
+        let mut stat_interrupt = false;
+        let mut vblank_interrupt = false;
+
+        ppu.update_stat(3, &mut stat_interrupt);
+        while ppu.last_clock_count < gb.clock_count {
+            // println!("state: {}", state);
+            match state {
+                // turn on
+                0 => {
+                    ppu.ly = 0;
+                    ppu.set_stat_mode(0);
+                    ppu.reach_window = false;
+
+                    ppu.last_clock_count += 1;
+                    state = 1;
+                }
+                // 1
+                1 => {
+                    ppu.internal_clock = ppu.last_clock_count - 8;
+                    ppu.wyc = 0;
+                    ppu.last_clock_count += 76;
+                    state = 2;
+                }
+                // 77
+                2 => {
+                    ppu.last_clock_count += 2;
+                    state = 3;
+                }
+                // 79
+                3 => {
+                    ppu.set_stat_mode(3);
+                    ppu.last_clock_count += 2;
+                    state = 4;
+                }
+                // 81
+                4 => {
+                    ppu.last_clock_count += 3;
+                    state = 5;
+                }
+                // 84
+                5 => {
+                    // goto mode_3_start
+                    state = 10;
+                }
+
+                // start_line
+                6 => {
+                    ppu.internal_clock = ppu.last_clock_count;
+                    ppu.last_clock_count += 3;
+                    state = 7;
+                }
+                // 3
+                7 => {
+                    if ppu.ly == 0 {
+                        ppu.set_stat_mode(0);
+                    } else {
+                        ppu.set_stat_mode(2);
+                    }
+                    ppu.update_stat(3, &mut stat_interrupt);
+
+                    ppu.last_clock_count += 1;
+                    state = 8;
+                }
+                // 4
+                8 => {
+                    ppu.set_stat_mode(2);
+                    ppu.update_stat(4, &mut stat_interrupt);
+                    ppu.search_objects();
+                    ppu.curr_x = 0;
+
+                    ppu.last_clock_count += 80;
+                    state = 9;
+                }
+                // 84
+                9 => {
+                    debug_assert_eq!(ppu.last_clock_count - ppu.internal_clock, 84);
+                    ppu.set_stat_mode(3);
+                    ppu.update_stat(84, &mut stat_interrupt);
+
+                    state = 10;
+                }
+                // mode_3_start
+                10 => {
+                    ppu.background_fifo.clear();
+                    ppu.sprite_fifo.clear();
+
+                    ppu.fetcher_step = 0;
+                    ppu.fetcher_skipped_first_push = false;
+                    ppu.sprite_fetching = false;
+                    ppu.fetcher_cycle = false;
+                    ppu.fetcher_x = 0;
+                    if ppu.wy == ppu.ly {
+                        ppu.reach_window = true;
+                    }
+                    ppu.is_in_window = false;
+                    ppu.discarting = ppu.scx % 8;
+
+                    state = 24;
+                }
+                24 => {
+                    tick_lcd_fifo(ppu, ppu.ly);
+                    ppu.last_clock_count += 1;
+
+                    if ppu.curr_x == 160 {
+                        state = 11;
+                    }
+                }
+                11 => {
+                    ppu.set_stat_mode(0);
+                    if ppu.is_in_window {
+                        ppu.wyc += 1;
+                    }
+
+                    ppu.last_clock_count += 1;
+                    state = 12;
+                }
+                12 => {
+                    ppu.update_stat(260, &mut stat_interrupt);
+                    ppu.last_clock_count += 12;
+                    state = 13;
+                }
+                13 => {
+                    let elapsed = ppu.last_clock_count - ppu.internal_clock;
+                    ppu.last_clock_count += 456 - elapsed - 2;
+                    state = 26;
+                }
+                26 => {
+                    ppu.last_clock_count += 2;
+                    state = 14;
+                }
+                14 => {
+                    ppu.ly += 1;
+                    if ppu.ly == 144 {
+                        // goto v_blank
+                        state = 15;
+                    } else {
+                        // println!(" ly: {}", ppu.ly);
+                        // goto start_line
+                        state = 6;
+                    }
+                }
+                // start_vblank_line
+                15 => {
+                    if ppu.ly == 153 {
+                        // goto last_vblank_line
+                        state = 18;
+                        continue;
+                    }
+
+                    ppu.last_clock_count += 2;
+                    state = 16;
+                }
+                // 2
+                16 => {
+                    if ppu.ly == 144 {
+                        ppu.set_stat_mode(1);
+                    }
+                    ppu.update_stat(2, &mut stat_interrupt);
+
+                    ppu.last_clock_count += 2;
+                    state = 17;
+                }
+                // 4
+                17 => {
+                    if ppu.ly == 144 {
+                        ppu.set_stat_mode(1);
+                        vblank_interrupt = true;
+                        // println!("[{}] vblank", ppu.last_clock_count);
+                    }
+                    ppu.update_stat(4, &mut stat_interrupt);
+                    ppu.last_clock_count += 456 - 4;
+                    state = 25;
+                }
+                25 => {
+                    ppu.ly += 1;
+                    // goto start_vblank_line
+                    state = 15;
+                }
+                // last_vblank_line
+                18 => {
+                    ppu.ly = 153;
+                    ppu.update_stat(0, &mut stat_interrupt);
+
+                    ppu.last_clock_count += 6;
+                    state = 19;
+                }
+                // 6
+                19 => {
+                    ppu.ly = 0;
+                    ppu.update_stat(6, &mut stat_interrupt);
+                    ppu.last_clock_count += 2;
+                    state = 20;
+                }
+                // 8
+                20 => {
+                    ppu.ly = 0;
+                    ppu.update_stat(8, &mut stat_interrupt);
+
+                    ppu.last_clock_count += 4;
+                    state = 21;
+                }
+                // 12
+                21 => {
+                    ppu.update_stat(12, &mut stat_interrupt);
+
+                    ppu.last_clock_count += 12;
+                    state = 22;
+                }
+                // 24
+                22 => {
+                    ppu.last_clock_count += 456 - 24;
+                    state = 23;
+                }
+                // 0
+                23 => {
+                    ppu.ly = 0;
+                    ppu.reach_window = false;
+
+                    ppu.wyc = 0;
+                    ppu.curr_x = 0;
+
+                    // goto start_line
+                    state = 6;
+                }
+                _ => unreachable!(),
+            }
+            let lx = (gb.clock_count - ppu.internal_clock) % 456;
+            ppu.update_stat(3, &mut stat_interrupt);
+        }
+        ppu.state = state;
+        (vblank_interrupt, stat_interrupt)
+    }
+
+    fn set_stat_mode(&mut self, mode: u8) {
+        self.stat = (self.stat & !0b11) | mode;
+    }
+
     /// Update the ppu from its state in the last update (in last_clock_count) to its expected
     /// currrently state (in gb.clock_count). Returns a tuple (v_blank_int, stat_int) telling if
     /// there are triggered interrupts in this update.
     #[must_use]
     pub fn update(gb: &GameBoy) -> (bool, bool) {
+        return Ppu::state_update(gb);
+
         let ppu = &mut *gb.ppu.borrow_mut();
 
         if ppu.lcdc & 0x80 == 0 {
@@ -695,45 +952,49 @@ impl Ppu {
                 }
             }
 
-            let stat_mode = ppu.stat & 0b11;
-
-            let mut stat_line = false;
-            match stat_mode {
-                0 => stat_line |= ppu.stat & 0x08 != 0,
-                1 => {
-                    // little hack: only signal the stat interrupt for Mode 1 if ly != 0 to avoid
-                    // "stat irq blocking" of the Mode 2 in the first scanline. This allow passing
-                    // the 'mooneye::ppu_intr_1_2_timing_gs' test, but the proper behaviour is not
-                    // documented.
-                    if ppu.ly != 0 {
-                        // VBlank also trigger OAM STAT interrupt
-                        stat_line |= ppu.stat & 0x30 != 0;
-                    }
-                }
-                2 => stat_line |= ppu.stat & 0x20 != 0,
-                3 => {}
-                4..=255 => unreachable!(),
-            }
-
-            // LY==LYC Interrupt
-            let ly = ppu.ly;
-            let lyc = ppu.lyc;
-            let compare = lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0;
-            if ly == 0 && lyc == 0 || (lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0) {
-                // LY == LYC STAT Interrupt
-                stat_line |= ppu.stat & (1 << 6) != 0;
-            }
-            // STAT Coincidente Flag
-            ppu.stat = (ppu.stat & !0x04) | ((compare as u8) << 2);
-
-            // on rising edge
-            if !ppu.stat_signal && stat_line {
-                stat_interrupt = true;
-            }
-            ppu.stat_signal = stat_line;
+            ppu.update_stat(lx, &mut stat_interrupt);
         }
         ppu.last_clock_count = gb.clock_count;
         (v_blank_interrupt, stat_interrupt)
+    }
+
+    fn update_stat(&mut self, lx: u64, stat_interrupt: &mut bool) {
+        let stat_mode = self.stat & 0b11;
+        let mut stat_line = false;
+        match stat_mode {
+            0 => stat_line |= self.stat & 0x08 != 0,
+            1 => {
+                // little hack: only signal the stat interrupt for Mode 1 if ly != 0 to avoid
+                // "stat irq blocking" of the Mode 2 in the first scanline. This allow passing
+                // the 'mooneye::ppu_intr_1_2_timing_gs' test, but the proper behaviour is not
+                // documented.
+                if self.ly != 0 {
+                    // VBlank also trigger OAM STAT interrupt
+                    stat_line |= self.stat & 0x30 != 0;
+                }
+            }
+            2 => stat_line |= self.stat & 0x20 != 0,
+            3 => {}
+            4..=255 => unreachable!(),
+        }
+        // LY==LYC Interrupt
+        let ly = self.ly;
+        let lyc = self.lyc;
+        let compare = lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0;
+        if ly == 0 && lyc == 0 || (lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0) {
+            // LY == LYC STAT Interrupt
+            stat_line |= self.stat & (1 << 6) != 0;
+        }
+        // STAT Coincidente Flag
+        self.stat = (self.stat & !0x04) | ((compare as u8) << 2);
+        // on rising edge
+        if !self.stat_signal && stat_line {
+            *stat_interrupt = true;
+            println!("[{}]  rising edge", self.last_clock_count);
+        } else if self.stat_signal && !stat_line {
+            println!("[{}] falling edge", self.last_clock_count);
+        }
+        self.stat_signal = stat_line;
     }
 }
 
@@ -747,6 +1008,7 @@ fn tick_lcd_fifo(ppu: &mut Ppu, ly: u8) {
             ppu.sprite_buffer_len -= 1;
             ppu.fetcher_step = 0;
             ppu.fetcher_cycle = false;
+            // println!("fetch sprite");
         }
     }
     ppu.fetcher_cycle = !ppu.fetcher_cycle;

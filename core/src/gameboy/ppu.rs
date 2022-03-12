@@ -197,6 +197,7 @@ pub struct Ppu {
     pub wx: u8,
 
     state: u8,
+    ly_for_compare: u8,
 
     mode: Mode,
     stat_signal: bool,
@@ -294,6 +295,7 @@ impl SaveState for Ppu {
         self.wy.save_state(data)?;
         self.wx.save_state(data)?;
         self.state.save_state(data)?;
+        self.ly_for_compare.save_state(data)?;
         self.mode.save_state(data)?;
         self.last_clock_count.save_state(data)?;
         self.internal_clock.save_state(data)?;
@@ -343,6 +345,7 @@ impl SaveState for Ppu {
         self.wy.load_state(data)?;
         self.wx.load_state(data)?;
         self.state.load_state(data)?;
+        self.ly_for_compare.load_state(data)?;
         self.mode.load_state(data)?;
         self.last_clock_count.load_state(data)?;
         self.internal_clock.load_state(data)?;
@@ -393,6 +396,7 @@ impl Default for Ppu {
             obp1: Default::default(),
             wy: Default::default(),
             wx: Default::default(),
+            ly_for_compare: 0,
             state: 0,
             mode: Mode::HBlank,
             stat_signal: false,
@@ -451,6 +455,7 @@ impl Ppu {
             obp1: 0,
             wy: 0,
             wx: 0,
+            ly_for_compare: 0,
             state: 23,
             mode: Mode::OamSearch,
             stat_signal: false,
@@ -590,7 +595,6 @@ impl Ppu {
         let mut stat_interrupt = false;
         let mut vblank_interrupt = false;
 
-        ppu.update_stat(3, &mut stat_interrupt);
         while ppu.last_clock_count < gb.clock_count {
             // println!("state: {}", state);
             match state {
@@ -641,11 +645,13 @@ impl Ppu {
                 // 3
                 7 => {
                     if ppu.ly == 0 {
+                        ppu.ly_for_compare = 0;
                         ppu.set_stat_mode(0);
                     } else {
+                        ppu.ly_for_compare = 0xFF;
                         ppu.set_stat_mode(2);
                     }
-                    ppu.update_stat(3, &mut stat_interrupt);
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.last_clock_count += 1;
                     state = 8;
@@ -653,7 +659,8 @@ impl Ppu {
                 // 4
                 8 => {
                     ppu.set_stat_mode(2);
-                    ppu.update_stat(4, &mut stat_interrupt);
+                    ppu.ly_for_compare = ppu.ly;
+                    ppu.update_stat(&mut stat_interrupt);
                     ppu.search_objects();
                     ppu.curr_x = 0;
 
@@ -664,7 +671,7 @@ impl Ppu {
                 9 => {
                     debug_assert_eq!(ppu.last_clock_count - ppu.internal_clock, 84);
                     ppu.set_stat_mode(3);
-                    ppu.update_stat(84, &mut stat_interrupt);
+                    ppu.update_stat(&mut stat_interrupt);
 
                     state = 10;
                 }
@@ -704,7 +711,7 @@ impl Ppu {
                     state = 12;
                 }
                 12 => {
-                    ppu.update_stat(260, &mut stat_interrupt);
+                    ppu.update_stat(&mut stat_interrupt);
                     ppu.last_clock_count += 12;
                     state = 13;
                 }
@@ -735,6 +742,7 @@ impl Ppu {
                         state = 18;
                         continue;
                     }
+                    ppu.ly_for_compare = 0xFF;
 
                     ppu.last_clock_count += 2;
                     state = 16;
@@ -744,19 +752,20 @@ impl Ppu {
                     if ppu.ly == 144 {
                         ppu.set_stat_mode(1);
                     }
-                    ppu.update_stat(2, &mut stat_interrupt);
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.last_clock_count += 2;
                     state = 17;
                 }
                 // 4
                 17 => {
+                    ppu.ly_for_compare = ppu.ly;
                     if ppu.ly == 144 {
                         ppu.set_stat_mode(1);
                         vblank_interrupt = true;
                         // println!("[{}] vblank", ppu.last_clock_count);
                     }
-                    ppu.update_stat(4, &mut stat_interrupt);
+                    ppu.update_stat(&mut stat_interrupt);
                     ppu.last_clock_count += 456 - 4;
                     state = 25;
                 }
@@ -768,7 +777,8 @@ impl Ppu {
                 // last_vblank_line
                 18 => {
                     ppu.ly = 153;
-                    ppu.update_stat(0, &mut stat_interrupt);
+                    ppu.ly_for_compare = 0xFF;
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.last_clock_count += 6;
                     state = 19;
@@ -776,21 +786,23 @@ impl Ppu {
                 // 6
                 19 => {
                     ppu.ly = 0;
-                    ppu.update_stat(6, &mut stat_interrupt);
+                    ppu.ly_for_compare = 153;
+                    ppu.update_stat(&mut stat_interrupt);
                     ppu.last_clock_count += 2;
                     state = 20;
                 }
                 // 8
                 20 => {
                     ppu.ly = 0;
-                    ppu.update_stat(8, &mut stat_interrupt);
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.last_clock_count += 4;
                     state = 21;
                 }
                 // 12
                 21 => {
-                    ppu.update_stat(12, &mut stat_interrupt);
+                    ppu.ly_for_compare = 0;
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.last_clock_count += 12;
                     state = 22;
@@ -813,9 +825,8 @@ impl Ppu {
                 }
                 _ => unreachable!(),
             }
-            let lx = (gb.clock_count - ppu.internal_clock) % 456;
-            ppu.update_stat(3, &mut stat_interrupt);
         }
+        ppu.update_stat(&mut stat_interrupt);
         ppu.state = state;
         (vblank_interrupt, stat_interrupt)
     }
@@ -952,36 +963,30 @@ impl Ppu {
                 }
             }
 
-            ppu.update_stat(lx, &mut stat_interrupt);
+            ppu.update_stat(&mut stat_interrupt);
         }
         ppu.last_clock_count = gb.clock_count;
         (v_blank_interrupt, stat_interrupt)
     }
 
-    fn update_stat(&mut self, lx: u64, stat_interrupt: &mut bool) {
+    fn update_stat(&mut self, stat_interrupt: &mut bool) {
         let stat_mode = self.stat & 0b11;
         let mut stat_line = false;
         match stat_mode {
             0 => stat_line |= self.stat & 0x08 != 0,
             1 => {
-                // little hack: only signal the stat interrupt for Mode 1 if ly != 0 to avoid
-                // "stat irq blocking" of the Mode 2 in the first scanline. This allow passing
-                // the 'mooneye::ppu_intr_1_2_timing_gs' test, but the proper behaviour is not
-                // documented.
-                if self.ly != 0 {
-                    // VBlank also trigger OAM STAT interrupt
-                    stat_line |= self.stat & 0x30 != 0;
-                }
+                // VBlank also trigger OAM STAT interrupt
+                stat_line |= self.stat & 0x30 != 0;
             }
             2 => stat_line |= self.stat & 0x20 != 0,
             3 => {}
             4..=255 => unreachable!(),
         }
         // LY==LYC Interrupt
-        let ly = self.ly;
+        let ly = self.ly_for_compare;
         let lyc = self.lyc;
-        let compare = lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0;
-        if ly == 0 && lyc == 0 || (lx >= 4 && ly == lyc || ly == 153 && lx >= 12 && lyc == 0) {
+        let compare = ly == lyc;
+        if compare {
             // LY == LYC STAT Interrupt
             stat_line |= self.stat & (1 << 6) != 0;
         }

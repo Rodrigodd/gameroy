@@ -534,6 +534,7 @@ impl Emulator {
                     }
                     Reset => {
                         self.gb.lock().reset();
+                        log::info!("reset");
                         self.state = EmulatorState::Idle;
                         // This will send EmulatorUpdated to the gui
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();

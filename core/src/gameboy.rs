@@ -267,7 +267,7 @@ impl GameBoy {
         self.hram[0x7a..=0x7c].copy_from_slice(&[0x39, 0x01, 0x2e]);
 
         self.boot_rom_active = false;
-        self.clock_count = 23_384_580;
+        self.clock_count = 23_440_324;
         self.ppu.borrow_mut().reset_after_boot();
 
         self.joypad = 0xFF;
@@ -519,3 +519,4 @@ impl GameBoy {
         }
     }
 }
+

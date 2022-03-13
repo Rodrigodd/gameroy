@@ -196,7 +196,7 @@ pub struct Ppu {
     /// FF4B: Window X Position
     pub wx: u8,
 
-    state: u8,
+    pub state: u8,
     ly_for_compare: u8,
 
     stat_signal: bool,
@@ -447,16 +447,15 @@ impl Ppu {
             stat: 0x05,
             scy: 0,
             scx: 0,
-            ly: 0x99,
+            ly: 0,
             lyc: 0,
             bgp: 0xfc,
             obp0: 0,
             obp1: 0,
             wy: 0,
             wx: 0,
-            ly_for_compare: 0,
             state: 23,
-            stat_signal: false,
+            ly_for_compare: 0,
             next_clock_count: 23_440_377,
             line_start_clock_count: 23_435_361,
 
@@ -469,14 +468,15 @@ impl Ppu {
             fetch_tile_data_low: 0,
             fetch_tile_data_hight: 0,
 
-            reach_window: false,
+            reach_window: true,
             is_in_window: false,
             fetcher_skipped_first_push: true,
             sprite_fetching: false,
             fetcher_cycle: false,
+            stat_signal: false,
 
             curr_x: 0xa0,
-            discarting: 0,
+            discarting: 0x00,
         }
     }
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {

@@ -24,7 +24,8 @@ use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
     split_view::SplitView,
-    style::Style, ui,
+    style::Style,
+    ui,
 };
 
 struct Callback {
@@ -271,20 +272,24 @@ clock: {}
  OBP1:{:02x}
  WYC: {:02x}
  WY:  {:02x}
- WX:  {:02x}",
+ WX:  {:02x}
+ state: {}
+ next: {}",
                 ppu.lcdc,
                 ppu.stat,
                 ppu.scy,
                 ppu.scx,
                 ppu.lyc,
                 ppu.ly,
-                ppu.internal_clock % 456,
+                (gb.clock_count - ppu.line_start_clock_count) % 456,
                 ppu.bgp,
                 ppu.obp0,
                 ppu.obp1,
                 ppu.wyc,
                 ppu.wy,
                 ppu.wx,
+                ppu.state,
+                ppu.next_clock_count,
             );
 
             if let Graphic::Text(text) = ctx.get_graphic_mut(self.ppu) {
@@ -467,7 +472,11 @@ impl ListBuilder for BreakpointList {
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
         let text = Self::get_text(ctx, index);
-        let Style { text_style, delete_button, .. } = ctx.get::<Style>().clone();
+        let Style {
+            text_style,
+            delete_button,
+            ..
+        } = ctx.get::<Style>().clone();
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
                 cb.graphic(Text::new(text, (-1, 0), text_style))
@@ -475,15 +484,11 @@ impl ListBuilder for BreakpointList {
                     .expand_x(true)
             })
             .child(ctx, |cb, _| {
-                cb.behaviour(Button::new(
-                    delete_button,
-                    true,
-                    move |_, ctx| {
-                        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
-                        let &address = debugger.breakpoints().keys().nth(index).unwrap();
-                        debugger.remove_break(address);
-                    },
-                ))
+                cb.behaviour(Button::new(delete_button, true, move |_, ctx| {
+                    let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+                    let &address = debugger.breakpoints().keys().nth(index).unwrap();
+                    debugger.remove_break(address);
+                }))
                 .min_size([15.0, 15.0])
                 .fill_y(crui::RectFill::ShrinkCenter)
             })
@@ -536,7 +541,11 @@ impl ListBuilder for WatchsList {
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
         let (address, text) = Self::watch_text(ctx, index);
-        let Style { text_style, delete_button, .. } = ctx.get::<Style>().clone();
+        let Style {
+            text_style,
+            delete_button,
+            ..
+        } = ctx.get::<Style>().clone();
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
                 cb.graphic(Text::new(text, (-1, 0), text_style))
@@ -544,14 +553,10 @@ impl ListBuilder for WatchsList {
                     .expand_x(true)
             })
             .child(ctx, |cb, _| {
-                cb.behaviour(Button::new(
-                    delete_button,
-                    true,
-                    move |_, ctx| {
-                        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
-                        debugger.remove_watch(address);
-                    },
-                ))
+                cb.behaviour(Button::new(delete_button, true, move |_, ctx| {
+                    let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+                    debugger.remove_watch(address);
+                }))
                 .min_size([15.0, 15.0])
                 .fill_y(crui::RectFill::ShrinkCenter)
             })
@@ -748,4 +753,3 @@ pub fn build(
         .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()))
         .build(ctx);
 }
-

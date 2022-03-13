@@ -197,6 +197,8 @@ pub struct Ppu {
     pub wx: u8,
 
     pub state: u8,
+    /// When making the LY==LYC comparison, uses this value instead of ly to control the comparison
+    /// timing. This is 0xFF if this will not update the stat.
     ly_for_compare: u8,
 
     stat_signal: bool,
@@ -483,6 +485,7 @@ impl Ppu {
         // for now, ppu update on read or write,should never trigger a interrupt.
         let (v, s) = Self::update(gb);
         debug_assert!(!v && !s);
+
         let this = &mut *gb.ppu.borrow_mut();
         match address {
             0x40 => {
@@ -497,12 +500,14 @@ impl Ppu {
                     } else {
                         // enable ppu
                         debug_assert_eq!(this.ly, 0);
+                        this.ly_for_compare = 0;
                         debug_assert_eq!(this.stat & 0b11, 0b00);
+                        this.next_clock_count = gb.clock_count;
                     }
                 }
                 this.lcdc = value
             }
-            0x41 => this.stat = 0x80 | (value & !0b11) | (this.stat & 0b11),
+            0x41 => this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111),
             0x42 => this.scy = value,
             0x43 => this.scx = value,
             0x44 => {} // ly is read only
@@ -835,6 +840,7 @@ impl Ppu {
     fn update_stat(&mut self, stat_interrupt: &mut bool) {
         let stat_mode = self.stat & 0b11;
         let mut stat_line = false;
+
         match stat_mode {
             0 => stat_line |= self.stat & 0x08 != 0,
             1 => {
@@ -845,16 +851,18 @@ impl Ppu {
             3 => {}
             4..=255 => unreachable!(),
         }
-        // LY==LYC Interrupt
-        let ly = self.ly_for_compare;
-        let lyc = self.lyc;
-        let compare = ly == lyc;
-        if compare {
-            // LY == LYC STAT Interrupt
-            stat_line |= self.stat & (1 << 6) != 0;
+
+        // LY==LYC
+        if self.ly_for_compare != 0xFF {
+            let compare = self.ly_for_compare == self.lyc;
+            if compare {
+                // LY == LYC STAT Interrupt
+                stat_line |= self.stat & (1 << 6) != 0;
+            }
+            // STAT Coincident Flag
+            self.stat = (self.stat & !0x04) | ((compare as u8) << 2);
         }
-        // STAT Coincidente Flag
-        self.stat = (self.stat & !0x04) | ((compare as u8) << 2);
+
         // on rising edge
         if !self.stat_signal && stat_line {
             *stat_interrupt = true;

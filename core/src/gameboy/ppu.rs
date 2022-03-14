@@ -752,10 +752,10 @@ impl Ppu {
                 }
                 // 2
                 16 => {
-                    if ppu.ly == 144 {
-                        ppu.set_stat_mode(1);
-                    }
-                    ppu.update_stat(&mut stat_interrupt);
+                    // if ppu.ly == 144 {
+                    //     ppu.set_stat_mode(2);
+                    // }
+                    // ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
                     state = 17;

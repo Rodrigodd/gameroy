@@ -1976,7 +1976,7 @@ impl Interpreter<'_> {
             0xd9 => {
                 // RETI 1:16 - - - -
                 self.ret(None);
-                self.0.cpu.ime = ImeState::ToBeEnable;
+                self.0.cpu.ime = ImeState::Enabled;
                 return;
             }
             0xda => {

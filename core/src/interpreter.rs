@@ -869,16 +869,13 @@ impl Interpreter<'_> {
         let mut count = 0;
         let interrupts: u8 = self.0.interrupt_flag & self.0.interrupt_enabled;
         if interrupts != 0 {
-            let mut interrupt_handled = false;
-            if self.0.cpu.ime == ImeState::Enabled {
-                count += 20;
-                interrupt_handled = true;
-            }
             if self.0.cpu.state == CpuState::Halt {
                 count += 4;
             }
-            // return, to allow detecting the interrupt
-            if interrupt_handled {
+
+            if self.0.cpu.ime == ImeState::Enabled {
+                count += 20;
+                // return, to allow detecting the interrupt
                 return count;
             }
         }
@@ -952,9 +949,20 @@ impl Interpreter<'_> {
             self.0.v_blank_trigger = false;
             self.0.call_v_blank_callback();
         }
+
+        if self.0.cpu.state == CpuState::Halt {
+            self.0.tick(2);
+        }
+
         let interrupts: u8 = self.0.interrupt_flag & self.0.interrupt_enabled;
+
+        if self.0.cpu.state == CpuState::Halt {
+            self.0.tick(2);
+        }
+
         if interrupts != 0 {
-            let mut interrupt_handled = false;
+            self.0.cpu.state = CpuState::Running;
+
             if self.0.cpu.ime == ImeState::Enabled {
                 self.0.cpu.ime = ImeState::Disabled;
                 self.0.tick(4);
@@ -991,14 +999,8 @@ impl Interpreter<'_> {
                     self.jump_to(0x0000);
                 }
                 self.0.tick(4);
-                interrupt_handled = true;
-            }
-            if self.0.cpu.state == CpuState::Halt {
-                self.0.tick(4);
-                self.0.cpu.state = CpuState::Running;
-            }
-            // return, to allow detecting the interrupt
-            if interrupt_handled {
+
+                // return, to allow detecting the interrupt
                 return;
             }
         }
@@ -1007,7 +1009,6 @@ impl Interpreter<'_> {
         }
 
         if self.0.cpu.state != CpuState::Running {
-            self.0.tick(4);
             return;
         }
 

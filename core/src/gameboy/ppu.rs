@@ -752,10 +752,11 @@ impl Ppu {
                 }
                 // 2
                 16 => {
-                    // if ppu.ly == 144 {
-                    //     ppu.set_stat_mode(2);
-                    // }
-                    // ppu.update_stat(&mut stat_interrupt);
+                    if ppu.ly == 144 {
+                        ppu.set_stat_mode(2);
+                        // println!("[{}] OAM STAT", ppu.next_clock_count);
+                    }
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
                     state = 17;
@@ -766,7 +767,7 @@ impl Ppu {
                     if ppu.ly == 144 {
                         ppu.set_stat_mode(1);
                         vblank_interrupt = true;
-                        // println!("[{}] vblank", ppu.last_clock_count);
+                        // println!("[{}] vblank", ppu.next_clock_count);
                     }
                     ppu.update_stat(&mut stat_interrupt);
                     ppu.next_clock_count += 456 - 4;

@@ -606,6 +606,7 @@ impl Ppu {
                     ppu.ly = 0;
                     ppu.set_stat_mode(0);
                     ppu.reach_window = false;
+                    ppu.curr_x = 0;
 
                     ppu.next_clock_count += 1;
                     state = 1;
@@ -642,6 +643,7 @@ impl Ppu {
                 // start_line
                 6 => {
                     ppu.line_start_clock_count = ppu.next_clock_count;
+                    ppu.curr_x = 0;
                     ppu.next_clock_count += 3;
                     state = 7;
                 }
@@ -665,7 +667,6 @@ impl Ppu {
                     ppu.ly_for_compare = ppu.ly;
                     ppu.update_stat(&mut stat_interrupt);
                     ppu.search_objects();
-                    ppu.curr_x = 0;
 
                     ppu.next_clock_count += 80;
                     state = 9;
@@ -822,7 +823,6 @@ impl Ppu {
                     ppu.reach_window = false;
 
                     ppu.wyc = 0;
-                    ppu.curr_x = 0;
 
                     // goto start_line
                     state = 6;

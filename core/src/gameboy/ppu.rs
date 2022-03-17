@@ -729,17 +729,24 @@ impl Ppu {
                             ppu.wyc = ppu.wyc.wrapping_add(1);
                             if ppu.wx == 0 && ppu.scx % 8 != 0 {
                                 // wait 1
+                                ppu.next_clock_count += 1;
                             }
-                            ppu.is_in_window = true;
-                            ppu.fetcher_x = 0;
-                            if !ppu.sprite_fetching {
-                                ppu.fetcher_step = 0;
-                            }
-                            ppu.background_fifo.clear();
+                            state = 28;
+                            continue;
                         } else if ppu.wx == 166 && ppu.wx == ppu.scanline_x + 7 {
                             ppu.wyc += 1;
                         }
                     }
+                    state = 24;
+                }
+                28 => {
+                    ppu.is_in_window = true;
+                    ppu.fetcher_x = 0;
+                    if !ppu.sprite_fetching {
+                        ppu.fetcher_step = 0;
+                    }
+                    ppu.background_fifo.clear();
+
                     state = 24;
                 }
                 24 => {

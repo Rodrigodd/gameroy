@@ -227,10 +227,11 @@ pub struct Ppu {
     reach_window: bool,
     is_in_window: bool,
 
-    // the current x position in the current scanline
-    pub curr_x: u8,
-    // the number of pixels left to be discarted in the start of the current scanline
-    discarting: u8,
+    // The x position of the next screen pixel to be draw in the current scanline
+    pub screen_x: u8,
+    // The x position of the current pixel to be draw in the tiles being fetch in the current
+    // scanline. This is used for discarting pixels (for scx scrolling) and other things.
+    scanline_x: u8,
 }
 impl std::fmt::Debug for Ppu {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -272,8 +273,8 @@ impl std::fmt::Debug for Ppu {
             .field("fetch_tile_data_hight", &self.fetch_tile_data_hight)
             .field("reach_window", &self.reach_window)
             .field("is_in_window", &self.is_in_window)
-            .field("curr_x", &self.curr_x)
-            .field("discarting", &self.discarting)
+            .field("screen_x", &self.screen_x)
+            .field("scanline_x", &self.scanline_x)
             .finish()
     }
 }
@@ -322,8 +323,8 @@ impl SaveState for Ppu {
         ]
         .save_state(data)?;
 
-        self.curr_x.save_state(data)?;
-        self.discarting.save_state(data)?;
+        self.screen_x.save_state(data)?;
+        self.scanline_x.save_state(data)?;
 
         Ok(())
     }
@@ -371,8 +372,8 @@ impl SaveState for Ppu {
         ]
         .load_state(data)?;
 
-        self.curr_x.load_state(data)?;
-        self.discarting.load_state(data)?;
+        self.screen_x.load_state(data)?;
+        self.scanline_x.load_state(data)?;
 
         Ok(())
     }
@@ -415,8 +416,8 @@ impl Default for Ppu {
             fetch_tile_data_hight: 0,
             reach_window: false,
             is_in_window: false,
-            curr_x: 0,
-            discarting: 0,
+            screen_x: 0,
+            scanline_x: 0,
         }
     }
 }
@@ -477,8 +478,8 @@ impl Ppu {
             fetcher_cycle: false,
             stat_signal: false,
 
-            curr_x: 0xa0,
-            discarting: 0x00,
+            screen_x: 0xa0,
+            scanline_x: 0x00,
         }
     }
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {
@@ -583,6 +584,9 @@ impl Ppu {
     }
 
     pub fn update(gb: &GameBoy) -> (bool, bool) {
+        // Most of the ppu behaviour is based on the LIJI32/SameBoy including all of the timing,
+        // and most of the implementation.
+
         let ppu = &mut *gb.ppu.borrow_mut();
         if ppu.lcdc & 0x80 == 0 {
             // ppu is disabled
@@ -606,7 +610,7 @@ impl Ppu {
                     ppu.ly = 0;
                     ppu.set_stat_mode(0);
                     ppu.reach_window = false;
-                    ppu.curr_x = 0;
+                    ppu.screen_x = 0;
 
                     ppu.next_clock_count += 1;
                     state = 1;
@@ -614,7 +618,7 @@ impl Ppu {
                 // 1
                 1 => {
                     ppu.line_start_clock_count = ppu.next_clock_count - 8;
-                    ppu.wyc = 0;
+                    ppu.wyc = 0xff;
                     ppu.next_clock_count += 76;
                     state = 2;
                 }
@@ -643,7 +647,7 @@ impl Ppu {
                 // start_line
                 6 => {
                     ppu.line_start_clock_count = ppu.next_clock_count;
-                    ppu.curr_x = 0;
+                    ppu.screen_x = 0;
                     ppu.next_clock_count += 3;
                     state = 7;
                 }
@@ -693,23 +697,63 @@ impl Ppu {
                         ppu.reach_window = true;
                     }
                     ppu.is_in_window = false;
-                    ppu.discarting = ppu.scx % 8;
+                    ppu.scanline_x = -((ppu.scx % 8) as i8) as u8;
 
+                    state = 27;
+                }
+                27 => {
+                    // Check for window activation
+                    let window_enabled = ppu.lcdc & 0x20 != 0;
+                    if !ppu.is_in_window && ppu.reach_window && window_enabled {
+                        let mut should_active = false;
+                        if ppu.wx == 0 {
+                            let cmp = [-7i8, -9, -10, -11, -12, -13, -14, -14];
+                            if ppu.scanline_x == cmp[(ppu.scx % 8) as usize] as u8 {
+                                should_active = true;
+                            }
+                        // else if wx166_glitch
+                        } else if ppu.wx < 166 {
+                            if ppu.wx == ppu.scanline_x.wrapping_add(7) {
+                                should_active = true;
+                            } else if ppu.wx == ppu.scanline_x.wrapping_add(6) {
+                                // TODO: && !wx_just_changed
+                                should_active = true;
+                                if ppu.screen_x > 0 {
+                                    ppu.screen_x -= 1;
+                                }
+                            }
+                        }
+
+                        if should_active {
+                            // wrapping add, because wyc starts at -1
+                            ppu.wyc = ppu.wyc.wrapping_add(1);
+                            if ppu.wx == 0 && ppu.scx % 8 != 0 {
+                                // wait 1
+                            }
+                            ppu.is_in_window = true;
+                            ppu.fetcher_x = 0;
+                            if !ppu.sprite_fetching {
+                                ppu.fetcher_step = 0;
+                            }
+                            ppu.background_fifo.clear();
+                        } else if ppu.wx == 166 && ppu.wx == ppu.scanline_x + 7 {
+                            ppu.wyc += 1;
+                        }
+                    }
                     state = 24;
                 }
                 24 => {
                     tick_lcd_fifo(ppu, ppu.ly);
                     ppu.next_clock_count += 1;
 
-                    if ppu.curr_x == 160 {
+                    if ppu.screen_x == 160 {
                         state = 11;
+                    } else {
+                        state = 27;
                     }
                 }
                 11 => {
                     ppu.set_stat_mode(0);
-                    if ppu.is_in_window {
-                        ppu.wyc += 1;
-                    }
 
                     ppu.next_clock_count += 1;
                     state = 12;
@@ -822,7 +866,7 @@ impl Ppu {
                     ppu.ly = 0;
                     ppu.reach_window = false;
 
-                    ppu.wyc = 0;
+                    ppu.wyc = 0xff;
 
                     // goto start_line
                     state = 6;
@@ -875,9 +919,10 @@ impl Ppu {
 fn tick_lcd_fifo(ppu: &mut Ppu, ly: u8) {
     let is_in_window = ppu.is_in_window;
     let sprite_enable = ppu.lcdc & 0x02 != 0;
-    if ppu.discarting == 0 && !ppu.sprite_fetching && ppu.sprite_buffer_len != 0 && sprite_enable {
+    if ppu.scanline_x <= 166 && !ppu.sprite_fetching && ppu.sprite_buffer_len != 0 && sprite_enable
+    {
         let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
-        if sprite.sx <= ppu.curr_x + 8 {
+        if sprite.sx <= ppu.screen_x + 8 {
             ppu.sprite_fetching = true;
             ppu.sprite_buffer_len -= 1;
             ppu.fetcher_step = 0;
@@ -1041,27 +1086,13 @@ fn tick_lcd_fifo(ppu: &mut Ppu, ly: u8) {
         }
     }
     if !ppu.sprite_fetching {
-        let window_enabled = ppu.lcdc & 0x20 != 0;
-        if !ppu.is_in_window
-            && window_enabled
-            && ppu.reach_window
-            && ppu.curr_x >= ppu.wx.saturating_sub(7)
-        {
-            ppu.is_in_window = true;
-            if !ppu.sprite_fetching {
-                ppu.fetcher_step = 0;
-            }
-            ppu.discarting = 0;
-            ppu.fetcher_x = 0;
-            ppu.background_fifo.clear();
-        }
-
         if let Some(pixel) = ppu.background_fifo.pop_front() {
-            if ppu.discarting > 0 {
-                ppu.discarting -= 1;
+            // scanline_x values greater than 166 are interpreted as negative.
+            if ppu.scanline_x > 166 {
                 // Discart a pixel. Used for scrolling the background.
+                ppu.scanline_x = ppu.scanline_x.wrapping_add(1);
             } else {
-                let i = (ly as usize) * 160 + ppu.curr_x as usize;
+                let i = (ly as usize) * 160 + ppu.screen_x as usize;
                 let background_enable = ppu.lcdc & 0x01 != 0;
                 let bcolor = if background_enable { pixel & 0b11 } else { 0 };
 
@@ -1084,7 +1115,8 @@ fn tick_lcd_fifo(ppu: &mut Ppu, ly: u8) {
                 }
                 debug_assert!(color < 4);
                 ppu.screen[i] = color;
-                ppu.curr_x += 1;
+                ppu.screen_x += 1;
+                ppu.scanline_x += 1;
             }
         }
     }

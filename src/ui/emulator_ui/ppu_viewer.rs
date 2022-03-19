@@ -63,6 +63,8 @@ impl Behaviour for TilemapViewer {
 struct PpuViewer {
     oam_sprites: [[Id; 2]; 40],
     buffer_sprites: [[Id; 2]; 10],
+    background_fifo: Id,
+    sprite_fifo: Id,
     _frame_updated_event: Handle<FrameUpdated>,
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
@@ -202,6 +204,24 @@ impl PpuViewer {
                 sx, sy, tile, flags
             ))
         }
+
+        let background_pixels = ppu
+            .background_fifo
+            .iter()
+            .fold("Background pixels: ".to_string(), |t, p| {
+                t + &format!("{:02x}", p) + " "
+            });
+        ctx.get_graphic_mut(self.background_fifo)
+            .set_text(&background_pixels);
+
+        let sprite_pixels = ppu
+            .sprite_fifo
+            .iter()
+            .fold("Sprite pixels:     ".to_string(), |t, p| {
+                t + &format!("{:02x}", p) + " "
+            });
+        ctx.get_graphic_mut(self.sprite_fifo)
+            .set_text(&sprite_pixels);
     }
 }
 impl Behaviour for PpuViewer {
@@ -375,11 +395,36 @@ pub fn build(
             .build(ctx);
     }
 
+    let background_fifo = ctx.reserve();
+    let sprite_fifo = ctx.reserve();
+    ctx.create_control()
+        .parent(content)
+        .layout(VBoxLayout::default())
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "Fifo Viewer".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitText)
+        })
+        .child_reserved(background_fifo, ctx, |cb, _| {
+            cb.graphic(Text::new("".to_string(), (-1, 0), style.text_style.clone()))
+                .layout(FitText)
+        })
+        .child_reserved(sprite_fifo, ctx, |cb, _| {
+            cb.graphic(Text::new("".to_string(), (-1, 0), style.text_style.clone()))
+                .layout(FitText)
+        })
+        .build(ctx);
+
     ctx.create_control_reserved(ppu_viewer)
         .parent(parent)
         .behaviour(PpuViewer {
             oam_sprites,
             buffer_sprites,
+            background_fifo,
+            sprite_fifo,
             _frame_updated_event: event_table.register(ppu_viewer),
             _emulator_updated_event: event_table.register(ppu_viewer),
         })

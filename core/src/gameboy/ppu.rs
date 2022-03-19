@@ -4,7 +4,7 @@ use crate::{
 };
 
 #[derive(PartialEq, Eq, Default, Clone, Debug)]
-struct PixelFifo {
+pub struct PixelFifo {
     queue: [u8; 16],
     /// next position to push
     head: u8,
@@ -29,7 +29,24 @@ impl SaveState for PixelFifo {
     }
 }
 impl PixelFifo {
-    fn is_empty(&self) -> bool {
+    pub fn iter(&self) -> impl Iterator<Item = u8> + '_ {
+        let tail = self.tail as usize;
+        let head = self.head as usize;
+
+        if tail <= head {
+            self.queue[tail..head]
+                .iter()
+                .cloned()
+                .chain(self.queue[0..0].iter().cloned())
+        } else {
+            self.queue[tail..]
+                .iter()
+                .cloned()
+                .chain(self.queue[..head].iter().cloned())
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
         self.head == self.tail
     }
 

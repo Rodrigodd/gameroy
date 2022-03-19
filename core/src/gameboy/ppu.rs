@@ -709,12 +709,16 @@ impl Ppu {
                     ppu.set_stat_mode(3);
                     ppu.update_stat(&mut stat_interrupt);
 
+                    ppu.next_clock_count += 5;
                     state = 10;
                 }
                 // mode_3_start
                 10 => {
                     ppu.background_fifo.clear();
                     ppu.sprite_fifo.clear();
+
+                    // fill background fifo with 8 dummy pixels
+                    ppu.background_fifo.push_background(0x00, 0x00);
 
                     ppu.fetcher_step = 0;
                     ppu.fetcher_skipped_first_push = false;
@@ -815,7 +819,7 @@ impl Ppu {
                     if ppu.background_fifo.is_empty() && ppu.fetcher_step < 2 {
                         tick_pixel_fetcher(ppu, ppu.ly);
                         // wait 1
-                        ppu.next_clock_count += 2;
+                        ppu.next_clock_count += 1;
                         // if abort_sprite_feching { goto aborted }
                     } else {
                         state = 32;
@@ -824,7 +828,14 @@ impl Ppu {
                 32 => {
                     // TODO: handle extra penalty sprite at 0
 
-                    // tick_pixel_fetcher(ppu, ppu.ly);
+                    // wait 1
+                    ppu.next_clock_count += 1;
+                    state = 36;
+                }
+                36 => {
+                    // if abort_sprite_feching { goto aborted }
+
+                    tick_pixel_fetcher(ppu, ppu.ly);
                     ppu.sprite_tile_address = {
                         let tall = ppu.lcdc & 0x04 != 0;
                         let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
@@ -847,7 +858,7 @@ impl Ppu {
                 33 => {
                     // if abort_sprite_feching { goto aborted }
 
-                    // tick_pixel_fetcher(ppu, ppu.ly);
+                    tick_pixel_fetcher(ppu, ppu.ly);
                     ppu.sprite_tile_data_low = ppu.vram[ppu.sprite_tile_address as usize];
 
                     // wait 2
@@ -862,7 +873,7 @@ impl Ppu {
                     // ppu.sprite_fetching = false;
 
                     // wait 1
-                    ppu.next_clock_count += 2;
+                    ppu.next_clock_count += 1;
                     state = 35;
                 }
                 35 => {
@@ -892,23 +903,24 @@ impl Ppu {
                 24 => {
                     output_pixel(ppu);
                     tick_pixel_fetcher(ppu, ppu.ly);
-                    ppu.next_clock_count += 1;
 
                     debug_assert!(ppu.screen_x <= 160);
                     if ppu.screen_x == 160 {
+                        // exit mode 3
                         state = 11;
                     } else {
+                        ppu.next_clock_count += 1;
                         state = 27;
                     }
                 }
                 11 => {
                     ppu.set_stat_mode(0);
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 1;
                     state = 12;
                 }
                 12 => {
-                    ppu.update_stat(&mut stat_interrupt);
                     ppu.next_clock_count += 12;
                     state = 13;
                 }
@@ -1069,7 +1081,7 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
     let is_in_window = ppu.is_in_window;
     ppu.fetcher_cycle = !ppu.fetcher_cycle;
     // Pixel Fetching
-    if !ppu.fetcher_cycle {
+    if ppu.fetcher_cycle {
         return;
     }
 
@@ -1134,12 +1146,7 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
             let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
             ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
 
-            if !ppu.fetcher_skipped_first_push {
-                ppu.fetcher_skipped_first_push = true;
-                ppu.fetcher_step = 0;
-            } else {
-                ppu.fetcher_step = 3;
-            }
+            ppu.fetcher_step = 3;
         }
         // push to fifo
         3 => {

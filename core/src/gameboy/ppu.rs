@@ -70,7 +70,6 @@ impl PixelFifo {
         &mut self,
         tile_low: u8,
         tile_hight: u8,
-        cut_off: u8,
         palette: bool,
         background_priority: bool,
     ) {
@@ -82,7 +81,7 @@ impl PixelFifo {
         };
 
         let mut cursor = self.tail;
-        let mut x = 8 - cut_off;
+        let mut x = 8u8;
         // overwrite pixels in fifo, but only if 0
         while cursor != self.head && x != 0 {
             x -= 1;
@@ -225,8 +224,8 @@ pub struct Ppu {
     /// The clock count in which the current scanline has started.
     pub line_start_clock_count: u64,
 
-    background_fifo: PixelFifo,
-    sprite_fifo: PixelFifo,
+    pub background_fifo: PixelFifo,
+    pub sprite_fifo: PixelFifo,
 
     // pixel fetcher
     fetcher_step: u8,
@@ -241,13 +240,18 @@ pub struct Ppu {
     fetch_tile_data_low: u8,
     fetch_tile_data_hight: u8,
 
+    sprite_tile_address: u16,
+    sprite_tile_data_low: u8,
+    sprite_tile_data_hight: u8,
+
     reach_window: bool,
     is_in_window: bool,
 
-    // The x position of the next screen pixel to be draw in the current scanline
+    /// The x position of the next screen pixel to be draw in the current scanline
     pub screen_x: u8,
-    // The x position of the current pixel to be draw in the tiles being fetch in the current
-    // scanline. This is used for discarting pixels (for scx scrolling) and other things.
+    /// The x position in the current scanline, from -(8 + scx%8) to 160. Negative values
+    /// (represented by positives beetween 241 and 255) are use for detecting sprites that starts
+    /// to the left of the screen, and for discarting pixels for scrolling.
     scanline_x: u8,
 }
 impl std::fmt::Debug for Ppu {
@@ -431,6 +435,9 @@ impl Default for Ppu {
             fetch_tile_number: 0,
             fetch_tile_data_low: 0,
             fetch_tile_data_hight: 0,
+            sprite_tile_address: 0,
+            sprite_tile_data_low: 0,
+            sprite_tile_data_hight: 0,
             reach_window: false,
             is_in_window: false,
             screen_x: 0,
@@ -487,6 +494,10 @@ impl Ppu {
             fetch_tile_number: 0,
             fetch_tile_data_low: 0,
             fetch_tile_data_hight: 0,
+
+            sprite_tile_address: 0,
+            sprite_tile_data_low: 0,
+            sprite_tile_data_hight: 0,
 
             reach_window: true,
             is_in_window: false,
@@ -714,7 +725,7 @@ impl Ppu {
                         ppu.reach_window = true;
                     }
                     ppu.is_in_window = false;
-                    ppu.scanline_x = -((ppu.scx % 8) as i8) as u8;
+                    ppu.scanline_x = -((ppu.scx % 8 + 8) as i8) as u8;
 
                     state = 27;
                 }
@@ -754,8 +765,9 @@ impl Ppu {
                             ppu.wyc += 1;
                         }
                     }
-                    state = 24;
+                    state = 29;
                 }
+                // active window
                 28 => {
                     ppu.is_in_window = true;
                     ppu.fetcher_x = 0;
@@ -764,12 +776,125 @@ impl Ppu {
                     }
                     ppu.background_fifo.clear();
 
-                    state = 24;
+                    state = 29;
+                }
+                29 => {
+                    // Handle sprites
+
+                    // discart already handled sprites
+                    // TODO: discovery why this is necessary (blinded copied from SameBoy)
+                    while ppu.sprite_buffer_len > 0
+                        && (ppu.scanline_x < 160 || ppu.scanline_x >= (-8i8) as u8)
+                        && ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1].sx
+                            < ppu.scanline_x.wrapping_add(8)
+                    {
+                        ppu.sprite_buffer_len -= 1;
+                    }
+
+                    // fetch sprites
+                    // ppu.sprite_fetching = true;
+                    state = 30;
+                }
+                // while there are sprites to be fetch...
+                30 => {
+                    let sprite_enabled = ppu.lcdc & 0x02 != 0;
+                    if ppu.sprite_buffer_len > 0
+                        && sprite_enabled
+                        && ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1].sx
+                            == ppu.scanline_x.wrapping_add(8)
+                    {
+                        // continue loop
+                        state = 31;
+                    } else {
+                        // exit loop
+                        state = 24;
+                    }
+                }
+                // while there are background pixels or don't reach a fetcher step...
+                31 => {
+                    if ppu.background_fifo.is_empty() && ppu.fetcher_step < 2 {
+                        tick_pixel_fetcher(ppu, ppu.ly);
+                        // wait 1
+                        ppu.next_clock_count += 2;
+                        // if abort_sprite_feching { goto aborted }
+                    } else {
+                        state = 32;
+                    }
+                }
+                32 => {
+                    // TODO: handle extra penalty sprite at 0
+
+                    // tick_pixel_fetcher(ppu, ppu.ly);
+                    ppu.sprite_tile_address = {
+                        let tall = ppu.lcdc & 0x04 != 0;
+                        let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
+                        let flip_y = sprite.flags & 0x40 != 0;
+
+                        let height = if tall { 0xF } else { 0x7 };
+                        let mut py = ppu.ly.wrapping_sub(sprite.sy) & height;
+                        if flip_y {
+                            py = (!py) & height;
+                        }
+
+                        let tile = if tall { sprite.tile & !1 } else { sprite.tile };
+                        tile as u16 * 0x10 + py as u16 * 2
+                    };
+
+                    // wait 2
+                    ppu.next_clock_count += 2;
+                    state = 33;
+                }
+                33 => {
+                    // if abort_sprite_feching { goto aborted }
+
+                    // tick_pixel_fetcher(ppu, ppu.ly);
+                    ppu.sprite_tile_data_low = ppu.vram[ppu.sprite_tile_address as usize];
+
+                    // wait 2
+                    ppu.next_clock_count += 2;
+                    state = 34;
+                }
+                34 => {
+                    // if abort_sprite_feching { goto aborted }
+
+                    ppu.sprite_tile_data_hight = ppu.vram[ppu.sprite_tile_address as usize + 1];
+
+                    // ppu.sprite_fetching = false;
+
+                    // wait 1
+                    ppu.next_clock_count += 2;
+                    state = 35;
+                }
+                35 => {
+                    let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
+                    let flip_x = sprite.flags & 0x20 != 0;
+                    let tile_low = if flip_x {
+                        ppu.sprite_tile_data_low.reverse_bits()
+                    } else {
+                        ppu.sprite_tile_data_low
+                    };
+                    let tile_hight = if flip_x {
+                        ppu.sprite_tile_data_hight.reverse_bits()
+                    } else {
+                        ppu.sprite_tile_data_hight
+                    };
+                    ppu.sprite_fifo.push_sprite(
+                        tile_low,
+                        tile_hight,
+                        sprite.flags & 0x10 != 0,
+                        sprite.flags & 0x80 != 0,
+                    );
+                    ppu.sprite_buffer_len -= 1;
+
+                    // loop again
+                    state = 30;
                 }
                 24 => {
-                    tick_lcd_fifo(ppu, ppu.ly);
+                    output_pixel(ppu);
+                    tick_pixel_fetcher(ppu, ppu.ly);
                     ppu.next_clock_count += 1;
 
+                    debug_assert!(ppu.screen_x <= 160);
                     if ppu.screen_x == 160 {
                         state = 11;
                     } else {
@@ -940,209 +1065,134 @@ impl Ppu {
     }
 }
 
-fn tick_lcd_fifo(ppu: &mut Ppu, ly: u8) {
+fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
     let is_in_window = ppu.is_in_window;
-    let sprite_enable = ppu.lcdc & 0x02 != 0;
-    if ppu.scanline_x <= 166 && !ppu.sprite_fetching && ppu.sprite_buffer_len != 0 && sprite_enable
-    {
-        let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
-        if sprite.sx <= ppu.screen_x + 8 {
-            ppu.sprite_fetching = true;
-            ppu.sprite_buffer_len -= 1;
-            ppu.fetcher_step = 0;
-            ppu.fetcher_cycle = false;
-            // println!("fetch sprite");
-        }
-    }
     ppu.fetcher_cycle = !ppu.fetcher_cycle;
     // Pixel Fetching
-    if ppu.fetcher_cycle {
-        if ppu.sprite_fetching {
-            let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize];
-            let tall = ppu.lcdc & 0x04;
-            let flip_y = sprite.flags & 0x40;
-            let flip_x = sprite.flags & 0x20 != 0;
-            let py = if flip_y != 0 {
-                let height = if tall != 0 { 16 } else { 8 };
-                (height - 1) - (ly + 16 - sprite.sy)
-            } else {
-                ly + 16 - sprite.sy
-            };
-
-            // for steps 1 and 2
-            let tile = ppu.fetch_tile_number as u16;
-            let address = tile * 0x10 + 0x8000;
-            let offset = (py % 8) as u16 * 2;
-            let fetch_tile_address = address + offset;
-
-            match ppu.fetcher_step {
-                // fetch tile number
-                0 => {
-                    let tile = if tall != 0 {
-                        // sprite with 2 tiles of height
-                        (sprite.tile & !1) + py / 8
-                    } else {
-                        sprite.tile
-                    };
-
-                    ppu.fetch_tile_number = tile;
-                    ppu.fetcher_step = 1;
-                }
-                // fetch tile data (low)
-                1 => {
-                    ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
-                    ppu.fetcher_step = 2;
-                }
-                // fetch tile data (hight)
-                2 => {
-                    ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
-
-                    ppu.fetcher_step = 3;
-                }
-                // push to fifo
-                3 => {
-                    let tile_low = if flip_x {
-                        ppu.fetch_tile_data_low.reverse_bits()
-                    } else {
-                        ppu.fetch_tile_data_low
-                    };
-                    let tile_hight = if flip_x {
-                        ppu.fetch_tile_data_hight.reverse_bits()
-                    } else {
-                        ppu.fetch_tile_data_hight
-                    };
-                    let cut_off = if sprite.sx < 8 { 8 - sprite.sx } else { 0 };
-                    ppu.sprite_fifo.push_sprite(
-                        tile_low,
-                        tile_hight,
-                        cut_off,
-                        sprite.flags & 0x10 != 0,
-                        sprite.flags & 0x80 != 0,
-                    );
-                    ppu.fetcher_step = 0;
-                    ppu.sprite_fetching = false;
-                }
-                4..=255 => unreachable!(),
-            }
-        } else {
-            let fetch_tile_address = |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
-                let mut tile = ppu.fetch_tile_number as u16;
-                if ppu.lcdc & 0x10 == 0 {
-                    tile += 0x100;
-                    if tile >= 0x180 {
-                        tile -= 0x100;
-                    }
-                }
-                let address = tile * 0x10 + 0x8000;
-                let offset = if is_in_window {
-                    2 * (ppu.wyc as u16 % 8)
-                } else {
-                    2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
-                };
-                let fetch_tile_address = address + offset;
-                fetch_tile_address
-            };
-
-            match ppu.fetcher_step {
-                // fetch tile number
-                0 => {
-                    let tile_map = if !is_in_window {
-                        if ppu.lcdc & 0x08 != 0 {
-                            0x9C00
-                        } else {
-                            0x9800
-                        }
-                    } else {
-                        if ppu.lcdc & 0x40 != 0 {
-                            0x9C00
-                        } else {
-                            0x9800
-                        }
-                    };
-
-                    let tx = if is_in_window {
-                        ppu.fetcher_x
-                    } else {
-                        (ppu.fetcher_x + (ppu.scx / 8)) & 0x1f
-                    };
-                    let ty = if is_in_window {
-                        ppu.wyc / 8
-                    } else {
-                        (ly.wrapping_add(ppu.scy) & 0xff) / 8
-                    };
-
-                    let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
-                    ppu.fetch_tile_number = ppu.vram[(tile_map + offset) as usize - 0x8000];
-                    ppu.fetcher_step = 1;
-                }
-                // fetch tile data (low)
-                1 => {
-                    let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
-                    ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
-                    ppu.fetcher_step = 2;
-                }
-                // fetch tile data (hight)
-                2 => {
-                    let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
-                    ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
-
-                    if !ppu.fetcher_skipped_first_push {
-                        ppu.fetcher_skipped_first_push = true;
-                        ppu.fetcher_step = 0;
-                    } else {
-                        ppu.fetcher_step = 3;
-                    }
-                }
-                // push to fifo
-                3 => {
-                    if !ppu.background_fifo.is_empty() {
-                        ppu.fetcher_step = 3;
-                    } else {
-                        let low = ppu.fetch_tile_data_low;
-                        let hight = ppu.fetch_tile_data_hight;
-                        ppu.background_fifo.push_background(low, hight);
-                        ppu.fetcher_x += 1;
-                        ppu.fetcher_step = 0;
-                    }
-                }
-                4..=255 => unreachable!(),
-            }
-        }
+    if !ppu.fetcher_cycle {
+        return;
     }
-    if !ppu.sprite_fetching {
-        if let Some(pixel) = ppu.background_fifo.pop_front() {
-            // scanline_x values greater than 166 are interpreted as negative.
-            if ppu.scanline_x > 166 {
-                // Discart a pixel. Used for scrolling the background.
-                ppu.scanline_x = ppu.scanline_x.wrapping_add(1);
-            } else {
-                let i = (ly as usize) * 160 + ppu.screen_x as usize;
-                let background_enable = ppu.lcdc & 0x01 != 0;
-                let bcolor = if background_enable { pixel & 0b11 } else { 0 };
 
-                // background color, with pallete applied
-                let palette = ppu.bgp;
-                let mut color = (palette >> (bcolor * 2)) & 0b11;
-
-                let sprite_pixel = ppu.sprite_fifo.pop_front();
-                if let Some(sprite_pixel) = sprite_pixel {
-                    let scolor = sprite_pixel & 0b11;
-                    let background_priority = (sprite_pixel >> 3) & 0x01 != 0;
-                    if scolor == 0 || background_priority && bcolor != 0 {
-                        // use background color
-                    } else {
-                        // use sprite color
-                        let palette = (sprite_pixel >> 4) & 0x1;
-                        let palette = [ppu.obp0, ppu.obp1][palette as usize];
-                        color = (palette >> (scolor * 2)) & 0b11;
-                    }
-                }
-                debug_assert!(color < 4);
-                ppu.screen[i] = color;
-                ppu.screen_x += 1;
-                ppu.scanline_x += 1;
+    let fetch_tile_address = |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
+        let mut tile = ppu.fetch_tile_number as u16;
+        if ppu.lcdc & 0x10 == 0 {
+            tile += 0x100;
+            if tile >= 0x180 {
+                tile -= 0x100;
             }
         }
+        let address = tile * 0x10 + 0x8000;
+        let offset = if is_in_window {
+            2 * (ppu.wyc as u16 % 8)
+        } else {
+            2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
+        };
+        let fetch_tile_address = address + offset;
+        fetch_tile_address
+    };
+
+    match ppu.fetcher_step {
+        // fetch tile number
+        0 => {
+            let tile_map = if !is_in_window {
+                if ppu.lcdc & 0x08 != 0 {
+                    0x9C00
+                } else {
+                    0x9800
+                }
+            } else {
+                if ppu.lcdc & 0x40 != 0 {
+                    0x9C00
+                } else {
+                    0x9800
+                }
+            };
+
+            let tx = if is_in_window {
+                ppu.fetcher_x
+            } else {
+                ((ppu.scx.wrapping_add(ppu.scanline_x).wrapping_add(8)) / 8) & 0x1f
+            };
+            let ty = if is_in_window {
+                ppu.wyc / 8
+            } else {
+                (ly.wrapping_add(ppu.scy) & 0xff) / 8
+            };
+
+            let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
+            ppu.fetch_tile_number = ppu.vram[(tile_map + offset) as usize - 0x8000];
+            ppu.fetcher_step = 1;
+        }
+        // fetch tile data (low)
+        1 => {
+            let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
+            ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
+            ppu.fetcher_step = 2;
+        }
+        // fetch tile data (hight)
+        2 => {
+            let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
+            ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
+
+            if !ppu.fetcher_skipped_first_push {
+                ppu.fetcher_skipped_first_push = true;
+                ppu.fetcher_step = 0;
+            } else {
+                ppu.fetcher_step = 3;
+            }
+        }
+        // push to fifo
+        3 => {
+            if !ppu.background_fifo.is_empty() {
+                ppu.fetcher_step = 3;
+            } else {
+                let low = ppu.fetch_tile_data_low;
+                let hight = ppu.fetch_tile_data_hight;
+                ppu.background_fifo.push_background(low, hight);
+                ppu.fetcher_x += 1;
+                ppu.fetcher_step = 0;
+            }
+        }
+        4..=255 => unreachable!(),
+    }
+}
+
+fn output_pixel(ppu: &mut Ppu) {
+    if let Some(pixel) = ppu.background_fifo.pop_front() {
+        let sprite_pixel = ppu.sprite_fifo.pop_front();
+
+        // scanline_x values greater or equal than 160 are interpreted as negative (for scrolling)
+        // or are out of bounds.
+        if ppu.scanline_x >= 160 {
+            // Discart the pixel. Used for scrolling the background.
+            ppu.scanline_x = ppu.scanline_x.wrapping_add(1);
+            return;
+        }
+
+        let i = (ppu.ly as usize) * 160 + ppu.screen_x as usize;
+        let background_enable = ppu.lcdc & 0x01 != 0;
+        let bcolor = if background_enable { pixel & 0b11 } else { 0 };
+
+        // background color, with pallete applied
+        let palette = ppu.bgp;
+        let mut color = (palette >> (bcolor * 2)) & 0b11;
+
+        if let Some(sprite_pixel) = sprite_pixel {
+            let scolor = sprite_pixel & 0b11;
+            let background_priority = (sprite_pixel >> 3) & 0x01 != 0;
+            if scolor == 0 || background_priority && bcolor != 0 {
+                // use background color
+            } else {
+                // use sprite color
+                let palette = (sprite_pixel >> 4) & 0x1;
+                let palette = [ppu.obp0, ppu.obp1][palette as usize];
+                color = (palette >> (scolor * 2)) & 0b11;
+            }
+        }
+        debug_assert!(color < 4);
+        ppu.screen[i] = color;
+        ppu.screen_x += 1;
+        ppu.scanline_x += 1;
     }
 }
 

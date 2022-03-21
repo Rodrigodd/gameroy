@@ -247,6 +247,9 @@ pub struct Ppu {
     reach_window: bool,
     is_in_window: bool,
 
+    /// Sprites at 0 cause a extra delay in the sprite fetching.
+    sprite_at_0_penalty: u8,
+
     /// The x position of the next screen pixel to be draw in the current scanline
     pub screen_x: u8,
     /// The x position in the current scanline, from -(8 + scx%8) to 160. Negative values
@@ -344,6 +347,8 @@ impl SaveState for Ppu {
         ]
         .save_state(data)?;
 
+        self.sprite_at_0_penalty.save_state(data)?;
+
         self.screen_x.save_state(data)?;
         self.scanline_x.save_state(data)?;
 
@@ -393,6 +398,8 @@ impl SaveState for Ppu {
         ]
         .load_state(data)?;
 
+        self.sprite_at_0_penalty.load_state(data)?;
+
         self.screen_x.load_state(data)?;
         self.scanline_x.load_state(data)?;
 
@@ -440,6 +447,7 @@ impl Default for Ppu {
             sprite_tile_data_hight: 0,
             reach_window: false,
             is_in_window: false,
+            sprite_at_0_penalty: 0,
             screen_x: 0,
             scanline_x: 0,
         }
@@ -505,6 +513,8 @@ impl Ppu {
             sprite_fetching: false,
             fetcher_cycle: false,
             stat_signal: false,
+
+            sprite_at_0_penalty: 0,
 
             screen_x: 0xa0,
             scanline_x: 0x00,
@@ -589,10 +599,7 @@ impl Ppu {
             let t = data[2];
             let flags = data[3];
 
-            if sx > 0
-                && self.ly as u16 + 16 >= sy as u16
-                && self.ly as u16 + 16 < sy as u16 + sprite_height
-            {
+            if self.ly as u16 + 16 >= sy as u16 && self.ly as u16 + 16 < sy as u16 + sprite_height {
                 self.sprite_buffer[self.sprite_buffer_len as usize] = Sprite {
                     sy,
                     sx,
@@ -730,6 +737,7 @@ impl Ppu {
                     }
                     ppu.is_in_window = false;
                     ppu.scanline_x = -((ppu.scx % 8 + 8) as i8) as u8;
+                    ppu.sprite_at_0_penalty = (ppu.scx % 8).min(5);
 
                     state = 27;
                 }
@@ -816,7 +824,9 @@ impl Ppu {
                 }
                 // while there are background pixels or don't reach a fetcher step...
                 31 => {
-                    if ppu.background_fifo.is_empty() && ppu.fetcher_step < 2 {
+                    if ppu.background_fifo.is_empty()
+                        || (ppu.fetcher_step < 2 || ppu.fetcher_step == 2 && !ppu.fetcher_cycle)
+                    {
                         tick_pixel_fetcher(ppu, ppu.ly);
                         // wait 1
                         ppu.next_clock_count += 1;
@@ -827,7 +837,24 @@ impl Ppu {
                 }
                 32 => {
                     // TODO: handle extra penalty sprite at 0
+                    if ppu.sprite_at_0_penalty != 0 {
+                        if ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1].sx == 0 {
+                            // wait sprite_at_0_penalty
+                            ppu.next_clock_count += ppu.sprite_at_0_penalty as u64;
+                            ppu.sprite_at_0_penalty = 0;
+                            state = 37;
+                            continue;
+                        }
+                    }
 
+                    state = 38;
+                }
+                37 => {
+                    // if abort_sprite_feching { goto aborted }
+
+                    state = 38;
+                }
+                38 => {
                     // wait 1
                     ppu.next_clock_count += 1;
                     state = 36;
@@ -921,7 +948,7 @@ impl Ppu {
                     state = 12;
                 }
                 12 => {
-                    ppu.next_clock_count += 12;
+                    ppu.next_clock_count += 2;
                     state = 13;
                 }
                 13 => {
@@ -960,7 +987,6 @@ impl Ppu {
                 16 => {
                     if ppu.ly == 144 {
                         ppu.set_stat_mode(2);
-                        // println!("[{}] OAM STAT", ppu.next_clock_count);
                     }
                     ppu.update_stat(&mut stat_interrupt);
 
@@ -1081,7 +1107,7 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
     let is_in_window = ppu.is_in_window;
     ppu.fetcher_cycle = !ppu.fetcher_cycle;
     // Pixel Fetching
-    if ppu.fetcher_cycle {
+    if ppu.fetcher_cycle && ppu.fetcher_step != 3 {
         return;
     }
 
@@ -1147,12 +1173,18 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
             ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
 
             ppu.fetcher_step = 3;
+
+            if ppu.background_fifo.is_empty() {
+                let low = ppu.fetch_tile_data_low;
+                let hight = ppu.fetch_tile_data_hight;
+                ppu.background_fifo.push_background(low, hight);
+                ppu.fetcher_x += 1;
+                ppu.fetcher_step = 0;
+            }
         }
         // push to fifo
         3 => {
-            if !ppu.background_fifo.is_empty() {
-                ppu.fetcher_step = 3;
-            } else {
+            if ppu.background_fifo.is_empty() {
                 let low = ppu.fetch_tile_data_low;
                 let hight = ppu.fetch_tile_data_hight;
                 ppu.background_fifo.push_background(low, hight);

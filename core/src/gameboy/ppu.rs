@@ -46,6 +46,17 @@ impl PixelFifo {
         }
     }
 
+    pub fn len(&self) -> usize {
+        let tail = self.tail as usize;
+        let head = self.head as usize;
+
+        if tail <= head {
+            head - tail
+        } else {
+            self.queue.len() - tail + head
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.head == self.tail
     }
@@ -172,6 +183,13 @@ pub struct Ppu {
     pub vram: [u8; 0x2000],
     /// FE00-FE9F: Sprite Attribute table
     pub oam: [u8; 0xA0],
+
+    /// The cycle in wich the last DMA tranfers was requested.
+    pub dma_started: u64,
+    /// If the DMA is running, including the intial delay.
+    pub dma_running: bool,
+    /// Oam read is blocked
+    pub block_oam: bool,
 
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
@@ -412,6 +430,9 @@ impl Default for Ppu {
         Self {
             vram: [0; 0x2000],
             oam: [0; 0xA0],
+            dma_started: 0x7fff_ffff_ffff_ffff,
+            dma_running: false,
+            block_oam: false,
             screen: [0; 144 * 160],
             sprite_buffer: Default::default(),
             sprite_buffer_len: Default::default(),
@@ -470,6 +491,9 @@ impl Ppu {
                 oam.load_state(&mut ppu_state).unwrap();
                 oam
             },
+            dma_started: 0x7fff_ffff_ffff_ffff,
+            dma_running: false,
+            block_oam: false,
             screen: {
                 let mut screen = [0; 0x5A00];
                 screen.load_state(&mut ppu_state).unwrap();
@@ -618,6 +642,69 @@ impl Ppu {
         self.sprite_buffer[0..self.sprite_buffer_len as usize].sort_by_key(|x| !x.sx);
     }
 
+    fn update_dma(gb: &GameBoy, ppu: &mut Ppu, clock_count: u64) {
+        if ppu.dma_running {
+            let elapsed = clock_count.wrapping_sub(ppu.dma_started);
+            if elapsed >= 8 {
+                ppu.block_oam = true;
+            }
+            // 8 cycles delay + 160 machine cycles
+            if elapsed >= 8 + 160 * 4 {
+                // Finish running
+                ppu.block_oam = false;
+                ppu.dma_running = false;
+
+                // copy memory
+                let mut value = gb.dma;
+                if value >= 0xFE {
+                    value -= 0x20;
+                }
+                let start = (value as u16) << 8;
+                for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
+                    // avoid borrowing the ppu twice
+                    let value = match j {
+                        0x8000..=0x9FFF => ppu.vram[j as usize - 0x8000],
+                        j => gb.read(j),
+                    };
+                    ppu.oam[i] = value;
+                }
+            }
+        }
+    }
+
+    pub fn start_dma(gb: &mut GameBoy, value: u8) {
+        Self::update(gb);
+        gb.dma = value;
+        let ppu = &mut *gb.ppu.borrow_mut();
+        ppu.dma_started = gb.clock_count;
+        if ppu.dma_running {
+            // HACK: if a DMA requested was make right before this one, this dma_started
+            // rewritten would cancel the oam_block of that DMA. To fix this, I will hackly
+            // block the oam here, but this will block the oam 4 cycles early, but I think
+            // this will not be observable.
+            ppu.block_oam = true;
+        }
+        ppu.dma_running = true;
+    }
+
+    pub fn read_oam(gb: &GameBoy, address: u16) -> u8 {
+        Self::update(gb);
+        let ppu = &mut *gb.ppu.borrow_mut();
+        if ppu.block_oam {
+            0xff
+        } else {
+            ppu.oam[address as usize - 0xFE00]
+        }
+    }
+
+    pub fn write_oam(gb: &mut GameBoy, address: u16, value: u8) {
+        Self::update(gb);
+        let ppu = &mut *gb.ppu.borrow_mut();
+        if !ppu.block_oam {
+            ppu.oam[address as usize - 0xFE00] = value;
+        }
+    }
+
     pub fn update(gb: &GameBoy) -> (bool, bool) {
         // Most of the ppu behaviour is based on the LIJI32/SameBoy including all of the timing,
         // and most of the implementation.
@@ -626,10 +713,9 @@ impl Ppu {
         if ppu.lcdc & 0x80 == 0 {
             // ppu is disabled
             ppu.next_clock_count = gb.clock_count;
+            Self::update_dma(gb, ppu, gb.clock_count);
             return (false, false);
         }
-
-        gb.update_dma(ppu);
 
         let mut state = ppu.state;
         let mut stat_interrupt = false;
@@ -637,7 +723,12 @@ impl Ppu {
 
         ppu.update_stat(&mut stat_interrupt);
 
+        if ppu.next_clock_count >= gb.clock_count {
+            Self::update_dma(gb, ppu, gb.clock_count);
+        }
+
         while ppu.next_clock_count < gb.clock_count {
+            Self::update_dma(gb, ppu, ppu.next_clock_count);
             // println!("state: {}", state);
             match state {
                 // turn on

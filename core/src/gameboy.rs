@@ -1,5 +1,5 @@
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     io::{Read, Write},
 };
 
@@ -46,11 +46,6 @@ pub struct GameBoy {
     pub interrupt_flag: u8,
     /// FF46: DMA register
     pub dma: u8,
-    /// The cycle in wich the last DMA tranfers was requested.
-    pub dma_started: u64,
-    /// If the DMA is running, including the intial delay.
-    pub dma_running: Cell<bool>,
-    pub block_oam: Cell<bool>,
     /// FFFF: IE
     pub interrupt_enabled: u8,
 
@@ -203,9 +198,6 @@ impl GameBoy {
             serial_control: 0x7E,
             interrupt_flag: 0,
             dma: 0xff,
-            dma_started: 0x7fff_ffff_ffff_ffff,
-            dma_running: Cell::new(false),
-            block_oam: Cell::new(false),
             interrupt_enabled: 0,
             v_blank_trigger: false,
             v_blank: None,
@@ -291,36 +283,6 @@ impl GameBoy {
             .unwrap();
     }
 
-    pub fn update_dma(&self, ppu: &mut Ppu) {
-        if self.dma_running.get() {
-            let elapsed = self.clock_count.wrapping_sub(self.dma_started);
-            if elapsed >= 8 {
-                self.block_oam.set(true);
-            }
-            // 8 cycles delay + 160 machine cycles
-            if elapsed >= 8 + 160 * 4 {
-                // Finish running
-                self.block_oam.set(false);
-                self.dma_running.set(false);
-
-                // copy memory
-                let mut value = self.dma;
-                if value >= 0xFE {
-                    value -= 0x20;
-                }
-                let start = (value as u16) << 8;
-                for (i, j) in (0x00..=0x9F).zip(start..=start + 0x9F) {
-                    // avoid borrowing the ppu twice
-                    let value = match j {
-                        0x8000..=0x9FFF => ppu.vram[j as usize - 0x8000],
-                        j => self.read(j),
-                    };
-                    ppu.oam[i] = value;
-                }
-            }
-        }
-    }
-
     pub fn read(&self, mut address: u16) -> u8 {
         if self.boot_rom_active {
             if address < 0x100 {
@@ -345,14 +307,7 @@ impl GameBoy {
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => {
-                self.update_dma(&mut *self.ppu.borrow_mut());
-                if self.block_oam.get() {
-                    0xff
-                } else {
-                    self.ppu.borrow().oam[address as usize - 0xFE00]
-                }
-            }
+            0xFE00..=0xFE9F => Ppu::read_oam(self, address),
             // Not Usable
             0xFEA0..=0xFEFF => 0xff,
             // I/O registers
@@ -381,12 +336,7 @@ impl GameBoy {
             // ECHO RAM
             0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
-            0xFE00..=0xFE9F => {
-                self.update_dma(&mut *self.ppu.borrow_mut());
-                if !self.block_oam.get() {
-                    self.ppu.borrow_mut().oam[address as usize - 0xFE00] = value;
-                }
-            }
+            0xFE00..=0xFE9F => Ppu::write_oam(self, address, value),
             // Not Usable
             0xFEA0..=0xFEFF => {}
             // I/O registers
@@ -449,16 +399,7 @@ impl GameBoy {
             0x40..=0x45 => Ppu::write(self, address, value),
             0x46 => {
                 // DMA Transfer
-                self.dma = value;
-                self.dma_started = self.clock_count;
-                if self.dma_running.get() {
-                    // HACK: if a DMA requested was make right before this one, this dma_started
-                    // rewritten would cancel the oam_block of that DMA. To fix this, I will hackly
-                    // block the oam here, but this will block the oam 4 cycles early, but I think
-                    // this will not be observable.
-                    self.block_oam.set(true);
-                }
-                self.dma_running.set(true);
+                Ppu::start_dma(self, value);
             }
             0x47..=0x4b => Ppu::write(self, address, value),
             0x4c..=0x4f => {}
@@ -519,4 +460,3 @@ impl GameBoy {
         }
     }
 }
-

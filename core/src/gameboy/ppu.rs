@@ -647,7 +647,11 @@ impl Ppu {
                     ppu.reach_window = false;
                     ppu.screen_x = 0;
 
-                    ppu.next_clock_count += 1;
+                    // In the SameBoy, there is a delay of 1 T-cycle beetween this state and the
+                    // next. I change to 0 because in the Sameboy the ppu activation happens 11
+                    // T-cycles after the opcode read, but in my emulator the delay is 12 T-cycles
+                    // (3 M-cycles). SameBoy must have a better write timing?
+                    ppu.next_clock_count += 0;
                     state = 1;
                 }
                 // 1
@@ -741,6 +745,7 @@ impl Ppu {
 
                     state = 27;
                 }
+                // Loop for every line from 0 to 144
                 27 => {
                     // Check for window activation
                     let window_enabled = ppu.lcdc & 0x20 != 0;
@@ -824,9 +829,7 @@ impl Ppu {
                 }
                 // while there are background pixels or don't reach a fetcher step...
                 31 => {
-                    if ppu.background_fifo.is_empty()
-                        || (ppu.fetcher_step < 2 || ppu.fetcher_step == 2 && !ppu.fetcher_cycle)
-                    {
+                    if ppu.background_fifo.is_empty() || ppu.fetcher_step < 5 {
                         tick_pixel_fetcher(ppu, ppu.ly);
                         // wait 1
                         ppu.next_clock_count += 1;
@@ -856,6 +859,7 @@ impl Ppu {
                 }
                 38 => {
                     // wait 1
+                    tick_pixel_fetcher(ppu, ppu.ly);
                     ppu.next_clock_count += 1;
                     state = 36;
                 }
@@ -885,7 +889,6 @@ impl Ppu {
                 33 => {
                     // if abort_sprite_feching { goto aborted }
 
-                    tick_pixel_fetcher(ppu, ppu.ly);
                     ppu.sprite_tile_data_low = ppu.vram[ppu.sprite_tile_address as usize];
 
                     // wait 2
@@ -1105,11 +1108,6 @@ impl Ppu {
 
 fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
     let is_in_window = ppu.is_in_window;
-    ppu.fetcher_cycle = !ppu.fetcher_cycle;
-    // Pixel Fetching
-    if ppu.fetcher_cycle && ppu.fetcher_step != 3 {
-        return;
-    }
 
     let fetch_tile_address = |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
         let mut tile = ppu.fetch_tile_number as u16;
@@ -1129,9 +1127,19 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
         fetch_tile_address
     };
 
+    let push_to_fifo = |ppu: &mut Ppu| {
+        if ppu.background_fifo.is_empty() {
+            let low = ppu.fetch_tile_data_low;
+            let hight = ppu.fetch_tile_data_hight;
+            ppu.background_fifo.push_background(low, hight);
+            ppu.fetcher_step = 0;
+        }
+    };
+
     match ppu.fetcher_step {
+        0 => {}
         // fetch tile number
-        0 => {
+        1 => {
             let tile_map = if !is_in_window {
                 if ppu.lcdc & 0x08 != 0 {
                     0x9C00
@@ -1159,41 +1167,36 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
 
             let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
             ppu.fetch_tile_number = ppu.vram[(tile_map + offset) as usize - 0x8000];
-            ppu.fetcher_step = 1;
         }
+        2 => {}
         // fetch tile data (low)
-        1 => {
+        3 => {
             let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
             ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
-            ppu.fetcher_step = 2;
         }
+        4 => {}
         // fetch tile data (hight)
-        2 => {
+        5 => {
             let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
             ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
-
-            ppu.fetcher_step = 3;
-
-            if ppu.background_fifo.is_empty() {
-                let low = ppu.fetch_tile_data_low;
-                let hight = ppu.fetch_tile_data_hight;
-                ppu.background_fifo.push_background(low, hight);
+            if ppu.is_in_window {
                 ppu.fetcher_x += 1;
-                ppu.fetcher_step = 0;
             }
+
+            ppu.fetcher_step += 1;
+            push_to_fifo(ppu);
+            // the step may change to 0, and must not be increase at the end of this function
+            return;
         }
         // push to fifo
-        3 => {
-            if ppu.background_fifo.is_empty() {
-                let low = ppu.fetch_tile_data_low;
-                let hight = ppu.fetch_tile_data_hight;
-                ppu.background_fifo.push_background(low, hight);
-                ppu.fetcher_x += 1;
-                ppu.fetcher_step = 0;
-            }
+        6 | 7 => {
+            push_to_fifo(ppu);
+            // the step may change to 0, and must not be increase at the end of this function
+            return;
         }
-        4..=255 => unreachable!(),
+        8..=255 => unreachable!(),
     }
+    ppu.fetcher_step += 1;
 }
 
 fn output_pixel(ppu: &mut Ppu) {

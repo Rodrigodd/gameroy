@@ -299,7 +299,7 @@ impl GameBoy {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.read(address),
             // Video RAM
-            0x8000..=0x9FFF => self.ppu.borrow().vram[address as usize - 0x8000],
+            0x8000..=0x9FFF => Ppu::read_vram(self, address),
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.read(address),
             // Work RAM
@@ -328,7 +328,7 @@ impl GameBoy {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.write(address, value),
             // Video RAM
-            0x8000..=0x9FFF => self.ppu.borrow_mut().vram[address as usize - 0x8000] = value,
+            0x8000..=0x9FFF => Ppu::write_vram(self, address, value),
             // Cartridge RAM
             0xA000..=0xBFFF => self.cartridge.write(address, value),
             // Work RAM

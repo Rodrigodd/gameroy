@@ -185,11 +185,16 @@ pub struct Ppu {
     pub oam: [u8; 0xA0],
 
     /// The cycle in wich the last DMA tranfers was requested.
-    pub dma_started: u64,
+    dma_started: u64,
     /// If the DMA is running, including the intial delay.
-    pub dma_running: bool,
+    dma_running: bool,
     /// Oam read is blocked
-    pub block_oam: bool,
+    dma_block_oam: bool,
+
+    oam_read_block: bool,
+    oam_write_block: bool,
+    vram_read_block: bool,
+    vram_write_block: bool,
 
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
@@ -432,7 +437,11 @@ impl Default for Ppu {
             oam: [0; 0xA0],
             dma_started: 0x7fff_ffff_ffff_ffff,
             dma_running: false,
-            block_oam: false,
+            dma_block_oam: false,
+            oam_read_block: false,
+            oam_write_block: false,
+            vram_read_block: false,
+            vram_write_block: false,
             screen: [0; 144 * 160],
             sprite_buffer: Default::default(),
             sprite_buffer_len: Default::default(),
@@ -493,7 +502,11 @@ impl Ppu {
             },
             dma_started: 0x7fff_ffff_ffff_ffff,
             dma_running: false,
-            block_oam: false,
+            dma_block_oam: false,
+            oam_read_block: false,
+            oam_write_block: false,
+            vram_read_block: false,
+            vram_write_block: false,
             screen: {
                 let mut screen = [0; 0x5A00];
                 screen.load_state(&mut ppu_state).unwrap();
@@ -646,12 +659,12 @@ impl Ppu {
         if ppu.dma_running {
             let elapsed = clock_count.wrapping_sub(ppu.dma_started);
             if elapsed >= 8 {
-                ppu.block_oam = true;
+                ppu.dma_block_oam = true;
             }
             // 8 cycles delay + 160 machine cycles
             if elapsed >= 8 + 160 * 4 {
                 // Finish running
-                ppu.block_oam = false;
+                ppu.dma_block_oam = false;
                 ppu.dma_running = false;
 
                 // copy memory
@@ -682,7 +695,7 @@ impl Ppu {
             // rewritten would cancel the oam_block of that DMA. To fix this, I will hackly
             // block the oam here, but this will block the oam 4 cycles early, but I think
             // this will not be observable.
-            ppu.block_oam = true;
+            ppu.dma_block_oam = true;
         }
         ppu.dma_running = true;
     }
@@ -690,7 +703,7 @@ impl Ppu {
     pub fn read_oam(gb: &GameBoy, address: u16) -> u8 {
         Self::update(gb);
         let ppu = &mut *gb.ppu.borrow_mut();
-        if ppu.block_oam {
+        if ppu.dma_block_oam || ppu.oam_read_block {
             0xff
         } else {
             ppu.oam[address as usize - 0xFE00]
@@ -700,8 +713,26 @@ impl Ppu {
     pub fn write_oam(gb: &mut GameBoy, address: u16, value: u8) {
         Self::update(gb);
         let ppu = &mut *gb.ppu.borrow_mut();
-        if !ppu.block_oam {
+        if !ppu.dma_block_oam && !ppu.oam_write_block {
             ppu.oam[address as usize - 0xFE00] = value;
+        }
+    }
+
+    pub fn read_vram(gb: &GameBoy, address: u16) -> u8 {
+        Self::update(gb);
+        let ppu = &mut *gb.ppu.borrow_mut();
+        if ppu.vram_read_block {
+            0xff
+        } else {
+            ppu.vram[address as usize - 0x8000]
+        }
+    }
+
+    pub fn write_vram(gb: &mut GameBoy, address: u16, value: u8) {
+        Self::update(gb);
+        let ppu = &mut *gb.ppu.borrow_mut();
+        if !ppu.vram_write_block {
+            ppu.vram[address as usize - 0x8000] = value;
         }
     }
 
@@ -738,6 +769,11 @@ impl Ppu {
                     ppu.reach_window = false;
                     ppu.screen_x = 0;
 
+                    ppu.oam_read_block = false;
+                    ppu.oam_write_block = false;
+                    ppu.vram_read_block = false;
+                    ppu.vram_write_block = false;
+
                     // In the SameBoy, there is a delay of 1 T-cycle beetween this state and the
                     // next. I change to 0 because in the Sameboy the ppu activation happens 11
                     // T-cycles after the opcode read, but in my emulator the delay is 12 T-cycles
@@ -754,11 +790,17 @@ impl Ppu {
                 }
                 // 77
                 2 => {
+                    ppu.oam_write_block = true;
                     ppu.next_clock_count += 2;
                     state = 3;
                 }
                 // 79
                 3 => {
+                    ppu.oam_read_block = true;
+                    ppu.oam_write_block = true;
+                    ppu.vram_read_block = true;
+                    ppu.vram_write_block = true;
+
                     ppu.set_stat_mode(3);
                     ppu.next_clock_count += 2;
                     state = 4;
@@ -783,6 +825,8 @@ impl Ppu {
                 }
                 // 3
                 7 => {
+                    ppu.oam_read_block = true;
+
                     if ppu.ly == 0 {
                         ppu.ly_for_compare = 0;
                         ppu.set_stat_mode(0);
@@ -797,12 +841,24 @@ impl Ppu {
                 }
                 // 4
                 8 => {
+                    ppu.oam_write_block = true;
+
                     ppu.set_stat_mode(2);
                     ppu.ly_for_compare = ppu.ly;
                     ppu.update_stat(&mut stat_interrupt);
                     ppu.search_objects();
 
-                    ppu.next_clock_count += 80;
+                    ppu.next_clock_count += 74;
+                    state = 39;
+                }
+                // 78
+                39 => {
+                    ppu.oam_read_block = true;
+                    ppu.oam_write_block = false;
+                    ppu.vram_read_block = true;
+                    ppu.vram_write_block = false;
+
+                    ppu.next_clock_count += 6;
                     state = 9;
                 }
                 // 84
@@ -810,6 +866,11 @@ impl Ppu {
                     debug_assert_eq!(ppu.next_clock_count - ppu.line_start_clock_count, 84);
                     ppu.set_stat_mode(3);
                     ppu.update_stat(&mut stat_interrupt);
+
+                    ppu.oam_read_block = true;
+                    ppu.oam_write_block = true;
+                    ppu.vram_read_block = true;
+                    ppu.vram_write_block = true;
 
                     ppu.next_clock_count += 5;
                     state = 10;
@@ -1035,6 +1096,11 @@ impl Ppu {
                     }
                 }
                 11 => {
+                    ppu.oam_read_block = false;
+                    ppu.oam_write_block = false;
+                    ppu.vram_read_block = false;
+                    ppu.vram_write_block = false;
+
                     ppu.set_stat_mode(0);
                     ppu.update_stat(&mut stat_interrupt);
 

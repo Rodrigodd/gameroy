@@ -170,152 +170,75 @@ impl PartialEq for SoundController {
         // && self.sample_mod == other.sample_mod
     }
 }
-impl SaveState for SoundController {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.nr10.save_state(data)?;
-        self.nr11.save_state(data)?;
-        self.nr12.save_state(data)?;
-        self.nr13.save_state(data)?;
-        self.nr14.save_state(data)?;
+crate::save_state!(SoundController, self, data {
+    self.nr10;
+    self.nr11;
+    self.nr12;
+    self.nr13;
+    self.nr14;
 
-        self.nr21.save_state(data)?;
-        self.nr22.save_state(data)?;
-        self.nr23.save_state(data)?;
-        self.nr24.save_state(data)?;
+    self.nr21;
+    self.nr22;
+    self.nr23;
+    self.nr24;
 
-        self.nr30.save_state(data)?;
-        self.nr31.save_state(data)?;
-        self.nr32.save_state(data)?;
-        self.nr33.save_state(data)?;
-        self.nr34.save_state(data)?;
-        self.ch3_wave_pattern.save_state(data)?;
+    self.nr30;
+    self.nr31;
+    self.nr32;
+    self.nr33;
+    self.nr34;
+    self.ch3_wave_pattern;
 
-        self.nr41.save_state(data)?;
-        self.nr42.save_state(data)?;
-        self.nr43.save_state(data)?;
-        self.nr44.save_state(data)?;
+    self.nr41;
+    self.nr42;
+    self.nr43;
+    self.nr44;
 
-        self.nr50.save_state(data)?;
-        self.nr51.save_state(data)?;
+    self.nr50;
+    self.nr51;
 
-        [
-            &self.on,
-            &self.ch1_channel_enable,
-            &self.ch1_sweep_enabled,
-            &self.ch1_has_done_sweep_calculation,
-            &self.ch2_channel_enable,
-            &self.ch3_channel_enable,
-            &self.ch3_wave_just_read,
-            &self.ch4_channel_enable,
-        ]
-        .save_state(data)?;
+    bitset [
+        self.on,
+        self.ch1_channel_enable,
+        self.ch1_sweep_enabled,
+        self.ch1_has_done_sweep_calculation,
+        self.ch2_channel_enable,
+        self.ch3_channel_enable,
+        self.ch3_wave_just_read,
+        self.ch4_channel_enable
+    ];
 
-        self.frame_sequencer_step.save_state(data)?;
-        self.ch1_length_timer.save_state(data)?;
-        self.ch1_shadow_freq.save_state(data)?;
-        self.ch1_sweep_timer.save_state(data)?;
-        self.ch1_frequency_timer.save_state(data)?;
-        self.ch1_wave_duty_position.save_state(data)?;
-        self.ch1_current_volume.save_state(data)?;
-        self.ch1_env_period_timer.save_state(data)?;
+    self.frame_sequencer_step;
+    self.ch1_length_timer;
+    self.ch1_shadow_freq;
+    self.ch1_sweep_timer;
+    self.ch1_frequency_timer;
+    self.ch1_wave_duty_position;
+    self.ch1_current_volume;
+    self.ch1_env_period_timer;
 
-        self.ch2_length_timer.save_state(data)?;
-        self.ch2_frequency_timer.save_state(data)?;
-        self.ch2_wave_duty_position.save_state(data)?;
-        self.ch2_current_volume.save_state(data)?;
-        self.ch2_env_period_timer.save_state(data)?;
+    self.ch2_length_timer;
+    self.ch2_frequency_timer;
+    self.ch2_wave_duty_position;
+    self.ch2_current_volume;
+    self.ch2_env_period_timer;
 
-        self.ch3_length_timer.save_state(data)?;
-        self.ch3_frequency_timer.save_state(data)?;
-        self.ch3_wave_position.save_state(data)?;
-        self.ch3_sample_buffer.save_state(data)?;
+    self.ch3_length_timer;
+    self.ch3_frequency_timer;
+    self.ch3_wave_position;
+    self.ch3_sample_buffer;
 
-        self.ch4_length_timer.save_state(data)?;
-        self.ch4_current_volume.save_state(data)?;
-        self.ch4_env_period_timer.save_state(data)?;
-        self.ch4_lfsr.save_state(data)?;
-        self.ch4_frequency_timer.save_state(data)?;
+    self.ch4_length_timer;
+    self.ch4_current_volume;
+    self.ch4_env_period_timer;
+    self.ch4_lfsr;
+    self.ch4_frequency_timer;
 
-        // self.output.save_state(data)?;
-        self.last_clock.save_state(data)?;
-        // self.sample_frequency.save_state(data)?;
-        // self.sample_mod.save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-        self.nr10.load_state(data)?;
-        self.nr11.load_state(data)?;
-        self.nr12.load_state(data)?;
-        self.nr13.load_state(data)?;
-        self.nr14.load_state(data)?;
-
-        self.nr21.load_state(data)?;
-        self.nr22.load_state(data)?;
-        self.nr23.load_state(data)?;
-        self.nr24.load_state(data)?;
-
-        self.nr30.load_state(data)?;
-        self.nr31.load_state(data)?;
-        self.nr32.load_state(data)?;
-        self.nr33.load_state(data)?;
-        self.nr34.load_state(data)?;
-        self.ch3_wave_pattern.load_state(data)?;
-
-        self.nr41.load_state(data)?;
-        self.nr42.load_state(data)?;
-        self.nr43.load_state(data)?;
-        self.nr44.load_state(data)?;
-
-        self.nr50.load_state(data)?;
-        self.nr51.load_state(data)?;
-
-        [
-            &mut self.on,
-            &mut self.ch1_channel_enable,
-            &mut self.ch1_sweep_enabled,
-            &mut self.ch1_has_done_sweep_calculation,
-            &mut self.ch2_channel_enable,
-            &mut self.ch3_channel_enable,
-            &mut self.ch3_wave_just_read,
-            &mut self.ch4_channel_enable,
-        ]
-        .load_state(data)?;
-
-        self.frame_sequencer_step.load_state(data)?;
-        self.ch1_length_timer.load_state(data)?;
-        self.ch1_shadow_freq.load_state(data)?;
-        self.ch1_sweep_timer.load_state(data)?;
-        self.ch1_frequency_timer.load_state(data)?;
-        self.ch1_wave_duty_position.load_state(data)?;
-        self.ch1_current_volume.load_state(data)?;
-        self.ch1_env_period_timer.load_state(data)?;
-
-        self.ch2_length_timer.load_state(data)?;
-        self.ch2_frequency_timer.load_state(data)?;
-        self.ch2_wave_duty_position.load_state(data)?;
-        self.ch2_current_volume.load_state(data)?;
-        self.ch2_env_period_timer.load_state(data)?;
-
-        self.ch3_length_timer.load_state(data)?;
-        self.ch3_frequency_timer.load_state(data)?;
-        self.ch3_wave_position.load_state(data)?;
-        self.ch3_sample_buffer.load_state(data)?;
-
-        self.ch4_length_timer.load_state(data)?;
-        self.ch4_current_volume.load_state(data)?;
-        self.ch4_env_period_timer.load_state(data)?;
-        self.ch4_lfsr.load_state(data)?;
-        self.ch4_frequency_timer.load_state(data)?;
-
-        // self.output.load_state(data)?;
-        self.last_clock.load_state(data)?;
-        // self.sample_frequency.load_state(data)?;
-        // self.sample_mod.load_state(data)?;
-        Ok(())
-    }
-}
-
+    // self.output;
+    self.last_clock;
+    // self.sample_frequency;
+    // self.sample_mod;
+});
 impl Default for SoundController {
     fn default() -> Self {
         Self {

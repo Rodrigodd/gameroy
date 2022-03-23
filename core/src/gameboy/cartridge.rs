@@ -267,15 +267,7 @@ impl Cartridge {
 /// Cartridge without a MBC chip
 #[derive(PartialEq, Eq)]
 struct MBC0 {}
-impl SaveState for MBC0 {
-    fn save_state(&self, _data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        Ok(())
-    }
-
-    fn load_state(&mut self, _data: &mut impl Read) -> Result<(), LoadStateError> {
-        Ok(())
-    }
-}
+crate::save_state!(MBC0, self, data {});
 impl MBC0 {
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
         match address {
@@ -309,19 +301,10 @@ struct MBC1 {
     mode: bool,
     ram_enabled: bool,
 }
-impl SaveState for MBC1 {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.selected_bank.save_state(data)?;
-        [&self.mode, &self.ram_enabled].save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.selected_bank.load_state(data)?;
-        [&mut self.mode, &mut self.ram_enabled].load_state(data)?;
-        Ok(())
-    }
-}
+crate::save_state!(MBC1, self, data {
+    self.selected_bank;
+    bitset [self.mode, self.ram_enabled];
+});
 impl MBC1 {
     fn new() -> Self {
         Self {
@@ -451,19 +434,10 @@ struct MBC2 {
     selected_bank: u8,
     ram_enabled: bool,
 }
-impl SaveState for MBC2 {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.selected_bank.save_state(data)?;
-        [&self.ram_enabled].save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.selected_bank.load_state(data)?;
-        [&mut self.ram_enabled].load_state(data)?;
-        Ok(())
-    }
-}
+crate::save_state!(MBC2, self, data {
+    self.selected_bank;
+    bitset [self.ram_enabled];
+});
 impl MBC2 {
     fn new() -> Self {
         Self {
@@ -547,25 +521,13 @@ struct MBC3 {
     // 1 means that 0 was written
     latch_clock_data: u8,
 }
-impl SaveState for MBC3 {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.selected_bank.save_state(data)?;
-        self.ram_bank.save_state(data)?;
-        self.rtc.save_state(data)?;
-        [&self.ram_enabled].save_state(data)?;
-        self.latch_clock_data.save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.selected_bank.load_state(data)?;
-        self.ram_bank.load_state(data)?;
-        self.rtc.load_state(data)?;
-        [&mut self.ram_enabled].load_state(data)?;
-        self.latch_clock_data.load_state(data)?;
-        Ok(())
-    }
-}
+crate::save_state!(MBC3, self, data {
+    self.selected_bank;
+    self.ram_bank;
+    self.rtc;
+    bitset [self.ram_enabled];
+    self.latch_clock_data;
+});
 impl MBC3 {
     fn curr_bank(&self, _rom: &[u8]) -> u16 {
         self.selected_bank as u16
@@ -694,19 +656,11 @@ struct MBC5 {
     selected_ram_bank: u8,
     ram_enabled: bool,
 }
-impl SaveState for MBC5 {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.selected_bank.save_state(data)?;
-        [&self.ram_enabled].save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.selected_bank.load_state(data)?;
-        [&mut self.ram_enabled].load_state(data)?;
-        Ok(())
-    }
-}
+crate::save_state!(MBC5, self, data {
+    self.selected_bank;
+    self.selected_ram_bank;
+    bitset [self.ram_enabled];
+});
 impl MBC5 {
     fn new() -> Self {
         Self {

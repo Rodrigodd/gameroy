@@ -256,11 +256,6 @@ pub struct Ppu {
 
     // pixel fetcher
     fetcher_step: u8,
-    // the first push to fifo in a scanline is skipped
-    fetcher_skipped_first_push: bool,
-    /// If it is currentlly fetching a sprite (None for is not featching)
-    sprite_fetching: bool,
-    fetcher_cycle: bool,
     /// the tile x position that the pixel fetcher is in
     fetcher_x: u8,
     fetch_tile_number: u8,
@@ -284,12 +279,20 @@ pub struct Ppu {
     /// to the left of the screen, and for discarting pixels for scrolling.
     scanline_x: u8,
 }
+
 impl std::fmt::Debug for Ppu {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ppu")
             .field("vram", &"[...]")
             .field("oam", &"[...]")
             .field("screen", &"[...]")
+            .field("dma_started", &self.dma_started)
+            .field("dma_running", &self.dma_running)
+            .field("dma_block_oam", &self.dma_block_oam)
+            .field("oam_read_block", &self.oam_read_block)
+            .field("oam_write_block", &self.oam_write_block)
+            .field("vram_read_block", &self.vram_read_block)
+            .field("vram_write_block", &self.vram_write_block)
             .field("sprite_buffer", &self.sprite_buffer)
             .field("sprite_buffer_len", &self.sprite_buffer_len)
             .field("wyc", &self.wyc)
@@ -307,132 +310,92 @@ impl std::fmt::Debug for Ppu {
             .field("state", &self.state)
             .field("ly_for_compare", &self.ly_for_compare)
             .field("stat_signal", &self.stat_signal)
+            .field("ly_compare_signal", &self.ly_compare_signal)
+            .field("stat_mode_for_interrupt", &self.stat_mode_for_interrupt)
             .field("next_clock_count", &self.next_clock_count)
             .field("line_start_clock_count", &self.line_start_clock_count)
             .field("background_fifo", &self.background_fifo)
             .field("sprite_fifo", &self.sprite_fifo)
             .field("fetcher_step", &self.fetcher_step)
-            .field(
-                "fetcher_skipped_first_push",
-                &self.fetcher_skipped_first_push,
-            )
-            .field("sprite_fetching", &self.sprite_fetching)
-            .field("fetcher_cycle", &self.fetcher_cycle)
             .field("fetcher_x", &self.fetcher_x)
             .field("fetch_tile_number", &self.fetch_tile_number)
             .field("fetch_tile_data_low", &self.fetch_tile_data_low)
             .field("fetch_tile_data_hight", &self.fetch_tile_data_hight)
+            .field("sprite_tile_address", &self.sprite_tile_address)
+            .field("sprite_tile_data_low", &self.sprite_tile_data_low)
+            .field("sprite_tile_data_hight", &self.sprite_tile_data_hight)
             .field("reach_window", &self.reach_window)
             .field("is_in_window", &self.is_in_window)
+            .field("sprite_at_0_penalty", &self.sprite_at_0_penalty)
             .field("screen_x", &self.screen_x)
             .field("scanline_x", &self.scanline_x)
             .finish()
     }
 }
+crate::save_state!(Ppu, self, data {
+    self.vram;
+    self.oam;
 
-impl SaveState for Ppu {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.vram.save_state(data)?;
-        self.oam.save_state(data)?;
+    self.dma_started;
 
-        self.screen.save_state(data)?;
-        self.sprite_buffer.save_state(data)?;
-        self.sprite_buffer_len.save_state(data)?;
-        self.wyc.save_state(data)?;
-        self.lcdc.save_state(data)?;
-        self.stat.save_state(data)?;
-        self.scy.save_state(data)?;
-        self.scx.save_state(data)?;
-        self.ly.save_state(data)?;
-        self.lyc.save_state(data)?;
-        self.bgp.save_state(data)?;
-        self.obp0.save_state(data)?;
-        self.obp1.save_state(data)?;
-        self.wy.save_state(data)?;
-        self.wx.save_state(data)?;
-        self.state.save_state(data)?;
-        self.ly_for_compare.save_state(data)?;
-        self.next_clock_count.save_state(data)?;
-        self.line_start_clock_count.save_state(data)?;
+    self.screen;
+    self.sprite_buffer;
+    self.sprite_buffer_len;
+    self.wyc;
 
-        self.background_fifo.save_state(data)?;
-        self.sprite_fifo.save_state(data)?;
+    self.lcdc;
+    self.stat;
+    self.scy;
+    self.scx;
+    self.ly;
+    self.lyc;
+    self.bgp;
+    self.obp0;
+    self.obp1;
+    self.wy;
+    self.wx;
 
-        self.fetcher_step.save_state(data)?;
-        self.fetcher_x.save_state(data)?;
-        self.fetch_tile_number.save_state(data)?;
-        self.fetch_tile_data_low.save_state(data)?;
-        self.fetch_tile_data_hight.save_state(data)?;
+    self.state;
+    self.ly_for_compare;
 
-        [
-            &self.reach_window,
-            &self.is_in_window,
-            &self.fetcher_skipped_first_push,
-            &self.sprite_fetching,
-            &self.fetcher_cycle,
-            &self.stat_signal,
-        ]
-        .save_state(data)?;
+    self.stat_mode_for_interrupt;
 
-        self.sprite_at_0_penalty.save_state(data)?;
+    self.next_clock_count;
+    self.line_start_clock_count;
 
-        self.screen_x.save_state(data)?;
-        self.scanline_x.save_state(data)?;
+    self.background_fifo;
+    self.sprite_fifo;
 
-        Ok(())
-    }
+    self.fetcher_step;
+    self.fetcher_x;
+    self.fetch_tile_number;
+    self.fetch_tile_data_low;
+    self.fetch_tile_data_hight;
 
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-        self.vram.load_state(data)?;
-        self.oam.load_state(data)?;
+    self.sprite_tile_address;
+    self.sprite_tile_data_low;
+    self.sprite_tile_data_hight;
 
-        self.screen.load_state(data)?;
-        self.sprite_buffer.load_state(data)?;
-        self.sprite_buffer_len.load_state(data)?;
-        self.wyc.load_state(data)?;
-        self.lcdc.load_state(data)?;
-        self.stat.load_state(data)?;
-        self.scy.load_state(data)?;
-        self.scx.load_state(data)?;
-        self.ly.load_state(data)?;
-        self.lyc.load_state(data)?;
-        self.bgp.load_state(data)?;
-        self.obp0.load_state(data)?;
-        self.obp1.load_state(data)?;
-        self.wy.load_state(data)?;
-        self.wx.load_state(data)?;
-        self.state.load_state(data)?;
-        self.ly_for_compare.load_state(data)?;
-        self.next_clock_count.load_state(data)?;
-        self.line_start_clock_count.load_state(data)?;
+    self.sprite_at_0_penalty;
 
-        self.background_fifo.load_state(data)?;
-        self.sprite_fifo.load_state(data)?;
+    self.screen_x;
+    self.scanline_x;
 
-        self.fetcher_step.load_state(data)?;
-        self.fetcher_x.load_state(data)?;
-        self.fetch_tile_number.load_state(data)?;
-        self.fetch_tile_data_low.load_state(data)?;
-        self.fetch_tile_data_hight.load_state(data)?;
-
-        [
-            &mut self.reach_window,
-            &mut self.is_in_window,
-            &mut self.fetcher_skipped_first_push,
-            &mut self.sprite_fetching,
-            &mut self.fetcher_cycle,
-            &mut self.stat_signal,
-        ]
-        .load_state(data)?;
-
-        self.sprite_at_0_penalty.load_state(data)?;
-
-        self.screen_x.load_state(data)?;
-        self.scanline_x.load_state(data)?;
-
-        Ok(())
-    }
-}
+    bitset [
+        self.dma_running,
+        self.dma_block_oam,
+        self.oam_read_block,
+        self.oam_write_block,
+        self.vram_read_block,
+        self.vram_write_block
+    ];
+    bitset [
+        self.stat_signal,
+        self.ly_compare_signal,
+        self.reach_window,
+        self.is_in_window
+    ];
+});
 
 impl Default for Ppu {
     fn default() -> Self {
@@ -470,10 +433,7 @@ impl Default for Ppu {
             line_start_clock_count: 0,
             background_fifo: Default::default(),
             sprite_fifo: Default::default(),
-            sprite_fetching: false,
-            fetcher_cycle: false,
             fetcher_step: 0,
-            fetcher_skipped_first_push: false,
             fetcher_x: 0,
             fetch_tile_number: 0,
             fetch_tile_data_low: 0,
@@ -552,9 +512,6 @@ impl Ppu {
 
             reach_window: true,
             is_in_window: false,
-            fetcher_skipped_first_push: true,
-            sprite_fetching: false,
-            fetcher_cycle: false,
             stat_signal: false,
             ly_compare_signal: false,
             stat_mode_for_interrupt: 1,
@@ -905,9 +862,6 @@ impl Ppu {
                     ppu.background_fifo.push_background(0x00, 0x00);
 
                     ppu.fetcher_step = 0;
-                    ppu.fetcher_skipped_first_push = false;
-                    ppu.sprite_fetching = false;
-                    ppu.fetcher_cycle = false;
                     ppu.fetcher_x = 0;
                     if ppu.wy == ppu.ly {
                         ppu.reach_window = true;
@@ -962,9 +916,7 @@ impl Ppu {
                 28 => {
                     ppu.is_in_window = true;
                     ppu.fetcher_x = 0;
-                    if !ppu.sprite_fetching {
-                        ppu.fetcher_step = 0;
-                    }
+                    ppu.fetcher_step = 0;
                     ppu.background_fifo.clear();
 
                     state = 29;

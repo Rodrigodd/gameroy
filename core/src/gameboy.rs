@@ -1,7 +1,4 @@
-use std::{
-    cell::RefCell,
-    io::{Read, Write},
-};
+use std::cell::RefCell;
 
 use crate::{
     disassembler::Trace,
@@ -102,78 +99,37 @@ impl PartialEq for GameBoy {
         // && self.v_blank == other.v_blank
     }
 }
+crate::save_state!(GameBoy, self, data {
+    // self.trace;
+    self.cpu;
+    self.cartridge;
+    self.wram;
+    self.hram;
+    // self.boot_rom;
+    self.clock_count;
+    self.timer;
+    {
+        let mut sound = self.sound.borrow_mut();
+        sound.update(self.clock_count);
+        sound
+    };
+    {
+        // Ppu::update(self);
+        let ppu = self.ppu.borrow_mut();
+        ppu
+    };
+    self.joypad_io;
+    self.joypad;
+    self.serial_data;
+    self.serial_control;
+    // self.serial_transfer;
+    self.interrupt_flag;
+    self.dma;
+    self.interrupt_enabled;
 
-impl SaveState for GameBoy {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        // self.trace.save_state(output)?;
-        self.cpu.save_state(data)?;
-        self.cartridge.save_state(data)?;
-        self.wram.save_state(data)?;
-        self.hram.save_state(data)?;
-        // self.boot_rom.save_state(output)?;
-        [&self.boot_rom_active].save_state(data)?;
-        self.clock_count.save_state(data)?;
-        self.timer.save_state(data)?;
-        {
-            let mut sound = self.sound.borrow_mut();
-            sound.update(self.clock_count);
-            sound.save_state(data)?;
-        }
-        {
-            // Ppu::update(self);
-            let ppu = self.ppu.borrow();
-            ppu.save_state(data)?;
-        }
-        self.joypad_io.save_state(data)?;
-        self.joypad.save_state(data)?;
-
-        self.serial_data.save_state(data)?;
-        self.serial_control.save_state(data)?;
-        // self.serial_transfer.save_state(data)?;
-        self.interrupt_flag.save_state(data)?;
-        self.interrupt_enabled.save_state(data)?;
-        // self.v_blank.save_state(data)
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        // self.trace.load_state(output)?;
-        self.cpu.load_state(data)?;
-        self.cartridge.load_state(data)?;
-        self.wram.load_state(data)?;
-        self.hram.load_state(data)?;
-        // self.boot_rom.load_state(output)?;
-        [&mut self.boot_rom_active].load_state(data)?;
-        self.clock_count.load_state(data)?;
-        self.timer.load_state(data)?;
-        {
-            let mut sound = self.sound.borrow_mut();
-            sound.load_state(data)?;
-            if sound.last_clock != self.clock_count {
-                return Err(LoadStateError::SoundControllerDesync(
-                    sound.last_clock,
-                    self.clock_count,
-                ));
-            }
-        }
-        {
-            // Ppu::update(self);
-            let mut ppu = self.ppu.borrow_mut();
-            ppu.load_state(data)?;
-        }
-        self.joypad_io.load_state(data)?;
-        self.joypad.load_state(data)?;
-
-        self.serial_data.load_state(data)?;
-        self.serial_control.load_state(data)?;
-        // self.serial_transfer.load_state(data)?;
-        self.interrupt_flag.load_state(data)?;
-        self.interrupt_enabled.load_state(data)?;
-        // self.v_blank.load_state(data)
-
-        Ok(())
-    }
-}
+    bitset [self.boot_rom_active, self.v_blank_trigger];
+    // self.v_blank;
+});
 impl GameBoy {
     pub fn new(boot_rom: Option<[u8; 0x100]>, cartridge: Cartridge) -> Self {
         let mut this = Self {

@@ -90,39 +90,20 @@ impl fmt::Display for Cpu {
         Ok(())
     }
 }
-impl SaveState for Cpu {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.a.save_state(data)?;
-        self.f.0.save_state(data)?;
-        self.b.save_state(data)?;
-        self.c.save_state(data)?;
-        self.d.save_state(data)?;
-        self.e.save_state(data)?;
-        self.h.save_state(data)?;
-        self.l.save_state(data)?;
-        self.sp.save_state(data)?;
-        self.pc.save_state(data)?;
-        self.ime.save_state(data)?;
-        self.state.save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-        self.a.load_state(data)?;
-        self.f.0.load_state(data)?;
-        self.b.load_state(data)?;
-        self.c.load_state(data)?;
-        self.d.load_state(data)?;
-        self.e.load_state(data)?;
-        self.h.load_state(data)?;
-        self.l.load_state(data)?;
-        self.sp.load_state(data)?;
-        self.pc.load_state(data)?;
-        self.ime.load_state(data)?;
-        self.state.load_state(data)?;
-        Ok(())
-    }
-}
+crate::save_state!(Cpu, self, data {
+    self.a;
+    self.f.0;
+    self.b;
+    self.c;
+    self.d;
+    self.e;
+    self.h;
+    self.l;
+    self.sp;
+    self.pc;
+    self.ime;
+    self.state;
+});
 impl Cpu {
     pub fn af(&self) -> u16 {
         u16::from_be_bytes([self.a, self.f.0])

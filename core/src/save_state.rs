@@ -33,6 +33,46 @@ impl SaveState for u8 {
     }
 }
 
+#[macro_export]
+macro_rules! save_state {
+    (@accum ($n:ident, $s:ident, $d:ident,) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        impl SaveState for $n {
+            fn save_state(&$s, $d: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+                $($save)*
+                let _ = $d;
+                Ok(())
+            }
+
+            fn load_state(&mut $s, $d: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+                $($load)*
+                let _ = $d;
+                Ok(())
+            }
+        }
+    };
+    (@accum ($n:ident, $s:ident, $d:ident, bitset [ $($e:expr),* ]; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $d, $($f)* )
+            -> ($($save)* [ $( &    $e),* ].save_state($d)?; )
+            -> ($($load)* [ $( &mut $e),* ].load_state($d)?; )
+        );
+    };
+    (@accum ($n:ident, $s:ident, $d:ident, $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $d, $($f)* )
+            -> ($($save)* ($e).save_state($d)?; )
+            -> ($($load)* ($e).load_state($d)?; )
+        );
+    };
+    ($n:ident, $s:ident, $d:ident { $($f:tt)* }) => {
+        $crate::save_state!(
+            @accum ($n, $s, $d, $($f)* )
+            -> ()
+            -> ()
+        );
+    };
+}
+
 impl SaveState for u16 {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
         data.write_all(&self.to_be_bytes())?;

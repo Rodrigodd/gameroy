@@ -1,5 +1,3 @@
-use std::io::{Read, Write};
-
 use crate::save_state::{LoadStateError, SaveState};
 
 #[derive(Default, Debug, PartialEq, Eq)]
@@ -21,28 +19,15 @@ pub struct Timer {
     /// there is no reload if = 0.
     pub loading: u8,
 }
-
-impl SaveState for Timer {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        self.div.save_state(data)?;
-        self.tima.save_state(data)?;
-        self.tma.save_state(data)?;
-        self.tac.save_state(data)?;
-        [&self.last_counter_bit].save_state(data)?;
-        self.last_clock_count.save_state(data)?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.div.load_state(data)?;
-        self.tima.load_state(data)?;
-        self.tma.load_state(data)?;
-        self.tac.load_state(data)?;
-        [&mut self.last_counter_bit].load_state(data)?;
-        self.last_clock_count.load_state(data)?;
-        Ok(())
-    }
-}
+crate::save_state!(Timer, self, data {
+    self.div;
+    self.tima;
+    self.tma;
+    self.tac;
+    bitset [self.last_counter_bit];
+    self.last_clock_count;
+    self.loading;
+});
 
 // TODO: At some point, I want this timer to be lazy evaluated.
 impl Timer {
@@ -69,7 +54,6 @@ impl Timer {
             let f = [9, 3, 5, 7][(self.tac & 0b11) as usize];
             let counter_bit = ((self.div >> f) as u8 & (self.tac >> 2)) & 0b1 != 0;
 
-
             // faling edge
             if self.last_counter_bit && !counter_bit {
                 let (v, overflow) = self.tima.overflowing_add(1);
@@ -84,7 +68,7 @@ impl Timer {
             // loading TIMA
             if self.loading != 0 {
                 self.loading -= 1;
-                if self.loading <= 4 { 
+                if self.loading <= 4 {
                     self.tima = self.tma;
                     interrupt = true;
                 }
@@ -120,7 +104,7 @@ impl Timer {
                 } else {
                     // ignored while reloading
                 }
-            },
+            }
             0x06 => self.tma = value,
             0x07 => self.tac = value,
             _ => unreachable!("out of Timer memory map"),

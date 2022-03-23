@@ -843,6 +843,7 @@ impl Ppu {
                     if ppu.ly == 0 {
                         ppu.ly_for_compare = 0;
                         ppu.set_stat_mode(0);
+                        ppu.stat_mode_for_interrupt = 0xff;
                     } else {
                         ppu.ly_for_compare = 0xFF;
                         ppu.set_stat_mode(0);

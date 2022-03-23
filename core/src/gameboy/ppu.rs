@@ -241,6 +241,10 @@ pub struct Ppu {
     ly_for_compare: u8,
 
     stat_signal: bool,
+    ly_compare_signal: bool,
+    /// use this value instead of the current stat mode when controling the stat interrupt signal,
+    /// to control the timing. 0xff means that this will not trigger a interrupt.
+    stat_mode_for_interrupt: u8,
 
     /// Next clock cycle where the PPU will be updated
     pub next_clock_count: u64,
@@ -460,6 +464,8 @@ impl Default for Ppu {
             ly_for_compare: 0,
             state: 0,
             stat_signal: false,
+            ly_compare_signal: false,
+            stat_mode_for_interrupt: 0xff,
             next_clock_count: 0,
             line_start_clock_count: 0,
             background_fifo: Default::default(),
@@ -550,6 +556,8 @@ impl Ppu {
             sprite_fetching: false,
             fetcher_cycle: false,
             stat_signal: false,
+            ly_compare_signal: false,
+            stat_mode_for_interrupt: 1,
 
             sprite_at_0_penalty: 0,
 
@@ -765,7 +773,10 @@ impl Ppu {
                 // turn on
                 0 => {
                     ppu.ly = 0;
+
                     ppu.set_stat_mode(0);
+                    ppu.stat_mode_for_interrupt = 0;
+
                     ppu.reach_window = false;
                     ppu.screen_x = 0;
 
@@ -802,6 +813,8 @@ impl Ppu {
                     ppu.vram_write_block = true;
 
                     ppu.set_stat_mode(3);
+                    ppu.stat_mode_for_interrupt = 3;
+
                     ppu.next_clock_count += 2;
                     state = 4;
                 }
@@ -832,7 +845,8 @@ impl Ppu {
                         ppu.set_stat_mode(0);
                     } else {
                         ppu.ly_for_compare = 0xFF;
-                        ppu.set_stat_mode(2);
+                        ppu.set_stat_mode(0);
+                        ppu.stat_mode_for_interrupt = 2;
                     }
                     ppu.update_stat(&mut stat_interrupt);
 
@@ -843,28 +857,34 @@ impl Ppu {
                 8 => {
                     ppu.oam_write_block = true;
 
-                    ppu.set_stat_mode(2);
                     ppu.ly_for_compare = ppu.ly;
+
+                    ppu.set_stat_mode(2);
+                    ppu.stat_mode_for_interrupt = 2;
                     ppu.update_stat(&mut stat_interrupt);
+                    ppu.stat_mode_for_interrupt = 0xff;
+                    ppu.update_stat(&mut stat_interrupt);
+
                     ppu.search_objects();
 
-                    ppu.next_clock_count += 74;
+                    ppu.next_clock_count += 76;
                     state = 39;
                 }
-                // 78
+                // 80
                 39 => {
                     ppu.oam_read_block = true;
                     ppu.oam_write_block = false;
                     ppu.vram_read_block = true;
                     ppu.vram_write_block = false;
 
-                    ppu.next_clock_count += 6;
+                    ppu.next_clock_count += 4;
                     state = 9;
                 }
                 // 84
                 9 => {
                     debug_assert_eq!(ppu.next_clock_count - ppu.line_start_clock_count, 84);
                     ppu.set_stat_mode(3);
+                    ppu.stat_mode_for_interrupt = 3;
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.oam_read_block = true;
@@ -894,6 +914,7 @@ impl Ppu {
                     ppu.is_in_window = false;
                     ppu.scanline_x = -((ppu.scx % 8 + 8) as i8) as u8;
                     ppu.sprite_at_0_penalty = (ppu.scx % 8).min(5);
+                    // ppu.sprite_at_0_penalty = 4;
 
                     state = 27;
                 }
@@ -1102,6 +1123,7 @@ impl Ppu {
                     ppu.vram_write_block = false;
 
                     ppu.set_stat_mode(0);
+                    ppu.stat_mode_for_interrupt = 0;
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 1;
@@ -1117,16 +1139,19 @@ impl Ppu {
                     state = 26;
                 }
                 26 => {
+                    if ppu.lcdc & 0x20 != 0 && ppu.wy == ppu.ly {
+                        ppu.reach_window = true;
+                    }
+
                     ppu.next_clock_count += 2;
                     state = 14;
                 }
                 14 => {
                     ppu.ly += 1;
                     if ppu.ly == 144 {
-                        // goto v_blank
+                        // goto vblank
                         state = 15;
                     } else {
-                        // println!(" ly: {}", ppu.ly);
                         // goto start_line
                         state = 6;
                     }
@@ -1139,16 +1164,16 @@ impl Ppu {
                         continue;
                     }
                     ppu.ly_for_compare = 0xFF;
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
                     state = 16;
                 }
                 // 2
                 16 => {
-                    if ppu.ly == 144 {
-                        ppu.set_stat_mode(2);
+                    if ppu.ly == 144 && !ppu.stat_signal && ppu.stat & 0x20 != 0 {
+                        stat_interrupt = true;
                     }
-                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
                     state = 17;
@@ -1156,12 +1181,22 @@ impl Ppu {
                 // 4
                 17 => {
                     ppu.ly_for_compare = ppu.ly;
+                    ppu.update_stat(&mut stat_interrupt);
+
+                    ppu.next_clock_count += 0;
+                    state = 40;
+                }
+                40 => {
                     if ppu.ly == 144 {
                         ppu.set_stat_mode(1);
                         vblank_interrupt = true;
-                        // println!("[{}] vblank", ppu.next_clock_count);
+                        if !ppu.stat_signal && ppu.stat & 0x20 != 0 {
+                            stat_interrupt = true;
+                        }
+                        ppu.stat_mode_for_interrupt = 1;
+                        ppu.update_stat(&mut stat_interrupt);
                     }
-                    ppu.update_stat(&mut stat_interrupt);
+
                     ppu.next_clock_count += 456 - 4;
                     state = 25;
                 }
@@ -1230,7 +1265,7 @@ impl Ppu {
     }
 
     fn update_stat(&mut self, stat_interrupt: &mut bool) {
-        let stat_mode = self.stat & 0b11;
+        let stat_mode = self.stat_mode_for_interrupt;
         let mut stat_line = false;
 
         match stat_mode {
@@ -1241,24 +1276,29 @@ impl Ppu {
             }
             2 => stat_line |= self.stat & 0x20 != 0,
             3 => {}
-            4..=255 => unreachable!(),
+            255 => {}
+            4..=254 => unreachable!(),
         }
 
         // LY==LYC
-        if self.ly_for_compare != 0xFF {
-            let compare = self.ly_for_compare == self.lyc;
-            if compare {
-                // LY == LYC STAT Interrupt
-                stat_line |= self.stat & (1 << 6) != 0;
-            }
+        self.stat = self.stat & !0x04;
+        if self.ly_for_compare == self.lyc {
+            self.ly_compare_signal = true;
             // STAT Coincident Flag
-            self.stat = (self.stat & !0x04) | ((compare as u8) << 2);
+            self.stat |= 0x04;
+        } else {
+            if self.ly_for_compare != 0xff {
+                self.ly_compare_signal = false;
+            }
         }
+        // LY == LYC STAT Interrupt
+        stat_line |= (self.stat & (1 << 6) != 0) && self.ly_compare_signal;
 
         // on rising edge
         if !self.stat_signal && stat_line {
             *stat_interrupt = true;
         }
+
         self.stat_signal = stat_line;
     }
 }

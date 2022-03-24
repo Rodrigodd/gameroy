@@ -15,6 +15,10 @@ use self::{
     cartridge::Cartridge, cpu::Cpu, ppu::Ppu, sound_controller::SoundController, timer::Timer,
 };
 
+/// The offset beetween clock_count and the serial transfer clock, in cycles. This is choose
+/// arbitrariily, in a way that pass the serial_boot_sclk_align_dmg_abc_mgb test.
+const SERIAL_OFFSET: u64 = 8;
+
 pub struct GameBoy {
     pub trace: RefCell<Trace>,
     pub cpu: Cpu,
@@ -38,12 +42,20 @@ pub struct GameBoy {
     pub serial_data: u8,
     /// FF02: SC
     pub serial_control: u8,
+    /// The instant, in 2^13 Hz clock count (T-clock count >> 9), in which the first bit of current
+    /// serial tranfer was send. It is 0 if there is no transfer happening.
+    pub serial_transfer_started: u64,
     pub serial_transfer: Box<dyn FnMut(u8) + Send>,
-    /// FF0F: IF
+    /// FF0F: Interrupt Flag (IF)
+    /// - bit 0: VBlank
+    /// - bit 1: STAT
+    /// - bit 2: Timer
+    /// - bit 3: Serial
+    /// - bit 4: Joypad
     pub interrupt_flag: u8,
     /// FF46: DMA register
     pub dma: u8,
-    /// FFFF: IE
+    /// FFFF: Interrupt Enabled (IE). Same scheme as interrurpt_flag.
     pub interrupt_enabled: u8,
 
     /// This trigger control if in the next interpret the v_blank callback will be called.
@@ -122,6 +134,7 @@ crate::save_state!(GameBoy, self, data {
     self.joypad;
     self.serial_data;
     self.serial_control;
+    self.serial_transfer_started;
     // self.serial_transfer;
     self.interrupt_flag;
     self.dma;
@@ -147,11 +160,12 @@ impl GameBoy {
 
             joypad: 0xFF,
             joypad_io: 0x00,
+            serial_data: 0,
+            serial_control: 0x7E,
+            serial_transfer_started: 0,
             serial_transfer: Box::new(|c| {
                 eprint!("{}", c as char);
             }),
-            serial_data: 0,
-            serial_control: 0x7E,
             interrupt_flag: 0,
             dma: 0xff,
             interrupt_enabled: 0,
@@ -307,9 +321,8 @@ impl GameBoy {
     /// Advante the clock by 'count' cycles
     pub fn tick(&mut self, count: u8) {
         self.clock_count += count as u64;
-        if self.timer.update(self.clock_count) {
-            self.interrupt_flag |= 1 << 2;
-        }
+
+        // ppu
         let (v_blank_interrupt, stat_interrupt) = Ppu::update(self);
         if stat_interrupt {
             self.interrupt_flag |= 1 << 1;
@@ -317,6 +330,22 @@ impl GameBoy {
         if v_blank_interrupt {
             self.interrupt_flag |= 1 << 0;
             self.v_blank_trigger = true;
+        }
+
+        // timer
+        if self.timer.update(self.clock_count) {
+            self.interrupt_flag |= 1 << 2;
+        }
+
+        // serial
+        if self.serial_transfer_started != 0
+            && self.serial_transfer_started + 7 < (self.clock_count + SERIAL_OFFSET) >> 9
+        {
+            // interrupt
+            self.interrupt_flag |= 1 << 3;
+            // clear tranfer flag bit
+            self.serial_control &= !0x80;
+            self.serial_transfer_started = 0;
         }
     }
 
@@ -336,6 +365,8 @@ impl GameBoy {
             0x01 => self.serial_data = value,
             0x02 => {
                 self.serial_control = value | 0x7E;
+                // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
+                self.serial_transfer_started = (self.clock_count + SERIAL_OFFSET) >> 9;
                 if value == 0x81 {
                     (self.serial_transfer)(self.serial_data);
                 }

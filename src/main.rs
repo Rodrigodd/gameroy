@@ -1,6 +1,4 @@
 use std::{
-    fs::File,
-    io::Read,
     path::{Path, PathBuf},
     sync::{mpsc::sync_channel, Arc},
     thread,
@@ -39,7 +37,11 @@ fn main() {
         .author("Rodrigo Moraes")
         .about("A Game Boy emulator and debugger (and disassembler?).")
         .arg(arg!(-d - -debug "start the emulation in debug mode").required(false))
-        .arg(arg!(--disassembly "output to stdout the dissasembly of the rom").required(false))
+        .arg(
+            arg!(--disassembly "output to stdout the dissasembly of the rom")
+                .required(false)
+                .requires("ROM_PATH"),
+        )
         .arg(arg!(--movie <PATH> "play the given .vbm file").required(false))
         .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
         .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
@@ -55,80 +57,87 @@ fn main() {
         vbm
     });
 
-    if let Some(rom_path) = rom_path {
-        let rom_path = PathBuf::from(rom_path);
+    // dissasembly and return early
+    if diss {
+        if let Some(rom_path) = rom_path {
+            let rom_path = PathBuf::from(rom_path);
 
-        if diss {
-            let (_, mut game_boy) =
-                load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
-            game_boy.boot_rom_active = false;
+            let gb = load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
+            let (_, mut gb) = match gb {
+                Ok(x) => x,
+                Err(e) => return eprintln!("{}", e),
+            };
+            gb.boot_rom_active = false;
 
             let mut string = String::new();
-            game_boy
-                .trace
-                .borrow_mut()
-                .fmt(&game_boy, &mut string)
-                .unwrap();
+            gb.trace.borrow_mut().fmt(&gb, &mut string).unwrap();
             println!("{}", string);
 
             return;
+        } else {
+            unreachable!("the --disassembly flag already requires <ROM_PATH>");
         }
-
-        // create winit's window and event_loop
-        let event_loop = EventLoop::with_user_event();
-        let window = WindowBuilder::new()
-            .with_inner_size(PhysicalSize::new(768u32, 400))
-            .build(&event_loop)
-            .unwrap();
-
-        let proxy = event_loop.create_proxy();
-        let mut ui = ui::Ui::new(&window, proxy);
-
-        let proxy = event_loop.create_proxy();
-
-        let (save_path, game_boy) =
-            load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
-        let emu = EmulatorApp::new(game_boy, proxy, debug, &mut ui, movie, rom_path, save_path);
-        start_event_loop(event_loop, window, ui, Box::new(emu));
-    } else {
-        // create winit's window and event_loop
-        let event_loop = EventLoop::with_user_event();
-        let window = WindowBuilder::new()
-            .with_inner_size(PhysicalSize::new(768u32, 400))
-            .build(&event_loop)
-            .unwrap();
-
-        let proxy = event_loop.create_proxy();
-        let mut ui = ui::Ui::new(&window, proxy);
-
-        // let proxy = event_loop.create_proxy();
-
-        let rom_loading = RomLoadingApp::new(&mut ui);
-        start_event_loop(event_loop, window, ui, Box::new(rom_loading));
     }
-}
 
-fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, GameBoy) {
-    log::info!("loading rom: {:?}", rom_path);
-    let rom = std::fs::read(&rom_path).unwrap();
+    // load rom if necesary
+    let gb = if let Some(rom_path) = rom_path {
+        let rom_path = PathBuf::from(rom_path);
 
-    let boot_rom = if let Some(boot_rom_path) = boot_rom_path {
-        match File::open(boot_rom_path) {
-            Ok(mut boot_rom_file) => {
-                let mut boot_rom = [0; 0x100];
-                boot_rom_file.read(&mut boot_rom).unwrap();
-                Some(boot_rom)
-            }
+        let gb = load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
+        match gb {
+            Ok((s, g)) => Some((s, g, rom_path)),
             Err(e) => {
-                eprintln!("error loading boot rom: {}", e);
-                None
+                eprintln!("{}", e);
+                return;
             }
         }
     } else {
         None
     };
+
+    // create winit's window and event_loop
+    let event_loop = EventLoop::with_user_event();
+    let window = WindowBuilder::new()
+        .with_inner_size(PhysicalSize::new(768u32, 400))
+        // wait every thing to be loaded before showing the window
+        .with_visible(false)
+        .build(&event_loop)
+        .unwrap();
+
+    let proxy = event_loop.create_proxy();
+    let mut ui = ui::Ui::new(&window, proxy);
+
+    let proxy = event_loop.create_proxy();
+
+    // initiate in the apropriated screen
+    match gb {
+        Some((save_path, gb, rom_path)) => {
+            let emu = EmulatorApp::new(gb, proxy, debug, &mut ui, movie, rom_path, save_path);
+            start_event_loop(event_loop, window, ui, Box::new(emu));
+        }
+        _ => {
+            let rom_loading = RomLoadingApp::new(&mut ui);
+            start_event_loop(event_loop, window, ui, Box::new(rom_loading))
+        }
+    };
+}
+
+fn load_gameboy(
+    rom_path: &Path,
+    boot_rom_path: Option<&Path>,
+) -> Result<(PathBuf, GameBoy), String> {
+    log::info!("loading rom: {:?}", rom_path);
+    let rom = {
+        let mut rom = Vec::new();
+        open_and_read(rom_path, &mut rom)?;
+        rom
+    };
+
+    let boot_rom = load_boot_rom(boot_rom_path);
+
     let mut cartridge = Cartridge::new(rom).unwrap();
     log::info!("Cartridge type: {}", cartridge.kind_name());
+
     let mut save_path = rom_path.to_path_buf();
     if save_path.set_extension("sav") {
         log::info!("loading save at {}", save_path.display());
@@ -140,6 +149,7 @@ fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, Game
             }
         }
     }
+
     let game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
     {
         let mut trace = game_boy.trace.borrow_mut();
@@ -151,7 +161,32 @@ fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, Game
         trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
         trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
     }
-    (save_path, game_boy)
+    Ok((save_path, game_boy))
+}
+
+fn load_boot_rom(boot_rom_path: Option<&Path>) -> Option<[u8; 256]> {
+    let boot_rom_path = if let Some(x) = boot_rom_path {
+        x
+    } else {
+        return None;
+    };
+
+    let mut boot_rom = [0; 0x100];
+    match open_and_read(boot_rom_path, &mut &mut boot_rom[..]) {
+        Err(e) => {
+            eprintln!("{}", e);
+            return None;
+        }
+        Ok(_) => Some(boot_rom),
+    }
+}
+
+fn open_and_read(rom_path: &Path, writer: &mut impl std::io::Write) -> Result<usize, String> {
+    let file = &mut std::fs::File::open(&rom_path)
+        .map_err(|x| format!("error loading '{}': {}", rom_path.display(), x))?;
+
+    Ok(std::io::copy(file, writer)
+        .map_err(|x| format!("error reading '{}': {}", rom_path.display(), x))? as usize)
 }
 
 use winit::{
@@ -181,7 +216,8 @@ fn start_event_loop(
     window: Window,
     mut ui: ui::Ui,
     mut app: Box<dyn App>,
-) {
+) -> ! {
+    window.set_visible(true);
     let proxy = event_loop.create_proxy();
     // winit event loop
     event_loop.run(move |event, _, control| {
@@ -216,23 +252,20 @@ fn start_event_loop(
             }
             Event::UserEvent(UserEvent::LoadRom(rom_path)) => {
                 ui.clear();
-                let (save_path, game_boy) = load_gameboy(&rom_path, None);
-                let emu = EmulatorApp::new(
-                    game_boy,
-                    proxy.clone(),
-                    false,
-                    &mut ui,
-                    None,
-                    rom_path,
-                    save_path,
-                );
+                let gb = load_gameboy(&rom_path, None);
+                let (save_path, gb) = match gb {
+                    Ok(x) => x,
+                    Err(e) => return eprintln!("{}", e),
+                };
+                let emu =
+                    EmulatorApp::new(gb, proxy.clone(), false, &mut ui, None, rom_path, save_path);
                 app = Box::new(emu);
                 return;
             }
             _ => {}
         }
         app.handle_event(event, &mut ui, &window, &proxy);
-    });
+    })
 }
 
 trait App {

@@ -99,7 +99,7 @@ impl CartridgeHeader {
         Self::from_bytes(&bytes[0..len])
     }
 
-    /// Return true if it has the correct values for the first  0x18  bytes of the nintendo logo.
+    /// Return true if it has the correct values for the first  0x18  bytes of the Nintendo logo.
     pub fn check_logo(&self) -> bool {
         #[rustfmt::skip]
         const NINTENDOO_LOGO: [u8; 48] = [
@@ -272,7 +272,7 @@ impl Cartridge {
         }
     }
 
-    /// The current selected rom bank
+    /// The current selected ROM bank
     pub fn curr_bank(&self) -> u16 {
         match &self.mbc {
             MBC::None(_) => 1,

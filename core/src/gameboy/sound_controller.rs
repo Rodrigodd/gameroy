@@ -51,7 +51,7 @@ pub struct SoundController {
     nr42: u8,
     /// FF22 - NR43 - Channel 4 Polynomial Counter (R/W)
     nr43: u8,
-    /// FF23 - NR44 - Channel 4 Counter/consecutive; Inital (R/W)
+    /// FF23 - NR44 - Channel 4 Counter/consecutive; Initial (R/W)
     nr44: u8,
 
     // Sound Control Registers
@@ -64,7 +64,7 @@ pub struct SoundController {
     /// All sound on/off
     on: bool,
 
-    /// The currenty step of the frame sequencer
+    /// The current step of the frame sequencer
     frame_sequencer_step: u8,
     // From SameBoy source code: "When turning the APU on while DIV's bit 4 (or 5 in
     // double speed mode) is on, the first DIV/APU event is skipped."
@@ -313,7 +313,7 @@ impl SoundController {
         std::mem::take(&mut self.output)
     }
 
-    /// Emulator the sound controler until to the currently clock_count, since the clock_count of
+    /// Emulator the sound controller until to the currently `clock_count`, since the `clock_count` of
     /// the last update.
     pub fn update(&mut self, clock_count: u64) {
         // if it is off, there is no need for audio generation

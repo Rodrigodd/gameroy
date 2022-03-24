@@ -184,9 +184,9 @@ pub struct Ppu {
     /// FE00-FE9F: Sprite Attribute table
     pub oam: [u8; 0xA0],
 
-    /// The cycle in wich the last DMA tranfers was requested.
+    /// The cycle in which the last DMA transfer was requested.
     dma_started: u64,
-    /// If the DMA is running, including the intial delay.
+    /// If the DMA is running, including the initial delay.
     dma_running: bool,
     /// Oam read is blocked
     dma_block_oam: bool,
@@ -201,7 +201,7 @@ pub struct Ppu {
     pub screen: [u8; 144 * 160],
     /// sprites that will be rendered in the next mode 3 scanline
     pub sprite_buffer: [Sprite; 10],
-    /// the length of the sprite_buffer
+    /// the length of the `sprite_buffer`
     pub sprite_buffer_len: u8,
     /// Window Internal Line Counter
     pub wyc: u8,
@@ -224,7 +224,7 @@ pub struct Ppu {
     pub ly: u8,
     /// FF45: LY Compare
     pub lyc: u8,
-    /// FF47: BG & Window Pallete Data
+    /// FF47: BG & Window Palette Data
     pub bgp: u8,
     /// FF48:
     pub obp0: u8,
@@ -242,7 +242,7 @@ pub struct Ppu {
 
     stat_signal: bool,
     ly_compare_signal: bool,
-    /// use this value instead of the current stat mode when controling the stat interrupt signal,
+    /// use this value instead of the current stat mode when controlling the stat interrupt signal,
     /// to control the timing. 0xff means that this will not trigger a interrupt.
     stat_mode_for_interrupt: u8,
 
@@ -275,8 +275,8 @@ pub struct Ppu {
     /// The x position of the next screen pixel to be draw in the current scanline
     pub screen_x: u8,
     /// The x position in the current scanline, from -(8 + scx%8) to 160. Negative values
-    /// (represented by positives beetween 241 and 255) are use for detecting sprites that starts
-    /// to the left of the screen, and for discarting pixels for scrolling.
+    /// (represented by positives between 241 and 255) are use for detecting sprites that starts
+    /// to the left of the screen, and for discarding pixels for scrolling.
     scanline_x: u8,
 }
 

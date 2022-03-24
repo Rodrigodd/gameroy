@@ -19,7 +19,6 @@ use gameroy::{
 use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
 
-// use std::{rc::Rc, cell::RefCell};
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view::FoldView,
@@ -29,7 +28,7 @@ use crate::{
 };
 
 struct Callback {
-    /// A list of past submitted texts, that allow to be reused by pressing UpArrow.
+    /// A list of past submitted texts, that allow to be reused by pressing `UpArrow`.
     history: Vec<String>,
     curr: usize,
 }

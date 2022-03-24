@@ -15,8 +15,8 @@ use self::{
     cartridge::Cartridge, cpu::Cpu, ppu::Ppu, sound_controller::SoundController, timer::Timer,
 };
 
-/// The offset beetween clock_count and the serial transfer clock, in cycles. This is choose
-/// arbitrariily, in a way that pass the serial_boot_sclk_align_dmg_abc_mgb test.
+/// The offset between `clock_count` and the serial transfer clock, in cycles. This is choose
+/// arbitrarily, in a way that pass the serial_boot_sclk_align_dmg_abc_mgb test.
 const SERIAL_OFFSET: u64 = 8;
 
 pub struct GameBoy {
@@ -25,7 +25,7 @@ pub struct GameBoy {
     pub cartridge: Cartridge,
     /// C000-DFFF: Work RAM
     pub wram: [u8; 0x2000],
-    /// FF80-FFFE: Hight RAM
+    /// FF80-FFFE: High RAM
     pub hram: [u8; 0x7F],
     pub boot_rom: Option<[u8; 0x100]>,
     pub boot_rom_active: bool,
@@ -43,7 +43,7 @@ pub struct GameBoy {
     /// FF02: SC
     pub serial_control: u8,
     /// The instant, in 2^13 Hz clock count (T-clock count >> 9), in which the first bit of current
-    /// serial tranfer was send. It is 0 if there is no transfer happening.
+    /// serial transfer was send. It is 0 if there is no transfer happening.
     pub serial_transfer_started: u64,
     pub serial_transfer: Box<dyn FnMut(u8) + Send>,
     /// FF0F: Interrupt Flag (IF)
@@ -55,12 +55,12 @@ pub struct GameBoy {
     pub interrupt_flag: u8,
     /// FF46: DMA register
     pub dma: u8,
-    /// FFFF: Interrupt Enabled (IE). Same scheme as interrurpt_flag.
+    /// FFFF: Interrupt Enabled (IE). Same scheme as `interrupt_flag`.
     pub interrupt_enabled: u8,
 
-    /// This trigger control if in the next interpret the v_blank callback will be called.
+    /// This trigger control if in the next interpret the `v_blank` callback will be called.
     pub v_blank_trigger: bool,
-    /// A callback that is called after a v_blank. This is called at the
+    /// A callback that is called after a VBlank. This is called at the
     pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
 }
 
@@ -180,7 +180,7 @@ impl GameBoy {
         this
     }
 
-    /// call the v_blank callback
+    /// call the `v_blank` callback
     pub fn call_v_blank_callback(&mut self) {
         if let Some(mut v_blank) = self.v_blank.take() {
             v_blank(self);
@@ -318,7 +318,7 @@ impl GameBoy {
         }
     }
 
-    /// Advante the clock by 'count' cycles
+    /// Advance the clock by 'count' cycles
     pub fn tick(&mut self, count: u8) {
         self.clock_count += count as u64;
 

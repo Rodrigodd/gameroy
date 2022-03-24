@@ -217,9 +217,9 @@ impl std::io::Write for CircularBuffer {
 struct Timeline {
     /// a buffer for transient use.
     buffer: Vec<u8>,
-    /// Stores multiples savestates, for the savestate timeline.
+    /// Stores multiples save states, for the save state timeline.
     savestate_buffer: CircularBuffer,
-    /// a list of pairs (frame, clock_count, circular_range), listing the game state for each
+    /// a list of pairs `(frame, clock_count, circular_range)`, listing the game state for each
     /// frame. The data is stored in the savestate_buffer.
     savestate_timeline: VecDeque<(usize, u64, (usize, usize))>,
     /// Current pressed keys by the user
@@ -269,7 +269,7 @@ impl Timeline {
         self.savestate_timeline.back().map(|&(_, x, _)| x)
     }
 
-    /// Load the save sate of the last frame in the given GameBoy.
+    /// Load the save sate of the last frame in the given `GameBoy`.
     fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
         let &(_last_frame, clock_count, range) = if let Some(x) = self.savestate_timeline.back() {
             x

@@ -2,7 +2,7 @@ use crui::{Behaviour, Id, InputFlags, Layout, LayoutContext, MinSizeContext, Mou
 use winit::window::CursorIcon;
 
 /// Layout two controls side by side, allowing to resize the size of each control by dragging the
-/// division beetween the two controls.
+/// division between the two controls.
 pub struct SplitView {
     spacing: f32,
     margins: [f32; 4],

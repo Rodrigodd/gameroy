@@ -114,7 +114,7 @@ impl Interpreter<'_> {
         }
     }
 
-    /// Set the value of the cpu PC, but also update the dissasembly tracing
+    /// Set the value of the cpu PC, but also update the disassembly tracing
     fn jump_to(&mut self, address: u16) {
         let pc = self.0.cpu.pc;
         self.0.cpu.pc = address;
@@ -862,7 +862,7 @@ impl Interpreter<'_> {
         }
     }
 
-    /// The number of cycles that the next interpret_op call will run.
+    /// The number of cycles that the next `interpret_op` call will run.
     pub fn next_interpret_cycle_count(&self) -> u8 {
         // this is need to be basically a copy of interpret_op, but `self.0.tick(ticks)` calls
         // replace by `count += ticks`

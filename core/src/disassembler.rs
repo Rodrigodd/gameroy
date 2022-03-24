@@ -17,7 +17,7 @@ impl fmt::LowerHex for ReallySigned {
     }
 }
 
-/// A address in the rom.
+/// A address in the ROM.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct Address {
     /// The bank where this address belongs
@@ -129,7 +129,7 @@ impl Cursor {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Directive {
-    /// The adress where this directive disassemble from
+    /// The address where this directive disassemble from
     pub address: Address,
     /// The length of bytes this directive disassemble from
     pub len: u16,
@@ -138,20 +138,20 @@ pub struct Directive {
 }
 
 pub struct Trace {
-    /// Dissasembled directives
+    /// Disassembled directives
     pub directives: BTreeSet<Directive>,
     /// Ranges of memory where code are executed
     pub code_ranges: Vec<Range<Address>>,
-    /// Map beetween a address and a label
+    /// Map between a address and a label
     pub labels: BTreeMap<Address, Label>,
     /// Map from a opcode (like jp or call) to another address
     pub jumps: BTreeMap<Address, Address>,
 
     /// Ranges of ram memory where code is being executed
     pub ram_code_ranges: Vec<Range<u16>>,
-    /// Dissasembled directives in ram
+    /// Disassembled directives in ram
     pub ram_directives: BTreeSet<(u16, [u8; 3], u8)>,
-    /// Map beetween a ram address and a label
+    /// Map between a ram address and a label
     pub ram_labels: BTreeMap<u16, String>,
 }
 impl Trace {
@@ -174,7 +174,7 @@ impl Trace {
         this
     }
 
-    /// Disassembly some opcodes above and below, respecting code_ranges
+    /// Disassembly some opcodes above and below, respecting `code_ranges`
     pub fn print_around(
         &mut self,
         bank: u16,
@@ -295,7 +295,7 @@ impl Trace {
             .ok()
     }
 
-    /// Insert a opcode to Self::code_ranges.
+    /// Insert a opcode to `Self::code_ranges`.
     /// Return true if the opcode was not added before.
     fn add_opcode(&mut self, address: Address, op: &[u8], len: u16) -> bool {
         let i = self.code_ranges.binary_search_by(|range| {
@@ -347,7 +347,7 @@ impl Trace {
         self.ram_code_ranges.clear();
     }
 
-    /// Insert a opcode to Self::ram_code_ranges.
+    /// Insert a opcode to `Self::ram_code_ranges`.
     /// Return true if the opcode was not added before.
     fn add_ram_opcode(&mut self, address: u16, op_array: [u8; 3], len: u8) -> bool {
         let i = self.ram_code_ranges.binary_search_by(|range| {
@@ -412,7 +412,7 @@ impl Trace {
         }
     }
 
-    /// Pop a PC from 'cursors', compute next possible PC values, and push to 'cursors'
+    /// Pop a PC from '`cursors`, compute next possible PC values, and push to 'cursors'
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
         let Cursor { pc, bank, reg_a } = cursor;

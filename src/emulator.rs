@@ -215,7 +215,7 @@ impl std::io::Write for CircularBuffer {
 }
 
 struct Timeline {
-    /// a buffer for transiente use.
+    /// a buffer for transient use.
     buffer: Vec<u8>,
     /// Stores multiples savestates, for the savestate timeline.
     savestate_buffer: CircularBuffer,

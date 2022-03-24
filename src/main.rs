@@ -128,6 +128,7 @@ fn load_gameboy(rom_path: &Path, boot_rom_path: Option<&Path>) -> (PathBuf, Game
         None
     };
     let mut cartridge = Cartridge::new(rom).unwrap();
+    log::info!("Cartridge type: {}", cartridge.kind_name());
     let mut save_path = rom_path.to_path_buf();
     if save_path.set_extension("sav") {
         log::info!("loading save at {}", save_path.display());

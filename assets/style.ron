@@ -10,16 +10,21 @@
         color: "#000a05",
         uv_rect: (0, 0, 1, 1),
     ),
+    header_background: Texture(
+        texture: "white.png",
+        color: "#000f05",
+        uv_rect: (0, 0, 1, 1),
+    ),
     text_field: TextFieldStyle(
         background: OnFocusStyle(
             normal: Texture(texture: "white.png", color: "#001000", uv_rect: (0,0,1,1)),
             focus: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
         ),
-        caret_color: "#00FF00",
-        selection_color: (bg: "#40A000", fg: "#001600"),
+        caret_color: "#34ff30",
+        selection_color: (bg: "#26c723", fg: "#001600"),
     ),
     scrollbar: ButtonStyle(
-        normal: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
+        normal: Texture(texture: "white.png", color: "#002b0b", uv_rect: (0,0,1,1)),
         hover: Texture(texture: "white.png", color: "#002600", uv_rect: (0,0,1,1)),
         pressed: Texture(texture: "white.png", color: "#003600", uv_rect: (0,0,1,1)),
         focus: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
@@ -36,4 +41,8 @@
         pressed: Texture(texture: "white.png", color: "#003600", uv_rect: (0,0,1,1)),
         selected: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
     ),
+    fold_icon: FoldIcon(
+        open: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (16,0,16,16), size: (16, 16)),
+        close: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (0,16,16,16), size: (16, 16)),
+    )
 )

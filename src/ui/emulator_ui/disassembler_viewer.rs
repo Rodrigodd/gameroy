@@ -3,7 +3,7 @@ use std::{any::Any, ops::Range, sync::Arc, usize};
 use crui::{
     event::SetValue,
     graphics::{Graphic, Text},
-    layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
+    layouts::{FitGraphic, HBoxLayout, VBoxLayout},
     text::{Span, TextStyle},
     widgets::{
         Button, InteractiveText, ListBuilder, SetScrollPosition, TextField, TextFieldCallback,
@@ -21,7 +21,7 @@ use winit::event::VirtualKeyCode;
 
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
-    fold_view::FoldView,
+    fold_view,
     split_view::SplitView,
     style::Style,
     ui,
@@ -230,8 +230,7 @@ impl ListBuilder for DissasemblerList {
 
             let cpu = &gb.cpu;
             let cpu_text = format!(
-                "\
-clock: {}
+                " clock: {}
  AF: {:02x} {:02x}
  BC: {:02x} {:02x}
  DE: {:02x} {:02x}
@@ -288,7 +287,7 @@ clock: {}
                 ppu.wy,
                 ppu.wx,
                 ppu.state,
-                ppu.next_clock_count,
+                decimal_mark(ppu.next_clock_count),
             );
 
             if let Graphic::Text(text) = ctx.get_graphic_mut(self.ppu) {
@@ -582,7 +581,7 @@ pub fn build(
 ) {
     let diss_view_id = ctx.reserve();
     let list_id = ctx.reserve();
-    let reg_id = ctx.reserve();
+    let cpu_id = ctx.reserve();
     let ppu_id = ctx.reserve();
 
     let vbox = ctx
@@ -609,7 +608,7 @@ pub fn build(
         [0.0; 4],
         DissasemblerList {
             list: list_id,
-            cpu: reg_id,
+            cpu: cpu_id,
             ppu: ppu_id,
             pc: None,
             directives: Vec::new(),
@@ -631,33 +630,19 @@ pub fn build(
         .graphic(style.split_background.clone())
         .build(ctx);
 
-    let _reg_view = ctx
-        .create_control_reserved(reg_id)
+    let cpu = fold_view::folder(ctx, "cpu".to_string(), style)
         .parent(right_panel)
+        .build(ctx);
+
+    let _reg_view = ctx
+        .create_control_reserved(cpu_id)
+        .parent(cpu)
         .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
         .layout(FitGraphic)
         .build(ctx);
 
-    let ppu = ctx
-        .create_control()
+    let ppu = fold_view::folder(ctx, "ppu".to_string(), style)
         .parent(right_panel)
-        .behaviour(FoldView { fold: true })
-        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-        .build(ctx);
-
-    let _ppu_header = ctx
-        .create_control()
-        .parent(ppu)
-        .child(ctx, |cb, _| {
-            cb.graphic(Text::new(
-                "ppu".to_string(),
-                (-1, 0),
-                style.text_style.clone(),
-            ))
-            .layout(FitGraphic)
-        })
-        .graphic(style.header_background.clone())
-        .layout(MarginLayout::default())
         .build(ctx);
 
     let _ppu_view = ctx
@@ -667,22 +652,8 @@ pub fn build(
         .layout(FitGraphic)
         .build(ctx);
 
-    let breaks = ctx
-        .create_control()
+    let breaks = fold_view::folder(ctx, "breaks".to_string(), style)
         .parent(right_panel)
-        .behaviour(FoldView { fold: false })
-        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-        .build(ctx);
-
-    let _break_header = ctx
-        .create_control()
-        .parent(breaks)
-        .graphic(Text::new(
-            "breakpoints".to_string(),
-            (-1, 0),
-            style.text_style.clone(),
-        ))
-        .layout(FitGraphic)
         .build(ctx);
 
     let break_list = ctx.reserve();
@@ -699,26 +670,8 @@ pub fn build(
     )
     .build(ctx);
 
-    let watchs = ctx
-        .create_control()
+    let watchs = fold_view::folder(ctx, "watchs".to_string(), style)
         .parent(right_panel)
-        .behaviour(FoldView { fold: false })
-        .layout(VBoxLayout::new(1.0, [0.0; 4], -1))
-        .build(ctx);
-
-    let _watchs_header = ctx
-        .create_control()
-        .parent(watchs)
-        .child(ctx, |cb, _| {
-            cb.graphic(Text::new(
-                "watchs".to_string(),
-                (-1, 0),
-                style.text_style.clone(),
-            ))
-            .layout(FitGraphic)
-        })
-        .graphic(style.header_background.clone())
-        .layout(MarginLayout::default())
         .build(ctx);
 
     let watchs_list = ctx.reserve();
@@ -735,6 +688,12 @@ pub fn build(
         },
     )
     .build(ctx);
+
+    ctx.create_control()
+        .expand_y(true)
+        .parent(right_panel)
+        .graphic(style.header_background.clone())
+        .build(ctx);
 
     let text_field = ctx
         .create_control()

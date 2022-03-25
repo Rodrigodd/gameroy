@@ -214,7 +214,7 @@ fn scroll_viewer(
     let _content = ctx
         .create_control_reserved(content)
         .parent(view)
-        .layout(VBoxLayout::new(10.0, [2.0; 4], -1))
+        .layout(VBoxLayout::new(0.0, [2.0; 4], -1))
         .build(ctx);
     let v_handle = ctx.reserve();
     let v_scroll = ctx

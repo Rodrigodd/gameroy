@@ -8,6 +8,8 @@ use crui::{
 };
 use sprite_render::SpriteRender;
 
+use crate::fold_view::FoldIcon;
+
 struct Loader<'a, R: SpriteRender> {
     fonts: &'a mut Fonts,
     render: &'a mut R,
@@ -53,10 +55,12 @@ pub struct Style {
     pub text_style: TextStyle,
     pub split_background: Graphic,
     pub background: Graphic,
+    pub header_background: Graphic,
     pub text_field: Rc<TextFieldStyle>,
     pub scrollbar: Rc<ButtonStyle>,
     pub delete_button: Rc<ButtonStyle>,
     pub tab_style: Rc<TabStyle>,
+    pub fold_icon: FoldIcon,
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {

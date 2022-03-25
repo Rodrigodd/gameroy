@@ -26,19 +26,7 @@ use winit::event_loop::EventLoopProxy;
 mod disassembler_viewer;
 mod ppu_viewer;
 
-pub fn create_emulator_ui(
-    ui: &mut Ui,
-    gb: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, GameBoy>>,
-    debugger: Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, Debugger>>,
-    emu_channel: SyncSender<EmulatorEvent>,
-    app_state: AppState,
-) {
-    ui.gui.set::<Arc<Mutex<GameBoy>>>(gb);
-    ui.gui.set::<Arc<Mutex<Debugger>>>(debugger);
-    ui.gui.set(emu_channel);
-    let debug = app_state.debug;
-    ui.gui.set(app_state);
-
+pub fn create_emulator_ui(ui: &mut Ui, debug: bool) {
     create_gui(
         &mut ui.gui,
         &ui.textures,
@@ -305,4 +293,3 @@ fn open_debug_panel(
     let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
     proxy.send_event(UserEvent::Debug(true)).unwrap();
 }
-

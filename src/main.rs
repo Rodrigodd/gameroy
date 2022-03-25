@@ -121,7 +121,7 @@ fn main() {
             start_event_loop(event_loop, window, ui, Box::new(emu));
         }
         _ => {
-            let rom_loading = RomLoadingApp::new(&mut ui);
+            let rom_loading = RomLoadingApp::new();
             start_event_loop(event_loop, window, ui, Box::new(rom_loading))
         }
     };
@@ -223,6 +223,7 @@ fn start_event_loop(
     mut app: Box<dyn App>,
 ) -> ! {
     window.set_visible(true);
+    app.build_ui(&mut ui);
     let proxy = event_loop.create_proxy();
     // winit event loop
     event_loop.run(move |event, _, control| {
@@ -269,6 +270,7 @@ fn start_event_loop(
                 let emu =
                     EmulatorApp::new(gb, proxy.clone(), false, &mut ui, None, rom_path, save_path);
                 app = Box::new(emu);
+                app.build_ui(&mut ui);
                 return;
             }
             _ => {}
@@ -285,14 +287,13 @@ trait App {
         window: &winit::window::Window,
         proxy: &EventLoopProxy<UserEvent>,
     );
+
+    fn build_ui(&self, ui: &mut ui::Ui);
 }
 
 struct RomLoadingApp;
 impl RomLoadingApp {
-    fn new(ui: &mut ui::Ui) -> Self {
-        let gui = &mut ui.gui;
-        let style = &ui.style;
-        ui::create_rom_loading_ui(gui, style);
+    fn new() -> Self {
         Self
     }
 }
@@ -315,6 +316,12 @@ impl App for RomLoadingApp {
             }
             _ => {}
         }
+    }
+
+    fn build_ui(&self, ui: &mut ui::Ui) {
+        let gui = &mut ui.gui;
+        let style = &ui.style;
+        ui::create_rom_loading_ui(gui, style);
     }
 }
 
@@ -371,15 +378,11 @@ impl EmulatorApp {
                 }
             }));
         }
-        ui::create_emulator_ui(
-            ui,
-            gb.clone(),
-            debugger.clone(),
-            emu_channel.clone(),
-            AppState::new(debug),
-        );
+        ui.gui.set::<Arc<Mutex<GameBoy>>>(gb.clone());
+        ui.gui.set::<Arc<Mutex<Debugger>>>(debugger.clone());
+        ui.gui.set(emu_channel.clone());
+        ui.gui.set(AppState::new(debug));
         let emu_thread = {
-            let gb = gb.clone();
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
                 .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom_path, save_path))
@@ -394,6 +397,10 @@ impl EmulatorApp {
     }
 }
 impl App for EmulatorApp {
+    fn build_ui(&self, ui: &mut ui::Ui) {
+        let debug = ui.get::<AppState>().debug;
+        ui::create_emulator_ui(ui, debug);
+    }
     fn handle_event(
         &mut self,
         event: Event<UserEvent>,

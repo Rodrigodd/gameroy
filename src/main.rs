@@ -101,6 +101,7 @@ fn main() {
         .with_inner_size(PhysicalSize::new(768u32, 400))
         // wait every thing to be loaded before showing the window
         .with_visible(false)
+        .with_title("gameroy")
         .build(&event_loop)
         .unwrap();
 
@@ -112,6 +113,10 @@ fn main() {
     // initiate in the apropriated screen
     match gb {
         Some((save_path, gb, rom_path)) => {
+            window.set_title(&format!(
+                "{} - gameroy",
+                rom_path.file_name().unwrap().to_string_lossy()
+            ));
             let emu = EmulatorApp::new(gb, proxy, debug, &mut ui, movie, rom_path, save_path);
             start_event_loop(event_loop, window, ui, Box::new(emu));
         }
@@ -257,6 +262,10 @@ fn start_event_loop(
                     Ok(x) => x,
                     Err(e) => return eprintln!("{}", e),
                 };
+                window.set_title(&format!(
+                    "{} - gameroy",
+                    rom_path.file_name().unwrap().to_string_lossy()
+                ));
                 let emu =
                     EmulatorApp::new(gb, proxy.clone(), false, &mut ui, None, rom_path, save_path);
                 app = Box::new(emu);

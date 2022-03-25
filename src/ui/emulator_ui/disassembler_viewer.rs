@@ -377,43 +377,46 @@ clock: {}
         cb: crui::ControlBuilder,
         ctx: &mut dyn crui::BuilderContext,
     ) -> crui::ControlBuilder {
-        let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+        cb.min_size([0.0, 15.0]).child(ctx, |cb, ctx| {
+            let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
 
-        let trace = inter.trace.borrow();
-        let directive = self.directives[index].clone();
-        let style = ctx.get::<Style>().text_style.clone();
-        let (graphic, label_range) = self.graphic(style, directive.clone(), trace, self.pc);
-        let cb = cb.graphic(graphic).layout(FitText);
-        let mut span = 0;
-        if let Some(label_range) = label_range {
-            cb.behaviour(InteractiveText::new(vec![(
-                label_range.clone(),
-                Box::new(move |mouse: MouseInfo, this: Id, ctx: &mut Context| {
-                    let text = match ctx.get_graphic_mut(this) {
-                        Graphic::Text(x) => x,
-                        _ => return,
-                    };
-                    match mouse.event {
-                        MouseEvent::Enter => {
-                            let label = 0x2e8bb2ff.into();
-                            span = text.add_span(label_range.clone(), Span::Underline(Some(label)));
+            let trace = inter.trace.borrow();
+            let directive = self.directives[index].clone();
+            let style = ctx.get::<Style>().text_style.clone();
+            let (graphic, label_range) = self.graphic(style, directive.clone(), trace, self.pc);
+            let cb = cb.graphic(graphic).layout(FitText);
+            let mut span = 0;
+            if let Some(label_range) = label_range {
+                cb.behaviour(InteractiveText::new(vec![(
+                    label_range.clone(),
+                    Box::new(move |mouse: MouseInfo, this: Id, ctx: &mut Context| {
+                        let text = match ctx.get_graphic_mut(this) {
+                            Graphic::Text(x) => x,
+                            _ => return,
+                        };
+                        match mouse.event {
+                            MouseEvent::Enter => {
+                                let label = 0x2e8bb2ff.into();
+                                span = text
+                                    .add_span(label_range.clone(), Span::Underline(Some(label)));
+                            }
+                            MouseEvent::Exit => {
+                                text.remove_span(span);
+                            }
+                            _ if mouse.click() => ctx.send_event_to(
+                                _list_id,
+                                JumpToAddress {
+                                    from_address: dbg!(directive.address),
+                                },
+                            ),
+                            _ => {}
                         }
-                        MouseEvent::Exit => {
-                            text.remove_span(span);
-                        }
-                        _ if mouse.click() => ctx.send_event_to(
-                            _list_id,
-                            JumpToAddress {
-                                from_address: dbg!(directive.address),
-                            },
-                        ),
-                        _ => {}
-                    }
-                }),
-            )]))
-        } else {
-            cb
-        }
+                    }),
+                )]))
+            } else {
+                cb
+            }
+        })
     }
 
     fn update_item(&mut self, _index: usize, _item_id: Id, _ctx: &mut dyn BuilderContext) -> bool {
@@ -595,11 +598,9 @@ pub fn build(
     let h_box = ctx
         .create_control()
         .parent(vbox)
-        .behaviour_and_layout(SplitView::new(1.0, 20.0, [2.0; 4], false))
+        .behaviour_and_layout(SplitView::new(1.0, 2.0, [2.0; 4], false))
         .expand_y(true)
         .build(ctx);
-
-    let ignore_min_width = ctx.create_control().parent(h_box).expand_x(true).build(ctx);
 
     ui::list(
         ctx.create_control_reserved(list_id),
@@ -616,7 +617,7 @@ pub fn build(
             _emulator_updated_event: event_table.register(list_id),
         },
     )
-    .parent(ignore_min_width)
+    .parent(h_box)
     .build(ctx);
 
     let caret = ctx.reserve();

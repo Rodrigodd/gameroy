@@ -38,7 +38,7 @@ fn main() {
         .about("A Game Boy emulator and debugger (and disassembler?).")
         .arg(arg!(-d - -debug "start the emulation in debug mode").required(false))
         .arg(
-            arg!(--disassembly "output to stdout the dissasembly of the rom")
+            arg!(--disassembly "output to stdout the dissasembly of the rom (it isn't working nor complete assembly)")
                 .required(false)
                 .requires("ROM_PATH"),
         )

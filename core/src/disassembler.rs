@@ -652,6 +652,8 @@ fn compute_step(
             // RST n
             let dest = (x & 0b00111000) as u16;
             jump(dest);
+            // TODO: same RST (and maybe others calls too) discard the return address in the calee,
+            // so tracing the next instruction here would be wrong.
             step();
         }
         _ => {

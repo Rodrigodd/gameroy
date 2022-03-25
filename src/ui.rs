@@ -16,7 +16,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::{event_table::EventTable, style::Style, SCREEN_HEIGHT, SCREEN_WIDTH, UserEvent};
+use crate::{event_table::EventTable, style::Style, UserEvent, SCREEN_HEIGHT, SCREEN_WIDTH};
 
 mod emulator_ui;
 pub use emulator_ui::create_emulator_ui;
@@ -57,7 +57,6 @@ pub struct Ui {
     gui_render: GuiRender,
     render: GLSpriteRender,
     camera: Camera,
-    pub style: Style,
     pub event_table: Rc<RefCell<EventTable>>,
     pub textures: Textures,
     pub is_animating: bool,
@@ -99,7 +98,6 @@ impl Ui {
             gui_render,
             render,
             camera,
-            style,
             textures: textures.clone(),
             event_table: Rc::new(RefCell::new(EventTable::new())),
             is_animating: false,
@@ -109,6 +107,11 @@ impl Ui {
         ui.resize(window.inner_size(), window.id());
 
         ui
+    }
+
+    pub fn reload_style(&mut self) {
+        let style = Style::load(self.gui.fonts_mut(), &mut self.render).unwrap();
+        self.gui.set(style);
     }
 
     pub fn resize(&mut self, size: PhysicalSize<u32>, window: WindowId) {
@@ -273,7 +276,6 @@ pub fn list(
     let v_scroll_bar = ctx
         .create_control()
         .min_size([10.0, 10.0])
-        // .graphic(style.scroll_background.clone())
         .parent(scroll_view)
         .behaviour(ScrollBar::new(
             v_scroll_bar_handle,

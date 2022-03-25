@@ -4,13 +4,9 @@ use crate::{
     split_view::SplitView,
     style::Style,
     ui::{Textures, Ui},
-    AppState, EmulatorEvent, UserEvent,
+    EmulatorEvent, UserEvent,
 };
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::{mpsc::SyncSender, Arc},
-};
+use std::{cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
 
 use crui::{
     graphics::Texture,
@@ -19,19 +15,18 @@ use crui::{
     widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
     BuilderContext, Gui,
 };
-use gameroy::{debugger::Debugger, gameboy::GameBoy};
-use parking_lot::Mutex;
 
 use winit::event_loop::EventLoopProxy;
 mod disassembler_viewer;
 mod ppu_viewer;
 
 pub fn create_emulator_ui(ui: &mut Ui, debug: bool) {
+    let style = &ui.gui.get::<Style>().clone();
     create_gui(
         &mut ui.gui,
         &ui.textures,
         ui.event_table.clone(),
-        &ui.style,
+        style,
         debug,
     );
 }

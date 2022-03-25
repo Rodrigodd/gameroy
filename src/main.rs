@@ -196,7 +196,7 @@ fn open_and_read(rom_path: &Path, writer: &mut impl std::io::Write) -> Result<us
 
 use winit::{
     dpi::PhysicalSize,
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::{Window, WindowBuilder},
 };
@@ -243,6 +243,20 @@ fn start_event_loop(
                     }
                     WindowEvent::Resized(size) => {
                         ui.resize(size.clone(), window_id);
+                    }
+                    // Rebuild the UI
+                    WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                state: ElementState::Pressed,
+                                ..
+                            },
+                        ..
+                    } => {
+                        ui.clear();
+                        ui.reload_style();
+                        app.build_ui(&mut ui);
                     }
                     _ => {}
                 }
@@ -320,7 +334,7 @@ impl App for RomLoadingApp {
 
     fn build_ui(&self, ui: &mut ui::Ui) {
         let gui = &mut ui.gui;
-        let style = &ui.style;
+        let style = &gui.get::<style::Style>().clone();
         ui::create_rom_loading_ui(gui, style);
     }
 }

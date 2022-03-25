@@ -42,6 +42,7 @@ impl<'a, R: SpriteRender> StyleLoaderCallback for Loader<'a, R> {
     fn load_font(&mut self, name: String) -> crui::font::FontId {
         // load a font
         let path = "assets/".to_string() + &name;
+        log::info!("load font: '{}'", path);
         let font_data = std::fs::read(path).unwrap();
         self.fonts.add(Font::new(&font_data))
     }

@@ -365,9 +365,9 @@ impl GameBoy {
             0x01 => self.serial_data = value,
             0x02 => {
                 self.serial_control = value | 0x7E;
-                // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
-                self.serial_transfer_started = (self.clock_count + SERIAL_OFFSET) >> 9;
-                if value == 0x81 {
+                if value & 0x81 == 0x81 {
+                    // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
+                    self.serial_transfer_started = (self.clock_count + SERIAL_OFFSET) >> 9;
                     (self.serial_transfer)(self.serial_data);
                 }
             }

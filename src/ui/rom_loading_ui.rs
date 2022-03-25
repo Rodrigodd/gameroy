@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crui::layouts::{FitText, HBoxLayout, MarginLayout};
+use crui::layouts::{FitGraphic, HBoxLayout, MarginLayout};
 use crui::text::Text;
 use crui::widgets::{Button, ListBuilder};
 use winit::event_loop::EventLoopProxy;
@@ -58,7 +58,7 @@ impl ListBuilder for RomList {
                         (0, 0),
                         style.text_style.clone().with_font_size(20.0),
                     ))
-                    .layout(FitText)
+                    .layout(FitGraphic)
                 })
                 .layout(MarginLayout::new([2.0; 4]))
                 .min_width(180.0)

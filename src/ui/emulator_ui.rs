@@ -10,7 +10,7 @@ use std::{cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
 
 use crui::{
     graphics::Texture,
-    layouts::{FitText, HBoxLayout, MarginLayout, VBoxLayout},
+    layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
     widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
     BuilderContext, Gui,
@@ -246,7 +246,7 @@ fn open_debug_panel(
                 (0, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
         })
         .layout(MarginLayout::default())
         .behaviour(TabButton::new(
@@ -274,7 +274,7 @@ fn open_debug_panel(
                 (0, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
         })
         .layout(MarginLayout::default())
         .behaviour(TabButton::new(

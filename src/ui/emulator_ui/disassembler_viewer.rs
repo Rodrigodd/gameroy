@@ -3,7 +3,7 @@ use std::{any::Any, ops::Range, sync::Arc, usize};
 use crui::{
     event::SetValue,
     graphics::{Graphic, Text},
-    layouts::{FitText, HBoxLayout, VBoxLayout},
+    layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::{Span, TextStyle},
     widgets::{
         Button, InteractiveText, ListBuilder, SetScrollPosition, TextField, TextFieldCallback,
@@ -384,7 +384,7 @@ clock: {}
             let directive = self.directives[index].clone();
             let style = ctx.get::<Style>().text_style.clone();
             let (graphic, label_range) = self.graphic(style, directive.clone(), trace, self.pc);
-            let cb = cb.graphic(graphic).layout(FitText);
+            let cb = cb.graphic(graphic).layout(FitGraphic);
             let mut span = 0;
             if let Some(label_range) = label_range {
                 cb.behaviour(InteractiveText::new(vec![(
@@ -482,7 +482,7 @@ impl ListBuilder for BreakpointList {
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
                 cb.graphic(Text::new(text, (-1, 0), text_style))
-                    .layout(FitText)
+                    .layout(FitGraphic)
                     .expand_x(true)
             })
             .child(ctx, |cb, _| {
@@ -551,7 +551,7 @@ impl ListBuilder for WatchsList {
         cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
             .child(ctx, |cb, _| {
                 cb.graphic(Text::new(text, (-1, 0), text_style))
-                    .layout(FitText)
+                    .layout(FitGraphic)
                     .expand_x(true)
             })
             .child(ctx, |cb, _| {
@@ -635,7 +635,7 @@ pub fn build(
         .create_control_reserved(reg_id)
         .parent(right_panel)
         .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
-        .layout(FitText)
+        .layout(FitGraphic)
         .build(ctx);
 
     let ppu = ctx
@@ -648,19 +648,23 @@ pub fn build(
     let _ppu_header = ctx
         .create_control()
         .parent(ppu)
-        .graphic(Text::new(
-            "ppu:".to_string(),
-            (-1, 0),
-            style.text_style.clone(),
-        ))
-        .layout(FitText)
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "ppu".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitGraphic)
+        })
+        .graphic(style.header_background.clone())
+        .layout(MarginLayout::default())
         .build(ctx);
 
     let _ppu_view = ctx
         .create_control_reserved(ppu_id)
         .parent(ppu)
         .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
-        .layout(FitText)
+        .layout(FitGraphic)
         .build(ctx);
 
     let breaks = ctx
@@ -678,7 +682,7 @@ pub fn build(
             (-1, 0),
             style.text_style.clone(),
         ))
-        .layout(FitText)
+        .layout(FitGraphic)
         .build(ctx);
 
     let break_list = ctx.reserve();
@@ -705,12 +709,16 @@ pub fn build(
     let _watchs_header = ctx
         .create_control()
         .parent(watchs)
-        .graphic(Text::new(
-            "watchs".to_string(),
-            (-1, 0),
-            style.text_style.clone(),
-        ))
-        .layout(FitText)
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "watchs".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitGraphic)
+        })
+        .graphic(style.header_background.clone())
+        .layout(MarginLayout::default())
         .build(ctx);
 
     let watchs_list = ctx.reserve();

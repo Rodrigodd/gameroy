@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crui::{
     graphics::{Graphic, Texture},
-    layouts::{FitText, GridLayout, HBoxLayout, VBoxLayout},
+    layouts::{FitGraphic, GridLayout, HBoxLayout, VBoxLayout},
     text::Text,
     Behaviour, BuilderContext, Color, Context, Id, InputFlags, MouseEvent,
 };
@@ -317,7 +317,7 @@ pub fn build(
                 (-1, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
         })
         .child_reserved(oam_viewer, ctx, |cb, _| {
             cb.layout(GridLayout::new([2.0; 2], [2.0; 4], 8))
@@ -347,7 +347,7 @@ pub fn build(
                 (0, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
             .build(ctx);
     }
 
@@ -361,7 +361,7 @@ pub fn build(
                 (-1, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
         })
         .child_reserved(buffer_viewer, ctx, |cb, _| {
             cb.layout(GridLayout::new([2.0; 2], [2.0; 4], 5))
@@ -391,7 +391,7 @@ pub fn build(
                 (0, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
             .build(ctx);
     }
 
@@ -406,15 +406,15 @@ pub fn build(
                 (-1, 0),
                 style.text_style.clone(),
             ))
-            .layout(FitText)
+            .layout(FitGraphic)
         })
         .child_reserved(background_fifo, ctx, |cb, _| {
             cb.graphic(Text::new("".to_string(), (-1, 0), style.text_style.clone()))
-                .layout(FitText)
+                .layout(FitGraphic)
         })
         .child_reserved(sprite_fifo, ctx, |cb, _| {
             cb.graphic(Text::new("".to_string(), (-1, 0), style.text_style.clone()))
-                .layout(FitText)
+                .layout(FitGraphic)
         })
         .build(ctx);
 

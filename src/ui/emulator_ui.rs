@@ -54,42 +54,43 @@ pub fn create_gui(
             let mut set_key = |key: u8, value: bool| {
                 app_state.joypad = (app_state.joypad & !(1 << key)) | ((!value as u8) << key)
             };
+            let km = &crate::config().keymap;
             match event {
-                Pressed(Right) => set_key(0, true), // Left
-                Release(Right) => set_key(0, false),
-                Pressed(Left) => set_key(1, true), // Right
-                Release(Left) => set_key(1, false),
-                Pressed(Up) => set_key(2, true), // Up
-                Release(Up) => set_key(2, false),
-                Pressed(Down) => set_key(3, true), // Down
-                Release(Down) => set_key(3, false),
-                Pressed(A) => set_key(4, true), // A
-                Release(A) => set_key(4, false),
-                Pressed(S) => set_key(5, true), // B
-                Release(S) => set_key(5, false),
-                Pressed(Back) => set_key(6, true), // Select
-                Release(Back) => set_key(6, false),
-                Pressed(Return) => set_key(7, true), // Start
-                Release(Return) => set_key(7, false),
+                Pressed(x) if x == km.right => set_key(0, true), // Left
+                Release(x) if x == km.right => set_key(0, false),
+                Pressed(x) if x == km.left => set_key(1, true), // Right
+                Release(x) if x == km.left => set_key(1, false),
+                Pressed(x) if x == km.up => set_key(2, true), // Up
+                Release(x) if x == km.up => set_key(2, false),
+                Pressed(x) if x == km.down => set_key(3, true), // Down
+                Release(x) if x == km.down => set_key(3, false),
+                Pressed(x) if x == km.a => set_key(4, true), // A
+                Release(x) if x == km.a => set_key(4, false),
+                Pressed(x) if x == km.b => set_key(5, true), // B
+                Release(x) if x == km.b => set_key(5, false),
+                Pressed(x) if x == km.select => set_key(6, true), // Select
+                Release(x) if x == km.select => set_key(6, false),
+                Pressed(x) if x == km.start => set_key(7, true), // Start
+                Release(x) if x == km.start => set_key(7, false),
                 event => {
                     if debug {
                         match event {
-                            Pressed(F5) => {
+                            Pressed(x) if x == km.save_state => {
                                 sender.send(EmulatorEvent::SaveState).unwrap();
                             }
-                            Pressed(F6) => {
+                            Pressed(x) if x == km.load_state => {
                                 sender.send(EmulatorEvent::LoadState).unwrap();
                             }
-                            Pressed(F7) => {
+                            Pressed(x) if x == km.debug_stepback => {
                                 sender.send(EmulatorEvent::StepBack).unwrap();
                             }
-                            Pressed(F8) => {
+                            Pressed(x) if x == km.debug_step => {
                                 sender.send(EmulatorEvent::Step).unwrap();
                             }
-                            Pressed(F9) => {
+                            Pressed(x) if x == km.debug_run => {
                                 sender.send(EmulatorEvent::Run).unwrap();
                             }
-                            Pressed(F12) => {
+                            Pressed(x) if x == km.open_debugger => {
                                 let textures = ctx.get::<Textures>().clone();
                                 close_debug_panel(
                                     ctx,
@@ -104,13 +105,13 @@ pub fn create_gui(
                         }
                     } else {
                         match event {
-                            Pressed(F5) => {
+                            Pressed(x) if x == km.save_state => {
                                 sender.send(EmulatorEvent::SaveState).unwrap();
                             }
-                            Pressed(F6) => {
+                            Pressed(x) if x == km.load_state => {
                                 sender.send(EmulatorEvent::LoadState).unwrap();
                             }
-                            Pressed(F12) => {
+                            Pressed(x) if x == km.open_debugger => {
                                 let textures = ctx.get::<Textures>().clone();
                                 // Debug
                                 open_debug_panel(
@@ -123,10 +124,10 @@ pub fn create_gui(
                                     event_table.clone(),
                                 );
                             }
-                            Pressed(LShift) | Release(LShift) => sender
+                            Pressed(x) | Release(x) if x == km.speed => sender
                                 .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
                                 .unwrap(),
-                            Pressed(R) | Release(R) => sender
+                            Pressed(x) | Release(x) if x == km.rewind => sender
                                 .send(EmulatorEvent::Rewind(matches!(event, Pressed(_))))
                                 .unwrap(),
 

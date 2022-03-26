@@ -36,6 +36,7 @@ use clap::{arg, Command};
 struct Config {
     start_in_debug: bool,
     rom_folder: Option<String>,
+    keymap: KeyMap,
 }
 impl Config {
     fn load() -> Result<Self, String> {
@@ -50,6 +51,56 @@ impl Default for Config {
         Self {
             start_in_debug: false,
             rom_folder: Some("roms".to_string()),
+            keymap: KeyMap::default(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+struct KeyMap {
+    left: VirtualKeyCode,
+    right: VirtualKeyCode,
+    up: VirtualKeyCode,
+    down: VirtualKeyCode,
+    a: VirtualKeyCode,
+    b: VirtualKeyCode,
+    select: VirtualKeyCode,
+    start: VirtualKeyCode,
+
+    speed: VirtualKeyCode,
+    rewind: VirtualKeyCode,
+    save_state: VirtualKeyCode,
+    load_state: VirtualKeyCode,
+
+    open_debugger: VirtualKeyCode,
+    debug_step: VirtualKeyCode,
+    debug_stepback: VirtualKeyCode,
+    debug_run: VirtualKeyCode,
+}
+
+impl Default for KeyMap {
+    fn default() -> Self {
+        use VirtualKeyCode::*;
+        Self {
+            left: Left,
+            right: Right,
+            up: Up,
+            down: Down,
+            a: A,
+            b: S,
+            select: Back,
+            start: Return,
+
+            speed: LShift,
+            rewind: R,
+            save_state: F5,
+            load_state: F6,
+
+            open_debugger: F12,
+            debug_step: F7,
+            debug_stepback: F8,
+            debug_run: F9,
         }
     }
 }

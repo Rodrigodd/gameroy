@@ -30,7 +30,7 @@
         focus: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
     ),
     delete_button: ButtonStyle(
-        normal: Texture(texture: "white.png", color: "#001300", uv_rect: (0,0,1,1)),
+        normal: Texture(texture: "white.png", color: "#001600", uv_rect: (0,0,1,1)),
         hover: Texture(texture: "white.png", color: "#002600", uv_rect: (0,0,1,1)),
         pressed: Texture(texture: "white.png", color: "#003600", uv_rect: (0,0,1,1)),
         focus: Texture(texture: "white.png", color: "#003000", uv_rect: (0,0,1,1)),
@@ -44,5 +44,6 @@
     fold_icon: FoldIcon(
         open: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (16,0,16,16), size: (16, 16)),
         close: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (0,16,16,16), size: (16, 16)),
-    )
+    ),
+    delete_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (0,0,16,16), size: (16, 16)),
 )

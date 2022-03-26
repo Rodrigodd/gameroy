@@ -473,26 +473,11 @@ impl ListBuilder for BreakpointList {
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
         let text = Self::get_text(ctx, index);
-        let Style {
-            text_style,
-            delete_button,
-            ..
-        } = ctx.get::<Style>().clone();
-        cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
-            .child(ctx, |cb, _| {
-                cb.graphic(Text::new(text, (-1, 0), text_style))
-                    .layout(FitGraphic)
-                    .expand_x(true)
-            })
-            .child(ctx, |cb, _| {
-                cb.behaviour(Button::new(delete_button, true, move |_, ctx| {
-                    let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
-                    let &address = debugger.breakpoints().keys().nth(index).unwrap();
-                    debugger.remove_break(address);
-                }))
-                .min_size([15.0, 15.0])
-                .fill_y(crui::RectFill::ShrinkCenter)
-            })
+        list_item(ctx, cb, text, move |_, ctx| {
+            let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+            let &address = debugger.breakpoints().keys().nth(index).unwrap();
+            debugger.remove_break(address);
+        })
     }
 
     fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) -> bool {
@@ -510,7 +495,7 @@ struct WatchsList {
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
 impl WatchsList {
-    fn watch_text(ctx: &mut dyn BuilderContext, index: usize) -> (u16, String) {
+    fn get_text(ctx: &mut dyn BuilderContext, index: usize) -> (u16, String) {
         let &address = ctx
             .get::<Arc<Mutex<Debugger>>>()
             .lock()
@@ -541,36 +526,47 @@ impl ListBuilder for WatchsList {
         cb: ControlBuilder,
         ctx: &mut dyn BuilderContext,
     ) -> ControlBuilder {
-        let (address, text) = Self::watch_text(ctx, index);
-        let Style {
-            text_style,
-            delete_button,
-            ..
-        } = ctx.get::<Style>().clone();
-        cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
-            .child(ctx, |cb, _| {
-                cb.graphic(Text::new(text, (-1, 0), text_style))
-                    .layout(FitGraphic)
-                    .expand_x(true)
-            })
-            .child(ctx, |cb, _| {
-                cb.behaviour(Button::new(delete_button, true, move |_, ctx| {
-                    let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
-                    debugger.remove_watch(address);
-                }))
-                .min_size([15.0, 15.0])
-                .fill_y(crui::RectFill::ShrinkCenter)
-            })
+        let (address, text) = Self::get_text(ctx, index);
+        list_item(ctx, cb, text, move |_: Id, ctx| {
+            let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+            debugger.remove_watch(address);
+        })
     }
 
     fn update_item(&mut self, index: usize, item_id: Id, ctx: &mut dyn BuilderContext) -> bool {
-        let (_, text) = Self::watch_text(ctx, index);
+        let (_, text) = Self::get_text(ctx, index);
         let text_id = ctx.get_active_children(item_id)[0];
         if let Graphic::Text(x) = ctx.get_graphic_mut(text_id) {
             x.set_string(&text);
         }
         true
     }
+}
+
+fn list_item(
+    ctx: &mut dyn BuilderContext,
+    cb: ControlBuilder,
+    text: String,
+    on_click: impl FnMut(Id, &mut Context) + 'static,
+) -> ControlBuilder {
+    let Style {
+        text_style,
+        delete_button,
+        delete_icon,
+        ..
+    } = ctx.get::<Style>().clone();
+    cb.layout(HBoxLayout::new(0.0, [0.0; 4], 1))
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(text, (-1, 0), text_style))
+                .layout(FitGraphic)
+                .expand_x(true)
+        })
+        .child(ctx, |cb, ctx| {
+            cb.behaviour(Button::new(delete_button, true, on_click))
+                .min_size([16.0, 16.0])
+                .child(ctx, |cb, _| cb.graphic(delete_icon))
+                .fill_y(crui::RectFill::ShrinkCenter)
+        })
 }
 
 pub fn build(

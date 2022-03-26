@@ -29,6 +29,30 @@ const SCREEN_HEIGHT: usize = 144;
 
 use clap::{arg, Command};
 
+#[derive(Debug)]
+struct Config {
+    start_in_debug: bool,
+    rom_folder: Option<String>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            start_in_debug: false,
+            rom_folder: Some("roms".to_string()),
+        }
+    }
+}
+
+use once_cell::sync::OnceCell;
+static CONFIG: OnceCell<Config> = OnceCell::new();
+
+fn config() -> &'static Config {
+    CONFIG
+        .get()
+        .expect("The config should be initialized in fn main()")
+}
+
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -44,12 +68,14 @@ fn main() {
         )
         .arg(arg!(--movie <PATH> "play the given .vbm file").required(false))
         .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
+        .arg(arg!(--rom_folder <PATH> "specify the path of the folder for listing .gb roms").required(false))
         .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
         .get_matches();
 
     let debug = matches.is_present("debug");
     let diss = matches.is_present("disassembly");
     let boot_rom_path = matches.value_of("boot_rom");
+    let rom_folder = matches.value_of("rom_folder");
     let rom_path = matches.value_of("ROM_PATH");
     let movie = matches.value_of("movie").map(|path| {
         let mut file = std::fs::File::open(path).unwrap();
@@ -78,6 +104,14 @@ fn main() {
             unreachable!("the --disassembly flag already requires <ROM_PATH>");
         }
     }
+
+    CONFIG
+        .set(Config {
+            start_in_debug: debug,
+            rom_folder: rom_folder.map(|x| x.to_string()),
+            ..Config::default()
+        })
+        .expect("Config should only be initialized here");
 
     // load rom if necesary
     let gb = if let Some(rom_path) = rom_path {
@@ -128,7 +162,15 @@ fn main() {
                 "{} - gameroy",
                 rom_path.file_name().unwrap().to_string_lossy()
             ));
-            let emu = EmulatorApp::new(gb, proxy, debug, &mut ui, movie, rom_path, save_path);
+            let emu = EmulatorApp::new(
+                gb,
+                proxy,
+                config().start_in_debug,
+                &mut ui,
+                movie,
+                rom_path,
+                save_path,
+            );
             start_event_loop(event_loop, window, ui, Box::new(emu));
         }
         _ => {
@@ -292,8 +334,15 @@ fn start_event_loop(
                     "{} - gameroy",
                     rom_path.file_name().unwrap().to_string_lossy()
                 ));
-                let emu =
-                    EmulatorApp::new(gb, proxy.clone(), false, &mut ui, None, rom_path, save_path);
+                let emu = EmulatorApp::new(
+                    gb,
+                    proxy.clone(),
+                    config().start_in_debug,
+                    &mut ui,
+                    None,
+                    rom_path,
+                    save_path,
+                );
                 app = Box::new(emu);
                 app.build_ui(&mut ui);
                 return;

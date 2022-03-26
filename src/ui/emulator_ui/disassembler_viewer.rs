@@ -6,8 +6,7 @@ use crui::{
     layouts::{FitGraphic, HBoxLayout, VBoxLayout},
     text::{Span, TextStyle},
     widgets::{
-        Button, InteractiveText, ListBuilder, SetScrollPosition, TextField, TextFieldCallback,
-        UpdateItems,
+        Button, FocusItem, InteractiveText, ListBuilder, TextField, TextFieldCallback, UpdateItems,
     },
     BuilderContext, Color, Context, ControlBuilder, Id, MouseEvent, MouseInfo,
 };
@@ -324,17 +323,11 @@ impl ListBuilder for DissasemblerList {
 
             let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));
             if let Ok(pos) = pos {
-                let len = self.directives.len();
-                let value = if len == 0 {
-                    1.0
-                } else {
-                    pos as f32 / (len - 1) as f32
-                };
                 ctx.send_event_to(
                     self.list,
-                    SetScrollPosition {
-                        vertical: true,
-                        value,
+                    FocusItem {
+                        index: pos,
+                        margin: 30.0,
                     },
                 );
             };
@@ -348,17 +341,11 @@ impl ListBuilder for DissasemblerList {
             drop(trace);
             drop(gb);
             if let Ok(pos) = pos {
-                let len = self.directives.len();
-                let value = if len == 0 {
-                    1.0
-                } else {
-                    pos as f32 / (len - 1) as f32
-                };
                 ctx.send_event_to(
                     self.list,
-                    SetScrollPosition {
-                        vertical: true,
-                        value,
+                    FocusItem {
+                        index: pos,
+                        margin: 30.0,
                     },
                 );
             };

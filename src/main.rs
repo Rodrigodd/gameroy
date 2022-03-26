@@ -11,6 +11,8 @@ use gameroy::{
 };
 use parking_lot::Mutex;
 
+use serde::Deserialize;
+
 mod emulator;
 mod event_table;
 mod fold_view;
@@ -29,10 +31,18 @@ const SCREEN_HEIGHT: usize = 144;
 
 use clap::{arg, Command};
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+#[serde(default)]
 struct Config {
     start_in_debug: bool,
     rom_folder: Option<String>,
+}
+impl Config {
+    fn load() -> Result<Self, String> {
+        let config = std::fs::read_to_string("gameroy.toml").map_err(|e| e.to_string())?;
+        let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
+        Ok(config)
+    }
 }
 
 impl Default for Config {
@@ -106,10 +116,15 @@ fn main() {
     }
 
     CONFIG
-        .set(Config {
-            start_in_debug: debug,
-            rom_folder: rom_folder.map(|x| x.to_string()),
-            ..Config::default()
+        .set({
+            let mut config = Config::load()
+                .map_err(|e| log::error!("error loading config: {}", e))
+                .unwrap_or_default();
+            config.start_in_debug |= debug;
+            config.rom_folder = config
+                .rom_folder
+                .or_else(|| rom_folder.map(|x| x.to_string()));
+            config
         })
         .expect("Config should only be initialized here");
 

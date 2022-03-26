@@ -9,7 +9,7 @@ pub mod break_flags {
     pub const JUMP: u8 = 1 << 3;
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum RunResult {
     ReachBreakpoint,
     ReachTargetAddress,
@@ -39,6 +39,8 @@ pub struct Debugger {
     pub target_address: Option<u16>,
     /// Clock to stop at
     pub target_clock: Option<u64>,
+    /// The clock_count in the previous instruction, used for stepback.
+    pub last_op_clock: u64,
     /// Callback called when self is mutated
     pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent) + Send>>,
 }
@@ -57,6 +59,7 @@ impl Debugger {
         match args[0] {
             "step" | "" => callback(self, Step),
             "stepback" => callback(self, StepBack),
+
             "reset" => callback(self, Reset),
             "runto" => {
                 if args.len() != 2 {
@@ -334,10 +337,15 @@ impl Debugger {
         false
     }
 
+    pub fn step(&mut self, gb: &mut GameBoy) -> RunResult {
+        self.run_until(gb, gb.clock_count)
+    }
+
     pub fn run_for(&mut self, gb: &mut GameBoy, clocks: u64) -> RunResult {
         self.run_until(gb, gb.clock_count + clocks)
     }
 
+    /// Run at least one step.
     pub fn run_until(&mut self, gb: &mut GameBoy, target_clock: u64) -> RunResult {
         let mut inter = Interpreter(gb);
         let target_clock = if let Some(clock) = self.target_clock {
@@ -345,17 +353,10 @@ impl Debugger {
         } else {
             target_clock
         };
-        loop {
-            // break before exceeding the target clock
-            let next_count = inter.next_interpret_cycle_count() as u64;
-            let op = inter.0.read(inter.0.cpu.pc);
 
-            if inter.0.clock_count + next_count > target_clock {
-                break;
-            }
-
+        let result = loop {
             if self.check_break(&mut inter) {
-                return RunResult::ReachBreakpoint;
+                break RunResult::ReachBreakpoint;
             }
             if self.interrupt_breakpoint {
                 let interrupts: u8 = inter.0.interrupt_flag & inter.0.interrupt_enabled;
@@ -363,35 +364,28 @@ impl Debugger {
                     return RunResult::ReachBreakpoint;
                 }
             }
-            let before = inter.0.clock_count;
+
+            self.last_op_clock = inter.0.clock_count;
             inter.interpret_op();
-            let elapsed = inter.0.clock_count - before;
-            debug_assert_eq!(
-                next_count, elapsed,
-                "for op {:02x} predicited {}, found {}",
-                op, next_count, elapsed
-            );
 
             if Some(inter.0.cpu.pc) == self.target_address {
                 self.target_address = None;
-                return RunResult::ReachTargetAddress;
+                break RunResult::ReachTargetAddress;
+            } else if inter.0.clock_count >= target_clock {
+                if Some(target_clock) == self.target_clock {
+                    self.target_clock = None;
+                    break RunResult::ReachTargetClock;
+                } else {
+                    break RunResult::TimeOut;
+                };
             }
-        }
+        };
 
         // clear the audio output
         let clock_count = inter.0.clock_count;
         let _ = inter.0.sound.borrow_mut().get_output(clock_count);
 
-        if let Some(clock) = self.target_clock {
-            if clock == target_clock {
-                self.target_clock = None;
-                RunResult::ReachTargetClock
-            } else {
-                RunResult::TimeOut
-            }
-        } else {
-            RunResult::TimeOut
-        }
+        result
     }
 
     // pub fn set_target_address(&mut self, address: Option<u16>) {

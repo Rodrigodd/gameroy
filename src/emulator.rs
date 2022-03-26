@@ -498,7 +498,10 @@ impl Emulator {
                     }
                     Step => {
                         if self.debug {
-                            Interpreter(&mut *self.gb.lock()).interpret_op();
+                            {
+                                let gb = &mut &mut *self.gb.lock();
+                                self.debugger.lock().step(gb);
+                            }
                             self.set_state(EmulatorState::Idle);
                         }
                     }
@@ -517,7 +520,10 @@ impl Emulator {
                                 if joypad.load_last_frame(&mut *gb) {
                                     drop(joypad);
                                     drop(gb);
-                                    self.debugger.lock().target_clock = Some(clock_count - 1);
+                                    {
+                                        let debugger = &mut *self.debugger.lock();
+                                        debugger.target_clock = Some(debugger.last_op_clock);
+                                    }
                                     self.set_state(EmulatorState::Run);
                                 }
                             } else {
@@ -529,7 +535,8 @@ impl Emulator {
                         if self.debug {
                             self.set_state(EmulatorState::Run);
                             // Run a single step, to ignore the current breakpoint
-                            Interpreter(&mut *self.gb.lock()).interpret_op();
+                            let gb = &mut *self.gb.lock();
+                            self.debugger.lock().step(gb);
                         }
                     }
                     Reset => {
@@ -546,8 +553,8 @@ impl Emulator {
                     EmulatorState::Run => 'run: loop {
                         // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                         {
-                            let mut debugger = self.debugger.lock();
                             let mut gb = self.gb.lock();
+                            let mut debugger = self.debugger.lock();
                             use RunResult::*;
                             match debugger.run_for(&mut *gb, CLOCK_SPEED / 600) {
                                 ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {

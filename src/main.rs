@@ -95,12 +95,23 @@ fn main() {
         None
     };
 
+    #[allow(unused_assignments)]
+    let mut icon = None;
+    #[cfg(target_os = "windows")]
+    {
+        use winit::platform::windows::IconExtWindows;
+        icon = Icon::from_resource(101, None)
+            .map_err(|e| log::error!("{}", e))
+            .ok();
+    };
+
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
     let window = WindowBuilder::new()
         .with_inner_size(PhysicalSize::new(768u32, 400))
         // wait every thing to be loaded before showing the window
         .with_visible(false)
+        .with_window_icon(icon)
         .with_title("gameroy")
         .build(&event_loop)
         .unwrap();
@@ -198,7 +209,7 @@ use winit::{
     dpi::PhysicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
-    window::{Window, WindowBuilder},
+    window::{Icon, Window, WindowBuilder},
 };
 
 pub struct AppState {

@@ -40,10 +40,48 @@ struct Config {
 }
 impl Config {
     fn load() -> Result<Self, String> {
-        let config = std::fs::read_to_string("gameroy.toml").map_err(|e| e.to_string())?;
+        let config_path = normalize_config_path("gameroy.toml");
+        let config = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
         let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
         Ok(config)
     }
+}
+
+/// Transform a path relative to the executable folder to a absolut path.
+fn normalize_config_path(path: impl AsRef<Path>) -> PathBuf {
+    let path: &Path = path.as_ref();
+    if path.has_root() {
+        path.to_path_buf()
+    } else if let Some(mut base) = base_folder() {
+        base.push(path);
+        base
+    } else {
+        path.to_path_buf()
+    }
+}
+
+fn base_folder() -> Option<PathBuf> {
+    static BASE_FOLDER: OnceCell<Option<PathBuf>> = OnceCell::new();
+    BASE_FOLDER
+        .get_or_init(|| {
+            let base_folder = if let Some(path) = std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|x| PathBuf::from(x))
+            {
+                log::info!("using '{}' as base folder", path.display());
+                path
+            } else {
+                std::env::current_exe()
+                    .map_err(|e| log::error!("Could not get base folder: {}", e))
+                    .ok()?
+                    .parent()
+                    .ok_or_else(|| log::error!("Could not get base folder"))
+                    .ok()?
+                    .to_path_buf()
+            };
+            Some(base_folder)
+        })
+        .clone()
 }
 
 impl Default for Config {
@@ -169,7 +207,7 @@ fn main() {
     CONFIG
         .set({
             let mut config = Config::load()
-                .map_err(|e| log::error!("error loading config: {}", e))
+                .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
                 .unwrap_or_default();
             config.start_in_debug |= debug;
             config.rom_folder = config

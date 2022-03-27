@@ -11,8 +11,6 @@ use gameroy::{
 };
 use parking_lot::Mutex;
 
-use serde::Deserialize;
-
 mod emulator;
 mod event_table;
 mod fold_view;
@@ -31,126 +29,8 @@ const SCREEN_HEIGHT: usize = 144;
 
 use clap::{arg, Command};
 
-#[derive(Debug, Deserialize)]
-#[serde(default)]
-struct Config {
-    start_in_debug: bool,
-    rom_folder: Option<String>,
-    keymap: KeyMap,
-}
-impl Config {
-    fn load() -> Result<Self, String> {
-        let config_path = normalize_config_path("gameroy.toml");
-        let config = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
-        let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
-        Ok(config)
-    }
-}
-
-/// Transform a path relative to the executable folder to a absolut path.
-fn normalize_config_path(path: impl AsRef<Path>) -> PathBuf {
-    let path: &Path = path.as_ref();
-    if path.has_root() {
-        path.to_path_buf()
-    } else if let Some(mut base) = base_folder() {
-        base.push(path);
-        base
-    } else {
-        path.to_path_buf()
-    }
-}
-
-fn base_folder() -> Option<PathBuf> {
-    static BASE_FOLDER: OnceCell<Option<PathBuf>> = OnceCell::new();
-    BASE_FOLDER
-        .get_or_init(|| {
-            let base_folder = if let Some(path) = std::env::var("CARGO_MANIFEST_DIR")
-                .ok()
-                .map(|x| PathBuf::from(x))
-            {
-                log::info!("using '{}' as base folder", path.display());
-                path
-            } else {
-                std::env::current_exe()
-                    .map_err(|e| log::error!("Could not get base folder: {}", e))
-                    .ok()?
-                    .parent()
-                    .ok_or_else(|| log::error!("Could not get base folder"))
-                    .ok()?
-                    .to_path_buf()
-            };
-            Some(base_folder)
-        })
-        .clone()
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            start_in_debug: false,
-            rom_folder: Some("roms".to_string()),
-            keymap: KeyMap::default(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(default)]
-struct KeyMap {
-    left: VirtualKeyCode,
-    right: VirtualKeyCode,
-    up: VirtualKeyCode,
-    down: VirtualKeyCode,
-    a: VirtualKeyCode,
-    b: VirtualKeyCode,
-    select: VirtualKeyCode,
-    start: VirtualKeyCode,
-
-    speed: VirtualKeyCode,
-    rewind: VirtualKeyCode,
-    save_state: VirtualKeyCode,
-    load_state: VirtualKeyCode,
-
-    open_debugger: VirtualKeyCode,
-    debug_step: VirtualKeyCode,
-    debug_stepback: VirtualKeyCode,
-    debug_run: VirtualKeyCode,
-}
-
-impl Default for KeyMap {
-    fn default() -> Self {
-        use VirtualKeyCode::*;
-        Self {
-            left: Left,
-            right: Right,
-            up: Up,
-            down: Down,
-            a: A,
-            b: S,
-            select: Back,
-            start: Return,
-
-            speed: LShift,
-            rewind: R,
-            save_state: F5,
-            load_state: F6,
-
-            open_debugger: F12,
-            debug_step: F7,
-            debug_stepback: F8,
-            debug_run: F9,
-        }
-    }
-}
-
-use once_cell::sync::OnceCell;
-static CONFIG: OnceCell<Config> = OnceCell::new();
-
-fn config() -> &'static Config {
-    CONFIG
-        .get()
-        .expect("The config should be initialized in fn main()")
-}
+mod config;
+use config::{config, normalize_config_path};
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
@@ -204,18 +84,16 @@ fn main() {
         }
     }
 
-    CONFIG
-        .set({
-            let mut config = Config::load()
-                .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
-                .unwrap_or_default();
-            config.start_in_debug |= debug;
-            config.rom_folder = config
-                .rom_folder
-                .or_else(|| rom_folder.map(|x| x.to_string()));
-            config
-        })
-        .expect("Config should only be initialized here");
+    config::init_config({
+        let mut config = config::Config::load()
+            .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
+            .unwrap_or_default();
+        config.start_in_debug |= debug;
+        config.rom_folder = config
+            .rom_folder
+            .or_else(|| rom_folder.map(|x| x.to_string()));
+        config
+    });
 
     // load rom if necesary
     let gb = if let Some(rom_path) = rom_path {
@@ -269,7 +147,7 @@ fn main() {
             let emu = EmulatorApp::new(
                 gb,
                 proxy,
-                config().start_in_debug,
+                config::config().start_in_debug,
                 &mut ui,
                 movie,
                 rom_path,
@@ -441,7 +319,7 @@ fn start_event_loop(
                 let emu = EmulatorApp::new(
                     gb,
                     proxy.clone(),
-                    config().start_in_debug,
+                    config::config().start_in_debug,
                     &mut ui,
                     None,
                     rom_path,

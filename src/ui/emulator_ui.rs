@@ -47,7 +47,6 @@ pub fn create_gui(
     gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent::new(move |event, _, ctx| {
             use crui::KeyboardEvent::*;
-            use winit::event::VirtualKeyCode::*;
             let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
             let debug = ctx.get::<crate::AppState>().debug;
             let app_state = ctx.get_mut::<crate::AppState>();

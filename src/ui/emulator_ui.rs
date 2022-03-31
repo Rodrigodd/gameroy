@@ -8,7 +8,7 @@ use crate::{
 };
 use std::{cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
 
-use crui::{
+use giui::{
     graphics::Texture,
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
@@ -46,7 +46,7 @@ pub fn create_gui(
     let event_table_clone = event_table.clone();
     gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent::new(move |event, _, ctx| {
-            use crui::KeyboardEvent::*;
+            use giui::KeyboardEvent::*;
             let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
             let debug = ctx.get::<crate::AppState>().debug;
             let app_state = ctx.get_mut::<crate::AppState>();
@@ -163,11 +163,11 @@ pub fn create_gui(
 }
 
 fn close_debug_panel(
-    ctx: &mut crui::Context,
+    ctx: &mut giui::Context,
     textures: &Textures,
-    split_view: &mut crui::Id,
-    screen_id: &mut crui::Id,
-    root: crui::Id,
+    split_view: &mut giui::Id,
+    screen_id: &mut giui::Id,
+    root: giui::Id,
     style: &Style,
 ) {
     ctx.remove(*split_view);
@@ -187,12 +187,12 @@ fn close_debug_panel(
 }
 
 fn open_debug_panel(
-    ctx: &mut crui::Context,
+    ctx: &mut giui::Context,
     textures: &Textures,
-    split_view: crui::Id,
-    root: crui::Id,
+    split_view: giui::Id,
+    root: giui::Id,
     style: &Style,
-    screen_id: &mut crui::Id,
+    screen_id: &mut giui::Id,
     event_table: Rc<RefCell<EventTable>>,
 ) {
     ctx.create_control_reserved(split_view)

@@ -6,7 +6,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crui::{Context, Id};
+use giui::{Context, Id};
 
 pub trait Event: Clone + 'static {}
 
@@ -48,7 +48,7 @@ impl<E: Event> Drop for Handle<E> {
 }
 /// Dummy implementation, only for allowing a control hold up this handle, unregistering the
 /// callback when the control is dropped.
-impl<E: Event> crui::Behaviour for Handle<E> {}
+impl<E: Event> giui::Behaviour for Handle<E> {}
 
 #[derive(Default)]
 struct List<E: Event> {

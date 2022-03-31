@@ -1,4 +1,4 @@
-use crui::{Behaviour, Id, InputFlags, Layout, LayoutContext, MinSizeContext, MouseEvent};
+use giui::{Behaviour, Id, InputFlags, Layout, LayoutContext, MinSizeContext, MouseEvent};
 use winit::window::CursorIcon;
 
 /// Layout two controls side by side, allowing to resize the size of each control by dragging the
@@ -142,10 +142,10 @@ impl Behaviour for SplitView {
         InputFlags::MOUSE
     }
 
-    fn on_mouse_event(&mut self, mouse: crui::MouseInfo, this: Id, ctx: &mut crui::Context) {
+    fn on_mouse_event(&mut self, mouse: giui::MouseInfo, this: Id, ctx: &mut giui::Context) {
         let rect = ctx.get_rect(this);
         match mouse.event {
-            MouseEvent::Down(crui::MouseButton::Left) => {
+            MouseEvent::Down(giui::MouseButton::Left) => {
                 if self.is_on_split(mouse.pos, rect) {
                     self.dragging = true;
                     let split = self.mouse_to_split_pos(mouse.pos, rect);
@@ -153,7 +153,7 @@ impl Behaviour for SplitView {
                     ctx.lock_cursor(true);
                 }
             }
-            MouseEvent::Up(crui::MouseButton::Left) => {
+            MouseEvent::Up(giui::MouseButton::Left) => {
                 self.dragging = false;
                 ctx.lock_cursor(false);
             }

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crui::{
+use giui::{
     font::{Font, Fonts},
     graphics::{Graphic, TextStyle},
     style::{ButtonStyle, TabStyle, TextFieldStyle},
@@ -41,7 +41,7 @@ impl<'a, R: SpriteRender> StyleLoaderCallback for Loader<'a, R> {
         texture
     }
 
-    fn load_font(&mut self, name: String) -> crui::font::FontId {
+    fn load_font(&mut self, name: String) -> giui::font::FontId {
         // load a font
         let path = "assets/".to_string() + &name;
         log::info!("load font: '{}'", path);

@@ -1,19 +1,19 @@
 use std::{any::Any, ops::Range, sync::Arc, usize};
 
-use crui::{
+use gameroy::{
+    debugger::{break_flags, Debugger},
+    disassembler::{Address, Directive},
+    gameboy::GameBoy,
+};
+use giui::{
     event::SetValue,
     graphics::{Graphic, Text},
-    layouts::{FitGraphic, HBoxLayout, VBoxLayout},
+    layouts::{FitGraphic, HBoxLayout},
     text::{Span, TextStyle},
     widgets::{
         Button, FocusItem, InteractiveText, ListBuilder, TextField, TextFieldCallback, UpdateItems,
     },
     BuilderContext, Color, Context, ControlBuilder, Id, MouseEvent, MouseInfo,
-};
-use gameroy::{
-    debugger::{break_flags, Debugger},
-    disassembler::{Address, Directive},
-    gameboy::GameBoy,
 };
 use parking_lot::Mutex;
 use winit::event::VirtualKeyCode;
@@ -21,7 +21,6 @@ use winit::event::VirtualKeyCode;
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view,
-    split_view::SplitView,
     style::Style,
     ui,
 };
@@ -69,11 +68,11 @@ impl TextFieldCallback for Callback {
 
     fn on_keyboard_event(
         &mut self,
-        event: crui::KeyboardEvent,
+        event: giui::KeyboardEvent,
         this: Id,
         ctx: &mut Context,
     ) -> bool {
-        use crui::KeyboardEvent::*;
+        use giui::KeyboardEvent::*;
         match event {
             Pressed(VirtualKeyCode::Up) if self.curr > 0 => {
                 self.curr -= 1;
@@ -352,7 +351,7 @@ impl ListBuilder for DissasemblerList {
         }
     }
 
-    fn item_count(&mut self, _ctx: &mut dyn crui::BuilderContext) -> usize {
+    fn item_count(&mut self, _ctx: &mut dyn giui::BuilderContext) -> usize {
         self.directives.len()
     }
 
@@ -360,9 +359,9 @@ impl ListBuilder for DissasemblerList {
         &mut self,
         index: usize,
         _list_id: Id,
-        cb: crui::ControlBuilder,
-        ctx: &mut dyn crui::BuilderContext,
-    ) -> crui::ControlBuilder {
+        cb: giui::ControlBuilder,
+        ctx: &mut dyn giui::BuilderContext,
+    ) -> giui::ControlBuilder {
         cb.min_size([0.0, 15.0]).child(ctx, |cb, ctx| {
             let inter = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
 
@@ -552,7 +551,7 @@ fn list_item(
             cb.behaviour(Button::new(delete_button, true, on_click))
                 .min_size([16.0, 16.0])
                 .child(ctx, |cb, _| cb.graphic(delete_icon))
-                .fill_y(crui::RectFill::ShrinkCenter)
+                .fill_y(giui::RectFill::ShrinkCenter)
         })
 }
 

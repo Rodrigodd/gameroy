@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crui::{
+use giui::{
     graphics::{Graphic, Texture},
     layouts::{FitGraphic, GridLayout, HBoxLayout, VBoxLayout},
     text::Text,
@@ -36,7 +36,7 @@ impl Behaviour for TilemapViewer {
         InputFlags::MOUSE
     }
 
-    fn on_mouse_event(&mut self, mouse: crui::MouseInfo, _this: Id, ctx: &mut crui::Context) {
+    fn on_mouse_event(&mut self, mouse: giui::MouseInfo, _this: Id, ctx: &mut giui::Context) {
         match mouse.event {
             MouseEvent::Enter => {}
             MouseEvent::Exit => {}
@@ -225,7 +225,7 @@ impl PpuViewer {
     }
 }
 impl Behaviour for PpuViewer {
-    fn on_event(&mut self, event: Box<dyn std::any::Any>, _this: Id, ctx: &mut crui::Context) {
+    fn on_event(&mut self, event: Box<dyn std::any::Any>, _this: Id, ctx: &mut giui::Context) {
         if event.is::<FrameUpdated>() || event.is::<EmulatorUpdated>() {
             let emulator_updated = event.is::<EmulatorUpdated>();
             self.update(ctx, emulator_updated);
@@ -337,8 +337,8 @@ pub fn build(
             .parent(tile)
             .graphic(Texture::new(textures.tilemap, [0.0; 4]))
             .min_size([6.0 * 8.0, 6.0 * 8.0])
-            .fill_x(crui::RectFill::ShrinkCenter)
-            .fill_y(crui::RectFill::ShrinkCenter)
+            .fill_x(giui::RectFill::ShrinkCenter)
+            .fill_y(giui::RectFill::ShrinkCenter)
             .build(ctx);
         ctx.create_control_reserved(text)
             .parent(tile)
@@ -381,8 +381,8 @@ pub fn build(
             .parent(tile)
             .graphic(Texture::new(textures.tilemap, [0.0; 4]))
             .min_size([6.0 * 8.0, 6.0 * 8.0])
-            .fill_x(crui::RectFill::ShrinkCenter)
-            .fill_y(crui::RectFill::ShrinkCenter)
+            .fill_x(giui::RectFill::ShrinkCenter)
+            .fill_y(giui::RectFill::ShrinkCenter)
             .build(ctx);
         ctx.create_control_reserved(text)
             .parent(tile)
@@ -453,8 +453,8 @@ fn build_tilemap_viewer(
         .graphic(Texture::new(texture, [0.0, 0.0, 1.0, 1.0]))
         .min_size([2.0 * 8.0 * width as f32, 2.0 * 8.0 * height as f32])
         .expand_x(true)
-        .fill_x(crui::RectFill::ShrinkStart)
-        .fill_y(crui::RectFill::ShrinkCenter)
+        .fill_x(giui::RectFill::ShrinkStart)
+        .fill_y(giui::RectFill::ShrinkCenter)
         .build(ctx);
     ctx.create_control_reserved(tilemap_viewer)
         .parent(parent)

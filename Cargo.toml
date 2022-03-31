@@ -16,9 +16,9 @@ embed-resource = "1.7.1"
 [dependencies]
 
 gameroy-core = { path = "core" }
-crui = { path = "../crui", features=["simple_shaping"] }
 sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
 audio-engine = { path = "../audio-engine"}
+giui = { path = "../giui", features=["simple_shaping"] }
 winit = { version = "0.26.1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 ron = "0.6"

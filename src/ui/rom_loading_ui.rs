@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
-use crui::layouts::{FitGraphic, HBoxLayout, MarginLayout};
-use crui::text::Text;
-use crui::widgets::{Button, ListBuilder};
+use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout};
+use giui::text::Text;
+use giui::widgets::{Button, ListBuilder};
 use winit::event_loop::EventLoopProxy;
 
 use crate::style::Style;
@@ -21,23 +21,23 @@ impl ListBuilder for RomList {
     fn update_item(
         &mut self,
         _index: usize,
-        _item_id: crui::Id,
-        _ctx: &mut dyn crui::BuilderContext,
+        _item_id: giui::Id,
+        _ctx: &mut dyn giui::BuilderContext,
     ) -> bool {
         true
     }
 
-    fn item_count(&mut self, _ctx: &mut dyn crui::BuilderContext) -> usize {
+    fn item_count(&mut self, _ctx: &mut dyn giui::BuilderContext) -> usize {
         self.roms.len()
     }
 
     fn create_item<'a>(
         &mut self,
         index: usize,
-        _list_id: crui::Id,
-        cb: crui::ControlBuilder,
-        ctx: &mut dyn crui::BuilderContext,
-    ) -> crui::ControlBuilder {
+        _list_id: giui::Id,
+        cb: giui::ControlBuilder,
+        ctx: &mut dyn giui::BuilderContext,
+    ) -> giui::ControlBuilder {
         let style = &ctx.get::<Style>().clone();
         let RomEntry { name, path } = self.roms[index].clone();
         cb.layout(HBoxLayout::new(4.0, [0.0; 4], -1))
@@ -74,7 +74,7 @@ impl ListBuilder for RomList {
     }
 }
 
-pub fn create_rom_loading_ui(gui: &mut crui::Gui, style: &Style) {
+pub fn create_rom_loading_ui(gui: &mut giui::Gui, style: &Style) {
     // let folders = ["roms/", "core/tests/gameboy-test-roms/**"];
     let roms = crate::config()
         .rom_folder

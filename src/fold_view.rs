@@ -1,7 +1,7 @@
-use crui::graphics::Graphic;
-use crui::layouts::{FitGraphic, HBoxLayout, VBoxLayout};
-use crui::text::Text;
-use crui::{Behaviour, BuilderContext, Id};
+use giui::graphics::Graphic;
+use giui::layouts::{FitGraphic, HBoxLayout, VBoxLayout};
+use giui::text::Text;
+use giui::{Behaviour, BuilderContext, Id};
 
 use crate::style::Style;
 
@@ -17,7 +17,7 @@ pub struct FoldView {
     icon: Id,
 }
 impl FoldView {
-    fn update_fold(&mut self, ctx: &mut crui::Context, this: crui::Id) {
+    fn update_fold(&mut self, ctx: &mut giui::Context, this: giui::Id) {
         ctx.set_graphic(
             self.icon,
             [&self.style.close, &self.style.open][self.fold as usize].clone(),
@@ -38,30 +38,30 @@ impl FoldView {
     }
 }
 impl Behaviour for FoldView {
-    fn on_active(&mut self, this: crui::Id, ctx: &mut crui::Context) {
+    fn on_active(&mut self, this: giui::Id, ctx: &mut giui::Context) {
         self.update_fold(ctx, this);
     }
 
-    fn input_flags(&self) -> crui::InputFlags {
-        crui::InputFlags::MOUSE
+    fn input_flags(&self) -> giui::InputFlags {
+        giui::InputFlags::MOUSE
     }
 
-    fn on_mouse_event(&mut self, mouse: crui::MouseInfo, this: crui::Id, ctx: &mut crui::Context) {
+    fn on_mouse_event(&mut self, mouse: giui::MouseInfo, this: giui::Id, ctx: &mut giui::Context) {
         match mouse.event {
-            crui::MouseEvent::Enter => (),
-            crui::MouseEvent::Exit => (),
-            crui::MouseEvent::Down(_) => (),
-            crui::MouseEvent::Up(_) => {
+            giui::MouseEvent::Enter => (),
+            giui::MouseEvent::Exit => (),
+            giui::MouseEvent::Down(_) => (),
+            giui::MouseEvent::Up(_) => {
                 self.fold = !self.fold;
                 self.update_fold(ctx, this);
             }
-            crui::MouseEvent::Moved => (),
-            crui::MouseEvent::None => (),
+            giui::MouseEvent::Moved => (),
+            giui::MouseEvent::None => (),
         }
     }
 }
 
-pub fn folder(ctx: &mut dyn BuilderContext, title: String, style: &Style) -> crui::ControlBuilder {
+pub fn folder(ctx: &mut dyn BuilderContext, title: String, style: &Style) -> giui::ControlBuilder {
     let icon = ctx.reserve();
     let this = ctx
         .create_control()

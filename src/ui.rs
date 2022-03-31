@@ -1,6 +1,6 @@
 use std::{any::Any, cell::RefCell, rc::Rc};
 
-use crui::{
+use giui::{
     font::Fonts,
     layouts::VBoxLayout,
     render::GuiRenderer,
@@ -205,7 +205,7 @@ fn scroll_viewer(
     scroll_view: Id,
     content: Id,
     style: &Style,
-) -> crui::ControlBuilder {
+) -> giui::ControlBuilder {
     let view = ctx
         .create_control()
         .parent(scroll_view)
@@ -248,7 +248,7 @@ pub fn list(
     margin: [f32; 4],
     list_builder: impl ListBuilder + 'static,
 ) -> ControlBuilder {
-    use crui::widgets::List;
+    use giui::widgets::List;
     let scroll_view = cb.id();
     let view = ctx
         .create_control()

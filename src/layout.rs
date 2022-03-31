@@ -1,4 +1,4 @@
-use crui::{Id, Layout, LayoutContext, MinSizeContext};
+use giui::{Id, Layout, LayoutContext, MinSizeContext};
 
 pub struct PixelPerfectLayout {
     size: (u32, u32),

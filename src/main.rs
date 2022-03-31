@@ -22,7 +22,7 @@ mod ui;
 pub use emulator::{Emulator, EmulatorEvent};
 
 #[macro_use]
-extern crate crui;
+extern crate giui;
 
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;

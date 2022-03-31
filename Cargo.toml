@@ -16,9 +16,11 @@ embed-resource = "1.7.1"
 [dependencies]
 
 gameroy-core = { path = "core" }
-sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
-audio-engine = { path = "../audio-engine"}
 giui = { path = "../giui", features=["simple_shaping"] }
+# sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
+sprite-render = { features=["opengl"], rev = "7d70588bbf31f06150d7f499f315c6e9c8b13c69", git = "https://github.com/Rodrigodd/sprite-render-rs" }
+# audio-engine = { path = "../audio-engine"}
+audio-engine = "0.1"
 winit = { version = "0.26.1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 ron = "0.6"

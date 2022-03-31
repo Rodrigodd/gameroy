@@ -560,29 +560,10 @@ pub fn build(
     ctx: &mut dyn BuilderContext,
     event_table: &mut EventTable,
     style: &Style,
+    cpu_id: Id,
+    ppu_id: Id,
 ) {
-    let diss_view_id = ctx.reserve();
     let list_id = ctx.reserve();
-    let cpu_id = ctx.reserve();
-    let ppu_id = ctx.reserve();
-
-    let vbox = ctx
-        .create_control_reserved(diss_view_id)
-        .graphic(style.background.clone())
-        .parent(parent)
-        .expand_y(true)
-        .expand_x(true)
-        .min_width(100.0)
-        .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
-        .build(ctx);
-
-    let h_box = ctx
-        .create_control()
-        .parent(vbox)
-        .behaviour_and_layout(SplitView::new(1.0, 2.0, [2.0; 4], false))
-        .expand_y(true)
-        .build(ctx);
-
     ui::list(
         ctx.create_control_reserved(list_id),
         ctx,
@@ -598,46 +579,46 @@ pub fn build(
             _emulator_updated_event: event_table.register(list_id),
         },
     )
-    .parent(h_box)
+    .parent(parent)
     .build(ctx);
+}
 
-    let caret = ctx.reserve();
-    let label = ctx.reserve();
-
+pub fn side_panel(
+    ctx: &mut dyn BuilderContext,
+    style: &Style,
+    parent: Id,
+    cpu_id: Id,
+    ppu_id: Id,
+    event_table: &mut EventTable,
+) {
     let scroll_view = ctx.reserve();
     let right_panel = ctx.reserve();
     ui::scroll_viewer(ctx, scroll_view, right_panel, style)
-        .parent(h_box)
+        .parent(parent)
         .min_size([100.0, 0.0])
         .graphic(style.split_background.clone())
         .build(ctx);
-
     let cpu = fold_view::folder(ctx, "cpu".to_string(), style)
         .parent(right_panel)
         .build(ctx);
-
     let _reg_view = ctx
         .create_control_reserved(cpu_id)
         .parent(cpu)
         .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
         .layout(FitGraphic)
         .build(ctx);
-
     let ppu = fold_view::folder(ctx, "ppu".to_string(), style)
         .parent(right_panel)
         .build(ctx);
-
     let _ppu_view = ctx
         .create_control_reserved(ppu_id)
         .parent(ppu)
         .graphic(Text::new(String::new(), (-1, 0), style.text_style.clone()))
         .layout(FitGraphic)
         .build(ctx);
-
     let breaks = fold_view::folder(ctx, "breaks".to_string(), style)
         .parent(right_panel)
         .build(ctx);
-
     let break_list = ctx.reserve();
     ui::list(
         ctx.create_control_reserved(break_list)
@@ -651,11 +632,9 @@ pub fn build(
         },
     )
     .build(ctx);
-
     let watchs = fold_view::folder(ctx, "watchs".to_string(), style)
         .parent(right_panel)
         .build(ctx);
-
     let watchs_list = ctx.reserve();
     ui::list(
         ctx.create_control_reserved(watchs_list)
@@ -670,16 +649,19 @@ pub fn build(
         },
     )
     .build(ctx);
-
     ctx.create_control()
         .expand_y(true)
         .parent(right_panel)
         .graphic(style.header_background.clone())
         .build(ctx);
+}
 
+pub fn text_field(ctx: &mut dyn BuilderContext, parent: Id, style: &Style) {
+    let caret = ctx.reserve();
+    let label = ctx.reserve();
     let text_field = ctx
         .create_control()
-        .parent(vbox)
+        .parent(parent)
         .behaviour(TextField::new(
             caret,
             label,
@@ -690,13 +672,11 @@ pub fn build(
         .min_size([20.0; 2])
         .focus(true)
         .build(ctx);
-
     ctx.create_control_reserved(caret)
         .parent(text_field)
         .graphic(style.background.clone().with_color([0, 0, 0, 255].into()))
         .anchors([0.0; 4])
         .build(ctx);
-
     ctx.create_control_reserved(label)
         .parent(text_field)
         .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()))

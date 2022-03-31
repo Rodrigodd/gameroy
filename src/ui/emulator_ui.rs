@@ -195,6 +195,7 @@ fn open_debug_panel(
     screen_id: &mut giui::Id,
     event_table: Rc<RefCell<EventTable>>,
 ) {
+    let event_table = &mut *event_table.borrow_mut();
     ctx.create_control_reserved(split_view)
         .parent(root)
         .graphic(style.split_background.clone())
@@ -220,23 +221,41 @@ fn open_debug_panel(
         .parent(split_view)
         .build(ctx);
 
-    let tab_header = ctx
+    let h_box = ctx
         .create_control()
         .parent(debug_panel)
+        .behaviour_and_layout(SplitView::new(1.0, 2.0, [2.0; 4], false))
+        .expand_y(true)
+        .build(ctx);
+
+    let vbox = ctx
+        .create_control()
+        .graphic(style.background.clone())
+        .parent(h_box)
+        .expand_y(true)
+        .expand_x(true)
+        .min_width(100.0)
+        .layout(VBoxLayout::new(2.0, [2.0; 4], -1))
+        .build(ctx);
+
+    let tab_header = ctx
+        .create_control()
+        .parent(vbox)
         .layout(HBoxLayout::default())
         .min_size([16.0, 16.0])
         .build(ctx);
 
-    let tab_page = ctx
-        .create_control()
-        .parent(debug_panel)
-        .expand_y(true)
-        .build(ctx);
+    let tab_page = ctx.create_control().parent(vbox).expand_y(true).build(ctx);
+
+    let cpu_id = ctx.reserve();
+    let ppu_id = ctx.reserve();
+    disassembler_viewer::side_panel(ctx, style, h_box, cpu_id, ppu_id, event_table);
+    disassembler_viewer::text_field(ctx, vbox, style);
 
     let tab_group = ButtonGroup::new(|_, _| ());
 
     let disas_page = ctx.create_control().parent(tab_page).build(ctx);
-    disassembler_viewer::build(disas_page, ctx, &mut *event_table.borrow_mut(), &style);
+    disassembler_viewer::build(disas_page, ctx, event_table, &style, cpu_id, ppu_id);
     let _disas_tab = ctx
         .create_control()
         .parent(tab_header)
@@ -258,13 +277,7 @@ fn open_debug_panel(
         .build(ctx);
 
     let ppu_page = ctx.create_control().parent(tab_page).build(ctx);
-    ppu_viewer::build(
-        ppu_page,
-        ctx,
-        &mut *event_table.borrow_mut(),
-        &style,
-        textures,
-    );
+    ppu_viewer::build(ppu_page, ctx, event_table, &style, textures);
     let _ppu_tab = ctx
         .create_control()
         .parent(tab_header)

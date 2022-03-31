@@ -40,8 +40,8 @@ impl Callback {
 }
 impl TextFieldCallback for Callback {
     fn on_submit(&mut self, _this: Id, ctx: &mut Context, text: &mut String) {
-        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
         let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
         let mut args: Vec<&str> = text.split_ascii_whitespace().collect();
         if args.len() == 0 {
             args.push("");

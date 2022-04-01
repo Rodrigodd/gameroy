@@ -245,12 +245,41 @@ fn open_debug_panel(
         .min_size([16.0, 16.0])
         .build(ctx);
 
-    let tab_page = ctx.create_control().parent(vbox).expand_y(true).build(ctx);
+    let v_split = ctx
+        .create_control()
+        .parent(vbox)
+        // .graphic(style.split_background.clone())
+        .expand_y(true)
+        .behaviour_and_layout(SplitView::new(0.333, 2.0, [0.0; 4], true))
+        .build(ctx);
+
+    let tab_page = ctx
+        .create_control()
+        .parent(v_split)
+        .expand_y(true)
+        .build(ctx);
 
     let cpu_id = ctx.reserve();
     let ppu_id = ctx.reserve();
     disassembler_viewer::side_panel(ctx, style, h_box, cpu_id, ppu_id, event_table);
-    disassembler_viewer::command_field(ctx, vbox, style);
+
+    let scroll_log = ctx.reserve();
+    let content = ctx.reserve();
+    super::scroll_viewer(ctx, scroll_log, content, style, (true, true))
+        .parent(v_split)
+        .graphic(style.terminal_background.clone())
+        .build(ctx);
+    let log = ctx
+        .create_control()
+        .graphic(Text::new(
+            String::new(),
+            (-1, -1),
+            style.terminal_text_style.clone(),
+        ))
+        .layout(FitGraphic)
+        .parent(content)
+        .build(ctx);
+    disassembler_viewer::command_field(ctx, vbox, style, scroll_log, log);
 
     let tab_group = ButtonGroup::new(|_, _| ());
 

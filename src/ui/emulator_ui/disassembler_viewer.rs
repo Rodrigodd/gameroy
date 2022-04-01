@@ -679,25 +679,13 @@ pub fn side_panel(
         .build(ctx);
 }
 
-pub fn command_field(ctx: &mut dyn BuilderContext, vbox: Id, style: &Style) {
-    let scroll_view = ctx.reserve();
-    let content = ctx.reserve();
-    scroll_viewer(ctx, scroll_view, content, style, (true, true))
-        .parent(vbox)
-        .min_height(100.0)
-        .graphic(style.terminal_background.clone())
-        .build(ctx);
-    let log = ctx
-        .create_control()
-        .graphic(Text::new(
-            String::new(),
-            (-1, -1),
-            style.terminal_text_style.clone(),
-        ))
-        .layout(FitGraphic)
-        .parent(content)
-        .build(ctx);
-
+pub fn command_field(
+    ctx: &mut dyn BuilderContext,
+    vbox: Id,
+    style: &Style,
+    scroll_log: Id,
+    log: Id,
+) {
     let caret = ctx.reserve();
     let label = ctx.reserve();
     let text_field = ctx
@@ -708,7 +696,7 @@ pub fn command_field(ctx: &mut dyn BuilderContext, vbox: Id, style: &Style) {
             label,
             false,
             style.text_field.clone(),
-            Callback::new(scroll_view, log),
+            Callback::new(scroll_log, log),
         ))
         .min_size([20.0; 2])
         .focus(true)

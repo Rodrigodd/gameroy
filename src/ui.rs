@@ -205,40 +205,47 @@ fn scroll_viewer(
     scroll_view: Id,
     content: Id,
     style: &Style,
+    axis: (bool, bool),
 ) -> giui::ControlBuilder {
     let view = ctx
         .create_control()
         .parent(scroll_view)
-        .layout(ViewLayout::new(false, true))
+        .layout(ViewLayout::new(axis.0, axis.1))
         .build(ctx);
     let _content = ctx
         .create_control_reserved(content)
         .parent(view)
         .layout(VBoxLayout::new(0.0, [2.0; 4], -1))
         .build(ctx);
-    let v_handle = ctx.reserve();
-    let v_scroll = ctx
-        .create_control()
-        .parent(scroll_view)
-        .behaviour(ScrollBar::new(
-            v_handle,
-            scroll_view,
-            true,
-            style.scrollbar.clone(),
-        ))
-        .min_size([12.0, 12.0])
-        .build(ctx);
-    let v_handle = ctx
-        .create_control_reserved(v_handle)
-        .parent(v_scroll)
-        .build(ctx);
+
+    let handle = |vert, ctx: &mut dyn BuilderContext| {
+        let v_handle = ctx.reserve();
+        let v_scroll = ctx
+            .create_control()
+            .parent(scroll_view)
+            .behaviour(ScrollBar::new(
+                v_handle,
+                scroll_view,
+                vert,
+                style.scrollbar.clone(),
+            ))
+            .min_size([12.0, 12.0])
+            .build(ctx);
+        let v_handle = ctx
+            .create_control_reserved(v_handle)
+            .parent(v_scroll)
+            .build(ctx);
+        (v_scroll, v_handle)
+    };
+
+    let behaviour_layout = ScrollView::new(
+        view,
+        content,
+        axis.0.then(|| handle(false, ctx)),
+        axis.1.then(|| handle(true, ctx)),
+    );
     ctx.create_control_reserved(scroll_view)
-        .behaviour_and_layout(ScrollView::new(
-            view,
-            content,
-            None,
-            Some((v_scroll, v_handle)),
-        ))
+        .behaviour_and_layout(behaviour_layout)
 }
 
 pub fn list(

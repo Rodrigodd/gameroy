@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use gameroy::gameboy::GameBoy;
 use giui::{
     graphics::{Graphic, Texture},
     layouts::{FitGraphic, GridLayout, HBoxLayout, VBoxLayout},
     text::Text,
     Behaviour, BuilderContext, Color, Context, Id, InputFlags, MouseEvent,
 };
-use gameroy::gameboy::GameBoy;
 use parking_lot::Mutex;
 use winit::event_loop::EventLoopProxy;
 
@@ -244,7 +244,7 @@ pub fn build(
     let scroll_view = ctx.reserve();
     let content = ctx.reserve();
 
-    scroll_viewer(ctx, scroll_view, content, style)
+    scroll_viewer(ctx, scroll_view, content, style, (false, true))
         .parent(ppu_viewer)
         .build(ctx);
 

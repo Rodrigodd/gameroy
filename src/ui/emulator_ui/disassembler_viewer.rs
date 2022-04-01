@@ -11,7 +11,8 @@ use giui::{
     layouts::{FitGraphic, HBoxLayout},
     text::{Span, TextStyle},
     widgets::{
-        Button, FocusItem, InteractiveText, ListBuilder, TextField, TextFieldCallback, UpdateItems,
+        Button, FocusItem, InteractiveText, ListBuilder, SetScrollPosition, TextField,
+        TextFieldCallback, UpdateItems,
     },
     BuilderContext, Color, Context, ControlBuilder, Id, MouseEvent, MouseInfo,
 };
@@ -22,17 +23,21 @@ use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view,
     style::Style,
-    ui,
+    ui::{self, scroll_viewer},
 };
 
 struct Callback {
+    log_scroll: Id,
+    log: Id,
     /// A list of past submitted texts, that allow to be reused by pressing `UpArrow`.
     history: Vec<String>,
     curr: usize,
 }
 impl Callback {
-    fn new() -> Self {
+    fn new(log_scroll: Id, log: Id) -> Self {
         Self {
+            log_scroll,
+            log,
             history: Vec::new(),
             curr: 0,
         }
@@ -40,17 +45,35 @@ impl Callback {
 }
 impl TextFieldCallback for Callback {
     fn on_submit(&mut self, _this: Id, ctx: &mut Context, text: &mut String) {
-        let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
-        let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
         let mut args: Vec<&str> = text.split_ascii_whitespace().collect();
-        if args.len() == 0 {
-            args.push("");
-        }
-        match debugger.execute_command(&*gb, &args) {
-            Ok(_) => {}
-            Err(x) => eprintln!("{}", x),
-        }
+        {
+            let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+            let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
+            if args.len() == 0 {
+                args.push("");
+            }
 
+            match debugger.execute_command(&*gb, &args) {
+                Ok(_) => {}
+                Err(m) => {
+                    drop((gb, debugger));
+                    eprintln!("{}", m);
+                    let fonts = ctx.get_fonts();
+                    if let (rect, Graphic::Text(x)) = ctx.get_rect_and_graphic(self.log) {
+                        let text_layout = &mut x.get_layout(fonts, rect);
+                        text_layout.append(&(m + "\n"), fonts);
+                    };
+                    // scroll to bottom
+                    ctx.send_event_to(
+                        self.log_scroll,
+                        SetScrollPosition {
+                            vertical: true,
+                            value: 1.0,
+                        },
+                    );
+                }
+            }
+        }
         if !text.trim().is_empty() {
             // don't add to history if it is the same text again and again
             if self.history.last() != Some(text) {
@@ -593,7 +616,7 @@ pub fn side_panel(
 ) {
     let scroll_view = ctx.reserve();
     let right_panel = ctx.reserve();
-    ui::scroll_viewer(ctx, scroll_view, right_panel, style)
+    ui::scroll_viewer(ctx, scroll_view, right_panel, style, (false, true))
         .parent(parent)
         .min_size([100.0, 0.0])
         .graphic(style.split_background.clone())
@@ -656,18 +679,32 @@ pub fn side_panel(
         .build(ctx);
 }
 
-pub fn text_field(ctx: &mut dyn BuilderContext, parent: Id, style: &Style) {
+pub fn command_field(ctx: &mut dyn BuilderContext, vbox: Id, style: &Style) {
+    let scroll_view = ctx.reserve();
+    let content = ctx.reserve();
+    scroll_viewer(ctx, scroll_view, content, style, (true, true))
+        .parent(vbox)
+        .min_height(100.0)
+        .graphic(style.background.clone())
+        .build(ctx);
+    let log = ctx
+        .create_control()
+        .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()))
+        .layout(FitGraphic)
+        .parent(content)
+        .build(ctx);
+
     let caret = ctx.reserve();
     let label = ctx.reserve();
     let text_field = ctx
         .create_control()
-        .parent(parent)
+        .parent(vbox)
         .behaviour(TextField::new(
             caret,
             label,
             false,
             style.text_field.clone(),
-            Callback::new(),
+            Callback::new(scroll_view, log),
         ))
         .min_size([20.0; 2])
         .focus(true)

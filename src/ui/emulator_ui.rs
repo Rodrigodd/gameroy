@@ -250,7 +250,7 @@ fn open_debug_panel(
     let cpu_id = ctx.reserve();
     let ppu_id = ctx.reserve();
     disassembler_viewer::side_panel(ctx, style, h_box, cpu_id, ppu_id, event_table);
-    disassembler_viewer::text_field(ctx, vbox, style);
+    disassembler_viewer::command_field(ctx, vbox, style);
 
     let tab_group = ButtonGroup::new(|_, _| ());
 

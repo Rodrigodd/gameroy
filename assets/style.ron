@@ -53,4 +53,5 @@
         close: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (0,16,16,16), size: (16, 16)),
     ),
     delete_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (0,0,16,16), size: (16, 16)),
+    open_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (16,16,16,16), size: (16, 16)),
 )

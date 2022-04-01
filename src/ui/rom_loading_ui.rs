@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
-use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout};
+use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout};
 use giui::text::Text;
 use giui::widgets::{Button, ListBuilder};
 use winit::event_loop::EventLoopProxy;
+use winit::window::Window;
 
 use crate::style::Style;
 use crate::UserEvent;
@@ -74,8 +75,59 @@ impl ListBuilder for RomList {
     }
 }
 
-pub fn create_rom_loading_ui(gui: &mut giui::Gui, style: &Style) {
-    // let folders = ["roms/", "core/tests/gameboy-test-roms/**"];
+pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
+    let v_box = ctx
+        .create_control()
+        .layout(VBoxLayout::new(2.0, [0.0; 4], -1))
+        .build(ctx);
+
+    let h_box = ctx
+        .create_control()
+        .layout(HBoxLayout::new(0.0, [0.0; 4], -1))
+        .parent(v_box)
+        .build(ctx);
+
+    let _open_button = ctx
+        .create_control()
+        .parent(h_box)
+        .layout(HBoxLayout::new(0.0, [0.0; 4], -1))
+        .behaviour(Button::new(
+            style.delete_button.clone(),
+            true,
+            move |_, ctx| {
+                let handle = ctx.get::<std::rc::Rc<Window>>().clone();
+                let path = rfd::FileDialog::new()
+                    .set_title("Open GameBoy Rom file")
+                    .add_filter("GameBoy roms", &["gb"])
+                    .set_parent(&*handle)
+                    .pick_file();
+                if let Some(path) = path {
+                    ctx.get::<EventLoopProxy<UserEvent>>()
+                        .send_event(UserEvent::LoadRom(path.clone().into()))
+                        .unwrap();
+                }
+            },
+        ))
+        .child(ctx, |cb, _| {
+            cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+        })
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "open rom".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitGraphic)
+        })
+        .build(ctx);
+
+    let _remain = ctx
+        .create_control()
+        .graphic(style.background.clone())
+        .parent(h_box)
+        .expand_x(true)
+        .build(ctx);
+
     let roms = crate::config()
         .rom_folder
         .as_ref()
@@ -86,9 +138,11 @@ pub fn create_rom_loading_ui(gui: &mut giui::Gui, style: &Style) {
         })
         .unwrap_or_default();
 
-    crate::ui::list(gui.create_control(), gui, style, [0.0; 4], RomList { roms })
+    crate::ui::list(ctx.create_control(), ctx, style, [0.0; 4], RomList { roms })
         .graphic(style.background.clone())
-        .build(gui);
+        .parent(v_box)
+        .expand_y(true)
+        .build(ctx);
 }
 
 fn load_roms(roms_path: &str) -> Result<Vec<RomEntry>, std::io::Error> {

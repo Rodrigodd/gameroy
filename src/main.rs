@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    rc::Rc,
     sync::{mpsc::sync_channel, Arc},
     thread,
 };
@@ -135,6 +136,9 @@ fn main() {
     let proxy = event_loop.create_proxy();
     let mut ui = ui::Ui::new(&window, proxy);
 
+    let window = Rc::new(window);
+    ui.gui.set(window.clone());
+
     let proxy = event_loop.create_proxy();
 
     // initiate in the apropriated screen
@@ -253,7 +257,7 @@ impl AppState {
 
 fn start_event_loop(
     event_loop: EventLoop<UserEvent>,
-    window: Window,
+    window: Rc<Window>,
     mut ui: ui::Ui,
     mut app: Box<dyn App>,
 ) -> ! {

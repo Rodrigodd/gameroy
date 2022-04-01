@@ -64,6 +64,7 @@ pub struct Style {
     pub tab_style: Rc<TabStyle>,
     pub fold_icon: FoldIcon,
     pub delete_icon: Graphic,
+    pub open_icon: Graphic,
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {

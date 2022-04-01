@@ -118,14 +118,14 @@ impl Layout for SplitView {
                 ctx.set_designed_rect(left_child, [left, top, right, left_bottom]);
             }
             if let Some(right_child) = right_child {
-                let top = left_bottom;
-                let right_bottom = top + self.right_min_size + free_height * (1.0 - self.split);
-                ctx.set_designed_rect(right_child, [left, top, right, right_bottom]);
+                let top = left_bottom + self.spacing;
+                ctx.set_designed_rect(right_child, [left, top, right, bottom]);
             }
         } else {
             let reserved_width = self.left_min_size + self.right_min_size;
             let free_width = (width - reserved_width - self.spacing).max(0.0);
             let left_right = left + self.left_min_size + free_width * self.split;
+
             if let Some(left_child) = left_child {
                 ctx.set_designed_rect(left_child, [left, top, left_right, bottom]);
             }
@@ -160,7 +160,11 @@ impl Behaviour for SplitView {
             MouseEvent::Exit => ctx.set_cursor(CursorIcon::Default),
             MouseEvent::Moved => {
                 if self.dragging || self.is_on_split(mouse.pos, rect) {
-                    ctx.set_cursor(CursorIcon::ColResize);
+                    ctx.set_cursor(if self.vertical {
+                        CursorIcon::RowResize
+                    } else {
+                        CursorIcon::ColResize
+                    });
                 } else {
                     ctx.set_cursor(CursorIcon::Default);
                 }

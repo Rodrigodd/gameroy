@@ -54,6 +54,8 @@ impl<'a, R: SpriteRender> StyleLoaderCallback for Loader<'a, R> {
 pub struct Style {
     pub text_style: TextStyle,
     pub split_background: Graphic,
+    pub terminal_background: Graphic,
+    pub terminal_text_style: TextStyle,
     pub background: Graphic,
     pub header_background: Graphic,
     pub text_field: Rc<TextFieldStyle>,

@@ -685,11 +685,15 @@ pub fn command_field(ctx: &mut dyn BuilderContext, vbox: Id, style: &Style) {
     scroll_viewer(ctx, scroll_view, content, style, (true, true))
         .parent(vbox)
         .min_height(100.0)
-        .graphic(style.background.clone())
+        .graphic(style.terminal_background.clone())
         .build(ctx);
     let log = ctx
         .create_control()
-        .graphic(Text::new(String::new(), (-1, -1), style.text_style.clone()))
+        .graphic(Text::new(
+            String::new(),
+            (-1, -1),
+            style.terminal_text_style.clone(),
+        ))
         .layout(FitGraphic)
         .parent(content)
         .build(ctx);

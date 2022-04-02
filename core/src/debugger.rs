@@ -195,7 +195,7 @@ impl Debugger {
                 trace.fmt(gb, &mut string).map_err(|x| x.to_string())?;
                 std::fs::write(file, string).map_err(|x| x.to_string())?;
             }
-            // save some state to a file (for dev purpose)
+            // save some state to a file (for dev purposes)
             "save" => {
                 if args.len() != 2 {
                     return Err(format!(
@@ -260,7 +260,6 @@ impl Debugger {
     }
 
     pub fn remove_break(&mut self, address: u16) {
-        println!("remove break {:02}", address);
         let address = &address;
         self.breakpoints.remove(address);
         self.read_breakpoints.remove(address);
@@ -355,16 +354,6 @@ impl Debugger {
         };
 
         let result = loop {
-            if self.check_break(&mut inter) {
-                break RunResult::ReachBreakpoint;
-            }
-            if self.interrupt_breakpoint {
-                let interrupts: u8 = inter.0.interrupt_flag & inter.0.interrupt_enabled;
-                if interrupts != 0 && inter.0.cpu.ime == crate::gameboy::cpu::ImeState::Enabled {
-                    return RunResult::ReachBreakpoint;
-                }
-            }
-
             self.last_op_clock = inter.0.clock_count;
             inter.interpret_op();
 
@@ -378,6 +367,16 @@ impl Debugger {
                 } else {
                     break RunResult::TimeOut;
                 };
+            }
+
+            if self.check_break(&mut inter) {
+                break RunResult::ReachBreakpoint;
+            }
+            if self.interrupt_breakpoint {
+                let interrupts: u8 = inter.0.interrupt_flag & inter.0.interrupt_enabled;
+                if interrupts != 0 && inter.0.cpu.ime == crate::gameboy::cpu::ImeState::Enabled {
+                    return RunResult::ReachBreakpoint;
+                }
             }
         };
 

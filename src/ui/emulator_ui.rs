@@ -250,7 +250,7 @@ fn open_debug_panel(
         .parent(vbox)
         // .graphic(style.split_background.clone())
         .expand_y(true)
-        .behaviour_and_layout(SplitView::new(0.333, 2.0, [0.0; 4], true))
+        .behaviour_and_layout(SplitView::new(0.9, 2.0, [0.0; 4], true))
         .build(ctx);
 
     let tab_page = ctx

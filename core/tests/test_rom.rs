@@ -36,6 +36,21 @@ mod blargg {
         };
     }
 
+    console! {
+        (cpu_instrs_01, "cpu_instrs/individual/01-special.gb", 34_500_000);
+        (cpu_instrs_02, "cpu_instrs/individual/02-interrupts.gb", 43_000_000);
+        (cpu_instrs_03, "cpu_instrs/individual/03-op sp,hl.gb", 34_000_000);
+        (cpu_instrs_04, "cpu_instrs/individual/04-op r,imm.gb", 36_000_000);
+        (cpu_instrs_05, "cpu_instrs/individual/05-op rp.gb", 40_000_000);
+        (cpu_instrs_06, "cpu_instrs/individual/06-ld r,r.gb", 27_000_000);
+        (cpu_instrs_07, "cpu_instrs/individual/07-jr,jp,call,ret,rst.gb", 28_000_000);
+        (cpu_instrs_08, "cpu_instrs/individual/08-misc instrs.gb", 26_000_000);
+        (cpu_instrs_09, "cpu_instrs/individual/09-op r,r.gb", 62_000_000);
+        (cpu_instrs_10, "cpu_instrs/individual/10-bit ops.gb", 89_000_000);
+        (cpu_instrs_11, "cpu_instrs/individual/11-op a,(hl).gb", 98_000_000);
+        (cpu_instrs, "cpu_instrs/cpu_instrs.gb", 250_400_000);
+    }
+
     memory! {
         (dmg_sound_01, "dmg_sound/rom_singles/01-registers.gb", 30_600_000);
         (dmg_sound_02, "dmg_sound/rom_singles/02-len ctr.gb", 65_000_000);
@@ -70,19 +85,8 @@ mod blargg {
         (mem_timing_2, "mem_timing-2/mem_timing.gb", 36_000_000);
     }
 
-    console! {
-        (cpu_instrs_01, "cpu_instrs/individual/01-special.gb", 34_500_000);
-        (cpu_instrs_02, "cpu_instrs/individual/02-interrupts.gb", 43_000_000);
-        (cpu_instrs_03, "cpu_instrs/individual/03-op sp,hl.gb", 34_000_000);
-        (cpu_instrs_04, "cpu_instrs/individual/04-op r,imm.gb", 36_000_000);
-        (cpu_instrs_05, "cpu_instrs/individual/05-op rp.gb", 40_000_000);
-        (cpu_instrs_06, "cpu_instrs/individual/06-ld r,r.gb", 27_000_000);
-        (cpu_instrs_07, "cpu_instrs/individual/07-jr,jp,call,ret,rst.gb", 28_000_000);
-        (cpu_instrs_08, "cpu_instrs/individual/08-misc instrs.gb", 26_000_000);
-        (cpu_instrs_09, "cpu_instrs/individual/09-op r,r.gb", 62_000_000);
-        (cpu_instrs_10, "cpu_instrs/individual/10-bit ops.gb", 89_000_000);
-        (cpu_instrs_11, "cpu_instrs/individual/11-op a,(hl).gb", 98_000_000);
-        (cpu_instrs, "cpu_instrs/cpu_instrs.gb", 250_400_000);
+    memory! {
+        (oam_bug, "oam_bug/oam_bug.gb", 83_000_000);
     }
 
     fn test_rom_serial(path: &str, timeout: u64) -> Result<(), String> {
@@ -746,7 +750,8 @@ mod mooneye {
     fn test_rom(rom: &str, timeout: u64) {
         use super::*;
         use std::path::PathBuf;
-        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + "mooneye-test-suite/" + rom + ".gb").into();
+        let rom_path: PathBuf =
+            (TEST_ROM_PATH.to_string() + "mooneye-test-suite/" + rom + ".gb").into();
         let rom = std::fs::read(&rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();
@@ -774,10 +779,7 @@ mod mooneye {
         let regs = game_boy.cpu;
 
         if regs.a != 0 {
-            panic!(
-                "{} assertion failures in hardware test",
-                regs.a
-            );
+            panic!("{} assertion failures in hardware test", regs.a);
         }
         if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34
         {

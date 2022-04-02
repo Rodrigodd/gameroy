@@ -390,7 +390,7 @@ impl MBC1 {
             }
             // RAM Bank 00-03, if any
             0xA000..=0xBFFF => {
-                if !self.ram_enabled {
+                if !self.ram_enabled || ram.is_empty() {
                     return 0xff;
                 }
                 let start_address = if self.mode {
@@ -445,7 +445,7 @@ impl MBC1 {
             }
             // RAM Bank 00-03, if any
             0xA000..=0xBFFF => {
-                if !self.ram_enabled {
+                if !self.ram_enabled || ram.is_empty() {
                     return;
                 }
                 let start_address = if self.mode {
@@ -523,7 +523,7 @@ impl MBC1M {
             }
             // RAM Bank 00-03, if any
             0xA000..=0xBFFF => {
-                if !self.ram_enabled {
+                if !self.ram_enabled || ram.is_empty() {
                     return 0xff;
                 }
                 let start_address = if self.mode {
@@ -579,7 +579,7 @@ impl MBC1M {
             }
             // RAM Bank 00-03, if any
             0xA000..=0xBFFF => {
-                if !self.ram_enabled {
+                if !self.ram_enabled || ram.is_empty() {
                     return;
                 }
                 let start_address = if self.mode {
@@ -736,7 +736,7 @@ impl MBC3 {
                 match self.ram_bank {
                     // RAM bank
                     0x0..=0x03 => {
-                        if !self.ram_enabled {
+                        if !self.ram_enabled || ram.is_empty() {
                             return 0xff;
                         }
                         let start_address = 0x2000 * ((self.selected_bank >> 5) & 0x3) as usize;
@@ -815,7 +815,7 @@ impl MBC3 {
                 match self.ram_bank {
                     // RAM bank
                     0x0..=0x03 => {
-                        if !self.ram_enabled {
+                        if !self.ram_enabled || ram.is_empty() {
                             return;
                         }
                         let start_address = 0x2000 * ((self.selected_bank >> 5) & 0x3) as usize;
@@ -873,7 +873,7 @@ impl MBC5 {
             }
             // RAM banks
             0xA000..=0xBFFF => {
-                if !self.ram_enabled {
+                if !self.ram_enabled || ram.is_empty() {
                     return 0xff;
                 }
                 let start_address = (self.selected_ram_bank as usize * 0x2000) % ram.len();
@@ -903,7 +903,7 @@ impl MBC5 {
             }
             // RAM banks
             0xA000..=0xBFFF => {
-                if !self.ram_enabled {
+                if !self.ram_enabled || ram.is_empty() {
                     return;
                 }
                 let start_address = (self.selected_ram_bank as usize * 0x2000) % ram.len();

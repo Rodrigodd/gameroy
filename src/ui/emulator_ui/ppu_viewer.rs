@@ -244,7 +244,7 @@ pub fn build(
     let scroll_view = ctx.reserve();
     let content = ctx.reserve();
 
-    scroll_viewer(ctx, scroll_view, content, style, (false, true))
+    scroll_viewer(ctx, scroll_view, content, style, (true, true))
         .parent(ppu_viewer)
         .build(ctx);
 

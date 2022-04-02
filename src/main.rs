@@ -1,3 +1,6 @@
+#![cfg_attr(not(feature = "console"), windows_subsystem = "windows")]
+#![cfg_attr(feature = "console", windows_subsystem = "console")]
+
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
@@ -34,6 +37,7 @@ mod config;
 use config::{config, normalize_config_path};
 
 fn main() {
+    #[cfg(feature = "env_logger")]
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let matches = Command::new("GameRoy")

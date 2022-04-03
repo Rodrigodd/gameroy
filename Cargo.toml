@@ -24,9 +24,10 @@ default = ["console"]
 [dependencies]
 
 gameroy-core = { path = "core" }
-giui = { path = "../giui", features=["simple_shaping"] }
+# giui = { path = "../giui", features=["simple_shaping"] }
+giui = { features=["simple_shaping"], git = "https://github.com/Rodrigodd/giui" }
 # sprite-render = { path = "../sprite-render-rs", features=["opengl"] }
-sprite-render = { features=["opengl"], rev = "7d70588bbf31f06150d7f499f315c6e9c8b13c69", git = "https://github.com/Rodrigodd/sprite-render-rs" }
+sprite-render = { features=["opengl"], rev = "8b1799e56837214c1f903ae5dad52f39f276509f", git = "https://github.com/Rodrigodd/sprite-render-rs" }
 # audio-engine = { path = "../audio-engine"}
 audio-engine = "0.1"
 winit = { version = "0.26.1", features = ["serde"] }

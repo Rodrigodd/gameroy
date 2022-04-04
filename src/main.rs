@@ -37,8 +37,16 @@ mod config;
 use config::{config, normalize_config_path};
 
 fn main() {
-    #[cfg(feature = "env_logger")]
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let _logger = flexi_logger::Logger::try_with_env_or_str("gameroy=info")
+        .unwrap()
+        .log_to_file(
+            flexi_logger::FileSpec::default()
+                .directory(config::base_folder().unwrap_or_default())
+                .suppress_timestamp(),
+        )
+        .duplicate_to_stderr(flexi_logger::Duplicate::All)
+        .start()
+        .unwrap();
 
     let matches = Command::new("GameRoy")
         .version("0.1")

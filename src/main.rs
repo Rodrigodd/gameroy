@@ -296,6 +296,7 @@ fn start_event_loop(
                         ui.resize(size.clone(), window_id);
                     }
                     // Rebuild the UI
+                    #[cfg(not(feature = "static"))]
                     WindowEvent::KeyboardInput {
                         input:
                             KeyboardInput {

@@ -69,7 +69,7 @@ mod static_files {
         pub icons_texture: &'static [u8],
     }
     pub static FILES: StaticFiles = StaticFiles {
-        font: include_bytes!("../assets/consola.ttf"),
+        font: include_bytes!("../assets/NotoSansMono.ttf"),
         style: include_str!("../assets/style.ron"),
         white_texture: include_bytes!("../assets/white.png"),
         icons_texture: include_bytes!("../assets/icons.png"),
@@ -110,7 +110,7 @@ mod static_files {
             // load a font
             log::info!("load font: '{}'", name);
             let font_data = match name.as_str() {
-                "consola.ttf" => FILES.font,
+                "NotoSansMono.ttf" => FILES.font,
                 _ => panic!("unknown font '{}'", name),
             };
             self.fonts.add(Font::new(font_data))

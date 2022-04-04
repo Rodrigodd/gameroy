@@ -1,6 +1,6 @@
 (
-    // text_style: (color: "#34ff30", font_size: 14, font_id: "consola.ttf"),
-    text_style: (color: "#2dd929", font_size: 14, font_id: "consola.ttf"),
+    // text_style: (color: "#34ff30", font_size: 15, font_id: "NotoSansMono.ttf"),
+    text_style: (color: "#2dd929", font_size: 15, font_id: "NotoSansMono.ttf"),
     split_background: Texture(
         texture: "white.png",
         color: "#001600",
@@ -11,7 +11,7 @@
         color: "#001000",
         uv_rect: (0, 0, 1, 1),
     ),
-    terminal_text_style: (color: "#23ad20", font_size: 13, font_id: "consola.ttf"),
+    terminal_text_style: (color: "#23ad20", font_size: 13, font_id: "NotoSansMono.ttf"),
     background: Texture(
         texture: "white.png",
         color: "#000a05",

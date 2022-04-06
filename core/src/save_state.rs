@@ -8,6 +8,7 @@ pub enum LoadStateError {
     InvalidBool(u8),
     InvalidBoolBitArray(u8, u8),
     SoundControllerDesync(u64, u64),
+    ConstMismatch(String, String),
     IoError(std::io::Error),
 }
 impl From<std::io::Error> for LoadStateError {
@@ -35,6 +36,7 @@ impl SaveState for u8 {
 
 #[macro_export]
 macro_rules! save_state {
+    // end
     (@accum ($n:ident, $s:ident, $d:ident,) -> ($($save:tt)*) -> ($($load:tt)*)) => {
         impl SaveState for $n {
             fn save_state(&$s, $d: &mut impl std::io::Write) -> Result<(), std::io::Error> {
@@ -50,6 +52,22 @@ macro_rules! save_state {
             }
         }
     };
+    // const <expr>
+    (@accum ($n:ident, $s:ident, $d:ident, const $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $d, $($f)* )
+            -> ($($save)* ($e).save_state($d)?; )
+            -> ($($load)* {
+                let expected = $e;
+                let mut loaded = expected;
+                loaded.load_state($d)?;
+                if loaded != expected {
+                    LoadStateError::ConstMismatch(format!("{:?}", loaded), format!("{:?}", expected));
+                }
+            })
+        );
+    };
+    // bitset [<expr>*]
     (@accum ($n:ident, $s:ident, $d:ident, bitset [ $($e:expr),* ]; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
         $crate::save_state!(
             @accum ($n, $s, $d, $($f)* )
@@ -57,6 +75,7 @@ macro_rules! save_state {
             -> ($($load)* [ $( &mut $e),* ].load_state($d)?; )
         );
     };
+    // <expr>
     (@accum ($n:ident, $s:ident, $d:ident, $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
         $crate::save_state!(
             @accum ($n, $s, $d, $($f)* )
@@ -64,6 +83,7 @@ macro_rules! save_state {
             -> ($($load)* ($e).load_state($d)?; )
         );
     };
+    // entry
     ($n:ident, $s:ident, $d:ident { $($f:tt)* }) => {
         $crate::save_state!(
             @accum ($n, $s, $d, $($f)* )

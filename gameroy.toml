@@ -1,4 +1,9 @@
+# if true, the emulator will start paused, with the debug panel open. Is overwritten by
+# passing the argument `--debug` to the executable.
 start_in_debug = false
+
+# the folder where to look for roms. Relative paths are relative to the executable path.
+# Only lists .gb files, and it doesn't search for subfolders.
 rom_folder = "roms"
 
 [keymap]
@@ -15,12 +20,18 @@ b = "S"
 select = "Back"
 start = "Return"
 
+# disable frame rate limit, and emulate as fast as possible.
 speed = "LShift"
+# start rewinding the emulation, going back in time (have a limit).
 rewind = "R"
+
+# save state to '<rom_file_name>.save_state' in the same folder as the 'rom_file'.
 save_state = "F5"
+# load the last saved state
 load_state = "F6"
 
+
 open_debugger = "F12"
-debug_step = "F7"
-debug_stepback = "F8"
+debug_stepback = "F7"
+debug_step = "F8"
 debug_run = "F9"

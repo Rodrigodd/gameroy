@@ -49,12 +49,20 @@ flexi_logger = "0.22.3"
 [profile.dev]
 opt-level = 1
 
+
+[profile.dev.package.audio-engine]
+opt-level = 3
+
 [profile.release]
 debug = true
 
 [profile.test]
 opt-level = 3
-
-[profile.dev.package.audio-engine]
-opt-level = 3
 # overflow-checks = false
+
+[profile.minsize]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"

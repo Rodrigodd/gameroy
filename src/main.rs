@@ -36,6 +36,39 @@ use clap::{arg, Command};
 mod config;
 use config::{config, normalize_config_path};
 
+fn log_panic() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let current = thread::current();
+        let thread = current.name().unwrap_or("unnamed");
+
+        let msg = if let Some(s) = info.payload().downcast_ref::<&'static str>() {
+            *s
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            &**s
+        } else {
+            "Box<Any>"
+        };
+
+        match info.location() {
+            Some(location) => {
+                log::error!(
+                    "thread '{}' panicked at '{}': {}:{}",
+                    thread,
+                    msg,
+                    location.file(),
+                    location.line(),
+                );
+            }
+            None => {
+                log::error!("thread '{}' panicked at '{}'", thread, msg,)
+            }
+        }
+
+        default_hook(info);
+    }));
+}
+
 fn main() {
     let _logger = flexi_logger::Logger::try_with_env_or_str("gameroy=info")
         .unwrap()
@@ -47,6 +80,8 @@ fn main() {
         .duplicate_to_stderr(flexi_logger::Duplicate::All)
         .start()
         .unwrap();
+
+    log_panic();
 
     let matches = Command::new("GameRoy")
         .version("0.1")

@@ -84,7 +84,7 @@ fn main() {
     log_panic();
 
     let matches = Command::new("GameRoy")
-        .version("0.1")
+        .version("0.1.1")
         .author("Rodrigo Moraes")
         .about("A Game Boy emulator and debugger (and disassembler?).")
         .arg(arg!(-d - -debug "start the emulation in debug mode").required(false))

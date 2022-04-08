@@ -3,7 +3,7 @@ members = ["core"]
 
 [package]
 name = "gameroy"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 edition = "2018"
 build = "build.rs"

@@ -106,7 +106,8 @@ pub struct SoundController {
     output: Vec<u16>,
     /// Clock count at the last sound update
     pub last_clock: u64,
-    /// The frequency in Hertz at which the sound controller is sampled.
+    /// The frequency in Hertz at which the sound controller is sampled. Default value is 0, witch
+    /// means that there will be no sampling.
     pub sample_frequency: u64,
     sample_mod: u64,
 }
@@ -298,7 +299,7 @@ impl Default for SoundController {
             ch4_frequency_timer: 0,
             output: Vec::default(),
             last_clock: 0,
-            sample_frequency: 48_000,
+            sample_frequency: 0,
             sample_mod: 0,
         }
     }
@@ -318,22 +319,24 @@ impl SoundController {
     pub fn update(&mut self, clock_count: u64) {
         // if it is off, there is no need for audio generation
         if !self.on {
-            // compute the number of samples (multiples of k) beetween l (inclusive) and r (exclusive)
-            //  k = fc/fs
-            //  n = r/k - l/k + (l%k == 0) <- for r, l and k integers
-            //  => n = r*fs/fc - l*fs/fc + (l*fs % fc < fs) <- for r, l, fs and fc integers
+            if self.sample_frequency != 0 {
+                // compute the number of samples (multiples of k) beetween l (inclusive) and r (exclusive)
+                //  k = fc/fs
+                //  n = r/k - l/k + (l%k == 0) <- for r, l and k integers
+                //  => n = r*fs/fc - l*fs/fc + (l*fs % fc < fs) <- for r, l, fs and fc integers
 
-            // map clock_count to a smaller value, to avoid multiplication overflows in the
-            // distance future
-            let anchor = self.last_clock - (self.last_clock % CLOCK_SPEED);
-            let l = self.last_clock - anchor;
-            let r = clock_count - anchor;
+                // map clock_count to a smaller value, to avoid multiplication overflows in the
+                // distance future
+                let anchor = self.last_clock - (self.last_clock % CLOCK_SPEED);
+                let l = self.last_clock - anchor;
+                let r = clock_count - anchor;
 
-            let n = r * self.sample_frequency / CLOCK_SPEED
-                - l * self.sample_frequency / CLOCK_SPEED
-                + ((l * self.sample_frequency) % CLOCK_SPEED < self.sample_frequency) as u64;
-            // for each sample, there is two values (left and right channels)
-            self.output.extend((0..2 * n).map(|_| 0));
+                let n = r * self.sample_frequency / CLOCK_SPEED
+                    - l * self.sample_frequency / CLOCK_SPEED
+                    + ((l * self.sample_frequency) % CLOCK_SPEED < self.sample_frequency) as u64;
+                // for each sample, there is two values (left and right channels)
+                self.output.extend((0..2 * n).map(|_| 0));
+            }
 
             self.last_clock = clock_count;
             let elapsed_clock = clock_count - self.last_clock;
@@ -543,59 +546,61 @@ impl SoundController {
                 }
             }
 
-            // collect a sample
+            if self.sample_frequency != 0 {
+                // collect a sample
 
-            // c % (fc/fs) == 0 ~> c % (fc/fs) < 1 => (c*fs) % fc < fs
-            // => ( (c-1)*fs)%fc + fs) % fc < fs
-            // => (    last      + fs) % fc < fs
+                // c % (fc/fs) == 0 ~> c % (fc/fs) < 1 => (c*fs) % fc < fs
+                // => ( (c-1)*fs)%fc + fs) % fc < fs
+                // => (    last      + fs) % fc < fs
 
-            // I multiple fs by 2, because I increase clock by two by two
-            self.sample_mod = (self.sample_mod + 2 * self.sample_frequency) % CLOCK_SPEED;
-            if self.sample_mod < 2 * self.sample_frequency {
-                let ch1_amp = ((WAVE_DUTY_TABLE[ch1_duty as usize] >> self.ch1_wave_duty_position)
-                    & 0x1)
-                    * self.ch1_current_volume;
-                let ch2_amp = ((WAVE_DUTY_TABLE[ch2_duty as usize] >> self.ch2_wave_duty_position)
-                    & 0x1)
-                    * self.ch2_current_volume;
-                let ch3_amp = self.ch3_sample_buffer >> ch3_output_level;
-                let ch4_amp = ((!self.ch4_lfsr as u8) & 0x01) * self.ch4_current_volume;
-                let mut left = 0;
-                let mut right = 0;
-                if self.ch1_channel_enable {
-                    if ch1_left {
-                        left += ch1_amp as u16;
+                // I multiple fs by 2, because the clock increase in two by two
+                self.sample_mod = (self.sample_mod + 2 * self.sample_frequency) % CLOCK_SPEED;
+                if self.sample_mod < 2 * self.sample_frequency {
+                    let ch1_amp =
+                        ((WAVE_DUTY_TABLE[ch1_duty as usize] >> self.ch1_wave_duty_position) & 0x1)
+                            * self.ch1_current_volume;
+                    let ch2_amp =
+                        ((WAVE_DUTY_TABLE[ch2_duty as usize] >> self.ch2_wave_duty_position) & 0x1)
+                            * self.ch2_current_volume;
+                    let ch3_amp = self.ch3_sample_buffer >> ch3_output_level;
+                    let ch4_amp = ((!self.ch4_lfsr as u8) & 0x01) * self.ch4_current_volume;
+                    let mut left = 0;
+                    let mut right = 0;
+                    if self.ch1_channel_enable {
+                        if ch1_left {
+                            left += ch1_amp as u16;
+                        }
+                        if ch1_right {
+                            right += ch1_amp as u16;
+                        }
                     }
-                    if ch1_right {
-                        right += ch1_amp as u16;
+                    if self.ch2_channel_enable {
+                        if ch2_left {
+                            left += ch2_amp as u16;
+                        }
+                        if ch2_right {
+                            right += ch2_amp as u16;
+                        }
                     }
+                    if self.ch3_channel_enable && self.nr30 & 0x80 != 0 {
+                        if ch3_left {
+                            left += ch3_amp as u16;
+                        }
+                        if ch3_right {
+                            right += ch3_amp as u16;
+                        }
+                    }
+                    if self.ch4_channel_enable {
+                        if ch4_left {
+                            left += ch4_amp as u16;
+                        }
+                        if ch4_right {
+                            right += ch4_amp as u16;
+                        }
+                    }
+                    self.output.push(left * volume_left as u16);
+                    self.output.push(right * volume_right as u16);
                 }
-                if self.ch2_channel_enable {
-                    if ch2_left {
-                        left += ch2_amp as u16;
-                    }
-                    if ch2_right {
-                        right += ch2_amp as u16;
-                    }
-                }
-                if self.ch3_channel_enable && self.nr30 & 0x80 != 0 {
-                    if ch3_left {
-                        left += ch3_amp as u16;
-                    }
-                    if ch3_right {
-                        right += ch3_amp as u16;
-                    }
-                }
-                if self.ch4_channel_enable {
-                    if ch4_left {
-                        left += ch4_amp as u16;
-                    }
-                    if ch4_right {
-                        right += ch4_amp as u16;
-                    }
-                }
-                self.output.push(left * volume_left as u16);
-                self.output.push(right * volume_right as u16);
             }
         }
         self.last_clock = clock_count;

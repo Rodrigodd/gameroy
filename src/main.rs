@@ -77,7 +77,11 @@ fn main() {
                 .directory(config::base_folder().unwrap_or_default())
                 .suppress_timestamp(),
         )
-        .duplicate_to_stderr(flexi_logger::Duplicate::All)
+        .duplicate_to_stderr(if cfg!(debug_assertions) {
+            flexi_logger::Duplicate::All
+        } else {
+            flexi_logger::Duplicate::None
+        })
         .start()
         .unwrap();
 

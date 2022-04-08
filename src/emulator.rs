@@ -327,6 +327,12 @@ impl Timeline {
     }
 }
 
+struct SoundBackend {
+    _audio_engine: AudioEngine,
+    audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
+    last_buffer_len: usize,
+}
+
 pub struct Emulator {
     gb: Arc<ParkMutex<GameBoy>>,
     recv: Receiver<EmulatorEvent>,
@@ -348,9 +354,8 @@ pub struct Emulator {
 
     debugger: Arc<ParkMutex<Debugger>>,
 
-    _audio: AudioEngine,
-    audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
-    last_buffer_len: usize,
+    /// The sound backend.
+    sound: Option<SoundBackend>,
 }
 impl Emulator {
     pub fn run(
@@ -362,23 +367,36 @@ impl Emulator {
         rom_path: PathBuf,
         save_path: PathBuf,
     ) {
-        let audio = AudioEngine::new().unwrap();
-        let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
-        let buffer = Buffer {
-            buffer: audio_buffer.clone(),
-            sample_rate: audio.sample_rate(),
-        };
-        // println!("{}", buffer.sample_rate);
-        // std::process::exit(0);
+        let sound = match AudioEngine::new() {
+            Ok(audio_engine) => {
+                let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
+                let buffer = Buffer {
+                    buffer: audio_buffer.clone(),
+                    sample_rate: audio_engine.sample_rate(),
+                };
 
-        let mut sound = audio.new_sound(buffer).unwrap();
-        sound.set_loop(true);
-        sound.play();
-        std::mem::forget(sound);
+                let mut sound = audio_engine.new_sound(buffer).unwrap();
+                sound.set_loop(true);
+                sound.play();
+                std::mem::forget(sound);
+
+                let gb = gb.lock();
+                gb.sound.borrow_mut().sample_frequency = audio_engine.sample_rate() as u64;
+
+                Some(SoundBackend {
+                    _audio_engine: audio_engine,
+                    audio_buffer,
+                    last_buffer_len: 0,
+                })
+            }
+            Err(e) => {
+                log::error!("error at initiating AudioEngine: {}", e);
+                None
+            }
+        };
 
         let clock_count = {
             let gb = gb.lock();
-            gb.sound.borrow_mut().sample_frequency = audio.sample_rate() as u64;
             gb.clock_count
         };
 
@@ -427,9 +445,7 @@ impl Emulator {
             rewind: false,
             start_time,
             debugger,
-            _audio: audio,
-            audio_buffer,
-            last_buffer_len: 0,
+            sound,
         }
         .event_loop();
     }
@@ -663,14 +679,21 @@ impl Emulator {
         let gb = self.gb.lock();
         let clock_count = gb.clock_count;
         let buffer = gb.sound.borrow_mut().get_output(clock_count);
-        let mut lock = self.audio_buffer.lock();
-        if lock.len() == 0 {
-            // if the buffer is empty, add zeros to increase it
-            lock.extend((0..1600 * 5).map(|_| 0));
-        }
-        lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
+        if let Some(SoundBackend {
+            audio_buffer,
+            last_buffer_len,
+            ..
+        }) = &mut self.sound
+        {
+            let mut lock = audio_buffer.lock();
+            if lock.len() == 0 {
+                // if the buffer is empty, add zeros to increase it
+                lock.extend((0..1600 * 5).map(|_| 0));
+            }
+            lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
 
-        self.last_buffer_len = lock.len();
+            *last_buffer_len = lock.len();
+        }
     }
 }
 

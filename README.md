@@ -28,7 +28,7 @@ You can compile and run a release build of this project by running the command:
 cargo run --release
 ```
 
-Otherwise, you can find pre compiled binaries in the Release page.
+Otherwise, you can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
 
 ## Config
 

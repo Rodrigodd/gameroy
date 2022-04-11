@@ -61,8 +61,18 @@ debug = true
 opt-level = 3
 # overflow-checks = false
 
+[profile.fast]
+debug = true
+# strip = true
+inherits = "release"
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
 [profile.minsize]
-strip = true
+debug = true
+# strip = true
 inherits = "release"
 opt-level = "z"
 lto = true

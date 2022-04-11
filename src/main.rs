@@ -15,6 +15,7 @@ use gameroy::{
 };
 use parking_lot::Mutex;
 
+mod bench;
 mod emulator;
 mod event_table;
 mod fold_view;
@@ -105,7 +106,36 @@ fn main() {
         .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
         .arg(arg!(--rom_folder <PATH> "specify the path of the folder for listing .gb roms").required(false))
         .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
+        .subcommand(Command::new("bench")
+            .about("Emulate a given rom for some ammount of frames, and give back the time runned.")
+            .arg(arg!(-f --frames <NUMBER> "the number of frames to run for")
+                 .required(false)
+                 .default_value("6000")
+                 .validator(|x| x.parse::<u64>())
+            )
+            .arg(arg!(-l --length <NUMBER> "the number of samples to divide the run")
+                 .required(false)
+                 .default_value("10")
+                 .validator(|x| x.parse::<u64>())
+            )
+            .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
         .get_matches();
+
+    match matches.subcommand() {
+        Some(("bench", matches)) => {
+            let rom_path = matches.value_of("ROM_PATH").unwrap();
+            let frames: u64 = matches
+                .value_of("frames")
+                .and_then(|x| x.parse().ok())
+                .unwrap();
+            let len: usize = matches
+                .value_of("length")
+                .and_then(|x| x.parse().ok())
+                .unwrap();
+            return bench::benchmark(rom_path, frames * gameroy::consts::FRAME_CYCLES, len);
+        }
+        _ => {}
+    }
 
     let debug = matches.is_present("debug");
     let diss = matches.is_present("disassembly");

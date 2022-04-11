@@ -22,7 +22,7 @@ impl Config {
     }
 }
 
-/// Transform a path relative to the executable folder to a absolut path.
+/// Transform a path relative to the executable folder to a absolute path.
 pub fn normalize_config_path(path: impl AsRef<Path>) -> PathBuf {
     let path: &Path = path.as_ref();
     if path.has_root() {

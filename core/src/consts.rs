@@ -1,5 +1,7 @@
-// The number of clocks the gameboy runs per second.
+/// The number of cycles the gameboy runs per second.
 pub const CLOCK_SPEED: u64 = 4_194_304;
+/// The number of cycles that a frame have.
+pub const FRAME_CYCLES: u64 = 154 * 456;
 
 pub const IF: usize = 0xff0f;
 pub const IE: usize = 0xffff;

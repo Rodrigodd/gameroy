@@ -23,7 +23,7 @@ use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
     fold_view,
     style::Style,
-    ui::{self, scroll_viewer},
+    ui,
 };
 
 struct Callback {

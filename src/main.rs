@@ -108,12 +108,12 @@ fn main() {
         .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
         .subcommand(Command::new("bench")
             .about("Emulate a given rom for some ammount of frames, and give back the time runned.")
-            .arg(arg!(-f --frames <NUMBER> "the number of frames to run for")
+            .arg(arg!(-f --frames <NUMBER> "the number of frames to run for each run")
                  .required(false)
-                 .default_value("6000")
+                 .default_value("600")
                  .validator(|x| x.parse::<u64>())
             )
-            .arg(arg!(-l --length <NUMBER> "the number of samples to divide the run")
+            .arg(arg!(-t --times <NUMBER> "the number of times run")
                  .required(false)
                  .default_value("10")
                  .validator(|x| x.parse::<u64>())
@@ -129,7 +129,7 @@ fn main() {
                 .and_then(|x| x.parse().ok())
                 .unwrap();
             let len: usize = matches
-                .value_of("length")
+                .value_of("times")
                 .and_then(|x| x.parse().ok())
                 .unwrap();
             return bench::benchmark(rom_path, frames * gameroy::consts::FRAME_CYCLES, len);

@@ -33,38 +33,24 @@ pub fn benchmark(path: &str, timeout: u64, len: usize) {
         Ok(x) => x,
         Err(e) => return eprintln!("{}", e),
     };
-    let mut inter = Interpreter(&mut game_boy);
-
-    let step = timeout / len as u64;
-    let mut timeout = 0;
 
     let mut times = Vec::with_capacity(len);
-    times.push((Instant::now(), inter.0.clock_count));
     for _ in 0..len {
-        timeout += step;
+        game_boy.reset();
+        let mut inter = Interpreter(&mut game_boy);
+        let start = Instant::now();
         while inter.0.clock_count < timeout {
             inter.interpret_op();
         }
-        times.push((Instant::now(), inter.0.clock_count));
+        times.push(start.elapsed());
     }
 
-    let samples = times
-        .windows(2)
-        .map(|x| [x[0].0, x[1].0])
-        // the first sample is strange, don't know why
-        .skip(1)
-        .map(|x| x[1] - x[0])
-        .collect::<Vec<_>>();
+    let (mean_time, mean_error) = mean(&times);
+    println!("mean time: {:?} +/- {:?}", mean_time, mean_error);
 
-    let (mean, error) = mean(&samples);
-    let total = mean * samples.len() as u32;
-    let total_err = error * samples.len() as u32;
-    println!("total time: {:?} +/- {:?}", total, total_err);
-
-    let total_cycles = times[len - 1].1 - times[1].1;
-    let real_time = total_cycles as f64 / gameroy::consts::CLOCK_SPEED as f64;
-    let times = real_time / total.as_secs_f64();
-    let times_err = times * total_err.as_secs_f64() / total.as_secs_f64();
+    let emulated_time = game_boy.clock_count as f64 / gameroy::consts::CLOCK_SPEED as f64;
+    let times = emulated_time / mean_time.as_secs_f64();
+    let times_err = times * mean_error.as_secs_f64() / mean_time.as_secs_f64();
     println!(
         "            {} times faster than real time.",
         print_val(times, times_err),

@@ -8,7 +8,7 @@ use giui::{
 };
 use sprite_render::SpriteRender;
 
-use crate::fold_view::FoldIcon;
+use crate::widget::fold_view::FoldIcon;
 
 pub struct Loader<'a, R: SpriteRender> {
     pub fonts: &'a mut Fonts,

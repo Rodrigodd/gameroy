@@ -1,9 +1,8 @@
 use crate::{
     event_table::EventTable,
-    layout::PixelPerfectLayout,
-    split_view::SplitView,
     style::Style,
     ui::{Textures, Ui},
+    widget::{PixelPerfectLayout, SplitView},
     EmulatorEvent, UserEvent,
 };
 use std::{cell::RefCell, rc::Rc, sync::mpsc::SyncSender};

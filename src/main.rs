@@ -18,9 +18,14 @@ use parking_lot::Mutex;
 mod bench;
 mod emulator;
 mod event_table;
-mod fold_view;
-mod layout;
-mod split_view;
+mod widget {
+    pub mod fold_view;
+    mod pixel_perfect_layout;
+    mod split_view;
+
+    pub use pixel_perfect_layout::PixelPerfectLayout;
+    pub use split_view::SplitView;
+}
 mod style;
 mod ui;
 

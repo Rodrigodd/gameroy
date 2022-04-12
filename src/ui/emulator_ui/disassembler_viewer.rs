@@ -21,9 +21,9 @@ use winit::event::VirtualKeyCode;
 
 use crate::{
     event_table::{self, BreakpointsUpdated, EmulatorUpdated, EventTable, Handle, WatchsUpdated},
-    fold_view,
     style::Style,
     ui,
+    widget::fold_view,
 };
 
 struct Callback {

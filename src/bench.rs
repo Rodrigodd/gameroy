@@ -34,6 +34,9 @@ pub fn benchmark(path: &str, timeout: u64, len: usize) {
         Err(e) => return eprintln!("{}", e),
     };
 
+    // remove serial transfer console output
+    game_boy.serial_transfer_callback = None;
+
     let mut times = Vec::with_capacity(len);
     for _ in 0..len {
         game_boy.reset();

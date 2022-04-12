@@ -24,7 +24,7 @@ console = []
 # Staticly include files in the binary
 static = []
 
-default = ["console"]
+default = ["console", "rfd"]
 
 [dependencies]
 
@@ -44,7 +44,7 @@ log = "0.4.14"
 clap = "3.1.5"
 once_cell = "1.10.0"
 toml = "0.5.8"
-rfd = "0.8.1"
+rfd = { version = "0.8.1", optional = true }
 flexi_logger = "0.22.3"
 
 [profile.dev]

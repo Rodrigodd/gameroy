@@ -87,6 +87,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         .parent(v_box)
         .build(ctx);
 
+    #[cfg(feature = "rfd")]
     let _open_button = ctx
         .create_control()
         .parent(h_box)

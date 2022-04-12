@@ -45,7 +45,7 @@ pub struct GameBoy {
     /// The instant, in 2^13 Hz clock count (T-clock count >> 9), in which the first bit of current
     /// serial transfer was send. It is 0 if there is no transfer happening.
     pub serial_transfer_started: u64,
-    pub serial_transfer: Box<dyn FnMut(u8) + Send>,
+    pub serial_transfer_callback: Option<Box<dyn FnMut(u8) + Send>>,
     /// FF0F: Interrupt Flag (IF)
     /// - bit 0: VBlank
     /// - bit 1: STAT
@@ -167,9 +167,9 @@ impl GameBoy {
             serial_data: 0,
             serial_control: 0x7E,
             serial_transfer_started: 0,
-            serial_transfer: Box::new(|c| {
+            serial_transfer_callback: Some(Box::new(|c| {
                 eprint!("{}", c as char);
-            }),
+            })),
             interrupt_flag: 0,
             dma: 0xff,
             interrupt_enabled: 0,
@@ -372,7 +372,8 @@ impl GameBoy {
                 if value & 0x81 == 0x81 {
                     // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
                     self.serial_transfer_started = (self.clock_count + SERIAL_OFFSET) >> 9;
-                    (self.serial_transfer)(self.serial_data);
+                    let data = self.serial_data;
+                    self.serial_transfer_callback.as_mut().map(|x| x(data));
                 }
             }
             0x03 => {}

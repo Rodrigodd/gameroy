@@ -100,7 +100,7 @@ mod blargg {
         let string = Arc::new(Mutex::new(String::new()));
         let string_clone = string.clone();
         let stop = Arc::new(AtomicBool::new(false));
-        game_boy.serial_transfer = Box::new({
+        game_boy.serial_transfer_callback = Some(Box::new({
             let stop = stop.clone();
             move |byte| {
                 let mut string = string.lock().unwrap();
@@ -109,7 +109,7 @@ mod blargg {
                     stop.store(true, Ordering::Relaxed);
                 }
             }
-        });
+        }));
 
         let mut inter = Interpreter(&mut game_boy);
         while inter.0.clock_count < timeout {

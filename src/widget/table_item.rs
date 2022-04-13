@@ -3,18 +3,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use winit::window::CursorIcon;
 
-type CollumnIndex = u16;
+type ColumnIndex = u16;
 
 /// Contains the layout data that is common to all TableItems.
 #[derive(Default)]
 pub struct TableGroup {
-    pub collumns: Vec<Collumn>,
+    pub columns: Vec<Column>,
     pub h_spacing: f32,
     pub v_spacing: f32,
     pub h_margins: [f32; 2],
     /// The current split being dragged, and if it is in reverse.
-    dragging: Option<(CollumnIndex, bool)>,
-    /// The width of the current dragging collumn is computed by `mouse_pos[0] - dragging_anchor`.
+    dragging: Option<(ColumnIndex, bool)>,
+    /// The width of the current dragging column is computed by `mouse_pos[0] - dragging_anchor`.
     dragging_anchor: f32,
 }
 impl TableGroup {
@@ -27,8 +27,8 @@ impl TableGroup {
         }
     }
 
-    pub fn collumn(mut self, width: f32, expand: bool) -> Self {
-        self.collumns.push(Collumn {
+    pub fn column(mut self, width: f32, expand: bool) -> Self {
+        self.columns.push(Column {
             width,
             expand,
             ..Default::default()
@@ -39,11 +39,11 @@ impl TableGroup {
 
 /// Layout data of each colloumn in a table.
 #[derive(Default)]
-pub struct Collumn {
+pub struct Column {
     pub width: f32,
     // pub min_width: f32,
     pub expand: bool,
-    /// The actual width of the collumn after maybe being expanded.
+    /// The actual width of the column after maybe being expanded.
     curr_width: f32,
 }
 
@@ -57,27 +57,27 @@ impl TableItem {
         Self { group }
     }
 
-    /// If hovering a split, return the index of the collumn to be resized, and if it is in
+    /// If hovering a split, return the index of the column to be resized, and if it is in
     /// reverse.
     fn to_be_dragged(
         &self,
         mouse_pos: [f32; 2],
         rect: [f32; 4],
         g: &TableGroup,
-    ) -> Option<(CollumnIndex, bool)> {
+    ) -> Option<(ColumnIndex, bool)> {
         const DRAG_MARG: f32 = 5.0;
         let mouse_pos = mouse_pos[0] - rect[0];
 
         let mut x = 0.0;
-        // If there was any expand collumn to the left, resize the collumn at the rigth of the
+        // If there was any expand column to the left, resize the column at the rigth of the
         // split, in reverse.
         let mut reverse = false;
-        for (i, c) in g.collumns.iter().enumerate() {
+        for (i, c) in g.columns.iter().enumerate() {
             reverse |= c.expand;
             x += c.curr_width;
             if mouse_pos <= x + g.h_spacing + DRAG_MARG {
                 if mouse_pos > x - DRAG_MARG {
-                    return Some((i as CollumnIndex + reverse as CollumnIndex, reverse));
+                    return Some((i as ColumnIndex + reverse as ColumnIndex, reverse));
                 }
                 break;
             }
@@ -100,8 +100,7 @@ impl Behaviour for TableItem {
                 if let Some(d) = self.to_be_dragged(mouse.pos, rect, g) {
                     g.dragging = Some(d);
                     let reverse = if d.1 { -1.0 } else { 1.0 };
-                    g.dragging_anchor =
-                        mouse.pos[0] - g.collumns[d.0 as usize].curr_width * reverse;
+                    g.dragging_anchor = mouse.pos[0] - g.columns[d.0 as usize].curr_width * reverse;
                     ctx.lock_cursor(true);
                 }
             }
@@ -122,7 +121,7 @@ impl Behaviour for TableItem {
                 if let Some(d) = g.dragging {
                     let reverse = if d.1 { -1.0 } else { 1.0 };
                     let width = (mouse.pos[0] - g.dragging_anchor) * reverse;
-                    g.collumns[d.0 as usize].width = width.max(0.0);
+                    g.columns[d.0 as usize].width = width.max(0.0);
                     ctx.dirty_layout(this);
                 }
             }
@@ -160,13 +159,9 @@ impl Layout for TableItem {
 
         let width = rect.get_width() - g.h_margins[0] - g.h_margins[1];
         let reserved_width = g.h_spacing * (children.len() - 1) as f32
-            + g.collumns.iter().map(|x| x.width).sum::<f32>();
+            + g.columns.iter().map(|x| x.width).sum::<f32>();
         let free_width = width - reserved_width;
-        let total_weigth: f32 = g
-            .collumns
-            .iter()
-            .filter_map(|x| x.expand.then(|| 1.0))
-            .sum();
+        let total_weigth: f32 = g.columns.iter().filter_map(|x| x.expand.then(|| 1.0)).sum();
 
         let rect = *rect.get_rect();
         let top = rect[1];
@@ -175,7 +170,7 @@ impl Layout for TableItem {
 
         for (
             child,
-            &mut Collumn {
+            &mut Column {
                 width,
                 expand,
                 ref mut curr_width,
@@ -183,7 +178,7 @@ impl Layout for TableItem {
         ) in ctx
             .get_active_children(this)
             .into_iter()
-            .zip(g.collumns.iter_mut())
+            .zip(g.columns.iter_mut())
         {
             *curr_width = if expand && free_width > 0.0 {
                 width + free_width / total_weigth

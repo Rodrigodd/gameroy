@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout};
 use giui::text::Text;
@@ -7,16 +9,22 @@ use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 use crate::style::Style;
+use crate::widget::table_item::{Collumn, TableGroup, TableItem};
 use crate::UserEvent;
 
 #[derive(Clone, Debug)]
 struct RomEntry {
+    /// The name of the game as write in the rom header.
     name: String,
+    /// The size of the rom file in bytes
+    size: u64,
+    /// The path to the rom
     path: PathBuf,
 }
 
 struct RomList {
     roms: Vec<RomEntry>,
+    table_group: Rc<RefCell<TableGroup>>,
 }
 impl ListBuilder for RomList {
     fn update_item(
@@ -40,8 +48,8 @@ impl ListBuilder for RomList {
         ctx: &mut dyn giui::BuilderContext,
     ) -> giui::ControlBuilder {
         let style = &ctx.get::<Style>().clone();
-        let RomEntry { name, path } = self.roms[index].clone();
-        cb.layout(HBoxLayout::new(4.0, [0.0; 4], -1))
+        let RomEntry { name, size, path } = self.roms[index].clone();
+        cb.behaviour_and_layout(TableItem::new(self.table_group.clone()))
             .child(ctx, |cb, ctx| {
                 let path = path.clone();
                 cb.behaviour(Button::new(
@@ -70,7 +78,15 @@ impl ListBuilder for RomList {
                     (-1, 0),
                     style.text_style.clone(),
                 ))
-                .expand_x(true)
+                .layout(FitGraphic)
+            })
+            .child(ctx, |cb, _| {
+                let size = if size < (1 << 20) {
+                    format!("{} KiB", size >> 10)
+                } else {
+                    format!("{}.{} MiB", size >> 20, ((size * 10) >> 20) % 10)
+                };
+                cb.graphic(Text::new(size, (-1, 0), style.text_style.clone()))
             })
     }
 }
@@ -139,11 +155,38 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         })
         .unwrap_or_default();
 
-    crate::ui::list(ctx.create_control(), ctx, style, [0.0; 4], RomList { roms })
-        .graphic(style.background.clone())
-        .parent(v_box)
-        .expand_y(true)
-        .build(ctx);
+    crate::ui::list(
+        ctx.create_control(),
+        ctx,
+        style,
+        [0.0; 4],
+        RomList {
+            roms,
+            table_group: Rc::new(RefCell::new(TableGroup {
+                collumns: vec![
+                    Collumn {
+                        width: 150.0,
+                        expand: false,
+                    },
+                    Collumn {
+                        width: 200.0,
+                        expand: false,
+                    },
+                    Collumn {
+                        width: 60.0,
+                        expand: false,
+                    },
+                ],
+                h_spacing: 4.0,
+                v_spacing: 2.0,
+                h_margins: [1.0, 1.0],
+            })),
+        },
+    )
+    .graphic(style.background.clone())
+    .parent(v_box)
+    .expand_y(true)
+    .build(ctx);
 }
 
 fn load_roms(roms_path: &str) -> Result<Vec<RomEntry>, std::io::Error> {
@@ -158,9 +201,10 @@ fn load_roms(roms_path: &str) -> Result<Vec<RomEntry>, std::io::Error> {
             Some(x)
         })
         .filter_map(|x| {
-            let header = match gameroy::gameboy::cartridge::CartridgeHeader::from_reader(
-                &mut std::fs::File::open(x.path().clone()).ok()?,
-            ) {
+            let mut file = std::fs::File::open(x.path().clone()).ok()?;
+            let size = file.metadata().ok()?.len();
+            let header = match gameroy::gameboy::cartridge::CartridgeHeader::from_reader(&mut file)
+            {
                 Ok(x) | Err((Some(x), _)) => x,
                 _ => return None,
             };
@@ -175,6 +219,7 @@ fn load_roms(roms_path: &str) -> Result<Vec<RomEntry>, std::io::Error> {
             };
             Some(RomEntry {
                 name,
+                size,
                 path: x.path(),
             })
         })

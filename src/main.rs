@@ -22,6 +22,7 @@ mod widget {
     pub mod fold_view;
     mod pixel_perfect_layout;
     mod split_view;
+    pub mod table_item;
 
     pub use pixel_perfect_layout::PixelPerfectLayout;
     pub use split_view::SplitView;

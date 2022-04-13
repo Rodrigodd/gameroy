@@ -9,7 +9,7 @@ use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
 use crate::style::Style;
-use crate::widget::table_item::{Collumn, TableGroup, TableItem};
+use crate::widget::table_item::{TableGroup, TableItem};
 use crate::UserEvent;
 
 #[derive(Clone, Debug)]
@@ -155,6 +155,11 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         })
         .unwrap_or_default();
 
+    let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
+        .collumn(150.0, false)
+        .collumn(200.0, true)
+        .collumn(60.0, false);
+
     crate::ui::list(
         ctx.create_control(),
         ctx,
@@ -162,25 +167,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         [0.0; 4],
         RomList {
             roms,
-            table_group: Rc::new(RefCell::new(TableGroup {
-                collumns: vec![
-                    Collumn {
-                        width: 150.0,
-                        expand: false,
-                    },
-                    Collumn {
-                        width: 200.0,
-                        expand: false,
-                    },
-                    Collumn {
-                        width: 60.0,
-                        expand: false,
-                    },
-                ],
-                h_spacing: 4.0,
-                v_spacing: 2.0,
-                h_margins: [1.0, 1.0],
-            })),
+            table_group: Rc::new(RefCell::new(table)),
         },
     )
     .graphic(style.background.clone())

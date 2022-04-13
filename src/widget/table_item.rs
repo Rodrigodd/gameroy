@@ -3,57 +3,88 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use winit::window::CursorIcon;
 
-type SplitIndex = u16;
+type CollumnIndex = u16;
 
 /// Contains the layout data that is common to all TableItems.
+#[derive(Default)]
 pub struct TableGroup {
     pub collumns: Vec<Collumn>,
     pub h_spacing: f32,
     pub v_spacing: f32,
     pub h_margins: [f32; 2],
+    /// The current split being dragged, and if it is in reverse.
+    dragging: Option<(CollumnIndex, bool)>,
+    /// The width of the current dragging collumn is computed by `mouse_pos[0] - dragging_anchor`.
+    dragging_anchor: f32,
+}
+impl TableGroup {
+    pub fn new(h_spacing: f32, v_spacing: f32, h_margins: [f32; 2]) -> Self {
+        Self {
+            h_spacing,
+            v_spacing,
+            h_margins,
+            ..Self::default()
+        }
+    }
+
+    pub fn collumn(mut self, width: f32, expand: bool) -> Self {
+        self.collumns.push(Collumn {
+            width,
+            expand,
+            ..Default::default()
+        });
+        self
+    }
 }
 
 /// Layout data of each colloumn in a table.
+#[derive(Default)]
 pub struct Collumn {
     pub width: f32,
     // pub min_width: f32,
     pub expand: bool,
+    /// The actual width of the collumn after maybe being expanded.
+    curr_width: f32,
 }
 
 /// Layout and Behaviour for table's items.
 pub struct TableItem {
     /// This table group this item belongs to.
     group: Rc<RefCell<TableGroup>>,
-    /// The current split being dragged
-    dragging: Option<SplitIndex>,
-    /// The width of the current dragging collumn is computed by `mouse_pos[0] - dragging_anchor`.
-    dragging_anchor: f32,
 }
 impl TableItem {
     pub fn new(group: Rc<RefCell<TableGroup>>) -> Self {
-        Self {
-            group,
-            dragging: None,
-            dragging_anchor: 0.0,
-        }
+        Self { group }
     }
 
-    /// Return the index of the currently hovering split, if any.
-    fn is_on_split(&self, mouse_pos: [f32; 2], rect: [f32; 4]) -> Option<SplitIndex> {
+    /// If hovering a split, return the index of the collumn to be resized, and if it is in
+    /// reverse.
+    fn to_be_dragged(
+        &self,
+        mouse_pos: [f32; 2],
+        rect: [f32; 4],
+        g: &TableGroup,
+    ) -> Option<(CollumnIndex, bool)> {
+        const DRAG_MARG: f32 = 5.0;
         let mouse_pos = mouse_pos[0] - rect[0];
 
         let mut x = 0.0;
-        let mut split = None;
-        let g = &self.group.borrow_mut();
-        for (i, &Collumn { width, .. }) in g.collumns.iter().enumerate() {
-            x += width;
-            if mouse_pos > x && mouse_pos <= x + g.h_spacing {
-                split = Some(i as _);
+        // If there was any expand collumn to the left, resize the collumn at the rigth of the
+        // split, in reverse.
+        let mut reverse = false;
+        for (i, c) in g.collumns.iter().enumerate() {
+            reverse |= c.expand;
+            x += c.curr_width;
+            if mouse_pos <= x + g.h_spacing + DRAG_MARG {
+                if mouse_pos > x - DRAG_MARG {
+                    return Some((i as CollumnIndex + reverse as CollumnIndex, reverse));
+                }
+                break;
             }
             x += g.h_spacing;
         }
 
-        split
+        None
     }
 }
 impl Behaviour for TableItem {
@@ -65,29 +96,33 @@ impl Behaviour for TableItem {
         let rect = ctx.get_rect(this);
         match mouse.event {
             MouseEvent::Down(giui::MouseButton::Left) => {
-                if let Some(split) = self.is_on_split(mouse.pos, rect) {
-                    self.dragging = Some(split);
-                    let g = &mut self.group.borrow_mut();
-                    self.dragging_anchor = mouse.pos[0] - g.collumns[split as usize].width;
+                let g = &mut self.group.borrow_mut();
+                if let Some(d) = self.to_be_dragged(mouse.pos, rect, g) {
+                    g.dragging = Some(d);
+                    let reverse = if d.1 { -1.0 } else { 1.0 };
+                    g.dragging_anchor =
+                        mouse.pos[0] - g.collumns[d.0 as usize].curr_width * reverse;
                     ctx.lock_cursor(true);
                 }
             }
             MouseEvent::Up(giui::MouseButton::Left) => {
-                self.dragging = None;
+                let g = &mut self.group.borrow_mut();
+                g.dragging = None;
                 ctx.lock_cursor(false);
             }
             MouseEvent::Exit => ctx.set_cursor(CursorIcon::Default),
             MouseEvent::Moved => {
-                if self.dragging.is_some() || self.is_on_split(mouse.pos, rect).is_some() {
+                let g = &mut self.group.borrow_mut();
+                if g.dragging.is_some() || self.to_be_dragged(mouse.pos, rect, g).is_some() {
                     ctx.set_cursor(CursorIcon::ColResize);
                 } else {
                     ctx.set_cursor(CursorIcon::Default);
                 }
 
-                if let Some(split) = self.dragging {
-                    let width = mouse.pos[0] - self.dragging_anchor;
-                    let g = &mut self.group.borrow_mut();
-                    g.collumns[split as usize].width = width.max(0.0);
+                if let Some(d) = g.dragging {
+                    let reverse = if d.1 { -1.0 } else { 1.0 };
+                    let width = (mouse.pos[0] - g.dragging_anchor) * reverse;
+                    g.collumns[d.0 as usize].width = width.max(0.0);
                     ctx.dirty_layout(this);
                 }
             }
@@ -116,7 +151,7 @@ impl Layout for TableItem {
 
     fn update_layouts(&mut self, this: giui::Id, ctx: &mut giui::LayoutContext) {
         let children = ctx.get_active_children(this);
-        let g = self.group.borrow_mut();
+        let g = &mut *self.group.borrow_mut();
         if children.is_empty() {
             return;
         }
@@ -138,18 +173,25 @@ impl Layout for TableItem {
         let bottom = rect[3] - g.v_spacing;
         let mut x = rect[0] + g.h_margins[0] - g.h_spacing;
 
-        for (child, &Collumn { width, expand }) in ctx
+        for (
+            child,
+            &mut Collumn {
+                width,
+                expand,
+                ref mut curr_width,
+            },
+        ) in ctx
             .get_active_children(this)
             .into_iter()
-            .zip(g.collumns.iter())
+            .zip(g.collumns.iter_mut())
         {
-            let width = if expand && free_width > 0.0 {
+            *curr_width = if expand && free_width > 0.0 {
                 width + free_width / total_weigth
             } else {
                 width
             };
-            ctx.set_rect(child, [x, top, x + width, bottom]);
-            x += g.h_spacing + width;
+            ctx.set_rect(child, [x, top, x + *curr_width, bottom]);
+            x += g.h_spacing + *curr_width;
         }
     }
 }

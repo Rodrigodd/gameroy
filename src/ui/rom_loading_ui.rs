@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use giui::graphics::Graphic;
 use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout};
 use giui::text::Text;
 use giui::widgets::{Button, ListBuilder};
@@ -48,46 +49,56 @@ impl ListBuilder for RomList {
         ctx: &mut dyn giui::BuilderContext,
     ) -> giui::ControlBuilder {
         let style = &ctx.get::<Style>().clone();
-        let RomEntry { name, size, path } = self.roms[index].clone();
-        cb.behaviour_and_layout(TableItem::new(self.table_group.clone()))
-            .child(ctx, |cb, ctx| {
-                let path = path.clone();
-                cb.behaviour(Button::new(
-                    style.delete_button.clone(),
-                    true,
-                    move |_, ctx| {
-                        ctx.get::<EventLoopProxy<UserEvent>>()
-                            .send_event(UserEvent::LoadRom(path.clone().into()))
-                            .unwrap();
-                    },
-                ))
+        let header = index == 0;
+        let (name, size, path) = if !header {
+            let RomEntry { name, size, path } = self.roms[index].clone();
+            let size = if size < (1 << 20) {
+                format!("{} KiB", size >> 10)
+            } else {
+                format!("{}.{} MiB", size >> 20, ((size * 10) >> 20) % 10)
+            };
+            (
+                name,
+                size,
+                path.file_name().unwrap().to_string_lossy().into_owned(),
+            )
+        } else {
+            (
+                "Header Name".to_string(),
+                "Size".to_string(),
+                "File".to_string(),
+            )
+        };
+        let cell_backgroud = if header {
+            style.header_background.clone()
+        } else {
+            Graphic::None
+        };
+        let parent = cb.id();
+        for text in [name, path, size] {
+            let cb = ctx
+                .create_control()
+                .parent(parent)
                 .child(ctx, move |cb, _| {
-                    cb.graphic(Text::new(
-                        name,
-                        (0, 0),
-                        style.text_style.clone().with_font_size(20.0),
-                    ))
-                    .layout(FitGraphic)
+                    let text_style = style.text_style.clone();
+                    // I could use `.layout(FitGraphic)` but I want to the text to be cut off.
+                    cb.min_size([0.0, text_style.font_size])
+                        .graphic(Text::new(text, (-1, 0), text_style).with_wrap(false))
+                        .expand_x(true)
                 })
-                .layout(MarginLayout::new([2.0; 4]))
-                .min_width(180.0)
-            })
-            .child(ctx, |cb, _| {
-                cb.graphic(Text::new(
-                    path.file_name().unwrap().to_string_lossy().into_owned(),
-                    (-1, 0),
-                    style.text_style.clone(),
-                ))
-                .layout(FitGraphic)
-            })
-            .child(ctx, |cb, _| {
-                let size = if size < (1 << 20) {
-                    format!("{} KiB", size >> 10)
-                } else {
-                    format!("{}.{} MiB", size >> 20, ((size * 10) >> 20) % 10)
-                };
-                cb.graphic(Text::new(size, (-1, 0), style.text_style.clone()))
-            })
+                .graphic(cell_backgroud.clone());
+
+            if header {
+                cb.layout(HBoxLayout::new(0.0, [2.0; 4], -1))
+                    .child(ctx, move |cb, _| {
+                        cb.graphic(style.fold_icon.close.clone()).layout(FitGraphic)
+                    })
+            } else {
+                cb.layout(MarginLayout::new([2.0; 4]))
+            }
+            .build(ctx);
+        }
+        cb.behaviour_and_layout(TableItem::new(self.table_group.clone()).with_resizable(header))
     }
 }
 

@@ -51,10 +51,19 @@ pub struct Column {
 pub struct TableItem {
     /// This table group this item belongs to.
     group: Rc<RefCell<TableGroup>>,
+    pub resizable: bool,
 }
 impl TableItem {
     pub fn new(group: Rc<RefCell<TableGroup>>) -> Self {
-        Self { group }
+        Self {
+            group,
+            resizable: false,
+        }
+    }
+
+    pub fn with_resizable(mut self, resizable: bool) -> Self {
+        self.resizable = resizable;
+        self
     }
 
     /// If hovering a split, return the index of the column to be resized, and if it is in
@@ -92,7 +101,11 @@ impl TableItem {
 }
 impl Behaviour for TableItem {
     fn input_flags(&self) -> InputFlags {
-        InputFlags::MOUSE
+        if self.resizable {
+            InputFlags::MOUSE
+        } else {
+            InputFlags::empty()
+        }
     }
 
     fn on_mouse_event(&mut self, mouse: giui::MouseInfo, this: Id, ctx: &mut giui::Context) {
@@ -169,7 +182,7 @@ impl Layout for TableItem {
         let rect = *rect.get_rect();
         let top = rect[1];
         let bottom = rect[3] - g.v_spacing;
-        let mut x = rect[0] + g.h_margins[0] - g.h_spacing;
+        let mut x = rect[0] + g.h_margins[0];
 
         for (
             child,

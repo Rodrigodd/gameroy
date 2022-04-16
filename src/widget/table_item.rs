@@ -74,6 +74,9 @@ impl TableItem {
         let mut reverse = false;
         for (i, c) in g.columns.iter().enumerate() {
             reverse |= c.expand;
+            if reverse && i + 1 == g.columns.len() {
+                break;
+            }
             x += c.curr_width;
             if mouse_pos <= x + g.h_spacing + DRAG_MARG {
                 if mouse_pos > x - DRAG_MARG {

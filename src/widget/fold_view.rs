@@ -7,8 +7,8 @@ use crate::style::Style;
 
 #[derive(LoadStyle, Clone)]
 pub struct FoldIcon {
-    open: Graphic,
-    close: Graphic,
+    pub open: Graphic,
+    pub close: Graphic,
 }
 
 pub struct FoldView {

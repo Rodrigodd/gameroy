@@ -1,4 +1,4 @@
-use giui::{Behaviour, Id, InputFlags, Layout, MouseEvent};
+use giui::{Behaviour, Context, Id, InputFlags, Layout, MouseEvent};
 use std::cell::RefCell;
 use std::rc::Rc;
 use winit::window::CursorIcon;
@@ -52,18 +52,24 @@ pub struct TableItem {
     /// This table group this item belongs to.
     group: Rc<RefCell<TableGroup>>,
     pub resizable: bool,
+    on_click: Option<Box<dyn FnMut(u8, &mut Context)>>,
 }
 impl TableItem {
     pub fn new(group: Rc<RefCell<TableGroup>>) -> Self {
         Self {
             group,
             resizable: false,
+            on_click: None,
         }
     }
 
     pub fn with_resizable(mut self, resizable: bool) -> Self {
         self.resizable = resizable;
         self
+    }
+
+    pub fn set_on_click(&mut self, on_click: impl FnMut(u8, &mut Context) + 'static) {
+        self.on_click = Some(Box::new(on_click));
     }
 
     /// If hovering a split, return the index of the column to be resized, and if it is in
@@ -101,14 +107,17 @@ impl TableItem {
 }
 impl Behaviour for TableItem {
     fn input_flags(&self) -> InputFlags {
-        if self.resizable {
-            InputFlags::MOUSE
-        } else {
-            InputFlags::empty()
-        }
+        InputFlags::MOUSE
     }
 
     fn on_mouse_event(&mut self, mouse: giui::MouseInfo, this: Id, ctx: &mut giui::Context) {
+        if let MouseEvent::Up(giui::MouseButton::Left) = mouse.event {
+            println!("calling click");
+            self.on_click.as_mut().map(|x| x(mouse.click_count, ctx));
+        };
+        if !self.resizable {
+            return;
+        }
         let rect = ctx.get_rect(this);
         match mouse.event {
             MouseEvent::Down(giui::MouseButton::Left) => {

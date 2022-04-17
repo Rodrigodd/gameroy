@@ -23,34 +23,75 @@ struct RomEntry {
     path: PathBuf,
 }
 
+struct SetSelected(usize);
+
 struct RomList {
     roms: Vec<RomEntry>,
     table_group: Rc<RefCell<TableGroup>>,
+    last_selected: Option<usize>,
+    selected: Option<usize>,
+}
+impl RomList {
+    fn new(roms: Vec<RomEntry>, table_group: Rc<RefCell<TableGroup>>) -> Self {
+        Self {
+            roms,
+            table_group,
+            last_selected: None,
+            selected: None,
+        }
+    }
 }
 impl ListBuilder for RomList {
     fn update_item(
         &mut self,
-        _index: usize,
-        _item_id: giui::Id,
-        _ctx: &mut dyn giui::BuilderContext,
+        index: usize,
+        item_id: giui::Id,
+        ctx: &mut dyn giui::BuilderContext,
     ) -> bool {
+        println!("update {index}");
+        if self.last_selected.is_some() {
+            if Some(index) == self.last_selected || Some(index) == self.selected {
+                *ctx.get_graphic_mut(item_id) = if self.selected == Some(index) {
+                    ctx.get::<Style>().header_background.clone()
+                } else {
+                    Graphic::None
+                };
+            }
+        }
         true
+    }
+
+    fn finished_layout(&mut self) {
+        println!("finished layout");
+        self.last_selected = None;
     }
 
     fn item_count(&mut self, _ctx: &mut dyn giui::BuilderContext) -> usize {
         self.roms.len()
     }
 
+    fn on_event(&mut self, event: Box<dyn std::any::Any>, this: giui::Id, ctx: &mut giui::Context) {
+        if let Some(&SetSelected(index)) = event.downcast_ref() {
+            if self.selected == Some(index) {
+                return;
+            }
+            self.last_selected = self.selected.or(Some(index));
+            self.selected = Some(index);
+            println!("last_selcted: {:?}", self.last_selected);
+            ctx.dirty_layout(this);
+        }
+    }
+
     fn create_item<'a>(
         &mut self,
         index: usize,
-        _list_id: giui::Id,
+        list_id: giui::Id,
         cb: giui::ControlBuilder,
         ctx: &mut dyn giui::BuilderContext,
     ) -> giui::ControlBuilder {
         let style = &ctx.get::<Style>().clone();
         let header = index == 0;
-        let (name, size, path) = if !header {
+        let (name, size, file, path) = if !header {
             let RomEntry { name, size, path } = self.roms[index].clone();
             let size = if size < (1 << 20) {
                 format!("{} KiB", size >> 10)
@@ -61,12 +102,14 @@ impl ListBuilder for RomList {
                 name,
                 size,
                 path.file_name().unwrap().to_string_lossy().into_owned(),
+                Some(path),
             )
         } else {
             (
                 "Header Name".to_string(),
                 "Size".to_string(),
                 "File".to_string(),
+                None,
             )
         };
         let cell_backgroud = if header {
@@ -75,7 +118,7 @@ impl ListBuilder for RomList {
             Graphic::None
         };
         let parent = cb.id();
-        for text in [name, path, size] {
+        for text in [name, file, size] {
             let cb = ctx
                 .create_control()
                 .parent(parent)
@@ -98,7 +141,24 @@ impl ListBuilder for RomList {
             }
             .build(ctx);
         }
-        cb.behaviour_and_layout(TableItem::new(self.table_group.clone()).with_resizable(header))
+        cb.behaviour_and_layout({
+            let mut item = TableItem::new(self.table_group.clone()).with_resizable(header);
+            if !header {
+                let path = path.unwrap();
+                item.set_on_click(move |click_count, ctx| {
+                    println!("onn click {click_count}");
+                    if click_count == 1 {
+                        println!("send event to {list_id}");
+                        ctx.send_event_to(list_id, SetSelected(index))
+                    } else if click_count == 2 {
+                        ctx.get::<EventLoopProxy<UserEvent>>()
+                            .send_event(UserEvent::LoadRom(path.clone().into()))
+                            .unwrap();
+                    }
+                });
+            }
+            item
+        })
     }
 }
 
@@ -176,10 +236,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         ctx,
         style,
         [0.0; 4],
-        RomList {
-            roms,
-            table_group: Rc::new(RefCell::new(table)),
-        },
+        RomList::new(roms, Rc::new(RefCell::new(table))),
     )
     .graphic(style.background.clone())
     .parent(v_box)

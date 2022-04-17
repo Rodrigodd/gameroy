@@ -48,7 +48,6 @@ impl ListBuilder for RomList {
         item_id: giui::Id,
         ctx: &mut dyn giui::BuilderContext,
     ) -> bool {
-        println!("update {index}");
         if self.last_selected.is_some() {
             if Some(index) == self.last_selected || Some(index) == self.selected {
                 *ctx.get_graphic_mut(item_id) = if self.selected == Some(index) {
@@ -62,7 +61,6 @@ impl ListBuilder for RomList {
     }
 
     fn finished_layout(&mut self) {
-        println!("finished layout");
         self.last_selected = None;
     }
 
@@ -77,7 +75,6 @@ impl ListBuilder for RomList {
             }
             self.last_selected = self.selected.or(Some(index));
             self.selected = Some(index);
-            println!("last_selcted: {:?}", self.last_selected);
             ctx.dirty_layout(this);
         }
     }
@@ -146,9 +143,7 @@ impl ListBuilder for RomList {
             if !header {
                 let path = path.unwrap();
                 item.set_on_click(move |click_count, ctx| {
-                    println!("onn click {click_count}");
                     if click_count == 1 {
-                        println!("send event to {list_id}");
                         ctx.send_event_to(list_id, SetSelected(index))
                     } else if click_count == 2 {
                         ctx.get::<EventLoopProxy<UserEvent>>()

@@ -222,8 +222,8 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         .unwrap_or_default();
 
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
-        .column(150.0, false)
-        .column(200.0, true)
+        .column(120.0, false)
+        .column(490.0, false)
         .column(60.0, false);
 
     crate::ui::list(

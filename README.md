@@ -2,7 +2,7 @@
 
 An emulator and debugger for the Nintendo Game Boy, written in Rust.
 
-![Debugging Kirby](screenshots/main.png)
+![Debugging Kirby](assets/screenshot.png)
 
 ## Features
 

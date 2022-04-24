@@ -335,7 +335,6 @@ struct SoundBackend {
 
 pub struct Emulator {
     gb: Arc<ParkMutex<GameBoy>>,
-    recv: Receiver<EmulatorEvent>,
     proxy: EventLoopProxy<UserEvent>,
 
     joypad: Arc<ParkMutex<Timeline>>,
@@ -357,16 +356,23 @@ pub struct Emulator {
     /// The sound backend.
     sound: Option<SoundBackend>,
 }
+
+pub enum Control {
+    /// Continue polling
+    Poll,
+    /// Wait for the next event.
+    Wait,
+}
+
 impl Emulator {
-    pub fn run(
+    pub fn new(
         gb: Arc<ParkMutex<GameBoy>>,
         debugger: Arc<ParkMutex<Debugger>>,
-        recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
         rom_path: PathBuf,
         save_path: PathBuf,
-    ) {
+    ) -> Self {
         let sound = match AudioEngine::new() {
             Ok(audio_engine) => {
                 let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
@@ -394,12 +400,10 @@ impl Emulator {
                 None
             }
         };
-
         let clock_count = {
             let gb = gb.lock();
             gb.clock_count
         };
-
         let frame_clock_count = 154 * 456;
         let current_frame = (clock_count / frame_clock_count) as usize;
         const BOOT_FRAMES: u64 = 23_384_580 / (154 * 456);
@@ -429,12 +433,9 @@ impl Emulator {
                 }
             }));
         }
-
         let start_time = Instant::now() - clock_to_duration(gb.lock().clock_count);
-
-        Self {
+        let this = Self {
             gb,
-            recv,
             proxy,
             joypad,
             rom_path,
@@ -446,8 +447,21 @@ impl Emulator {
             start_time,
             debugger,
             sound,
-        }
-        .event_loop();
+        };
+        this
+    }
+
+    pub fn run(
+        gb: Arc<ParkMutex<GameBoy>>,
+        debugger: Arc<ParkMutex<Debugger>>,
+        recv: Receiver<EmulatorEvent>,
+        proxy: EventLoopProxy<UserEvent>,
+        movie: Option<Vbm>,
+        rom_path: PathBuf,
+        save_path: PathBuf,
+    ) {
+        let mut this = Self::new(gb, debugger, proxy, movie, rom_path, save_path);
+        this.event_loop(recv);
     }
 
     fn set_state(&mut self, new_state: EmulatorState) {
@@ -460,209 +474,27 @@ impl Emulator {
         self.state = new_state;
     }
 
-    fn event_loop(&mut self) {
-        'event_loop: while let Ok(mut event) = self.recv.recv() {
+    fn event_loop(&mut self, recv: Receiver<EmulatorEvent>) {
+        'event_loop: while let Ok(mut event) = recv.recv() {
             'handle_event: loop {
-                use EmulatorEvent::*;
-                match event {
-                    SaveState => {
-                        let mut save_state = std::fs::OpenOptions::new()
-                            .create(true)
-                            .write(true)
-                            .open(self.rom_path.with_extension("save_state"))
-                            .unwrap();
-                        log::info!("save state");
-                        self.gb.lock().save_state(&mut save_state).unwrap();
-                    }
-                    LoadState => {
-                        let mut save_state =
-                            std::fs::File::open(self.rom_path.with_extension("save_state"))
-                                .unwrap();
-                        self.gb.lock().load_state(&mut save_state).unwrap();
-                        log::info!("load state");
-                        self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
-                    }
-                    Kill => break 'event_loop,
-                    RunFrame => {
-                        if !self.debug {
-                            self.set_state(EmulatorState::RunNoBreak);
-                        }
-                    }
-                    FrameLimit(value) => {
-                        self.frame_limit = value;
-                        if self.frame_limit {
-                            self.start_time =
-                                Instant::now() - clock_to_duration(self.gb.lock().clock_count);
-                        }
-                    }
-                    Rewind(value) => {
-                        self.rewind = value;
-                        let joypad = &mut *self.joypad.lock();
-                        joypad.rewinding = value;
-                        joypad.joypad_timeline.clear();
-                    }
-                    SetJoypad(joypad) => {
-                        self.joypad.lock().current_joypad = joypad;
-                    }
-                    Debug(value) => {
-                        self.debug = value;
-                        if self.debug {
-                            self.set_state(EmulatorState::Idle);
-                        } else {
-                            self.set_state(EmulatorState::RunNoBreak);
-                        }
-                    }
-                    Step => {
-                        if self.debug {
-                            {
-                                let gb = &mut &mut *self.gb.lock();
-                                self.debugger.lock().step(gb);
-                            }
-                            self.set_state(EmulatorState::Idle);
-                        }
-                    }
-                    StepBack => {
-                        if self.debug {
-                            let mut gb = self.gb.lock();
-                            let mut joypad = self.joypad.lock();
-                            if let Some(last_clock_count) = joypad.last_frame_clock_count() {
-                                let clock_count = gb.clock_count;
-                                // currently, the maximum number of clocks that interpret_op
-                                // elapses is 24, so if the last_frame_clock_count is recent than
-                                // that, this could be after the last instruction. So pop it.
-                                if last_clock_count > clock_count - 24 {
-                                    joypad.pop_last_frame();
-                                }
-                                if joypad.load_last_frame(&mut *gb) {
-                                    drop(joypad);
-                                    drop(gb);
-                                    {
-                                        let debugger = &mut *self.debugger.lock();
-                                        debugger.target_clock = Some(debugger.last_op_clock);
-                                    }
-                                    self.set_state(EmulatorState::Run);
-                                }
-                            } else {
-                                log::warn!("there is no last frame");
-                            }
-                        }
-                    }
-                    Run => {
-                        if self.debug {
-                            self.set_state(EmulatorState::Run);
-                            // Run a single step, to ignore the current breakpoint
-                            let gb = &mut *self.gb.lock();
-                            self.debugger.lock().step(gb);
-                        }
-                    }
-                    Reset => {
-                        self.gb.lock().reset();
-                        log::info!("reset");
-                        self.state = EmulatorState::Idle;
-                        // This will send EmulatorUpdated to the gui
-                        self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
-                    }
+                if self.handle_event(event) {
+                    break 'event_loop;
                 }
-
-                match self.state {
-                    EmulatorState::Idle => {}
-                    EmulatorState::Run => 'run: loop {
-                        // run 1.6ms worth of emulation, and check for events in the channel, in a loop
-                        {
-                            let mut gb = self.gb.lock();
-                            let mut debugger = self.debugger.lock();
-                            use RunResult::*;
-                            match debugger.run_for(&mut *gb, CLOCK_SPEED / 600) {
-                                ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
-                                    drop(gb);
-                                    drop(debugger);
-                                    self.set_state(EmulatorState::Idle);
-                                    break 'run;
-                                }
-                                TimeOut => {}
-                            }
-                        }
-                        match self.recv.try_recv() {
+                'pool: loop {
+                    match self.poll() {
+                        Control::Poll => match recv.try_recv() {
                             Ok(next_event) => {
                                 event = next_event;
                                 continue 'handle_event;
                             }
                             Err(TryRecvError::Disconnected) => break 'event_loop,
-                            _ => {}
-                        }
-                    },
-                    EmulatorState::RunNoBreak => {
-                        if self.rewind {
-                            let gb = &mut *self.gb.lock();
-                            {
-                                let joypad = &mut *self.joypad.lock();
-                                if joypad.load_last_frame(gb) {
-                                    joypad.pop_last_frame();
-                                }
+                            _ => {
+                                continue 'pool;
                             }
-                            {
-                                let mut c = gb.v_blank.take();
-                                c.as_mut().map(|c| c(gb));
-                                gb.v_blank = c;
-                            }
-                            self.state = EmulatorState::Idle;
-                        } else if self.frame_limit {
-                            let mut gb = self.gb.lock();
-                            let mut inter = Interpreter(&mut *gb);
-                            let elapsed = self.start_time.elapsed();
-                            let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
-                                + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9))
-                                    as u64;
-
-                            // make sure that the target_clock don't increase indefinitely if the program can't keep up.
-                            if target_clock > inter.0.clock_count + CLOCK_SPEED / 30 {
-                                let expected_target = target_clock;
-                                target_clock = inter.0.clock_count + CLOCK_SPEED / 30;
-                                self.start_time += Duration::from_secs_f64(
-                                    (expected_target - target_clock) as f64 / CLOCK_SPEED as f64,
-                                );
-                            }
-
-                            while inter.0.clock_count < target_clock {
-                                inter.interpret_op();
-                            }
-
-                            drop(gb);
-                            self.update_audio();
-
-                            // change state to Idle, and wait for the next RunFrame
-
-                            // I don't call self.set_state, because i don't want to send the
-                            // EmulatorPaused event
-                            self.state = EmulatorState::Idle;
-                        } else {
-                            // run 1.6ms worth of emulation, and check for events in the channel, in a loop
-                            loop {
-                                let mut gb = self.gb.lock();
-                                let mut inter = Interpreter(&mut *gb);
-                                let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
-
-                                while inter.0.clock_count < target_clock {
-                                    inter.interpret_op();
-                                }
-                                // clear the audio output
-                                let clock_count = inter.0.clock_count;
-                                let _ = inter.0.sound.borrow_mut().get_output(clock_count);
-
-                                match self.recv.try_recv() {
-                                    Ok(next_event) => {
-                                        event = next_event;
-                                        continue 'handle_event;
-                                    }
-                                    Err(TryRecvError::Disconnected) => break 'event_loop,
-                                    _ => {}
-                                }
-                            }
-                        }
+                        },
+                        Control::Wait => continue 'event_loop,
                     }
                 }
-
-                break;
             }
         }
 
@@ -673,6 +505,195 @@ impl Emulator {
             Ok(_) => log::info!("save success"),
             Err(x) => log::error!("saving failed: {}", x),
         }
+    }
+
+    /// Return true if should terminate event_loop.
+    pub fn handle_event(&mut self, event: EmulatorEvent) -> bool {
+        use EmulatorEvent::*;
+        match event {
+            SaveState => {
+                let mut save_state = std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .open(self.rom_path.with_extension("save_state"))
+                    .unwrap();
+                log::info!("save state");
+                self.gb.lock().save_state(&mut save_state).unwrap();
+            }
+            LoadState => {
+                let mut save_state =
+                    std::fs::File::open(self.rom_path.with_extension("save_state")).unwrap();
+                self.gb.lock().load_state(&mut save_state).unwrap();
+                log::info!("load state");
+                self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+            }
+            Kill => return true,
+            RunFrame => {
+                if !self.debug {
+                    self.set_state(EmulatorState::RunNoBreak);
+                }
+            }
+            FrameLimit(value) => {
+                self.frame_limit = value;
+                if self.frame_limit {
+                    self.start_time =
+                        Instant::now() - clock_to_duration(self.gb.lock().clock_count);
+                }
+            }
+            Rewind(value) => {
+                self.rewind = value;
+                let joypad = &mut *self.joypad.lock();
+                joypad.rewinding = value;
+                joypad.joypad_timeline.clear();
+            }
+            SetJoypad(joypad) => {
+                self.joypad.lock().current_joypad = joypad;
+            }
+            Debug(value) => {
+                self.debug = value;
+                if self.debug {
+                    self.set_state(EmulatorState::Idle);
+                } else {
+                    self.set_state(EmulatorState::RunNoBreak);
+                }
+            }
+            Step => {
+                if self.debug {
+                    {
+                        let gb = &mut &mut *self.gb.lock();
+                        self.debugger.lock().step(gb);
+                    }
+                    self.set_state(EmulatorState::Idle);
+                }
+            }
+            StepBack => {
+                if self.debug {
+                    let mut gb = self.gb.lock();
+                    let mut joypad = self.joypad.lock();
+                    if let Some(last_clock_count) = joypad.last_frame_clock_count() {
+                        let clock_count = gb.clock_count;
+                        // currently, the maximum number of clocks that interpret_op
+                        // elapses is 24, so if the last_frame_clock_count is recent than
+                        // that, this could be after the last instruction. So pop it.
+                        if last_clock_count > clock_count - 24 {
+                            joypad.pop_last_frame();
+                        }
+                        if joypad.load_last_frame(&mut *gb) {
+                            drop(joypad);
+                            drop(gb);
+                            {
+                                let debugger = &mut *self.debugger.lock();
+                                debugger.target_clock = Some(debugger.last_op_clock);
+                            }
+                            self.set_state(EmulatorState::Run);
+                        }
+                    } else {
+                        log::warn!("there is no last frame");
+                    }
+                }
+            }
+            Run => {
+                if self.debug {
+                    self.set_state(EmulatorState::Run);
+                    // Run a single step, to ignore the current breakpoint
+                    let gb = &mut *self.gb.lock();
+                    self.debugger.lock().step(gb);
+                }
+            }
+            Reset => {
+                self.gb.lock().reset();
+                log::info!("reset");
+                self.state = EmulatorState::Idle;
+                // This will send EmulatorUpdated to the gui
+                self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+            }
+        }
+        false
+    }
+
+    pub fn poll(&mut self) -> Control {
+        match self.state {
+            EmulatorState::Idle => {}
+            EmulatorState::Run => {
+                // run 1.6ms worth of emulation, and check for events in the channel, in a loop
+                {
+                    let mut gb = self.gb.lock();
+                    let mut debugger = self.debugger.lock();
+                    use RunResult::*;
+                    match debugger.run_for(&mut *gb, CLOCK_SPEED / 600) {
+                        ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
+                            drop(gb);
+                            drop(debugger);
+                            self.set_state(EmulatorState::Idle);
+                            return Control::Wait;
+                        }
+                        TimeOut => {}
+                    }
+                }
+                return Control::Poll;
+            }
+            EmulatorState::RunNoBreak => {
+                if self.rewind {
+                    let gb = &mut *self.gb.lock();
+                    {
+                        let joypad = &mut *self.joypad.lock();
+                        if joypad.load_last_frame(gb) {
+                            joypad.pop_last_frame();
+                        }
+                    }
+                    {
+                        let mut c = gb.v_blank.take();
+                        c.as_mut().map(|c| c(gb));
+                        gb.v_blank = c;
+                    }
+                    self.state = EmulatorState::Idle;
+                } else if self.frame_limit {
+                    let mut gb = self.gb.lock();
+                    let mut inter = Interpreter(&mut *gb);
+                    let elapsed = self.start_time.elapsed();
+                    let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
+                        + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
+
+                    // make sure that the target_clock don't increase indefinitely if the program can't keep up.
+                    if target_clock > inter.0.clock_count + CLOCK_SPEED / 30 {
+                        let expected_target = target_clock;
+                        target_clock = inter.0.clock_count + CLOCK_SPEED / 30;
+                        self.start_time += Duration::from_secs_f64(
+                            (expected_target - target_clock) as f64 / CLOCK_SPEED as f64,
+                        );
+                    }
+
+                    while inter.0.clock_count < target_clock {
+                        inter.interpret_op();
+                    }
+
+                    drop(gb);
+                    self.update_audio();
+
+                    // change state to Idle, and wait for the next RunFrame
+
+                    // I don't call self.set_state, because i don't want to send the
+                    // EmulatorPaused event
+                    self.state = EmulatorState::Idle;
+                } else {
+                    // run 1.6ms worth of emulation, and check for events in the channel, in a loop
+                    let mut gb = self.gb.lock();
+                    let mut inter = Interpreter(&mut *gb);
+                    let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
+
+                    while inter.0.clock_count < target_clock {
+                        inter.interpret_op();
+                    }
+                    // clear the audio output
+                    let clock_count = inter.0.clock_count;
+                    let _ = inter.0.sound.borrow_mut().get_output(clock_count);
+
+                    return Control::Poll;
+                }
+            }
+        }
+
+        Control::Wait
     }
 
     fn update_audio(&mut self) {

@@ -42,7 +42,10 @@ pub struct Debugger {
     /// The clock_count in the previous instruction, used for stepback.
     pub last_op_clock: u64,
     /// Callback called when self is mutated
+    #[cfg(not(target_arch = "wasm32"))]
     pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent) + Send>>,
+    #[cfg(target_arch = "wasm32")]
+    pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent)>>,
 }
 impl Debugger {
     pub fn execute_command<'a>(&mut self, gb: &GameBoy, args: &[&'a str]) -> Result<(), String> {

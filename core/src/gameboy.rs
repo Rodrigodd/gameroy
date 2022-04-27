@@ -45,7 +45,10 @@ pub struct GameBoy {
     /// The instant, in 2^13 Hz clock count (T-clock count >> 9), in which the first bit of current
     /// serial transfer was send. It is 0 if there is no transfer happening.
     pub serial_transfer_started: u64,
+    #[cfg(not(target_arch = "wasm32"))]
     pub serial_transfer_callback: Option<Box<dyn FnMut(u8) + Send>>,
+    #[cfg(target_arch = "wasm32")]
+    pub serial_transfer_callback: Option<Box<dyn FnMut(u8)>>,
     /// FF0F: Interrupt Flag (IF)
     /// - bit 0: VBlank
     /// - bit 1: STAT
@@ -61,7 +64,10 @@ pub struct GameBoy {
     /// This trigger control if in the next interpret the `v_blank` callback will be called.
     pub v_blank_trigger: bool,
     /// A callback that is called after a VBlank. This is called at the
+    #[cfg(not(target_arch = "wasm32"))]
     pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
+    #[cfg(target_arch = "wasm32")]
+    pub v_blank: Option<Box<dyn FnMut(&mut GameBoy)>>,
 }
 
 impl std::fmt::Debug for GameBoy {

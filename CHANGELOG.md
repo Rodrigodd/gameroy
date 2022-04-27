@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add `gameroy bench` subcommand.
 - add a table view for the rom loading UI.
 
-## [0.1.1] - 2017-06-20
+## [0.1.1] - 2022-04-08
 
 ### Added
 
@@ -21,4 +21,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Don't panic if failed to initialize the audio backend.
 
-## [0.1.0] - 2017-06-20
+## [0.1.0] - 2022-04-06

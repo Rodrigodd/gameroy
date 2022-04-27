@@ -100,7 +100,7 @@ impl PpuViewer {
                 ))
                 .unwrap();
         }
-        let mut tiles = vec![255; 128 * 194 * 4];
+        let mut tiles = vec![255; 128 * 192 * 4];
         gameroy::gameboy::ppu::draw_tiles(
             &ppu,
             &mut |x, y, c| {

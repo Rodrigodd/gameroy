@@ -65,7 +65,7 @@ impl ListBuilder for RomList {
     }
 
     fn item_count(&mut self, _ctx: &mut dyn giui::BuilderContext) -> usize {
-        self.roms.len()
+        self.roms.len() + 1
     }
 
     fn on_event(&mut self, event: Box<dyn std::any::Any>, this: giui::Id, ctx: &mut giui::Context) {
@@ -89,7 +89,7 @@ impl ListBuilder for RomList {
         let style = &ctx.get::<Style>().clone();
         let header = index == 0;
         let (name, size, file, path) = if !header {
-            let RomEntry { name, size, path } = self.roms[index].clone();
+            let RomEntry { name, size, path } = self.roms[index - 1].clone();
             let size = if size < (1 << 20) {
                 format!("{} KiB", size >> 10)
             } else {

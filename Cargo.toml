@@ -12,6 +12,16 @@ rust-version = "1.59"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "gameroy"
+path = "src/main.rs"
+
+[lib]
+name = "gameroy_lib"
+crate_type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+
 [build-dependencies]
 embed-resource = "1.7.1"
 

@@ -111,8 +111,8 @@ impl Default for KeyMap {
             load_state: F6,
 
             open_debugger: F12,
-            debug_step: F7,
-            debug_stepback: F8,
+            debug_stepback: F7,
+            debug_step: F8,
             debug_run: F9,
         }
     }

@@ -12,6 +12,9 @@ use gameroy::{
 };
 use parking_lot::Mutex;
 
+#[cfg(target_arch = "wasm32")]
+mod wasm;
+
 mod bench;
 mod emulator;
 mod event_table;
@@ -74,6 +77,7 @@ fn log_panic() {
 }
 
 pub fn main() {
+    #[cfg(not(target_arch = "wasm32"))]
     let _logger = flexi_logger::Logger::try_with_env_or_str("gameroy=info")
         .unwrap()
         .log_to_file(
@@ -88,6 +92,8 @@ pub fn main() {
         })
         .start()
         .unwrap();
+    #[cfg(target_arch = "wasm32")]
+    let _logger = wasm_logger::init(wasm_logger::Config::default().module_prefix("gameroy"));
 
     log_panic();
 
@@ -156,7 +162,14 @@ pub fn main() {
         if let Some(rom_path) = rom_path {
             let rom_path = PathBuf::from(rom_path);
 
-            let gb = load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
+            let gb = if rom_path.to_str().unwrap() == "name.gb" {
+                let rom = include_bytes!("../roms/Tetris (World) (Rev A).gb").to_vec();
+                let cartridge = Cartridge::new(rom).unwrap();
+                let game_boy = gameboy::GameBoy::new(None, cartridge);
+                Ok((PathBuf::from(""), game_boy))
+            } else {
+                load_gameboy(&rom_path, None)
+            };
             let (_, mut gb) = match gb {
                 Ok(x) => x,
                 Err(e) => return eprintln!("{}", e),
@@ -212,14 +225,29 @@ pub fn main() {
 
     // create winit's window and event_loop
     let event_loop = EventLoop::with_user_event();
-    let window = WindowBuilder::new()
+    let wb = WindowBuilder::new()
         .with_inner_size(PhysicalSize::new(768u32, 400))
         // wait every thing to be loaded before showing the window
         .with_visible(false)
         .with_window_icon(icon)
-        .with_title("gameroy")
-        .build(&event_loop)
-        .unwrap();
+        .with_title("gameroy");
+
+    #[cfg(target_arch = "wasm32")]
+    let wb = {
+        use wasm_bindgen::JsCast;
+        use winit::platform::web::WindowBuilderExtWebSys;
+
+        let document = web_sys::window().unwrap().document().unwrap();
+        let canvas = document.get_element_by_id("main_canvas").unwrap();
+        let canvas: web_sys::HtmlCanvasElement = canvas
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .map_err(|_| ())
+            .unwrap();
+
+        wb.with_canvas(Some(canvas))
+    };
+
+    let window = wb.build(&event_loop).unwrap();
 
     let proxy = event_loop.create_proxy();
     let mut ui = ui::Ui::new(&window, proxy);
@@ -391,6 +419,14 @@ fn start_event_loop(
             }
             Event::MainEventsCleared => {}
             Event::RedrawRequested(window_id) => {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    if let Some((width, height)) = wasm::RESIZE.lock().take() {
+                        let size = winit::dpi::PhysicalSize { width, height };
+                        ui.resize(size.clone(), window_id);
+                        window.set_inner_size(size);
+                    }
+                }
                 // render the gui
                 ui.render(window_id);
 
@@ -399,8 +435,14 @@ fn start_event_loop(
                 }
             }
             Event::UserEvent(UserEvent::LoadRom(rom_path)) => {
-                ui.clear();
-                let gb = load_gameboy(&rom_path, None);
+                let gb = if rom_path.to_str().unwrap() == "name.gb" {
+                    let rom = include_bytes!("../roms/Tetris (World) (Rev A).gb").to_vec();
+                    let cartridge = Cartridge::new(rom).unwrap();
+                    let game_boy = gameboy::GameBoy::new(None, cartridge);
+                    Ok((PathBuf::from(""), game_boy))
+                } else {
+                    load_gameboy(&rom_path, None)
+                };
                 let (save_path, gb) = match gb {
                     Ok(x) => x,
                     Err(e) => return eprintln!("{}", e),
@@ -419,12 +461,13 @@ fn start_event_loop(
                     save_path,
                 );
                 app = Box::new(emu);
+                ui.clear();
                 app.build_ui(&mut ui);
                 return;
             }
             _ => {}
         }
-        app.handle_event(event, &mut ui, &window, &proxy);
+        app.handle_event(event, &mut ui, &window, control, &proxy);
     })
 }
 
@@ -434,6 +477,7 @@ trait App {
         event: Event<UserEvent>,
         ui: &mut ui::Ui,
         window: &winit::window::Window,
+        control: &mut ControlFlow,
         proxy: &EventLoopProxy<UserEvent>,
     );
 
@@ -453,6 +497,7 @@ impl App for RomLoadingApp {
         event: Event<UserEvent>,
         _ui: &mut ui::Ui,
         _window: &winit::window::Window,
+        _control: &mut ControlFlow,
         proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
@@ -479,7 +524,12 @@ struct EmulatorApp {
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
     emu_channel: flume::Sender<EmulatorEvent>,
+    #[cfg(not(target_arch = "wasm32"))]
     emu_thread: Option<thread::JoinHandle<()>>,
+    #[cfg(target_arch = "wasm32")]
+    emulator: Emulator,
+    #[cfg(target_arch = "wasm32")]
+    recv: flume::Receiver<emulator::EmulatorEvent>,
 }
 impl EmulatorApp {
     fn new(
@@ -531,6 +581,8 @@ impl EmulatorApp {
         ui.gui.set::<Arc<Mutex<Debugger>>>(debugger.clone());
         ui.gui.set(emu_channel.clone());
         ui.gui.set(AppState::new(debug));
+
+        #[cfg(not(target_arch = "wasm32"))]
         let emu_thread = {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
@@ -538,10 +590,16 @@ impl EmulatorApp {
                 .unwrap();
             Some(join_handle)
         };
+
         EmulatorApp {
             lcd_screen,
             emu_channel,
+            #[cfg(not(target_arch = "wasm32"))]
             emu_thread,
+            #[cfg(target_arch = "wasm32")]
+            emulator: Emulator::new(gb, debugger, proxy, movie, rom_path, save_path),
+            #[cfg(target_arch = "wasm32")]
+            recv,
         }
     }
 }
@@ -550,11 +608,13 @@ impl App for EmulatorApp {
         let debug = ui.get::<AppState>().debug;
         ui::create_emulator_ui(ui, debug);
     }
+
     fn handle_event(
         &mut self,
         event: Event<UserEvent>,
         ui: &mut ui::Ui,
         window: &winit::window::Window,
+        _control: &mut ControlFlow,
         _proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
@@ -565,9 +625,32 @@ impl App for EmulatorApp {
                     .unwrap();
                 self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
             }
+            #[cfg(not(target_arch = "wasm32"))]
             Event::LoopDestroyed => {
                 self.emu_channel.send(EmulatorEvent::Kill).unwrap();
                 self.emu_thread.take().unwrap().join().unwrap();
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::MainEventsCleared => {
+                if let Ok(mut event) = self.recv.try_recv() {
+                    loop {
+                        if self.emulator.handle_event(event) {
+                            // break 'event_loop;
+                        }
+                        match self.emulator.poll() {
+                            _ => {}
+                        }
+                        match self.recv.try_recv() {
+                            Ok(x) => event = x,
+                            _ => break,
+                        }
+                    }
+                } else {
+                    match self.emulator.poll() {
+                        emulator::Control::Poll => *_control = ControlFlow::Poll,
+                        emulator::Control::Wait => {}
+                    }
+                }
             }
             Event::UserEvent(event) => {
                 use UserEvent::*;

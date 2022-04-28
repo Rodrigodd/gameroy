@@ -1,0 +1,132 @@
+<html>
+
+<head>
+    <title>GameRoy</title>
+    <link rel="icon"
+        href="data:image/svg+xml,%3Csvg version='1.1' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='m8 56h-8v-48h8v-8h48v8h8v48h-8v8h-48z' fill='%23000f05'/%3E%3Cpath d='m24 8v16h-16v16h16v16h16v-16h16v-16h-16v-16z' fill='%2334ff30'/%3E%3C/svg%3E" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            oveflow: hidden;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-image: linear-gradient(#001000, #002000);
+        }
+
+        .centered {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            outline: none;
+            -webkit-tap-highlight-color: rgba(255, 255, 255, 0);
+            /* mobile webkit */
+
+            display: block;
+            z-index: 0;
+            image-rendering: crisp-edges;
+        }
+
+        progress {
+            width: 350px;
+            height: 40px;
+
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        progress[value]::-webkit-progress-bar, progress {
+            background-color: #000800;
+            border-radius: 0px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.25) inset;
+        }
+
+        progress[value]::-webkit-progress-value {
+            background-color: #00ff00;
+        }
+
+        progress[value]::-moz-progress-bar {
+            background-color: #00ff00;
+        }
+    </style>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+
+    <script defer type="module">
+        import init, { run, resize_canvas } from './pkg/gameroy_lib.js';
+
+        let elem = document.getElementById('loading');
+
+        $.ajax({
+            url: './pkg/gameroy_lib_bg.wasm',
+            xhr: function () {
+                var xhr = new window.XMLHttpRequest();
+                xhr.responseType = 'arraybuffer';
+                //Download progress
+                xhr.addEventListener("progress", function (evt) {
+                    let percentComplete = 1;
+                    if (evt.lengthComputable) {
+                        percentComplete = evt.loaded / evt.total;
+                    } else if (evt.loaded) {
+                        percentComplete = evt.loaded / 3467246;
+                    }
+                    elem.value = Math.floor(percentComplete * 100);
+                }, false);
+                return xhr;
+            }
+        }).done(function (data, textStatus, jqXHR) {
+            init(data).then(() => {
+                elem.parentNode.removeChild(elem);
+
+                let canvas = document.getElementById('main_canvas');
+                function resize() {
+                    let dpi = window.devicePixelRatio;
+                    const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0)
+                    const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0)
+                    canvas.width = vw;
+                    canvas.height = vh;
+                    console.log(dpi, canvas.width, canvas.height);
+                    resize_canvas(canvas.width*dpi, canvas.height*dpi);
+                }
+
+                window.addEventListener('resize', function() {
+                    resize();
+                });
+                resize();
+
+                run();
+            });
+        }).fail(function (jqXHR, settings, exception) {
+            console.log('could not load');
+        });
+    </script>
+</head>
+
+<body oncontextmenu="return false" scroll="no">
+    <div class="centered">
+        <canvas id="main_canvas" tabindex="0"></canvas>
+        <progress id="loading" max="100" value="50"></progress>
+    </div>
+</body>
+
+</html>

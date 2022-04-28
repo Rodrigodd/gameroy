@@ -211,6 +211,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         .expand_x(true)
         .build(ctx);
 
+    #[cfg(not(target_arch = "wasm32"))]
     let roms = crate::config()
         .rom_folder
         .as_ref()
@@ -220,6 +221,12 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
                 .ok()
         })
         .unwrap_or_default();
+    #[cfg(target_arch = "wasm32")]
+    let roms = vec![RomEntry {
+        name: "Name".to_string(),
+        size: 100,
+        path: PathBuf::from("name.gb".to_string()),
+    }];
 
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
         .column(120.0, false)

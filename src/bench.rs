@@ -1,7 +1,5 @@
-use std::{
-    path::PathBuf,
-    time::{Duration, Instant},
-};
+use instant::Instant;
+use std::{path::PathBuf, time::Duration};
 
 use gameroy::interpreter::Interpreter;
 

@@ -622,6 +622,7 @@ dependencies = [
  "gameroy-core",
  "giui",
  "image 0.24.2",
+ "instant",
  "log",
  "once_cell",
  "parking_lot",

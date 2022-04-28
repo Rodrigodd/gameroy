@@ -5,7 +5,7 @@ use crate::{
     widget::{PixelPerfectLayout, SplitView},
     EmulatorEvent, UserEvent,
 };
-use std::{cell::RefCell, rc::Rc, sync::mpsc::SyncSender};
+use std::{cell::RefCell, rc::Rc};
 
 use giui::{
     graphics::Texture,
@@ -46,7 +46,7 @@ pub fn create_gui(
     gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent::new(move |event, _, ctx| {
             use giui::KeyboardEvent::*;
-            let sender = ctx.get::<SyncSender<EmulatorEvent>>().clone();
+            let sender = ctx.get::<flume::Sender<EmulatorEvent>>().clone();
             let debug = ctx.get::<crate::AppState>().debug;
             let app_state = ctx.get_mut::<crate::AppState>();
             let mut set_key = |key: u8, value: bool| {

@@ -57,6 +57,7 @@ toml = "0.5.8"
 rfd = { version = "0.8.1", optional = true }
 flexi_logger = "0.22.3"
 instant = {version = "0.1.12", features=["wasm-bindgen"] }
+flume = { version = "0.10.12", default-features = false }
 
 [profile.dev]
 opt-level = 1

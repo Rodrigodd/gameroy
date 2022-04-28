@@ -1,12 +1,6 @@
+use flume::{Receiver, TryRecvError};
 use instant::Instant;
-use std::{
-    collections::VecDeque,
-    io::Write,
-    path::PathBuf,
-    sync::mpsc::{Receiver, TryRecvError},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::VecDeque, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
 use audio_engine::{AudioEngine, SoundSource};
 use gameroy::{

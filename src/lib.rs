@@ -1,7 +1,7 @@
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
-    sync::{mpsc::sync_channel, Arc},
+    sync::Arc,
     thread,
 };
 
@@ -478,7 +478,7 @@ struct EmulatorApp {
     lcd_screen: Arc<
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
-    emu_channel: std::sync::mpsc::SyncSender<EmulatorEvent>,
+    emu_channel: flume::Sender<EmulatorEvent>,
     emu_thread: Option<thread::JoinHandle<()>>,
 }
 impl EmulatorApp {
@@ -505,7 +505,7 @@ impl EmulatorApp {
             }
         }));
         let gb = Arc::new(Mutex::new(gb));
-        let (emu_channel, recv) = sync_channel(3);
+        let (emu_channel, recv) = flume::bounded(8);
         if debug {
             proxy.send_event(UserEvent::Debug(debug)).unwrap();
         } else {

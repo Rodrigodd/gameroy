@@ -22,13 +22,37 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
 
 ## Running
 
-You can compile and run a release build of this project by running the command:
+You can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
+
+You can also compile and run a release build of this project by cloning this repo and running the
+following command in the project root:
 
 ```shell
 cargo run --release
 ```
 
-Otherwise, you can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
+#### WebAssembly
+
+You can also build for WebAssembly, and run the emulator on the web. Using
+[web-pack](https://rustwasm.github.io/wasm-pack/), run the following command:
+
+```shell
+wasm-pack build --target web -- --no-default-features --features=static
+```
+
+After that, open a web server in the root folder that serve [index.html].
+
+For example, you can create a server using python `http.server` module:
+
+```
+python -m http.server
+```
+
+And access `localhost:8000` in a web browser.
+
+
+
+
 
 ## Config
 

@@ -65,7 +65,10 @@ pub struct Ui {
 impl Ui {
     pub fn new(window: &Window, proxy: EventLoopProxy<UserEvent>) -> Self {
         // create the render and camera, and a texture for the glyphs rendering
+        #[cfg(not(target_arch = "wasm32"))]
         let render = sprite_render::GLSpriteRender::new(window, true).unwrap();
+        #[cfg(target_arch = "wasm32")]
+        let render = sprite_render::WebGLSpriteRender::new(window);
 
         let mut render: Box<dyn SpriteRender + 'static> = Box::new(render);
 

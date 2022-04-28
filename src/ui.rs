@@ -8,7 +8,7 @@ use giui::{
     BuilderContext, ControlBuilder, Gui, GuiRender, Id,
 };
 
-use sprite_render::{Camera, GLSpriteRender, SpriteInstance, SpriteRender};
+use sprite_render::{Camera, SpriteInstance, SpriteRender};
 use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
@@ -24,7 +24,7 @@ pub use emulator_ui::create_emulator_ui;
 mod rom_loading_ui;
 pub use rom_loading_ui::create_rom_loading_ui;
 
-struct Render<'a>(&'a mut GLSpriteRender);
+struct Render<'a>(&'a mut dyn SpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
     fn update_font_texure(&mut self, font_texture: u32, rect: [u32; 4], data_tex: &[u8]) {
         let mut data = Vec::with_capacity(data_tex.len() * 4);
@@ -55,7 +55,7 @@ pub struct Textures {
 pub struct Ui {
     pub gui: Gui,
     gui_render: GuiRender,
-    render: GLSpriteRender,
+    render: Box<dyn SpriteRender>,
     camera: Camera,
     pub event_table: Rc<RefCell<EventTable>>,
     pub textures: Textures,
@@ -65,7 +65,10 @@ pub struct Ui {
 impl Ui {
     pub fn new(window: &Window, proxy: EventLoopProxy<UserEvent>) -> Self {
         // create the render and camera, and a texture for the glyphs rendering
-        let mut render = GLSpriteRender::new(window, true).unwrap();
+        let render = sprite_render::GLSpriteRender::new(window, true).unwrap();
+
+        let mut render: Box<dyn SpriteRender + 'static> = Box::new(render);
+
         let camera = {
             let size = window.inner_size();
             let width = size.width;
@@ -75,7 +78,7 @@ impl Ui {
         let font_texture = render.new_texture(128, 128, &[], false);
 
         let mut fonts = Fonts::new();
-        let style = Style::load(&mut fonts, &mut render).unwrap();
+        let style = Style::load(&mut fonts, render.as_mut()).unwrap();
 
         let textures = Textures {
             white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
@@ -110,7 +113,7 @@ impl Ui {
     }
 
     pub fn reload_style(&mut self) {
-        let style = Style::load(self.gui.fonts_mut(), &mut self.render).unwrap();
+        let style = Style::load(self.gui.fonts_mut(), self.render.as_mut()).unwrap();
         self.gui.set(style);
     }
 
@@ -163,7 +166,9 @@ impl Ui {
 
     pub fn render(&mut self, window_id: WindowId) {
         let mut ctx = self.gui.get_render_context();
-        let (sprites, is_anim) = self.gui_render.render(&mut ctx, Render(&mut self.render));
+        let (sprites, is_anim) = self
+            .gui_render
+            .render(&mut ctx, Render(self.render.as_mut()));
         self.is_animating = is_anim || self.force_render;
         let mut renderer = self.render.render(window_id);
         renderer.clear_screen(&[0.0, 0.0, 0.0, 1.0]);

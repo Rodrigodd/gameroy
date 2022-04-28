@@ -10,14 +10,14 @@ use sprite_render::SpriteRender;
 
 use crate::widget::fold_view::FoldIcon;
 
-pub struct Loader<'a, R: SpriteRender> {
+pub struct Loader<'a> {
     pub fonts: &'a mut Fonts,
-    pub render: &'a mut R,
+    pub render: &'a mut (dyn SpriteRender + 'a),
     pub textures: HashMap<String, (u32, u32, u32)>,
 }
 
 #[cfg(not(feature = "static"))]
-impl<'a, R: SpriteRender> StyleLoaderCallback for Loader<'a, R> {
+impl<'a> StyleLoaderCallback for Loader<'a> {
     fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
         if let Some(texture) = self.textures.get(&name) {
             return *texture;
@@ -74,7 +74,7 @@ mod static_files {
         white_texture: include_bytes!("../assets/white.png"),
         icons_texture: include_bytes!("../assets/icons.png"),
     };
-    impl<'a, R: SpriteRender> StyleLoaderCallback for super::Loader<'a, R> {
+    impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
             if let Some(texture) = self.textures.get(&name) {
                 return *texture;
@@ -135,7 +135,7 @@ pub struct Style {
     pub open_icon: Graphic,
 }
 impl Style {
-    pub fn load(fonts: &mut Fonts, render: &mut impl SpriteRender) -> Option<Self> {
+    pub fn load(fonts: &mut Fonts, render: &mut dyn SpriteRender) -> Option<Self> {
         let loader = Loader {
             fonts,
             render,

@@ -12,7 +12,9 @@ mod wasm;
 
 mod waker_fn;
 
+#[cfg(not(target_arch = "wasm32"))]
 mod bench;
+
 mod emulator;
 mod event_table;
 mod widget {
@@ -127,6 +129,7 @@ pub fn main() {
             .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
         .get_matches();
 
+    #[cfg(not(target_arch = "wasm32"))]
     match matches.subcommand() {
         Some(("bench", matches)) => {
             let rom_path = matches.value_of("ROM_PATH").unwrap();
@@ -155,6 +158,7 @@ pub fn main() {
     });
 
     // dissasembly and return early
+    #[cfg(not(target_arch = "wasm32"))]
     if diss {
         if let Some(rom_path) = rom_path {
             let rom_path = PathBuf::from(rom_path);
@@ -189,6 +193,7 @@ pub fn main() {
     });
 
     // load rom if necesary
+    #[cfg(not(target_arch = "wasm32"))]
     let gb = if let Some(rom_path) = rom_path {
         let rom_path = PathBuf::from(rom_path);
 
@@ -203,6 +208,8 @@ pub fn main() {
     } else {
         None
     };
+    #[cfg(target_arch = "wasm32")]
+    let gb = Some(0);
 
     #[allow(unused_assignments, unused_mut)]
     let mut icon: Option<Icon> = None;
@@ -250,6 +257,7 @@ pub fn main() {
 
     // initiate in the apropriated screen
     match gb {
+        #[cfg(not(target_arch = "wasm32"))]
         Some((gb, entry)) => {
             window.set_title(&format!("{} - gameroy", entry.file_name()));
             let emu = EmulatorApp::new(
@@ -426,6 +434,7 @@ impl App for RomLoadingApp {
         proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
+            #[cfg(not(target_arch = "wasm32"))]
             Event::WindowEvent {
                 event: WindowEvent::DroppedFile(path),
                 ..

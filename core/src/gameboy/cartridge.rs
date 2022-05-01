@@ -61,6 +61,7 @@ pub struct CartridgeHeader {
     pub global_checksum: u16,
 }
 impl CartridgeHeader {
+    /// Return  Err(Some(Self)) if the load was sucessful but the checksum don't match.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, (Option<Self>, String)> {
         if bytes.len() < 0x150 {
             return Err((None, "file has less than 0x150 bytes".to_string()));
@@ -90,6 +91,7 @@ impl CartridgeHeader {
         Ok(this)
     }
 
+    /// Return  Err(Some(Self)) if the load was sucessful but the checksum don't match.
     pub fn from_reader(reader: &mut impl Read) -> Result<Self, (Option<Self>, String)> {
         let mut bytes = [0; 0x150];
         let len = match reader.read(&mut bytes) {

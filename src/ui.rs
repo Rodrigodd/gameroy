@@ -22,7 +22,7 @@ mod emulator_ui;
 pub use emulator_ui::create_emulator_ui;
 
 mod rom_loading_ui;
-pub use rom_loading_ui::create_rom_loading_ui;
+pub use rom_loading_ui::{create_rom_loading_ui, RomEntry};
 
 struct Render<'a>(&'a mut dyn SpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
@@ -115,6 +115,7 @@ impl Ui {
         ui
     }
 
+    #[cfg(not(feature = "static"))]
     pub fn reload_style(&mut self) {
         let style = Style::load(self.gui.fonts_mut(), self.render.as_mut()).unwrap();
         self.gui.set(style);

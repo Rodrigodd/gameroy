@@ -1,6 +1,6 @@
 use flume::{Receiver, TryRecvError};
 use instant::Instant;
-use std::{collections::VecDeque, io::Write, path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::VecDeque, io::Write, sync::Arc, time::Duration};
 
 use audio_engine::{AudioEngine, SoundSource};
 use gameroy::{
@@ -13,6 +13,8 @@ use gameroy::{
 };
 use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
+
+use crate::ui::RomEntry;
 
 use super::UserEvent;
 
@@ -332,8 +334,7 @@ pub struct Emulator {
 
     joypad: Arc<ParkMutex<Timeline>>,
 
-    rom_path: PathBuf,
-    save_path: PathBuf,
+    rom: RomEntry,
 
     debug: bool,
     state: EmulatorState,
@@ -363,8 +364,7 @@ impl Emulator {
         debugger: Arc<ParkMutex<Debugger>>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
-        rom_path: PathBuf,
-        save_path: PathBuf,
+        rom: RomEntry,
     ) -> Self {
         let sound = match AudioEngine::new() {
             Ok(audio_engine) => {
@@ -431,8 +431,7 @@ impl Emulator {
             gb,
             proxy,
             joypad,
-            rom_path,
-            save_path,
+            rom,
             debug: false,
             state: EmulatorState::Idle,
             frame_limit: true,
@@ -450,10 +449,9 @@ impl Emulator {
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
-        rom_path: PathBuf,
-        save_path: PathBuf,
+        rom: RomEntry,
     ) {
-        let mut this = Self::new(gb, debugger, proxy, movie, rom_path, save_path);
+        let mut this = Self::new(gb, debugger, proxy, movie, rom);
         this.event_loop(recv);
     }
 
@@ -493,8 +491,8 @@ impl Emulator {
 
         log::info!("exiting emulator thread");
 
-        log::info!("saving game data to {}... ", self.save_path.display());
-        match std::fs::write(&self.save_path, &mut self.gb.lock().cartridge.ram) {
+        log::info!("saving game ram data... ");
+        match self.rom.save_ram_data(&mut self.gb.lock().cartridge.ram) {
             Ok(_) => log::info!("save success"),
             Err(x) => log::error!("saving failed: {}", x),
         }
@@ -505,20 +503,23 @@ impl Emulator {
         use EmulatorEvent::*;
         match event {
             SaveState => {
-                let mut save_state = std::fs::OpenOptions::new()
-                    .create(true)
-                    .write(true)
-                    .open(self.rom_path.with_extension("save_state"))
-                    .unwrap();
                 log::info!("save state");
-                self.gb.lock().save_state(&mut save_state).unwrap();
+                let mut state = Vec::new();
+                self.gb.lock().save_state(&mut state).unwrap();
+                match self.rom.save_state(&state) {
+                    Ok(_) => {}
+                    Err(e) => log::error!("error saving state: {}", e),
+                }
             }
             LoadState => {
-                let mut save_state =
-                    std::fs::File::open(self.rom_path.with_extension("save_state")).unwrap();
-                self.gb.lock().load_state(&mut save_state).unwrap();
-                log::info!("load state");
-                self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+                match self.rom.load_state() {
+                    Ok(state) => {
+                        self.gb.lock().load_state(&mut state.as_slice()).unwrap();
+                        log::info!("load state");
+                        self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+                    }
+                    Err(e) => log::error!("error loading saved state: {}", e),
+                };
             }
             Kill => return true,
             RunFrame => {

@@ -10,6 +10,7 @@ use serde::Deserialize;
 pub struct Config {
     pub start_in_debug: bool,
     pub rom_folder: Option<String>,
+    pub boot_rom: Option<String>,
     pub keymap: KeyMap,
 }
 
@@ -64,6 +65,7 @@ impl Default for Config {
         Self {
             start_in_debug: false,
             rom_folder: Some("roms".to_string()),
+            boot_rom: None,
             keymap: KeyMap::default(),
         }
     }

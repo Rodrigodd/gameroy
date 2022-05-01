@@ -1,13 +1,8 @@
-use std::{
-    path::{Path, PathBuf},
-    rc::Rc,
-    sync::Arc,
-    thread,
-};
+use std::{path::PathBuf, rc::Rc, sync::Arc, thread};
 
 use gameroy::{
     debugger::{Debugger, DebuggerEvent},
-    gameboy::{self, cartridge::Cartridge, GameBoy},
+    gameboy::GameBoy,
     parser::Vbm,
 };
 use parking_lot::Mutex;
@@ -164,15 +159,8 @@ pub fn main() {
         if let Some(rom_path) = rom_path {
             let rom_path = PathBuf::from(rom_path);
 
-            let gb = if rom_path.to_str().unwrap() == "name.gb" {
-                let rom = include_bytes!("../roms/Tetris (World) (Rev A).gb").to_vec();
-                let cartridge = Cartridge::new(rom).unwrap();
-                let game_boy = gameboy::GameBoy::new(None, cartridge);
-                Ok((PathBuf::from(""), game_boy))
-            } else {
-                load_gameboy(&rom_path, None)
-            };
-            let (_, mut gb) = match gb {
+            let gb = RomEntry::from_path(rom_path).and_then(|x| x.load_gameboy());
+            let mut gb = match gb {
                 Ok(x) => x,
                 Err(e) => return eprintln!("{}", e),
             };
@@ -196,6 +184,7 @@ pub fn main() {
         config.rom_folder = config
             .rom_folder
             .or_else(|| rom_folder.map(|x| x.to_string()));
+        config.boot_rom = boot_rom_path.map(|x| x.to_string());
         config
     });
 
@@ -203,9 +192,9 @@ pub fn main() {
     let gb = if let Some(rom_path) = rom_path {
         let rom_path = PathBuf::from(rom_path);
 
-        let gb = load_gameboy(&rom_path, boot_rom_path.as_ref().map(|x| Path::new(x)));
+        let gb = RomEntry::from_path(rom_path).and_then(|x| Ok((x.load_gameboy()?, x)));
         match gb {
-            Ok((s, g)) => Some((s, g, rom_path)),
+            Ok(g) => Some(g),
             Err(e) => {
                 eprintln!("{}", e);
                 return;
@@ -215,8 +204,8 @@ pub fn main() {
         None
     };
 
-    #[allow(unused_assignments)]
-    let mut icon = None;
+    #[allow(unused_assignments, unused_mut)]
+    let mut icon: Option<Icon> = None;
     #[cfg(target_os = "windows")]
     {
         use winit::platform::windows::IconExtWindows;
@@ -261,19 +250,15 @@ pub fn main() {
 
     // initiate in the apropriated screen
     match gb {
-        Some((save_path, gb, rom_path)) => {
-            window.set_title(&format!(
-                "{} - gameroy",
-                rom_path.file_name().unwrap().to_string_lossy()
-            ));
+        Some((gb, entry)) => {
+            window.set_title(&format!("{} - gameroy", entry.file_name()));
             let emu = EmulatorApp::new(
                 gb,
                 proxy,
                 config::config().start_in_debug,
                 &mut ui,
                 movie,
-                rom_path,
-                save_path,
+                entry,
             );
             start_event_loop(event_loop, window, ui, Box::new(emu));
         }
@@ -284,79 +269,14 @@ pub fn main() {
     };
 }
 
-fn load_gameboy(
-    rom_path: &Path,
-    boot_rom_path: Option<&Path>,
-) -> Result<(PathBuf, GameBoy), String> {
-    log::info!("loading rom: {:?}", rom_path);
-    let rom = {
-        let mut rom = Vec::new();
-        open_and_read(rom_path, &mut rom)?;
-        rom
-    };
-
-    let boot_rom = load_boot_rom(boot_rom_path);
-
-    let mut cartridge = Cartridge::new(rom).unwrap();
-    log::info!("Cartridge type: {}", cartridge.kind_name());
-
-    let mut save_path = rom_path.to_path_buf();
-    if save_path.set_extension("sav") {
-        log::info!("loading save at {}", save_path.display());
-        let saved_ram = std::fs::read(&save_path);
-        match saved_ram {
-            Ok(save) => cartridge.ram = save,
-            Err(err) => {
-                log::error!("load save failed: {}", err);
-            }
-        }
-    }
-
-    let game_boy = gameboy::GameBoy::new(boot_rom, cartridge);
-    {
-        let mut trace = game_boy.trace.borrow_mut();
-
-        trace.trace_starting_at(&game_boy, 0, 0x100, Some("entry point".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x40, Some("RST_0x40".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x48, Some("RST_0x48".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x50, Some("RST_0x50".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
-    }
-    Ok((save_path, game_boy))
-}
-
-fn load_boot_rom(boot_rom_path: Option<&Path>) -> Option<[u8; 256]> {
-    let boot_rom_path = if let Some(x) = boot_rom_path {
-        x
-    } else {
-        return None;
-    };
-
-    let mut boot_rom = [0; 0x100];
-    match open_and_read(boot_rom_path, &mut &mut boot_rom[..]) {
-        Err(e) => {
-            eprintln!("{}", e);
-            return None;
-        }
-        Ok(_) => Some(boot_rom),
-    }
-}
-
-fn open_and_read(rom_path: &Path, writer: &mut impl std::io::Write) -> Result<usize, String> {
-    let file = &mut std::fs::File::open(&rom_path)
-        .map_err(|x| format!("error loading '{}': {}", rom_path.display(), x))?;
-
-    Ok(std::io::copy(file, writer)
-        .map_err(|x| format!("error reading '{}': {}", rom_path.display(), x))? as usize)
-}
-
 use winit::{
     dpi::PhysicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
+    event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
     window::{Icon, Window, WindowBuilder},
 };
+
+use self::ui::RomEntry;
 
 pub struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
@@ -405,9 +325,9 @@ fn start_event_loop(
                     #[cfg(not(feature = "static"))]
                     WindowEvent::KeyboardInput {
                         input:
-                            KeyboardInput {
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                state: ElementState::Pressed,
+                            winit::event::KeyboardInput {
+                                virtual_keycode: Some(winit::event::VirtualKeyCode::Escape),
+                                state: winit::event::ElementState::Pressed,
                                 ..
                             },
                         ..
@@ -436,31 +356,20 @@ fn start_event_loop(
                     *control = ControlFlow::Poll;
                 }
             }
-            Event::UserEvent(UserEvent::LoadRom(rom_path)) => {
-                let gb = if rom_path.to_str().unwrap() == "name.gb" {
-                    let rom = include_bytes!("../roms/Tetris (World) (Rev A).gb").to_vec();
-                    let cartridge = Cartridge::new(rom).unwrap();
-                    let game_boy = gameboy::GameBoy::new(None, cartridge);
-                    Ok((PathBuf::from(""), game_boy))
-                } else {
-                    load_gameboy(&rom_path, None)
-                };
-                let (save_path, gb) = match gb {
+            Event::UserEvent(UserEvent::LoadRom(entry)) => {
+                let gb = entry.load_gameboy();
+                let gb = match gb {
                     Ok(x) => x,
-                    Err(e) => return eprintln!("{}", e),
+                    Err(e) => return log::error!("{}", e),
                 };
-                window.set_title(&format!(
-                    "{} - gameroy",
-                    rom_path.file_name().unwrap().to_string_lossy()
-                ));
+                window.set_title(&format!("{} - gameroy", entry.file_name(),));
                 let emu = EmulatorApp::new(
                     gb,
                     proxy.clone(),
                     config::config().start_in_debug,
                     &mut ui,
                     None,
-                    rom_path,
-                    save_path,
+                    entry,
                 );
                 app = Box::new(emu);
                 ui.clear();
@@ -522,7 +431,14 @@ impl App for RomLoadingApp {
                 ..
             } => {
                 log::info!("The file {:?} was dropped", path);
-                proxy.send_event(UserEvent::LoadRom(path)).unwrap();
+                let entry = match RomEntry::from_path(path.clone()) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        log::error!("failed to load rom from {}: {}", path.display(), e);
+                        return;
+                    }
+                };
+                proxy.send_event(UserEvent::LoadRom(entry)).unwrap();
             }
             _ => {}
         }
@@ -554,8 +470,7 @@ impl EmulatorApp {
         debug: bool,
         ui: &mut ui::Ui,
         movie: Option<Vbm>,
-        rom_path: PathBuf,
-        save_path: PathBuf,
+        rom: RomEntry,
     ) -> EmulatorApp {
         let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
             Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
@@ -602,7 +517,7 @@ impl EmulatorApp {
         let emu_thread = {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
-                .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom_path, save_path))
+                .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom))
                 .unwrap();
             Some(join_handle)
         };
@@ -613,7 +528,7 @@ impl EmulatorApp {
             #[cfg(not(target_arch = "wasm32"))]
             emu_thread,
             #[cfg(target_arch = "wasm32")]
-            emulator: Emulator::new(gb, debugger, proxy, movie, rom_path, save_path),
+            emulator: Emulator::new(gb, debugger, proxy, movie, rom),
             #[cfg(target_arch = "wasm32")]
             recv,
         }
@@ -725,6 +640,6 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
-    LoadRom(PathBuf),
+    LoadRom(RomEntry),
     SpawnTask(usize),
 }

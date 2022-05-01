@@ -27,7 +27,8 @@ fn print_val(val: f64, err: f64) -> String {
 
 pub fn benchmark(path: &str, timeout: u64, len: usize) {
     let rom_path = PathBuf::from(path);
-    let (_, mut game_boy) = match super::load_gameboy(&rom_path, None) {
+    let gb = crate::ui::RomEntry::from_path(rom_path).and_then(|x| x.load_gameboy());
+    let mut game_boy = match gb {
         Ok(x) => x,
         Err(e) => return eprintln!("{}", e),
     };

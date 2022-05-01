@@ -179,16 +179,30 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
             true,
             move |_, ctx| {
                 let handle = ctx.get::<std::rc::Rc<Window>>().clone();
-                let path = rfd::FileDialog::new()
-                    .set_title("Open GameBoy Rom file")
-                    .add_filter("GameBoy roms", &["gb"])
-                    .set_parent(&*handle)
-                    .pick_file();
-                if let Some(path) = path {
-                    ctx.get::<EventLoopProxy<UserEvent>>()
-                        .send_event(UserEvent::LoadRom(path.clone().into()))
-                        .unwrap();
-                }
+                let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
+                let p = proxy.clone();
+                let task = async move {
+                    let handle = &*handle;
+                    let file = rfd::AsyncFileDialog::new()
+                        .set_title("Open GameBoy Rom file")
+                        .add_filter("GameBoy roms", &["gb"])
+                        .set_parent(handle)
+                        .pick_file()
+                        .await;
+
+                    if let Some(file) = file {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        proxy
+                            .send_event(UserEvent::LoadRom(file.path().into()))
+                            .unwrap();
+                        #[cfg(target_arch = "wasm32")]
+                        unimplemented!()
+                    }
+                };
+                use std::future::Future;
+                use std::pin::Pin;
+                ctx.set::<Pin<Box<dyn Future<Output = ()>>>>(Box::pin(task));
+                p.send_event(UserEvent::SpawnTask(0)).unwrap();
             },
         ))
         .child(ctx, |cb, _| {

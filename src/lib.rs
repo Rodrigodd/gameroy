@@ -15,6 +15,8 @@ use parking_lot::Mutex;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+mod waker_fn;
+
 mod bench;
 mod emulator;
 mod event_table;
@@ -465,6 +467,20 @@ fn start_event_loop(
                 app.build_ui(&mut ui);
                 return;
             }
+            Event::UserEvent(UserEvent::SpawnTask(task_id)) => {
+                use std::future::Future;
+                use std::pin::Pin;
+                let p = Arc::new(Mutex::new(proxy.clone()));
+                let waker = waker_fn::waker_fn(move || {
+                    p.lock().send_event(UserEvent::SpawnTask(task_id)).unwrap()
+                });
+                let task = ui.get::<Pin<Box<dyn Future<Output = ()>>>>();
+                let mut cx = std::task::Context::from_waker(&waker);
+                match Future::poll(task.as_mut(), &mut cx) {
+                    std::task::Poll::Ready(_) => println!("woke!"),
+                    std::task::Poll::Pending => println!("wait..."),
+                }
+            }
             _ => {}
         }
         app.handle_event(event, &mut ui, &window, control, &proxy);
@@ -692,6 +708,7 @@ impl App for EmulatorApp {
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
                     LoadRom(_) => unreachable!(),
+                    SpawnTask(_) => {}
                 }
             }
             _ => {}
@@ -709,4 +726,5 @@ pub enum UserEvent {
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
     LoadRom(PathBuf),
+    SpawnTask(usize),
 }

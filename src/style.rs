@@ -1,10 +1,10 @@
 use std::{collections::HashMap, rc::Rc};
 
 use giui::{
-    font::{Font, Fonts},
+    font::Fonts,
     graphics::{Graphic, TextStyle},
     style::{ButtonStyle, TabStyle, TextFieldStyle},
-    style_loader::{load_style, StyleLoaderCallback},
+    style_loader::load_style,
 };
 use sprite_render::SpriteRender;
 
@@ -17,50 +17,48 @@ pub struct Loader<'a> {
 }
 
 #[cfg(not(feature = "static"))]
-impl<'a> StyleLoaderCallback for Loader<'a> {
-    fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
-        if let Some(texture) = self.textures.get(&name) {
-            return *texture;
+mod loaded_files {
+    use giui::{font::Font, style_loader::StyleLoaderCallback};
+
+    impl<'a> StyleLoaderCallback for super::Loader<'a> {
+        fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
+            if let Some(texture) = self.textures.get(&name) {
+                return *texture;
+            }
+
+            let path = format!("assets/{}", name);
+            let data = match image::open(&path) {
+                Ok(x) => x,
+                Err(_) => {
+                    log::error!("not found texture in '{}'", path);
+                    return (0, 0, 0);
+                }
+            };
+            let data = data.to_rgba8();
+
+            let texture = (
+                self.render
+                    .new_texture(data.width(), data.height(), data.as_ref(), true),
+                data.width(),
+                data.height(),
+            );
+            self.textures.insert(name, texture);
+            texture
         }
 
-        let path = format!("assets/{}", name);
-        let data = match image::open(&path) {
-            Ok(x) => x,
-            Err(_) => {
-                log::error!("not found texture in '{}'", path);
-                return (0, 0, 0);
-            }
-        };
-        let data = data.to_rgba8();
-
-        let texture = (
-            self.render
-                .new_texture(data.width(), data.height(), data.as_ref(), true),
-            data.width(),
-            data.height(),
-        );
-        self.textures.insert(name, texture);
-        texture
-    }
-
-    fn load_font(&mut self, name: String) -> giui::font::FontId {
-        // load a font
-        let path = "assets/".to_string() + &name;
-        log::info!("load font: '{}'", path);
-        let font_data = std::fs::read(path).unwrap();
-        self.fonts.add(Font::new(&font_data))
+        fn load_font(&mut self, name: String) -> giui::font::FontId {
+            // load a font
+            let path = "assets/".to_string() + &name;
+            log::info!("load font: '{}'", path);
+            let font_data = std::fs::read(path).unwrap();
+            self.fonts.add(Font::new(&font_data))
+        }
     }
 }
 
 #[cfg(feature = "static")]
 mod static_files {
-    use std::collections::HashMap;
-
-    use giui::{
-        font::{Font, Fonts},
-        style_loader::StyleLoaderCallback,
-    };
-    use sprite_render::SpriteRender;
+    use giui::{font::Font, style_loader::StyleLoaderCallback};
 
     pub struct StaticFiles {
         pub font: &'static [u8],

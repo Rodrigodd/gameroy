@@ -3,7 +3,7 @@
 ::a script for packaging the app for windows release.
 
 cargo about generate -c license\about.toml license\about.hbs > license\license.html
-cargo build --profile minsize --no-default-features --features=static
+cargo build --profile minsize --no-default-features --features=static,audio-engine,rfd
 
 mkdir package
 copy /Y target\minsize\gameroy.exe package\

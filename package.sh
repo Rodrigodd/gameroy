@@ -3,7 +3,7 @@
 # a script for packaging the app for linux release.
 
 cargo about generate -c license/about.toml license/about.hbs > license/license.html
-cargo build --profile minsize --features=static
+cargo build --profile minsize --features=static,rfd,audio-engine
 
 mkdir package
 cp -f target/minsize/gameroy package/

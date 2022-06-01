@@ -2,7 +2,9 @@ use flume::{Receiver, TryRecvError};
 use instant::Instant;
 use std::{collections::VecDeque, io::Write, sync::Arc, time::Duration};
 
+#[cfg(feature = "audio-engine")]
 use audio_engine::{AudioEngine, SoundSource};
+
 use gameroy::{
     consts::CLOCK_SPEED,
     debugger::{Debugger, RunResult},
@@ -45,6 +47,7 @@ struct Buffer {
     buffer: Arc<ParkMutex<VecDeque<i16>>>,
     sample_rate: u32,
 }
+#[cfg(feature = "audio-engine")]
 impl SoundSource for Buffer {
     fn channels(&self) -> u16 {
         2
@@ -322,6 +325,7 @@ impl Timeline {
     }
 }
 
+#[cfg(feature = "audio-engine")]
 struct SoundBackend {
     _audio_engine: AudioEngine,
     audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
@@ -347,6 +351,7 @@ pub struct Emulator {
 
     debugger: Arc<ParkMutex<Debugger>>,
 
+    #[cfg(feature = "audio-engine")]
     /// The sound backend.
     sound: Option<SoundBackend>,
 }
@@ -366,6 +371,7 @@ impl Emulator {
         movie: Option<Vbm>,
         rom: RomEntry,
     ) -> Self {
+        #[cfg(feature = "audio-engine")]
         let sound = match AudioEngine::new() {
             Ok(audio_engine) => {
                 let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
@@ -438,6 +444,7 @@ impl Emulator {
             rewind: false,
             start_time,
             debugger,
+            #[cfg(feature = "audio-engine")]
             sound,
         };
         this
@@ -694,6 +701,7 @@ impl Emulator {
         let gb = self.gb.lock();
         let clock_count = gb.clock_count;
         let buffer = gb.sound.borrow_mut().get_output(clock_count);
+        #[cfg(feature = "audio-engine")]
         if let Some(SoundBackend {
             audio_buffer,
             last_buffer_len,

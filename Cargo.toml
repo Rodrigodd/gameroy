@@ -21,6 +21,8 @@ name = "gameroy_lib"
 crate_type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
+[[package.metadata.android.uses_feature]]
+opengles_version = [2,0]
 
 [build-dependencies]
 embed-resource = "1.7.1"
@@ -41,10 +43,10 @@ default = ["console", "rfd", "audio-engine"]
 gameroy-core = { path = "core" }
 # giui = { path = "../giui" }
 giui = { git = "https://github.com/Rodrigodd/giui" }
-# sprite-render = { path = "../sprite-render-rs", features=["opengl", "webgl"] }
-sprite-render = { features=["opengl", "webgl"], git = "https://github.com/Rodrigodd/sprite-render-rs" }
-# audio-engine = { path = "../audio-engine"}
-audio-engine = { version = "0.2.1", optional = true }
+# sprite-render = { path = "../sprite-render-rs", features=["opengl", "webgl", "opengles"] }
+sprite-render = { features=["opengl", "webgl", "opengles"], git = "https://github.com/Rodrigodd/sprite-render-rs" }
+# audio-engine = { path = "../audio-engine", optional = true }
+audio-engine = { version = "0.2.2", optional = true }
 winit = { version = "0.26.1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 ron = "0.6"
@@ -73,13 +75,23 @@ features = [
   'Window',
 ]
 
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-glue = { version = "0.6", features=["logger"] }
+
 [patch.crates-io]
+
+# waiting for https://github.com/sebcrozet/instant/pull/46
 instant = { git = "https://github.com/Rodrigodd/instant.git" }
+
+# contains hack workaround https://github.com/rust-windowing/winit/issues/2299
+winit = { git = "https://github.com/Rodrigodd/winit.git", rev = "5ca51bd86a4a1f677761f67f4b9c79828dca2b73" }
+
+# for android support, needs https://github.com/RustAudio/cpal/commit/32cee3949b802038bb368c9c408af81650873d80
+cpal = { git = "https://github.com/RustAudio/cpal.git", rev = "32cee3949b802038bb368c9c408af81650873d80" }
+
 
 [profile.dev]
 opt-level = 1
-
-
 [profile.dev.package.audio-engine]
 opt-level = 3
 

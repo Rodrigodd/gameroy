@@ -65,12 +65,14 @@ mod static_files {
         pub style: &'static str,
         pub white_texture: &'static [u8],
         pub icons_texture: &'static [u8],
+        pub gamepad: &'static [u8],
     }
     pub static FILES: StaticFiles = StaticFiles {
         font: include_bytes!("../assets/NotoSansMono.ttf"),
         style: include_str!("../assets/style.ron"),
         white_texture: include_bytes!("../assets/white.png"),
         icons_texture: include_bytes!("../assets/icons.png"),
+        gamepad: include_bytes!("../assets/gamepad.png"),
     };
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
@@ -81,6 +83,7 @@ mod static_files {
             let data = match name.as_str() {
                 "white.png" => FILES.white_texture,
                 "icons.png" => FILES.icons_texture,
+                "gamepad.png" => FILES.gamepad,
                 _ => panic!("unkown texture '{}'", name),
             };
 
@@ -117,6 +120,15 @@ mod static_files {
 }
 
 #[derive(LoadStyle, Clone)]
+pub struct GamePad {
+    pub cross: Graphic,
+    pub start: Graphic,
+    pub select: Graphic,
+    pub a: Graphic,
+    pub b: Graphic,
+}
+
+#[derive(LoadStyle, Clone)]
 pub struct Style {
     pub text_style: TextStyle,
     pub split_background: Graphic,
@@ -131,6 +143,7 @@ pub struct Style {
     pub fold_icon: FoldIcon,
     pub delete_icon: Graphic,
     pub open_icon: Graphic,
+    pub gamepad: GamePad,
 }
 impl Style {
     pub fn load(fonts: &mut Fonts, render: &mut dyn SpriteRender) -> Option<Self> {

@@ -1,6 +1,12 @@
 extern crate embed_resource;
 
 fn main() {
-    println!("cargo:rerun-if-changed=assets/resources.rc");
-    embed_resource::compile("assets/resources.rc")
+    let target = std::env::var("TARGET").unwrap();
+    if target.contains("windows") {
+        println!("cargo:rerun-if-changed=assets/resources.rc");
+        embed_resource::compile("assets/resources.rc")
+    }
+    if target.contains("android") {
+        println!("cargo:rustc-link-lib=c++_shared");
+    }
 }

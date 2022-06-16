@@ -37,7 +37,7 @@ You can also build for WebAssembly, and run the emulator on the web. Using
 [web-pack](https://rustwasm.github.io/wasm-pack/), run the following command:
 
 ```shell
-wasm-pack build --target web -- --no-default-features --features=static
+wasm-pack build --target web -- --no-default-features --features=static,rfd,audio-engine
 ```
 
 After that, open a web server in the root folder that serve [index.html].
@@ -50,9 +50,23 @@ python -m http.server
 
 And access `localhost:8000` in a web browser.
 
+### Android
 
+To build for Android, first remove the name of the lib in Cargo.toml
+(workaround for a [cargo-apk issue](https://github.com/rust-windowing/android-ndk-rs/issues/136)):
+```diff
+[lib]
+- name = "gameroy_lib"
+crate_type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+```
 
+And run it using [cargo-apk](https://github.com/rust-windowing/android-ndk-rs):
+```
+cargo apk run --lib --no-default-features --features=static,audio-engine
+```
 
+That command will build the `.apk` and automatically run in a connected device.
 
 ## Config
 

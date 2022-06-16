@@ -10,9 +10,12 @@ use parking_lot::Mutex;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+#[cfg(target_os = "android")]
+mod android;
+
 mod waker_fn;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 mod bench;
 
 mod emulator;
@@ -76,7 +79,7 @@ fn log_panic() {
 }
 
 pub fn main() {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let _logger = flexi_logger::Logger::try_with_env_or_str("gameroy=info")
         .unwrap()
         .log_to_file(
@@ -129,7 +132,7 @@ pub fn main() {
             .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
         .get_matches();
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     match matches.subcommand() {
         Some(("bench", matches)) => {
             let rom_path = matches.value_of("ROM_PATH").unwrap();
@@ -158,7 +161,7 @@ pub fn main() {
     });
 
     // dissasembly and return early
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     if diss {
         if let Some(rom_path) = rom_path {
             let rom_path = PathBuf::from(rom_path);
@@ -193,7 +196,7 @@ pub fn main() {
     });
 
     // load rom if necesary
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let gb = if let Some(rom_path) = rom_path {
         let rom_path = PathBuf::from(rom_path);
 
@@ -208,7 +211,7 @@ pub fn main() {
     } else {
         None
     };
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     let gb = Some(0);
 
     #[allow(unused_assignments, unused_mut)]
@@ -257,7 +260,7 @@ pub fn main() {
 
     // initiate in the apropriated screen
     match gb {
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         Some((gb, entry)) => {
             window.set_title(&format!("{} - gameroy", entry.file_name()));
             let emu = EmulatorApp::new(
@@ -313,6 +316,14 @@ fn start_event_loop(
     // winit event loop
     event_loop.run(move |event, _, control| {
         match event {
+            Event::Resumed => {
+                log::info!("reloading graphics");
+                ui.reload_graphics(&*window);
+            }
+            Event::Suspended => {
+                log::info!("destroying graphics");
+                ui.destroy_graphics();
+            }
             Event::NewEvents(_) => {
                 ui.new_events(control, &window);
             }
@@ -327,7 +338,7 @@ fn start_event_loop(
                         *control = ControlFlow::Exit;
                     }
                     WindowEvent::Resized(size) => {
-                        ui.resize(size.clone(), window_id);
+                        ui.resize(size.clone(), &window);
                     }
                     // Rebuild the UI
                     #[cfg(not(feature = "static"))]
@@ -340,8 +351,10 @@ fn start_event_loop(
                             },
                         ..
                     } => {
+                        log::debug!("clear ui");
                         ui.clear();
-                        ui.reload_style();
+                        ui.reload_graphics(&*window);
+                        log::debug!("build ui");
                         app.build_ui(&mut ui);
                     }
                     _ => {}
@@ -353,7 +366,7 @@ fn start_event_loop(
                 {
                     if let Some((width, height)) = wasm::RESIZE.lock().take() {
                         let size = winit::dpi::PhysicalSize { width, height };
-                        ui.resize(size.clone(), window_id);
+                        ui.resize(size.clone(), &window);
                         window.set_inner_size(size);
                     }
                 }
@@ -365,12 +378,15 @@ fn start_event_loop(
                 }
             }
             Event::UserEvent(UserEvent::LoadRom(entry)) => {
+                log::debug!("Loading Rom!!");
                 let gb = entry.load_gameboy();
                 let gb = match gb {
                     Ok(x) => x,
                     Err(e) => return log::error!("{}", e),
                 };
+                log::trace!("set title!!");
                 window.set_title(&format!("{} - gameroy", entry.file_name(),));
+                log::trace!("create emu!!");
                 let emu = EmulatorApp::new(
                     gb,
                     proxy.clone(),
@@ -380,8 +396,11 @@ fn start_event_loop(
                     entry,
                 );
                 app = Box::new(emu);
+                log::trace!("ui clear!!");
                 ui.clear();
+                log::trace!("build ui!!");
                 app.build_ui(&mut ui);
+                log::trace!("return!!");
                 return;
             }
             Event::UserEvent(UserEvent::SpawnTask(task_id)) => {
@@ -394,8 +413,8 @@ fn start_event_loop(
                 let task = ui.get::<Pin<Box<dyn Future<Output = ()>>>>();
                 let mut cx = std::task::Context::from_waker(&waker);
                 match Future::poll(task.as_mut(), &mut cx) {
-                    std::task::Poll::Ready(_) => println!("woke!"),
-                    std::task::Poll::Pending => println!("wait..."),
+                    std::task::Poll::Ready(_) => log::info!("woke!"),
+                    std::task::Poll::Pending => log::info!("wait..."),
                 }
             }
             _ => {}
@@ -434,7 +453,7 @@ impl App for RomLoadingApp {
         proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
             Event::WindowEvent {
                 event: WindowEvent::DroppedFile(path),
                 ..
@@ -465,11 +484,11 @@ struct EmulatorApp {
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
     emu_channel: flume::Sender<EmulatorEvent>,
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     emu_thread: Option<thread::JoinHandle<()>>,
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     emulator: Emulator,
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     recv: flume::Receiver<emulator::EmulatorEvent>,
 }
 impl EmulatorApp {
@@ -522,7 +541,7 @@ impl EmulatorApp {
         ui.gui.set(emu_channel.clone());
         ui.gui.set(AppState::new(debug));
 
-        #[cfg(not(target_arch = "wasm32"))]
+        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         let emu_thread = {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
@@ -534,11 +553,11 @@ impl EmulatorApp {
         EmulatorApp {
             lcd_screen,
             emu_channel,
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
             emu_thread,
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(any(target_arch = "wasm32", target_os = "android"))]
             emulator: Emulator::new(gb, debugger, proxy, movie, rom),
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(any(target_arch = "wasm32", target_os = "android"))]
             recv,
         }
     }
@@ -565,12 +584,12 @@ impl App for EmulatorApp {
                     .unwrap();
                 self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
             }
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
             Event::LoopDestroyed => {
                 self.emu_channel.send(EmulatorEvent::Kill).unwrap();
                 self.emu_thread.take().unwrap().join().unwrap();
             }
-            #[cfg(target_arch = "wasm32")]
+            #[cfg(any(target_arch = "wasm32", target_os = "android"))]
             Event::MainEventsCleared => {
                 if let Ok(mut event) = self.recv.try_recv() {
                     loop {

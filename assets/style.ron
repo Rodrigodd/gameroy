@@ -54,4 +54,12 @@
     ),
     delete_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (0,0,16,16), size: (16, 16)),
     open_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (16,16,16,16), size: (16, 16)),
+
+    gamepad: GamePad(
+        cross: Icon(texture: "gamepad.png", uv_rect: (0,0,212,212), size: (212, 212)),
+        start: Icon(texture: "gamepad.png", uv_rect: (217,82,128,80), size: (128, 80)),
+        select: Icon(texture: "gamepad.png", uv_rect: (217,0,128,80), size: (128, 80)),
+        a: Icon(texture: "gamepad.png", uv_rect: (355,110,95,95), size: (95, 95)),
+        b: Icon(texture: "gamepad.png", uv_rect: (355,0,95,95), size: (95, 95)),
+    ),
 )

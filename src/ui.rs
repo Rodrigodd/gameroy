@@ -10,7 +10,7 @@ use giui::{
 
 use sprite_render::{Camera, SpriteInstance, SpriteRender};
 use winit::{
-    dpi::PhysicalSize,
+    dpi::{LogicalSize, PhysicalSize},
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoopProxy},
     window::{Window, WindowId},
@@ -26,7 +26,7 @@ pub use rom_loading_ui::{create_rom_loading_ui, RomEntry};
 
 struct Render<'a>(&'a mut dyn SpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
-    fn update_font_texure(&mut self, font_texture: u32, rect: [u32; 4], data_tex: &[u8]) {
+    fn update_font_texture(&mut self, font_texture: u32, rect: [u32; 4], data_tex: &[u8]) {
         let mut data = Vec::with_capacity(data_tex.len() * 4);
         for byte in data_tex.iter() {
             data.extend([0xff, 0xff, 0xff, *byte].iter());
@@ -64,13 +64,37 @@ pub struct Ui {
 }
 impl Ui {
     pub fn new(window: &Window, proxy: EventLoopProxy<UserEvent>) -> Self {
-        // create the render and camera, and a texture for the glyphs rendering
-        #[cfg(not(target_arch = "wasm32"))]
-        let render = sprite_render::GLSpriteRender::new(window, true).unwrap();
-        #[cfg(target_arch = "wasm32")]
-        let render = sprite_render::WebGLSpriteRender::new(window);
+        let mut fonts = Fonts::new();
 
-        let mut render: Box<dyn SpriteRender + 'static> = Box::new(render);
+        log::info!("loading graphics");
+
+        #[cfg(not(target_os = "android"))]
+        let (render, font_texture, style, textures) = load_graphics(window, &mut fonts);
+        #[cfg(target_os = "android")]
+        let (render, font_texture, style, textures) = {
+            let fonts: &mut Fonts = &mut fonts;
+            let mut render: Box<dyn SpriteRender + 'static> = Box::new(());
+
+            let font_texture = render.new_texture(128, 128, &[], false);
+            let style = Style::load(fonts, render.as_mut()).unwrap();
+            let textures = Textures {
+                white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
+                screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
+                tilemap: render.new_texture(128, 192, &[], false),
+                background: render.new_texture(256, 256, &[], false),
+                window: render.new_texture(256, 256, &[], false),
+            };
+
+            (render, font_texture, style, textures)
+        };
+
+        // create the gui, and the gui_render
+        let mut gui = Gui::new(0.0, 0.0, window.scale_factor(), fonts);
+        let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
+
+        gui.set(proxy);
+        gui.set(textures.clone());
+        gui.set(style);
 
         let camera = {
             let size = window.inner_size();
@@ -78,26 +102,6 @@ impl Ui {
             let height = size.height;
             Camera::new(width, height, height as f32)
         };
-        let font_texture = render.new_texture(128, 128, &[], false);
-
-        let mut fonts = Fonts::new();
-        let style = Style::load(&mut fonts, render.as_mut()).unwrap();
-
-        let textures = Textures {
-            white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
-            screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
-            tilemap: render.new_texture(128, 192, &[], false),
-            background: render.new_texture(256, 256, &[], false),
-            window: render.new_texture(256, 256, &[], false),
-        };
-
-        // create the gui, and the gui_render
-        let mut gui = Gui::new(0.0, 0.0, fonts);
-        let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
-
-        gui.set(proxy);
-        gui.set(textures.clone());
-        gui.set(style.clone());
 
         let mut ui = Self {
             gui,
@@ -110,26 +114,39 @@ impl Ui {
             force_render: true,
         };
 
-        ui.resize(window.inner_size(), window.id());
+        ui.resize(window.inner_size(), window);
 
         ui
     }
 
-    #[cfg(not(feature = "static"))]
-    pub fn reload_style(&mut self) {
-        let style = Style::load(self.gui.fonts_mut(), self.render.as_mut()).unwrap();
-        self.gui.set(style);
+    pub fn destroy_graphics(&mut self) {
+        self.render = Box::new(());
     }
 
-    pub fn resize(&mut self, size: PhysicalSize<u32>, window: WindowId) {
-        self.render.resize(window, size.width, size.height);
+    pub fn reload_graphics(&mut self, window: &Window) {
+        // TODO: I need to drop this SpriteRender before creation the next one. Discovery why and
+        // try to fix this.
+        self.render = Box::new(());
+        log::info!("reloading graphics");
+        let (render, font_texture, style, textures) = load_graphics(window, self.gui.fonts_mut());
+        self.render = render;
+        self.force_render = true;
+        self.textures = textures.clone();
+        self.gui.set(textures.clone());
+        self.gui.set(style);
+        self.gui_render.set_font_texture(font_texture, [128, 128]);
+    }
+
+    pub fn resize(&mut self, size: PhysicalSize<u32>, window: &Window) {
+        self.render.resize(window.id(), size.width, size.height);
+
         self.camera.resize(size.width, size.height);
-        let width = size.width as f32;
-        let height = size.height as f32;
-        self.gui.resize(width, height);
-        self.camera.set_width(width);
-        self.camera.set_height(height);
-        self.camera.set_position(width / 2.0, height / 2.0);
+        self.camera.set_width(size.width as f32);
+        self.camera.set_height(size.height as f32);
+        self.camera
+            .set_position((size.width as f32) / 2.0, (size.height as f32) / 2.0);
+        let size = winit::dpi::LogicalSize::from_physical(size, window.scale_factor());
+        self.gui.set_root_rect([0.0, 0.0, size.width, size.height]);
     }
 
     pub fn clear(&mut self) {
@@ -207,6 +224,38 @@ impl Ui {
     pub fn get<T: Any>(&mut self) -> &mut T {
         self.gui.get_mut()
     }
+}
+
+fn load_graphics(
+    window: &Window,
+    fonts: &mut Fonts,
+) -> (Box<dyn SpriteRender>, u32, Style, Textures) {
+    // create the render and camera, and a texture for the glyphs rendering
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    let render = Box::new(sprite_render::GLSpriteRender::new(window, true).unwrap());
+    #[cfg(target_arch = "wasm32")]
+    let render = sprite_render::WebGLSpriteRender::new(window);
+    #[cfg(target_os = "android")]
+    let render = sprite_render::GlesSpriteRender::new(window, true)
+        .map(|x| Box::new(x) as Box<dyn SpriteRender>)
+        .unwrap_or_else(|err| {
+            log::error!("failed to create GlesSpriteRender: {}", err);
+            Box::new(())
+        });
+
+    let mut render: Box<dyn SpriteRender + 'static> = render;
+
+    let font_texture = render.new_texture(128, 128, &[], false);
+    let style = Style::load(fonts, render.as_mut()).unwrap();
+    let textures = Textures {
+        white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
+        screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
+        tilemap: render.new_texture(128, 192, &[], false),
+        background: render.new_texture(256, 256, &[], false),
+        window: render.new_texture(256, 256, &[], false),
+    };
+
+    (render, font_texture, style, textures)
 }
 
 fn scroll_viewer(

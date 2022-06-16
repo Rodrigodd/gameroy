@@ -23,16 +23,16 @@ pub struct RomEntry {
     /// The size of the rom file in bytes
     size: u64,
     /// The path to the rom
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     path: PathBuf,
     /// The rom data
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     rom: std::sync::Arc<[u8]>,
     /// The file name
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     file_name: String,
 }
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 impl RomEntry {
     pub fn file_name(&self) -> std::borrow::Cow<str> {
         self.file_name.clone().into()
@@ -86,7 +86,7 @@ impl RomEntry {
         Err(std::io::Error::last_os_error())
     }
 }
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 impl RomEntry {
     pub fn file_name(&self) -> std::borrow::Cow<str> {
         self.path
@@ -347,8 +347,9 @@ impl ListBuilder for RomList {
             if let Some(entry) = entry {
                 item.set_on_click(move |click_count, ctx| {
                     if click_count == 1 {
-                        ctx.send_event_to(list_id, SetSelected(index))
-                    } else if click_count == 2 {
+                        // ctx.send_event_to(list_id, SetSelected(index))
+                        // } else if click_count == 2 {
+                        log::debug!("sending LoadRom");
                         ctx.get::<EventLoopProxy<UserEvent>>()
                             .send_event(UserEvent::LoadRom(entry.clone()))
                             .unwrap();
@@ -394,7 +395,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
                         .await;
 
                     if let Some(file) = file {
-                        #[cfg(target_arch = "wasm32")]
+                        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
                         let entry = match RomEntry::from_bytes(file.read().await.into_boxed_slice())
                         {
                             Ok(x) => x,
@@ -403,7 +404,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
                                 return;
                             }
                         };
-                        #[cfg(not(target_arch = "wasm32"))]
+                        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
                         let entry = match RomEntry::from_path(file.path().into()) {
                             Ok(x) => x,
                             Err(e) => {
@@ -444,7 +445,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         .expand_x(true)
         .build(ctx);
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let roms = crate::config()
         .rom_folder
         .as_ref()
@@ -454,11 +455,11 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
                 .ok()
         })
         .unwrap_or_default();
-    #[cfg(target_arch = "wasm32")]
+    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     let roms = vec![RomEntry {
         name: "OH DEMO".to_string(),
         size: 32 << 10,
-        rom: include_bytes!("../../roms/oh.gb")
+        rom: include_bytes!("../../roms/Tetris (World) (Rev A).gb")
             .to_vec()
             .into_boxed_slice()
             .into(),
@@ -483,7 +484,7 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
     .build(ctx);
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
 fn load_roms(roms_path: &str) -> Result<Vec<RomEntry>, std::io::Error> {
     let roms_path = crate::normalize_config_path(roms_path);
 

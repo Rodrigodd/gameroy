@@ -8,11 +8,11 @@ use crate::{
 use std::{cell::RefCell, rc::Rc};
 
 use giui::{
-    graphics::Texture,
+    graphics::{Graphic, Texture},
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
     widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
-    BuilderContext, Gui,
+    BuilderContext, Context, Gui, Id,
 };
 
 use winit::event_loop::EventLoopProxy;
@@ -149,49 +149,41 @@ pub fn create_gui(
             event_table_clone,
         );
     } else {
-        gui.create_control_reserved(screen_id)
-            .parent(root)
-            .graphic(style.background.clone())
-            .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-            .child(gui, |cb, _| {
-                cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
-            })
-            .build(gui);
+        create_screen(
+            &mut gui.get_context(),
+            textures,
+            &mut screen_id,
+            root,
+            style,
+        );
         gui.set_focus(Some(screen_id));
     }
 }
 
 fn close_debug_panel(
-    ctx: &mut giui::Context,
+    ctx: &mut Context,
     textures: &Textures,
-    split_view: &mut giui::Id,
-    screen_id: &mut giui::Id,
-    root: giui::Id,
+    split_view: &mut Id,
+    screen_id: &mut Id,
+    root: Id,
     style: &Style,
 ) {
     ctx.remove(*split_view);
     *split_view = ctx.reserve();
-    *screen_id = ctx.reserve();
-    ctx.create_control_reserved(*screen_id)
-        .parent(root)
-        .graphic(style.background.clone())
-        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-        .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
-        })
-        .build(ctx);
+
+    create_screen(ctx, textures, screen_id, root, style);
     ctx.set_focus(*screen_id);
     let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
     proxy.send_event(UserEvent::Debug(false)).unwrap();
 }
 
 fn open_debug_panel(
-    ctx: &mut giui::Context,
+    ctx: &mut Context,
     textures: &Textures,
-    split_view: giui::Id,
-    root: giui::Id,
+    split_view: Id,
+    root: Id,
     style: &Style,
-    screen_id: &mut giui::Id,
+    screen_id: &mut Id,
     event_table: Rc<RefCell<EventTable>>,
 ) {
     let event_table = &mut *event_table.borrow_mut();
@@ -202,16 +194,7 @@ fn open_debug_panel(
         .build(ctx);
     ctx.remove(*screen_id);
 
-    // create screen
-    *screen_id = ctx.reserve();
-    ctx.create_control_reserved(*screen_id)
-        .parent(split_view)
-        .graphic(style.background.clone())
-        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
-        .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
-        })
-        .build(ctx);
+    create_screen(ctx, textures, screen_id, split_view, style);
 
     // create debug panel
     let debug_panel = ctx
@@ -328,4 +311,156 @@ fn open_debug_panel(
 
     let proxy = ctx.get::<EventLoopProxy<UserEvent>>();
     proxy.send_event(UserEvent::Debug(true)).unwrap();
+}
+
+struct GamePad {
+    buttons: [Id; 9],
+    pressed: u8,
+}
+impl GamePad {
+    fn new(buttons: [Id; 9]) -> Self {
+        Self {
+            buttons,
+            pressed: u8::MAX,
+        }
+    }
+
+    fn on_change(pressed: bool, b: u8, ctx: &mut Context) {
+        let app_state = ctx.get_mut::<crate::AppState>();
+        app_state.joypad = (app_state.joypad & !(1 << b)) | ((!pressed as u8) << b)
+    }
+}
+impl giui::Behaviour for GamePad {
+    fn on_active(&mut self, _this: Id, ctx: &mut Context) {
+        for id in self.buttons {
+            ctx.get_graphic_mut(id)
+                .set_color([255, 255, 255, 128].into());
+        }
+        self.pressed = u8::MAX;
+    }
+
+    fn input_flags(&self) -> giui::InputFlags {
+        giui::InputFlags::MOUSE
+    }
+
+    fn on_mouse_event(&mut self, mouse: giui::MouseInfo, _this: Id, ctx: &mut Context) {
+        if mouse.buttons.left.pressed() {
+            const MAX_DIST: f32 = 35.0;
+            // find closest
+            let (b, dist) = self.buttons[0..8]
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| {
+                    let x = ctx.get_rect(x);
+                    let center = [(x[0] + x[2]) / 2.0, (x[1] + x[3]) / 2.0];
+                    let dx = mouse.pos[0] - center[0];
+                    let dy = mouse.pos[1] - center[1];
+                    // distance
+                    (i, dx * dx + dy * dy)
+                })
+                .min_by_key(|x| x.1.min((MAX_DIST + 1.0).powi(2)) as u32)
+                .unwrap();
+
+            let b = if dist > MAX_DIST.powi(2) {
+                u8::MAX
+            } else {
+                b as u8
+            };
+
+            // unpress the previous button
+            if self.pressed != b && self.pressed != u8::MAX {
+                let id = if self.pressed < 4 {
+                    self.buttons[8]
+                } else {
+                    self.buttons[self.pressed as usize]
+                };
+                ctx.get_graphic_mut(id)
+                    .set_color([255, 255, 255, 128].into());
+                Self::on_change(false, self.pressed, ctx);
+            }
+
+            self.pressed = b;
+
+            // press the current on
+            if self.pressed != u8::MAX {
+                let id = if self.pressed < 4 {
+                    self.buttons[8]
+                } else {
+                    self.buttons[self.pressed as usize]
+                };
+                ctx.get_graphic_mut(id)
+                    .set_color([255, 255, 255, 255].into());
+                Self::on_change(true, self.pressed, ctx);
+            }
+        } else {
+            let b = u8::MAX;
+            // unpress the previous button
+            if self.pressed != b && self.pressed != u8::MAX {
+                let id = if self.pressed < 4 {
+                    self.buttons[8]
+                } else {
+                    self.buttons[self.pressed as usize]
+                };
+                ctx.get_graphic_mut(id)
+                    .set_color([255, 255, 255, 128].into());
+                Self::on_change(false, self.pressed, ctx);
+            }
+        }
+    }
+}
+
+fn create_screen(
+    ctx: &mut Context,
+    textures: &Textures,
+    screen_id: &mut Id,
+    parent: Id,
+    style: &Style,
+) {
+    *screen_id = ctx.reserve();
+
+    let _screen = ctx
+        .create_control()
+        .parent(*screen_id)
+        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+        .child(ctx, |cb, _| {
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
+        })
+        .build(ctx);
+
+    let gamepad = cfg!(target_os = "android");
+    if gamepad {
+        let mut create_button = |graphic, [ax, ay]: [f32; 2], [x, y]: [f32; 2]| -> Id {
+            let w = 200.0 / 2.0;
+            let h = 200.0 / 2.0;
+            ctx.create_control()
+                .parent(*screen_id)
+                .margins([-w + x, -h + y, w + x, h + y])
+                .anchors([ax, ay, ax, ay])
+                .graphic(graphic)
+                .build(ctx)
+        };
+
+        let cross = create_button(style.gamepad.cross.clone(), [0.20, 1.0], [0.0, -200.0]);
+        let r = create_button(Graphic::None, [0.20, 1.0], [40.0, -200.0]);
+        let l = create_button(Graphic::None, [0.20, 1.0], [-40.0, -200.0]);
+        let u = create_button(Graphic::None, [0.20, 1.0], [0.0, -240.0]);
+        let d = create_button(Graphic::None, [0.20, 1.0], [0.0, -160.0]);
+
+        let a = create_button(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -220.0]);
+        let b = create_button(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -190.0]);
+        let select = create_button(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -110.0]);
+        let start = create_button(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -110.0]);
+        let buttons = [r, l, u, d, a, b, select, start, cross];
+
+        ctx.create_control_reserved(*screen_id)
+            .parent(parent)
+            .graphic(style.background.clone())
+            .behaviour(GamePad::new(buttons))
+            .build(ctx);
+    } else {
+        ctx.create_control_reserved(*screen_id)
+            .parent(parent)
+            .graphic(style.background.clone())
+            .build(ctx);
+    }
 }

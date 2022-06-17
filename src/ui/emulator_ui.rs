@@ -440,16 +440,16 @@ fn create_screen(
                 .build(ctx)
         };
 
-        let cross = create_button(style.gamepad.cross.clone(), [0.20, 1.0], [0.0, -200.0]);
-        let r = create_button(Graphic::None, [0.20, 1.0], [40.0, -200.0]);
-        let l = create_button(Graphic::None, [0.20, 1.0], [-40.0, -200.0]);
-        let u = create_button(Graphic::None, [0.20, 1.0], [0.0, -240.0]);
-        let d = create_button(Graphic::None, [0.20, 1.0], [0.0, -160.0]);
+        let cross = create_button(style.gamepad.cross.clone(), [0.20, 1.0], [0.0, -150.0]);
+        let r = create_button(Graphic::None, [0.20, 1.0], [40.0, -150.0]);
+        let l = create_button(Graphic::None, [0.20, 1.0], [-40.0, -150.0]);
+        let u = create_button(Graphic::None, [0.20, 1.0], [0.0, -190.0]);
+        let d = create_button(Graphic::None, [0.20, 1.0], [0.0, -110.0]);
 
-        let a = create_button(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -220.0]);
-        let b = create_button(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -190.0]);
-        let select = create_button(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -110.0]);
-        let start = create_button(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -110.0]);
+        let a = create_button(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -170.0]);
+        let b = create_button(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -140.0]);
+        let select = create_button(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -60.0]);
+        let start = create_button(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -60.0]);
         let buttons = [r, l, u, d, a, b, select, start, cross];
 
         ctx.create_control_reserved(*screen_id)

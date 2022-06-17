@@ -145,8 +145,26 @@ impl Ui {
         self.camera.set_height(size.height as f32);
         self.camera
             .set_position((size.width as f32) / 2.0, (size.height as f32) / 2.0);
-        let size = winit::dpi::LogicalSize::from_physical(size, window.scale_factor());
-        self.gui.set_root_rect([0.0, 0.0, size.width, size.height]);
+
+        #[cfg(not(target_os = "android"))]
+        {
+            let size = winit::dpi::LogicalSize::from_physical(size, window.scale_factor());
+            log::debug!("resize: logical size {}x{}", size.width, size.height);
+
+            self.gui.set_root_rect([0.0, 0.0, size.width, size.height]);
+        }
+        #[cfg(target_os = "android")]
+        {
+            let rect = ndk_glue::content_rect();
+            log::debug!("content: {rect:?}");
+
+            self.gui.set_root_rect([
+                rect.left as f32 / window.scale_factor() as f32,
+                rect.top as f32 / window.scale_factor() as f32,
+                rect.right as f32 / window.scale_factor() as f32,
+                rect.bottom as f32 / window.scale_factor() as f32,
+            ]);
+        }
     }
 
     pub fn clear(&mut self) {

@@ -24,6 +24,10 @@ path = "src/lib.rs"
 [[package.metadata.android.uses_feature]]
 opengles_version = [2,0]
 
+[package.metadata.android.application]
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+label = "GameRoy"
+
 [build-dependencies]
 embed-resource = "1.7.1"
 

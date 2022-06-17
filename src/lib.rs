@@ -319,9 +319,12 @@ fn start_event_loop(
             Event::Resumed => {
                 log::info!("reloading graphics");
                 ui.reload_graphics(&*window);
+                log::debug!("build ui");
+                app.build_ui(&mut ui);
             }
             Event::Suspended => {
                 log::info!("destroying graphics");
+                ui.clear();
                 ui.destroy_graphics();
             }
             Event::NewEvents(_) => {

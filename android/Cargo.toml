@@ -1,0 +1,33 @@
+[package]
+name = "gameroy_android"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "gameroy_android"
+crate_type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[features]
+
+console = ["gameroy/console"]
+static = ["gameroy/static"]
+default = ["console", "rfd", "audio-engine"]
+rfd = ["gameroy/rfd"]
+audio-engine = ["gameroy/audio-engine"]
+
+[dependencies]
+gameroy = { path = "..", default-features = false }
+log = "0.4.14"
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk-glue = { version = "0.6", features=["logger"] }
+
+[[package.metadata.android.uses_feature]]
+opengles_version = [2,0]
+
+[package.metadata.android.application]
+theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+label = "GameRoy"

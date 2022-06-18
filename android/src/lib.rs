@@ -10,5 +10,5 @@
 )]
 fn main() {
     log::info!("Starting android gameroy!");
-    super::main()
+    gameroy_lib::main()
 }

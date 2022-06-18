@@ -10,9 +10,6 @@ use parking_lot::Mutex;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
-#[cfg(target_os = "android")]
-mod android;
-
 mod waker_fn;
 
 #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]

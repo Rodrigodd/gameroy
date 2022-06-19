@@ -6,7 +6,4 @@ fn main() {
         println!("cargo:rerun-if-changed=assets/resources.rc");
         embed_resource::compile("assets/resources.rc")
     }
-    if target.contains("android") {
-        println!("cargo:rustc-link-lib=c++_shared");
-    }
 }

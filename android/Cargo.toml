@@ -14,19 +14,17 @@ path = "src/lib.rs"
 
 console = ["gameroy/console"]
 static = ["gameroy/static"]
-default = ["console", "rfd", "audio-engine"]
+default = ["console", "audio-engine", "static"]
 rfd = ["gameroy/rfd"]
 audio-engine = ["gameroy/audio-engine"]
 
 [dependencies]
 gameroy = { path = "..", default-features = false }
 log = "0.4.14"
+jni = "0.19.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-glue = { version = "0.6", features=["logger"] }
-
-[[package.metadata.android.uses_feature]]
-opengles_version = [2,0]
 
 [package.metadata.android.application]
 theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"

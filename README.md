@@ -52,21 +52,18 @@ And access `localhost:8000` in a web browser.
 
 ### Android
 
-To build for Android, first remove the name of the lib in Cargo.toml
-(workaround for a [cargo-apk issue](https://github.com/rust-windowing/android-ndk-rs/issues/136)):
-```diff
-[lib]
-- name = "gameroy_lib"
-crate_type = ["cdylib", "rlib"]
-path = "src/lib.rs"
+Gameroy uses [Gradle to build the android port](https://developer.android.com/studio/build/building-cmdline).
+To build and install the .apk in a device:
+
+```shell
+cd android
+./gradlew installDebug # or gradlew installDebug, on Windows
 ```
 
-And run it using [cargo-apk](https://github.com/rust-windowing/android-ndk-rs):
-```
-cargo apk run --lib --no-default-features --features=static,audio-engine
-```
-
-That command will build the `.apk` and automatically run in a connected device.
+The project uses
+[rust-android-gradle](https://github.com/mozilla/rust-android-gradle) for
+building the project. Also, be aware of `TODO`s in
+[app/build.gradle](android/app/build.gradle).
 
 ## Config
 

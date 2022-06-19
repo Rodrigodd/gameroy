@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.rodrigodd.gameroy">
+
+    <uses-feature
+        android:glEsVersion="0x00020000"
+        android:required="true" />
+
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:label="Gameroy"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+        <!--
+        Note: launchMode="singleTop" should result in onNewIntent being called
+        if you try and launch the same application multiple times, which we can use
+        to test the onNewIntent notifications
+        -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:exported="true"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="gameroy_android" />
+        </activity>
+    </application>
+
+</manifest>

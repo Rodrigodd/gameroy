@@ -697,6 +697,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameroy_android"
+version = "0.1.0"
+dependencies = [
+ "gameroy",
+ "jni",
+ "log",
+ "ndk-glue",
+]
+
+[[package]]
 name = "gcd"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

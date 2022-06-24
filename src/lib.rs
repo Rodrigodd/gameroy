@@ -1,3 +1,5 @@
+pub use rfd;
+
 use std::{path::PathBuf, rc::Rc, sync::Arc, thread};
 
 use gameroy::{

@@ -14,7 +14,7 @@ path = "src/lib.rs"
 
 console = ["gameroy/console"]
 static = ["gameroy/static"]
-default = ["console", "audio-engine", "static"]
+default = ["console", "audio-engine", "static", "rfd"]
 rfd = ["gameroy/rfd"]
 audio-engine = ["gameroy/audio-engine"]
 

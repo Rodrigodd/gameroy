@@ -126,13 +126,13 @@ impl Behaviour for TableItem {
                     g.dragging = Some(d);
                     let reverse = if d.1 { -1.0 } else { 1.0 };
                     g.dragging_anchor = mouse.pos[0] - g.columns[d.0 as usize].curr_width * reverse;
-                    ctx.lock_cursor(true);
+                    ctx.lock_cursor(true, mouse.id);
                 }
             }
             MouseEvent::Up(giui::MouseButton::Left) => {
                 let g = &mut self.group.borrow_mut();
                 g.dragging = None;
-                ctx.lock_cursor(false);
+                ctx.lock_cursor(false, mouse.id);
             }
             MouseEvent::Exit => ctx.set_cursor(CursorIcon::Default),
             MouseEvent::Moved => {

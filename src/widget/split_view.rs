@@ -150,12 +150,12 @@ impl Behaviour for SplitView {
                     self.dragging = true;
                     let split = self.mouse_to_split_pos(mouse.pos, rect);
                     self.dragging_delta = self.split - split;
-                    ctx.lock_cursor(true);
+                    ctx.lock_cursor(true, mouse.id);
                 }
             }
             MouseEvent::Up(giui::MouseButton::Left) => {
                 self.dragging = false;
-                ctx.lock_cursor(false);
+                ctx.lock_cursor(false, mouse.id);
             }
             MouseEvent::Exit => ctx.set_cursor(CursorIcon::Default),
             MouseEvent::Moved => {

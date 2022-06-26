@@ -313,101 +313,7 @@ fn open_debug_panel(
     proxy.send_event(UserEvent::Debug(true)).unwrap();
 }
 
-struct GamePad {
-    buttons: [Id; 9],
-    pressed: u8,
-}
-impl GamePad {
-    fn new(buttons: [Id; 9]) -> Self {
-        Self {
-            buttons,
-            pressed: u8::MAX,
-        }
-    }
-
-    fn on_change(pressed: bool, b: u8, ctx: &mut Context) {
-        let app_state = ctx.get_mut::<crate::AppState>();
-        app_state.joypad = (app_state.joypad & !(1 << b)) | ((!pressed as u8) << b)
-    }
-}
-impl giui::Behaviour for GamePad {
-    fn on_active(&mut self, _this: Id, ctx: &mut Context) {
-        for id in self.buttons {
-            ctx.get_graphic_mut(id)
-                .set_color([255, 255, 255, 128].into());
-        }
-        self.pressed = u8::MAX;
-    }
-
-    fn input_flags(&self) -> giui::InputFlags {
-        giui::InputFlags::MOUSE
-    }
-
-    fn on_mouse_event(&mut self, mouse: giui::MouseInfo, _this: Id, ctx: &mut Context) {
-        if mouse.buttons.left.pressed() {
-            const MAX_DIST: f32 = 35.0;
-            // find closest
-            let (b, dist) = self.buttons[0..8]
-                .iter()
-                .enumerate()
-                .map(|(i, &x)| {
-                    let x = ctx.get_rect(x);
-                    let center = [(x[0] + x[2]) / 2.0, (x[1] + x[3]) / 2.0];
-                    let dx = mouse.pos[0] - center[0];
-                    let dy = mouse.pos[1] - center[1];
-                    // distance
-                    (i, dx * dx + dy * dy)
-                })
-                .min_by_key(|x| x.1.min((MAX_DIST + 1.0).powi(2)) as u32)
-                .unwrap();
-
-            let b = if dist > MAX_DIST.powi(2) {
-                u8::MAX
-            } else {
-                b as u8
-            };
-
-            // unpress the previous button
-            if self.pressed != b && self.pressed != u8::MAX {
-                let id = if self.pressed < 4 {
-                    self.buttons[8]
-                } else {
-                    self.buttons[self.pressed as usize]
-                };
-                ctx.get_graphic_mut(id)
-                    .set_color([255, 255, 255, 128].into());
-                Self::on_change(false, self.pressed, ctx);
-            }
-
-            self.pressed = b;
-
-            // press the current on
-            if self.pressed != u8::MAX {
-                let id = if self.pressed < 4 {
-                    self.buttons[8]
-                } else {
-                    self.buttons[self.pressed as usize]
-                };
-                ctx.get_graphic_mut(id)
-                    .set_color([255, 255, 255, 255].into());
-                Self::on_change(true, self.pressed, ctx);
-            }
-        } else {
-            let b = u8::MAX;
-            // unpress the previous button
-            if self.pressed != b && self.pressed != u8::MAX {
-                let id = if self.pressed < 4 {
-                    self.buttons[8]
-                } else {
-                    self.buttons[self.pressed as usize]
-                };
-                ctx.get_graphic_mut(id)
-                    .set_color([255, 255, 255, 128].into());
-                Self::on_change(false, self.pressed, ctx);
-            }
-        }
-    }
-}
+mod game_pad;
 
 fn create_screen(
     ctx: &mut Context,
@@ -455,7 +361,7 @@ fn create_screen(
         ctx.create_control_reserved(*screen_id)
             .parent(parent)
             .graphic(style.background.clone())
-            .behaviour(GamePad::new(buttons))
+            .behaviour(game_pad::GamePad::new(buttons))
             .build(ctx);
     } else {
         ctx.create_control_reserved(*screen_id)

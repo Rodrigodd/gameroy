@@ -252,7 +252,7 @@ fn load_graphics(
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let render = Box::new(sprite_render::GLSpriteRender::new(window, true).unwrap());
     #[cfg(target_arch = "wasm32")]
-    let render = sprite_render::WebGLSpriteRender::new(window);
+    let render = Box::new(sprite_render::WebGLSpriteRender::new(window));
     #[cfg(target_os = "android")]
     let render = sprite_render::GlesSpriteRender::new(window, true)
         .map(|x| Box::new(x) as Box<dyn SpriteRender>)

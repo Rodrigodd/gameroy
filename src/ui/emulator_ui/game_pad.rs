@@ -159,7 +159,7 @@ mod test {
 
         // 0
 
-        gui.mouse_enters(0);
+        gui.mouse_enter(0);
         gui.mouse_moved(0, 150.0, 150.0);
         gui.mouse_down(0, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x01);
@@ -168,7 +168,7 @@ mod test {
 
         // 1
 
-        gui.mouse_enters(1);
+        gui.mouse_enter(1);
         gui.mouse_moved(1, 450.0, 750.0); // 1, 2 => 7
         gui.mouse_down(1, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x80);
@@ -177,12 +177,12 @@ mod test {
 
         // 0 & 2
 
-        gui.mouse_enters(0);
+        gui.mouse_enter(0);
         gui.mouse_moved(0, 150.0, 150.0);
         gui.mouse_down(0, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x01);
 
-        gui.mouse_enters(2);
+        gui.mouse_enter(2);
         gui.mouse_moved(2, 450.0, 750.0); // 1, 2 => 7
         gui.mouse_down(2, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x81);

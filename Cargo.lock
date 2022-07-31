@@ -113,9 +113,9 @@ dependencies = [
 
 [[package]]
 name = "audio-engine"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "232bff25e2a382d0a6d6f2068ca6c10eae2ace3960dd5edde21d7fb9424c5552"
+checksum = "3447640ac7d8c34f6358b5ee779a8f6302bd5b3f9730eaef15f4f07b85e91b44"
 dependencies = [
  "cpal",
  "gcd",
@@ -664,6 +664,7 @@ name = "gameroy"
 version = "0.1.1"
 dependencies = [
  "audio-engine",
+ "cfg-if 1.0.0",
  "clap",
  "console_error_panic_hook",
  "embed-resource",
@@ -673,6 +674,7 @@ dependencies = [
  "giui",
  "image 0.24.2",
  "instant",
+ "js-sys",
  "log",
  "ndk-glue",
  "once_cell",
@@ -683,6 +685,7 @@ dependencies = [
  "sprite-render",
  "toml",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "wasm-logger",
  "web-sys",
  "winit",
@@ -1683,7 +1686,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "rfd"
 version = "0.9.1"
-source = "git+https://github.com/Rodrigodd/rfd.git?branch=android#5440f1e45baaecce8b5a9aa0d80b28943072c897"
+source = "git+https://github.com/Rodrigodd/rfd.git?branch=android#0084cae4475f21f5dc22e65069c9bdf814106c5d"
 dependencies = [
  "block",
  "cfg-if 1.0.0",

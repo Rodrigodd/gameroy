@@ -22,7 +22,6 @@ pub extern "C" fn Java_io_github_rodrigodd_gameroy_MainActivity_filePickerResult
     class: jni::objects::JObject,
     callback_ptr: jni::sys::jlong,
     uri: jni::objects::JString,
-    buf: jni::objects::JByteBuffer,
 ) {
-    gameroy_lib::rfd::file_picker_result(env, class, callback_ptr, uri, buf)
+    gameroy_lib::rfd::file_picker_result(env, class, callback_ptr, uri)
 }

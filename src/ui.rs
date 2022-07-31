@@ -10,7 +10,7 @@ use giui::{
 
 use sprite_render::{Camera, SpriteInstance, SpriteRender};
 use winit::{
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::PhysicalSize,
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoopProxy},
     window::{Window, WindowId},
@@ -92,6 +92,7 @@ impl Ui {
         let mut gui = Gui::new(0.0, 0.0, window.scale_factor(), fonts);
         let gui_render = GuiRender::new(font_texture, textures.white, [128, 128]);
 
+        gui.set(crate::executor::Executor::new(proxy.clone()));
         gui.set(proxy);
         gui.set(textures.clone());
         gui.set(style);

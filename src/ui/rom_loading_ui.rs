@@ -2,8 +2,6 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use gameroy::gameboy::cartridge::Cartridge;
-use gameroy::gameboy::GameBoy;
 use giui::graphics::Graphic;
 use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout};
 use giui::text::Text;
@@ -11,10 +9,10 @@ use giui::widgets::{Button, ListBuilder};
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
-use crate::config::config;
+use crate::rom_loading::{load_gameboy, RomFile};
 use crate::style::Style;
 use crate::widget::table_item::{TableGroup, TableItem};
-use crate::UserEvent;
+use crate::{executor, UserEvent};
 
 #[derive(Clone, Debug)]
 pub struct RomEntry {
@@ -23,206 +21,26 @@ pub struct RomEntry {
     /// The size of the rom file in bytes
     size: u64,
     /// The path to the rom
-    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-    path: PathBuf,
-    /// The rom data
-    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-    rom: std::sync::Arc<[u8]>,
-    /// The file name
-    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-    file_name: String,
+    pub file: RomFile,
 }
-#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 impl RomEntry {
-    pub fn file_name(&self) -> std::borrow::Cow<str> {
-        self.file_name.clone().into()
-    }
-
-    pub fn from_bytes(rom: Box<[u8]>) -> Result<RomEntry, String> {
-        let size = rom.len() as u64;
-        let header = match gameroy::gameboy::cartridge::CartridgeHeader::from_bytes(rom.as_ref()) {
-            Ok(x) | Err((Some(x), _)) => x,
-            Err((_, e)) => return Err(e),
-        };
-        let name = {
-            let l = header
-                .title
-                .as_slice()
-                .iter()
-                .position(|&x| x == 0)
-                .unwrap_or(header.title.len());
-            String::from_utf8_lossy(&header.title[0..l]).into_owned()
-        };
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    pub fn from_path(path: PathBuf) -> Result<RomEntry, String> {
+        let file = RomFile::from_path(path);
+        // let header = file.get_header()?;
         Ok(RomEntry {
-            name,
-            size,
-            rom: rom.into(),
-            file_name: String::new(),
+            name: "name".to_string(), //header.title_as_string(),
+            size: 0,                  // header.rom_size_in_bytes().unwrap_or(0) as u64,
+            file,
         })
     }
 
-    fn read(&self) -> Result<Vec<u8>, String> {
-        let rom = self.rom.to_vec();
-        Ok(rom)
-    }
-
-    fn load_boot_rom() -> Option<[u8; 256]> {
-        None
-    }
-
-    fn load_ram_data(&self, ram: &mut Vec<u8>) {
-        log::error!("load save failed: unimplemented");
-    }
-
-    pub fn save_ram_data(&self, data: &[u8]) -> Result<(), std::io::Error> {
-        Err(std::io::Error::last_os_error())
-    }
-
-    pub fn save_state(&self, state: &[u8]) -> Result<(), std::io::Error> {
-        Err(std::io::Error::last_os_error())
-    }
-
-    pub fn load_state(&self) -> Result<Vec<u8>, std::io::Error> {
-        Err(std::io::Error::last_os_error())
-    }
-}
-#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-impl RomEntry {
-    pub fn file_name(&self) -> std::borrow::Cow<str> {
-        self.path
-            .file_name()
-            .map_or("".into(), |x| x.to_string_lossy())
-    }
-
-    pub fn from_path(path: PathBuf) -> Result<RomEntry, String> {
-        let mut file = std::fs::File::open(path.clone()).map_err(|e| format!("io error: {}", e))?;
-        let size = file
-            .metadata()
-            .map_err(|e| format!("io error: {}", e))?
-            .len();
-        let header = match gameroy::gameboy::cartridge::CartridgeHeader::from_reader(&mut file) {
-            Ok(x) | Err((Some(x), _)) => x,
-            Err((_, e)) => return Err(e),
-        };
-        let name = {
-            let l = header
-                .title
-                .as_slice()
-                .iter()
-                .position(|&x| x == 0)
-                .unwrap_or(header.title.len());
-            String::from_utf8_lossy(&header.title[0..l]).into_owned()
-        };
-        Ok(RomEntry { name, size, path })
-    }
-
-    fn read(&self) -> Result<Vec<u8>, String> {
-        let mut rom = Vec::new();
-        let rom_path = &self.path;
-        let file = &mut std::fs::File::open(&rom_path)
-            .map_err(|x| format!("error loading '{}': {}", rom_path.display(), x))?;
-
-        std::io::copy(file, &mut rom)
-            .map_err(|x| format!("error reading '{}': {}", rom_path.display(), x))?;
-
-        Ok(rom)
-    }
-
-    fn load_boot_rom() -> Option<[u8; 256]> {
-        let boot_rom_path = if let Some(x) = &config().boot_rom {
-            PathBuf::from(x)
-        } else {
-            return None;
-        };
-
-        let mut boot_rom = [0; 0x100];
-        match Self::open_and_read(&boot_rom_path, &mut &mut boot_rom[..]) {
-            Err(e) => {
-                eprintln!("{}", e);
-                return None;
-            }
-            Ok(_) => Some(boot_rom),
-        }
-    }
-
-    fn load_ram_data(&self, ram: &mut Vec<u8>) {
-        let save_path = self.save_path();
-        log::info!("loading save at {}", save_path.display());
-        let saved_ram = std::fs::read(&save_path);
-        match saved_ram {
-            Ok(save) => *ram = save,
-            Err(err) => {
-                log::error!("load save failed: {}", err);
-            }
-        }
-    }
-
-    fn save_path(&self) -> PathBuf {
-        self.path.with_extension("sav")
-    }
-
-    fn save_state_path(&self) -> PathBuf {
-        self.path.with_extension("save_state")
-    }
-
-    pub fn save_ram_data(&self, data: &[u8]) -> Result<(), std::io::Error> {
-        let save_path = self.save_path();
-        std::fs::write(save_path, data)
-    }
-
-    pub fn save_state(&self, state: &[u8]) -> Result<(), std::io::Error> {
-        let save_path = self.save_state_path();
-        std::fs::write(save_path, state)
-    }
-
-    pub fn load_state(&self) -> Result<Vec<u8>, std::io::Error> {
-        let save_path = self.save_state_path();
-        std::fs::read(save_path)
-    }
-}
-
-impl RomEntry {
-    fn name(&self) -> String {
+    pub fn name(&self) -> String {
         self.name.clone()
     }
 
     fn size(&self) -> u64 {
         self.size
-    }
-
-    fn open_and_read(
-        rom_path: &std::path::Path,
-        writer: &mut impl std::io::Write,
-    ) -> Result<usize, String> {
-        let file = &mut std::fs::File::open(&rom_path)
-            .map_err(|x| format!("error loading '{}': {}", rom_path.display(), x))?;
-
-        Ok(std::io::copy(file, writer)
-            .map_err(|x| format!("error reading '{}': {}", rom_path.display(), x))?
-            as usize)
-    }
-
-    pub fn load_gameboy(&self) -> Result<GameBoy, String> {
-        let rom = self.read()?;
-        let boot_rom = Self::load_boot_rom();
-
-        let mut cartridge = Cartridge::new(rom).unwrap();
-        log::info!("Cartridge type: {}", cartridge.kind_name());
-
-        self.load_ram_data(&mut cartridge.ram);
-
-        let game_boy = GameBoy::new(boot_rom, cartridge);
-        {
-            let mut trace = game_boy.trace.borrow_mut();
-
-            trace.trace_starting_at(&game_boy, 0, 0x100, Some("entry point".into()));
-            trace.trace_starting_at(&game_boy, 0, 0x40, Some("RST_0x40".into()));
-            trace.trace_starting_at(&game_boy, 0, 0x48, Some("RST_0x48".into()));
-            trace.trace_starting_at(&game_boy, 0, 0x50, Some("RST_0x50".into()));
-            trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
-            trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
-        }
-        Ok(game_boy)
     }
 }
 
@@ -302,7 +120,7 @@ impl ListBuilder for RomList {
             (
                 entry.name(),
                 size,
-                entry.file_name().into_owned(),
+                entry.file.file_name().into_owned(),
                 Some(entry),
             )
         } else {
@@ -347,12 +165,28 @@ impl ListBuilder for RomList {
             if let Some(entry) = entry {
                 item.set_on_click(move |click_count, ctx| {
                     if click_count == 1 {
-                        // ctx.send_event_to(list_id, SetSelected(index))
-                        // } else if click_count == 2 {
-                        log::debug!("sending LoadRom");
-                        ctx.get::<EventLoopProxy<UserEvent>>()
-                            .send_event(UserEvent::LoadRom(entry.clone()))
+                        ctx.send_event_to(list_id, SetSelected(index))
+                    } else if click_count == 2 {
+                        let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
+                        let p = proxy.clone();
+                        let file = entry.file.clone();
+                        let task = async move {
+                            let rom = file.read().await.unwrap();
+                            let ram = match file.load_ram_data().await {
+                                Ok(x) => Some(x),
+                                Err(err) => {
+                                    log::error!("{}", err);
+                                    None
+                                }
+                            };
+                            log::debug!("sending LoadRom");
+                            p.send_event(UserEvent::LoadRom {
+                                file,
+                                game_boy: load_gameboy(rom, ram).unwrap(),
+                            })
                             .unwrap();
+                        };
+                        executor::Executor::spawn_task(task, ctx);
                     }
                 });
             }
@@ -384,7 +218,6 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
             move |_, ctx| {
                 let handle = ctx.get::<std::rc::Rc<Window>>().clone();
                 let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
-                let p = proxy.clone();
                 let task = async move {
                     let handle = &*handle;
                     let file = rfd::AsyncFileDialog::new()
@@ -395,34 +228,24 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
                         .await;
 
                     if let Some(file) = file {
-                        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-                        let entry = match RomEntry::from_bytes(file.read().await.into_boxed_slice())
-                        {
-                            Ok(x) => x,
-                            Err(e) => {
-                                log::error!("failed to load rom: {}", e);
-                                return;
+                        let file: RomFile = file.into();
+                        let rom = file.read().await.unwrap();
+                        let ram = match file.load_ram_data().await {
+                            Ok(x) => Some(x),
+                            Err(err) => {
+                                log::error!("{}", err);
+                                None
                             }
                         };
-                        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-                        let entry = match RomEntry::from_path(file.path().into()) {
-                            Ok(x) => x,
-                            Err(e) => {
-                                log::error!(
-                                    "failed to load rom from {}: {}",
-                                    file.path().display(),
-                                    e
-                                );
-                                return;
-                            }
-                        };
-                        proxy.send_event(UserEvent::LoadRom(entry)).unwrap();
+                        proxy
+                            .send_event(UserEvent::LoadRom {
+                                file,
+                                game_boy: load_gameboy(rom, ram).unwrap(),
+                            })
+                            .unwrap();
                     }
                 };
-                use std::future::Future;
-                use std::pin::Pin;
-                ctx.set::<Pin<Box<dyn Future<Output = ()>>>>(Box::pin(task));
-                p.send_event(UserEvent::SpawnTask(0)).unwrap();
+                executor::Executor::spawn_task(task, ctx);
             },
         ))
         .child(ctx, |cb, _| {
@@ -456,15 +279,17 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         })
         .unwrap_or_default();
     #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-    let roms = vec![RomEntry {
-        name: "OH DEMO".to_string(),
-        size: 32 << 10,
-        rom: include_bytes!("../../roms/Tetris (World) (Rev A).gb")
-            .to_vec()
-            .into_boxed_slice()
-            .into(),
-        file_name: "oh.gb".to_string(),
-    }];
+    let roms = vec![
+        // RomEntry {
+        // name: "OH DEMO".to_string(),
+        // size: 32 << 10,
+        // rom: include_bytes!("../../roms/Tetris (World) (Rev A).gb")
+        //     .to_vec()
+        //     .into_boxed_slice()
+        //     .into(),
+        // file_name: "oh.gb".to_string(),
+    // }
+    ];
 
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
         .column(120.0, false)

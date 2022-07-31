@@ -16,7 +16,7 @@ use gameroy::{
 use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
 
-use crate::ui::RomEntry;
+use crate::rom_loading::RomFile;
 
 use super::UserEvent;
 
@@ -338,7 +338,7 @@ pub struct Emulator {
 
     joypad: Arc<ParkMutex<Timeline>>,
 
-    rom: RomEntry,
+    rom: RomFile,
 
     debug: bool,
     state: EmulatorState,
@@ -369,7 +369,7 @@ impl Emulator {
         debugger: Arc<ParkMutex<Debugger>>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
-        rom: RomEntry,
+        rom: RomFile,
     ) -> Self {
         #[cfg(feature = "audio-engine")]
         let sound = match AudioEngine::new() {
@@ -456,7 +456,7 @@ impl Emulator {
         recv: Receiver<EmulatorEvent>,
         proxy: EventLoopProxy<UserEvent>,
         movie: Option<Vbm>,
-        rom: RomEntry,
+        rom: RomFile,
     ) {
         let mut this = Self::new(gb, debugger, proxy, movie, rom);
         this.event_loop(recv);

@@ -19,6 +19,10 @@ mod bench;
 
 mod emulator;
 mod event_table;
+mod executor;
+mod rom_loading;
+mod style;
+mod ui;
 mod widget {
     pub mod fold_view;
     mod pixel_perfect_layout;
@@ -28,8 +32,6 @@ mod widget {
     pub use pixel_perfect_layout::PixelPerfectLayout;
     pub use split_view::SplitView;
 }
-mod style;
-mod ui;
 
 pub use emulator::{Emulator, EmulatorEvent};
 
@@ -159,16 +161,33 @@ pub fn main() {
         vbm
     });
 
+    config::init_config({
+        let mut config = config::Config::load()
+            .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
+            .unwrap_or_default();
+        config.start_in_debug |= debug;
+        config.rom_folder = config
+            .rom_folder
+            .or_else(|| rom_folder.map(|x| x.to_string()));
+        config.boot_rom = boot_rom_path.map(|x| x.to_string());
+        config
+    });
+
     // dissasembly and return early
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     if diss {
         if let Some(rom_path) = rom_path {
-            let rom_path = PathBuf::from(rom_path);
+            let rom = std::fs::read(&rom_path);
 
-            let gb = RomEntry::from_path(rom_path).and_then(|x| x.load_gameboy());
+            let rom = match rom {
+                Ok(x) => x,
+                Err(e) => return eprintln!("failed to load '{}': {}", rom_path, e),
+            };
+
+            let gb = load_gameboy(rom, None);
             let mut gb = match gb {
                 Ok(x) => x,
-                Err(e) => return eprintln!("{}", e),
+                Err(e) => return eprintln!("failed to load rom: {}", e),
             };
             gb.boot_rom_active = false;
 
@@ -182,34 +201,27 @@ pub fn main() {
         }
     }
 
-    config::init_config({
-        let mut config = config::Config::load()
-            .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
-            .unwrap_or_default();
-        config.start_in_debug |= debug;
-        config.rom_folder = config
-            .rom_folder
-            .or_else(|| rom_folder.map(|x| x.to_string()));
-        config.boot_rom = boot_rom_path.map(|x| x.to_string());
-        config
-    });
-
     // load rom if necesary
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     let gb = if let Some(rom_path) = rom_path {
-        let rom_path = PathBuf::from(rom_path);
+        let rom = std::fs::read(&rom_path);
 
-        let gb = RomEntry::from_path(rom_path).and_then(|x| Ok((x.load_gameboy()?, x)));
+        let rom = match rom {
+            Ok(x) => x,
+            Err(e) => return eprintln!("failed to load '{}': {}", rom_path, e),
+        };
+
+        let file = RomFile::from_path(PathBuf::from(rom_path));
+
+        let gb = load_gameboy(rom, None);
         match gb {
-            Ok(g) => Some(g),
-            Err(e) => {
-                eprintln!("{}", e);
-                return;
-            }
+            Ok(x) => Some((file, x)),
+            Err(e) => return eprintln!("failed to load rom: {}", e),
         }
     } else {
         None
     };
+
     #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     let gb = Some(0);
 
@@ -260,15 +272,18 @@ pub fn main() {
     // initiate in the apropriated screen
     match gb {
         #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-        Some((gb, entry)) => {
-            window.set_title(&format!("{} - gameroy", entry.file_name()));
+        Some((file, gb)) => {
+            window.set_title(&format!(
+                "{} - gameroy",
+                gb.cartridge.header.title_as_string()
+            ));
             let emu = EmulatorApp::new(
                 gb,
                 proxy,
                 config::config().start_in_debug,
                 &mut ui,
                 movie,
-                entry,
+                file,
             );
             start_event_loop(event_loop, window, ui, Box::new(emu));
         }
@@ -286,7 +301,9 @@ use winit::{
     window::{Icon, Window, WindowBuilder},
 };
 
-use self::ui::RomEntry;
+use crate::rom_loading::load_gameboy;
+
+use self::rom_loading::RomFile;
 
 pub struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.
@@ -379,15 +396,9 @@ fn start_event_loop(
                     *control = ControlFlow::Poll;
                 }
             }
-            Event::UserEvent(UserEvent::LoadRom(entry)) => {
-                log::debug!("Loading Rom!!");
-                let gb = entry.load_gameboy();
-                let gb = match gb {
-                    Ok(x) => x,
-                    Err(e) => return log::error!("{}", e),
-                };
-                log::trace!("set title!!");
-                window.set_title(&format!("{} - gameroy", entry.file_name(),));
+            Event::UserEvent(UserEvent::LoadRom { file, game_boy }) => {
+                let gb = game_boy;
+                window.set_title(&format!("{} - gameroy", file.file_name()));
                 log::trace!("create emu!!");
                 let emu = EmulatorApp::new(
                     gb,
@@ -395,7 +406,7 @@ fn start_event_loop(
                     config::config().start_in_debug,
                     &mut ui,
                     None,
-                    entry,
+                    file,
                 );
                 app = Box::new(emu);
                 log::trace!("ui clear!!");
@@ -407,15 +418,17 @@ fn start_event_loop(
             }
             Event::UserEvent(UserEvent::SpawnTask(task_id)) => {
                 use std::future::Future;
-                use std::pin::Pin;
                 let p = Arc::new(Mutex::new(proxy.clone()));
                 let waker = waker_fn::waker_fn(move || {
                     p.lock().send_event(UserEvent::SpawnTask(task_id)).unwrap()
                 });
-                let task = ui.get::<Pin<Box<dyn Future<Output = ()>>>>();
+                let executor = ui.get::<executor::Executor>();
+                let task = executor.map.get_mut(&task_id).unwrap();
                 let mut cx = std::task::Context::from_waker(&waker);
                 match Future::poll(task.as_mut(), &mut cx) {
-                    std::task::Poll::Ready(_) => log::info!("woke!"),
+                    std::task::Poll::Ready(_) => {
+                        executor.map.remove(&task_id);
+                    }
                     std::task::Poll::Pending => log::info!("wait..."),
                 }
             }
@@ -460,15 +473,26 @@ impl App for RomLoadingApp {
                 event: WindowEvent::DroppedFile(path),
                 ..
             } => {
-                log::info!("The file {:?} was dropped", path);
-                let entry = match RomEntry::from_path(path.clone()) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::error!("failed to load rom from {}: {}", path.display(), e);
-                        return;
-                    }
+                let proxy = proxy.clone();
+                let task = async move {
+                    log::info!("The file {:?} was dropped", path);
+                    let file = RomFile::from_path(path);
+                    let rom = file.read().await.unwrap();
+                    let ram = match file.load_ram_data().await {
+                        Ok(x) => Some(x),
+                        Err(err) => {
+                            log::error!("{}", err);
+                            None
+                        }
+                    };
+                    proxy
+                        .send_event(UserEvent::LoadRom {
+                            file: file,
+                            game_boy: load_gameboy(rom, ram).unwrap(),
+                        })
+                        .unwrap();
                 };
-                proxy.send_event(UserEvent::LoadRom(entry)).unwrap();
+                executor::Executor::spawn_task(task, &mut _ui.gui.get_context());
             }
             _ => {}
         }
@@ -500,7 +524,7 @@ impl EmulatorApp {
         debug: bool,
         ui: &mut ui::Ui,
         movie: Option<Vbm>,
-        rom: RomEntry,
+        rom: RomFile,
     ) -> EmulatorApp {
         let lcd_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
             Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
@@ -652,7 +676,7 @@ impl App for EmulatorApp {
                         self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
-                    LoadRom(_) => unreachable!(),
+                    LoadRom { .. } => unreachable!(),
                     SpawnTask(_) => {}
                 }
             }
@@ -670,6 +694,6 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
-    LoadRom(RomEntry),
-    SpawnTask(usize),
+    LoadRom { file: RomFile, game_boy: GameBoy },
+    SpawnTask(u32),
 }

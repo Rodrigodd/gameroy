@@ -1,3 +1,5 @@
+use gameroy::gameboy::cartridge::Cartridge;
+use gameroy::gameboy::GameBoy;
 use instant::Instant;
 use std::{path::PathBuf, time::Duration};
 
@@ -27,11 +29,15 @@ fn print_val(val: f64, err: f64) -> String {
 
 pub fn benchmark(path: &str, timeout: u64, len: usize) {
     let rom_path = PathBuf::from(path);
-    let gb = crate::ui::RomEntry::from_path(rom_path).and_then(|x| x.load_gameboy());
-    let mut game_boy = match gb {
+    let rom = std::fs::read(rom_path);
+
+    let rom = match rom {
         Ok(x) => x,
-        Err(e) => return eprintln!("{}", e),
+        Err(e) => return eprintln!("failed to load '{}': {}", path, e),
     };
+
+    let cartridge = Cartridge::new(rom).unwrap();
+    let mut game_boy = GameBoy::new(None, cartridge);
 
     // remove serial transfer console output
     game_boy.serial_transfer_callback = None;

@@ -64,30 +64,31 @@ public class MainActivity extends NativeActivity {
             if (resultCode == RESULT_OK) {
                 Uri uri = data.getData();
                 Log.d(TAG, "File Uri: " + uri.toString());
-                ByteBuffer buffer = null;
-                try {
-                    InputStream in = getContentResolver().openInputStream(uri);
-                    buffer = ByteBuffer.allocateDirect(in.available());
-                    Channels.newChannel(in).read(buffer);
-                    buffer.position(0);
-                    
-                    Log.d(TAG, "Calling filePickerResult(" + buffer.toString() + ")");
-                } catch (IOException ex) {
-                    buffer = null;
-                    Log.d(TAG, "error reading uri: " + ex.toString());
-                }
 
                 String uriString = uri.toString();
-
                 Log.d(TAG, "Encode Uri: " + uriString);
-
-                filePickerResult(callback_ptr.longValue(), uriString, buffer);
+                filePickerResult(callback_ptr.longValue(), uriString);
             } else {
-                filePickerResult(callback_ptr.longValue(), null, null);
+                filePickerResult(callback_ptr.longValue(), null);
             }
         }
     }
 
+    public ByteBuffer readUri(String uriString) {
+        Uri uri = Uri.parse(uriString);
+        try {
+            InputStream in = getContentResolver().openInputStream(uri);
+            ByteBuffer buffer = ByteBuffer.allocateDirect(in.available());
+            Channels.newChannel(in).read(buffer);
+            buffer.position(0);
 
-    private native void filePickerResult(long callback_ptr, String uri, ByteBuffer buffer);
+            return buffer;
+        } catch (IOException ex) {
+            Log.d(TAG, "error reading uri: " + ex.toString());
+            return null;
+        }
+    }
+
+
+    private native void filePickerResult(long callback_ptr, String uri);
 }

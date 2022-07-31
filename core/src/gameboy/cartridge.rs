@@ -111,6 +111,39 @@ impl CartridgeHeader {
         ];
         self.logo[..0x18] == NINTENDOO_LOGO[..0x18]
     }
+
+    pub fn rom_size_in_bytes(&self) -> Result<usize, String> {
+        let rom_sizes = [
+            2 * 0x4000, // no ROM Banking
+            4 * 0x4000,
+            8 * 0x4000,
+            16 * 0x4000,
+            32 * 0x4000,
+            64 * 0x4000,
+            128 * 0x4000,
+            256 * 0x4000,
+            512 * 0x4000,
+            // 72 * 0x2000,
+            // 80 * 0x2000,
+            // 96 * 0x2000,
+        ];
+        let rom_size_type = self.rom_size;
+        let rom_size = rom_sizes
+            .get(rom_size_type as usize)
+            .copied()
+            .ok_or_else(|| format!("Rom size '{:02x}' is no supported", rom_size_type))?;
+        Ok(rom_size)
+    }
+
+    pub fn title_as_string(&self) -> String {
+        let l = self
+            .title
+            .as_slice()
+            .iter()
+            .position(|&x| x == 0)
+            .unwrap_or(self.title.len());
+        String::from_utf8_lossy(&self.title[0..l]).into_owned()
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -200,25 +233,7 @@ impl Cartridge {
             }
         };
 
-        let rom_sizes = [
-            2 * 0x4000, // no ROM Banking
-            4 * 0x4000,
-            8 * 0x4000,
-            16 * 0x4000,
-            32 * 0x4000,
-            64 * 0x4000,
-            128 * 0x4000,
-            256 * 0x4000,
-            512 * 0x4000,
-            // 72 * 0x2000,
-            // 80 * 0x2000,
-            // 96 * 0x2000,
-        ];
-        let rom_size_type = header.rom_size;
-        let rom_size = rom_sizes
-            .get(rom_size_type as usize)
-            .copied()
-            .ok_or_else(|| format!("Rom size '{:02x}' is no supported", rom_size_type))?;
+        let rom_size = header.rom_size_in_bytes()?;
 
         if rom_size != rom.len() {
             return Err(format!(

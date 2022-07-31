@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use gameroy::gameboy::GameBoy;
+use gameroy::gameboy::{ppu::Ppu, GameBoy};
 use giui::{
     graphics::{Graphic, Texture},
     layouts::{FitGraphic, GridLayout, HBoxLayout, VBoxLayout},
@@ -74,7 +74,14 @@ impl PpuViewer {
         const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
         let gb = ctx.get::<Arc<Mutex<GameBoy>>>();
         let proxy = &ctx.get::<EventLoopProxy<UserEvent>>();
-        let ppu = gb.lock().ppu.borrow().clone();
+
+        // clone into box to avoid stack overflow
+        let ppu = {
+            let mut ppu = Box::new(Ppu::default());
+            (*ppu).clone_from(&*gb.lock().ppu.borrow());
+            ppu
+        };
+
         if emulator_updated {
             let mut debug_screen = vec![255; 160 * 144 * 4];
             let screen = &ppu.screen;

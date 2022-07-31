@@ -42,13 +42,13 @@ gameroy-core = { path = "core" }
 # giui = { path = "../giui" }
 giui = { git = "https://github.com/Rodrigodd/giui" }
 # sprite-render = { path = "../sprite-render-rs", features=["opengl", "webgl", "opengles"] }
-sprite-render = { features = [
+sprite-render = { git = "https://github.com/Rodrigodd/sprite-render-rs", features = [
     "opengl",
     "webgl",
     "opengles",
-], git = "https://github.com/Rodrigodd/sprite-render-rs" }
+] }
 # audio-engine = { path = "../audio-engine", optional = true }
-audio-engine = { version = "0.3.0", optional = true }
+audio-engine = { version = "0.4.0", optional = true }
 
 rfd = { version = "0.9.1", optional = true, features = ["file-handle-inner"] }
 

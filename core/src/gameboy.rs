@@ -130,16 +130,10 @@ crate::save_state!(GameBoy, self, data {
     // self.boot_rom;
     self.clock_count;
     self.timer;
-    {
-        let mut sound = self.sound.borrow_mut();
-        sound.update(self.clock_count);
-        sound
-    };
-    {
-        // Ppu::update(self);
-        let ppu = self.ppu.borrow_mut();
-        ppu
-    };
+
+    self.sound.borrow_mut();
+    self.ppu.borrow_mut();
+
     self.joypad_io;
     self.joypad;
     self.serial_data;

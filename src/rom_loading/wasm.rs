@@ -7,6 +7,36 @@ use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 pub fn load_boot_rom() -> Option<[u8; 256]> {
     None
 }
+pub fn load_file(file_name: &str) -> Result<Vec<u8>, String> {
+    let window = web_sys::window().ok_or_else(|| "window object is null".to_string())?;
+    let local_storage = window
+        .local_storage()
+        .map_err(|_| "error getting local storage".to_string())?
+        .ok_or_else(|| "local storage is null".to_string())?;
+
+    let save = local_storage
+        .get_item(file_name)
+        .map_err(|_| "error getting item from local storage".to_string())?
+        .ok_or_else(|| "save not found".to_string())?;
+
+    base64::decode(save).map_err(|err| format!("failed decoding save: {}", err.to_string()))
+}
+
+pub fn save_file(file_name: &str, data: &[u8]) -> Result<(), String> {
+    let window = web_sys::window().ok_or_else(|| "window object is null".to_string())?;
+    let local_storage = window
+        .local_storage()
+        .map_err(|_| "error getting local storage".to_string())?
+        .ok_or_else(|| "local storage is null".to_string())?;
+
+    let save = base64::encode(data);
+
+    local_storage
+        .set_item(file_name, &save)
+        .map_err(|_| "error setting item in local storage".to_string())?;
+
+    Ok(())
+}
 
 #[derive(Clone, Debug)]
 pub struct RomFile {
@@ -54,20 +84,28 @@ impl RomFile {
         Ok(vec)
     }
 
-    pub async fn load_ram_data(&self) -> Result<Vec<u8>, String> {
-        Err("unimplemented".to_string())
+    pub fn save_ram_data(&self, data: &[u8]) -> Result<(), String> {
+        let file_name = self.file_name().to_string() + ".sav";
+
+        save_file(&file_name, data)
     }
 
-    pub fn save_ram_data(&self, data: &[u8]) -> Result<(), String> {
-        Err("unimplemented".to_string())
+    pub async fn load_ram_data(&self) -> Result<Vec<u8>, String> {
+        let file_name = self.file_name().to_string() + ".sav";
+
+        load_file(&file_name)
     }
 
     pub fn save_state(&self, state: &[u8]) -> Result<(), String> {
-        Err("unimplemented".to_string())
+        let file_name = self.file_name().to_string() + ".save_state";
+
+        save_file(&file_name, state)
     }
 
     pub fn load_state(&self) -> Result<Vec<u8>, String> {
-        Err("unimplemented".to_string())
+        let file_name = self.file_name().to_string() + ".save_state";
+
+        load_file(&file_name)
     }
 }
 #[cfg(feature = "rfd")]

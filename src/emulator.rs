@@ -544,6 +544,7 @@ impl Emulator {
                                 gb.load_state(&mut old_state.as_slice()).unwrap();
                             }
                         }
+                        self.start_time = recompute_start_time(gb.clock_count);
                         drop(gb);
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
                     }
@@ -559,15 +560,19 @@ impl Emulator {
             FrameLimit(value) => {
                 self.frame_limit = value;
                 if self.frame_limit {
-                    self.start_time =
-                        Instant::now() - clock_to_duration(self.gb.lock().clock_count);
+                    self.start_time = recompute_start_time(self.gb.lock().clock_count);
                 }
             }
             Rewind(value) => {
                 self.rewind = value;
-                let joypad = &mut *self.joypad.lock();
-                joypad.rewinding = value;
-                joypad.joypad_timeline.clear();
+                {
+                    let joypad = &mut *self.joypad.lock();
+                    joypad.rewinding = value;
+                    joypad.joypad_timeline.clear();
+                }
+                if !self.rewind {
+                    self.start_time = recompute_start_time(self.gb.lock().clock_count);
+                }
             }
             SetJoypad(joypad) => {
                 self.joypad.lock().current_joypad = joypad;
@@ -679,11 +684,8 @@ impl Emulator {
 
                     // make sure that the target_clock don't increase indefinitely if the program can't keep up.
                     if target_clock > inter.0.clock_count + CLOCK_SPEED / 30 {
-                        let expected_target = target_clock;
                         target_clock = inter.0.clock_count + CLOCK_SPEED / 30;
-                        self.start_time += Duration::from_secs_f64(
-                            (expected_target - target_clock) as f64 / CLOCK_SPEED as f64,
-                        );
+                        self.start_time = recompute_start_time(inter.0.clock_count);
                     }
 
                     while inter.0.clock_count < target_clock {
@@ -746,4 +748,8 @@ fn clock_to_duration(clock_count: u64) -> Duration {
     let secs = clock_count / CLOCK_SPEED;
     let nanos = (clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
     Duration::new(secs, nanos as u32)
+}
+
+fn recompute_start_time(clock_count: u64) -> Instant {
+    Instant::now() - clock_to_duration(clock_count)
 }

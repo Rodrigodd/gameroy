@@ -3,6 +3,7 @@ package io.github.rodrigodd.gameroy;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -89,6 +90,29 @@ public class MainActivity extends NativeActivity {
         }
     }
 
+    public void saveRam(String filename, ByteBuffer data) {
+        try {
+            FileOutputStream fos = openFileOutput(filename, MODE_PRIVATE);
+            Channels.newChannel(fos).write(data);
+        } catch (IOException ex) {
+            Log.d(TAG, "error saving ram: " + ex.toString());
+        }
+    }
+
+    public ByteBuffer loadRam(String filename) {
+        try {
+            FileInputStream fis = openFileInput(filename);
+            ByteBuffer buffer = ByteBuffer.allocateDirect(fis.available());
+            Channels.newChannel(fis).read(buffer);
+            buffer.position(0);
+
+            return buffer;
+        } catch (IOException ex) {
+            Log.d(TAG, "error saving ram: " + ex.toString());
+            return null;
+        }
+
+    }
 
     private native void filePickerResult(long callback_ptr, String uri);
 }

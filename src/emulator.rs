@@ -34,6 +34,7 @@ pub enum EmulatorEvent {
     Reset,
     SaveState,
     LoadState,
+    SaveRam,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -509,6 +510,13 @@ impl Emulator {
     pub fn handle_event(&mut self, event: EmulatorEvent) -> bool {
         use EmulatorEvent::*;
         match event {
+            SaveRam => {
+                log::info!("saving game ram data... ");
+                match self.rom.save_ram_data(&mut self.gb.lock().cartridge.ram) {
+                    Ok(_) => log::info!("save success"),
+                    Err(x) => log::error!("saving failed: {}", x),
+                }
+            }
             SaveState => {
                 log::info!("save state");
                 let mut state = Vec::new();

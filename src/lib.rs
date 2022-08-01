@@ -340,6 +340,7 @@ fn start_event_loop(
             }
             Event::Suspended => {
                 log::info!("destroying graphics");
+
                 ui.clear();
                 ui.destroy_graphics();
             }
@@ -614,6 +615,9 @@ impl App for EmulatorApp {
             Event::LoopDestroyed => {
                 self.emu_channel.send(EmulatorEvent::Kill).unwrap();
                 self.emu_thread.take().unwrap().join().unwrap();
+            }
+            Event::Suspended => {
+                self.emu_channel.send(EmulatorEvent::SaveRam).unwrap();
             }
             #[cfg(any(target_arch = "wasm32", target_os = "android"))]
             Event::MainEventsCleared => {

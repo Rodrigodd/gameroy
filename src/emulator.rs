@@ -529,8 +529,22 @@ impl Emulator {
             LoadState => {
                 match self.rom.load_state() {
                     Ok(state) => {
-                        self.gb.lock().load_state(&mut state.as_slice()).unwrap();
-                        log::info!("load state");
+                        let mut gb = self.gb.lock();
+
+                        let mut old_state = Vec::new();
+                        gb.save_state(&mut old_state).unwrap();
+
+                        match gb.load_state(&mut state.as_slice()) {
+                            Ok(_) => {
+                                log::info!("load state")
+                            }
+                            Err(_) => {
+                                log::error!("error loading save state: save state is malformatted");
+                                // restore current state
+                                gb.load_state(&mut old_state.as_slice()).unwrap();
+                            }
+                        }
+                        drop(gb);
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
                     }
                     Err(e) => log::error!("error loading saved state: {}", e),

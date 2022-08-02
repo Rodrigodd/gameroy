@@ -666,9 +666,7 @@ dependencies = [
  "audio-engine",
  "base64",
  "cfg-if 1.0.0",
- "clap",
  "console_error_panic_hook",
- "embed-resource",
  "flexi_logger",
  "flume",
  "gameroy-core",
@@ -1164,6 +1162,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9f1c5b025cda876f66ef43a113f91ebc9f4ccef34843000e0adf6ebbab84e21"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "native"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "embed-resource",
+ "flexi_logger",
+ "gameroy",
+ "log",
+ "winit",
 ]
 
 [[package]]

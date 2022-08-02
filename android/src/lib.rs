@@ -10,7 +10,7 @@
 ))]
 pub fn main() {
     log::info!("Starting android gameroy!");
-    gameroy_lib::main()
+    gameroy_lib::main(None, None)
 }
 
 /// This function receives the file_picker_result from Java, and repass it to rfd

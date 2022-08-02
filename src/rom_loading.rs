@@ -14,7 +14,7 @@ cfg_if::cfg_if! {
     }
 }
 
-pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<GameBoy, String> {
+pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, String> {
     let boot_rom = load_boot_rom();
 
     let mut cartridge = Cartridge::new(rom)?;
@@ -35,5 +35,6 @@ pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<GameBoy, Strin
         trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
         trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
     }
-    Ok(game_boy)
+    // GameBoy is too big to live on the stack.
+    Ok(Box::new(game_boy))
 }

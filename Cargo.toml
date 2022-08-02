@@ -1,12 +1,11 @@
 [workspace]
-members = ["core", "android"]
+members = ["core", "android", "native"]
 
 [package]
 name = "gameroy"
 version = "0.1.1"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 edition = "2018"
-build = "build.rs"
 license = "MIT OR Apache-2.0"
 rust-version = "1.59"
 
@@ -21,9 +20,6 @@ name = "gameroy_lib"
 crate_type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
-[build-dependencies]
-embed-resource = "1.7.1"
-
 [features]
 
 # Enables console output.
@@ -34,6 +30,9 @@ console = []
 static = []
 
 default = ["console", "rfd", "audio-engine"]
+
+[dev-dependencies]
+flexi_logger = "0.22.3"
 
 [dependencies]
 
@@ -57,9 +56,7 @@ ron = "0.6"
 toml = "0.5.8"
 
 winit = { version = "0.26.1", features = ["serde"] }
-clap = "3.1.5"
 log = "0.4.14"
-flexi_logger = "0.22.3"
 
 image = { version = "0.24.1", default-features = false, features = ["png"] }
 parking_lot = "0.11"

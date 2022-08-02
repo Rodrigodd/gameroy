@@ -8,5 +8,5 @@
 )]
 
 fn main() {
-    gameroy_lib::main()
+    gameroy_lib::main(None, None)
 }

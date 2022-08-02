@@ -1,9 +1,9 @@
-use once_cell::sync::OnceCell;
-use std::path::Path;
-use std::path::PathBuf;
-use winit::event::VirtualKeyCode;
+use std::path::{Path, PathBuf};
 
+use once_cell::sync::OnceCell;
+use parking_lot::{Mutex, MutexGuard};
 use serde::Deserialize;
+use winit::event::VirtualKeyCode;
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -17,6 +17,7 @@ pub struct Config {
 impl Config {
     pub fn load() -> Result<Self, String> {
         let config_path = normalize_config_path("gameroy.toml");
+        log::info!("using '{}' as config path", config_path.display());
         let config = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
         let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
         Ok(config)
@@ -44,7 +45,6 @@ pub fn base_folder() -> Option<PathBuf> {
                 .ok()
                 .map(|x| PathBuf::from(x))
             {
-                log::info!("using '{}' as base folder", path.display());
                 path
             } else {
                 std::env::current_exe()
@@ -62,12 +62,7 @@ pub fn base_folder() -> Option<PathBuf> {
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            start_in_debug: false,
-            rom_folder: Some("roms".to_string()),
-            boot_rom: None,
-            keymap: KeyMap::default(),
-        }
+        DEFAULT_CONFIG
     }
 }
 
@@ -96,40 +91,47 @@ pub struct KeyMap {
 
 impl Default for KeyMap {
     fn default() -> Self {
-        use VirtualKeyCode::*;
-        Self {
-            left: Left,
-            right: Right,
-            up: Up,
-            down: Down,
-            a: A,
-            b: S,
-            select: Back,
-            start: Return,
-
-            speed: LShift,
-            rewind: R,
-            save_state: F5,
-            load_state: F6,
-
-            open_debugger: F12,
-            debug_stepback: F7,
-            debug_step: F8,
-            debug_run: F9,
-        }
+        DEFAULT_KEYMAP
     }
 }
 
-static CONFIG: OnceCell<Config> = OnceCell::new();
+const DEFAULT_KEYMAP: KeyMap = {
+    use VirtualKeyCode::*;
+    KeyMap {
+        left: Left,
+        right: Right,
+        up: Up,
+        down: Down,
+        a: A,
+        b: S,
+        select: Back,
+        start: Return,
 
-pub fn config() -> &'static Config {
-    CONFIG
-        .get()
-        .expect("The config should be initialized in fn main()")
+        speed: LShift,
+        rewind: R,
+        save_state: F5,
+        load_state: F6,
+
+        open_debugger: F12,
+        debug_stepback: F7,
+        debug_step: F8,
+        debug_run: F9,
+    }
+};
+
+const DEFAULT_CONFIG: Config = Config {
+    start_in_debug: false,
+    rom_folder: None,
+    boot_rom: None,
+    keymap: DEFAULT_KEYMAP,
+};
+
+static CONFIG: Mutex<Config> = parking_lot::const_mutex(DEFAULT_CONFIG);
+
+pub fn config() -> MutexGuard<'static, Config> {
+    CONFIG.lock()
 }
 
 pub fn init_config(config: Config) {
-    CONFIG
-        .set(config)
-        .expect("Config should only be initialized in fn main()");
+    *CONFIG.lock() = config
 }

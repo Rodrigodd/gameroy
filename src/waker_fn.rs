@@ -28,9 +28,11 @@
 //!
 //! A [`Waker`] is just a fancy callback. This crate converts regular closures into wakers.
 
-use std::mem::{self, ManuallyDrop};
-use std::sync::Arc;
-use std::task::{RawWaker, RawWakerVTable, Waker};
+use std::{
+    mem::{self, ManuallyDrop},
+    sync::Arc,
+    task::{RawWaker, RawWakerVTable, Waker},
+};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn waker_fn<F>(f: F) -> Waker

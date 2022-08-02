@@ -1,5 +1,4 @@
-use std::borrow::Cow;
-use std::path::PathBuf;
+use std::{borrow::Cow, path::PathBuf};
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
 
@@ -86,20 +85,17 @@ impl RomFile {
 
     pub fn save_ram_data(&self, data: &[u8]) -> Result<(), String> {
         let save_path = self.save_path();
-        std::fs::write(save_path, data)
-            .map_err(|x| x.to_string())
+        std::fs::write(save_path, data).map_err(|x| x.to_string())
     }
 
     pub fn save_state(&self, state: &[u8]) -> Result<(), String> {
         let save_path = self.save_state_path();
-        std::fs::write(save_path, state)
-            .map_err(|x| x.to_string())
+        std::fs::write(save_path, state).map_err(|x| x.to_string())
     }
 
     pub fn load_state(&self) -> Result<Vec<u8>, String> {
         let save_path = self.save_state_path();
-        std::fs::read(save_path)
-            .map_err(|x| x.to_string())
+        std::fs::read(save_path).map_err(|x| x.to_string())
     }
 }
 #[cfg(feature = "rfd")]

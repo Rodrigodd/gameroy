@@ -1,5 +1,4 @@
-use gameroy::gameboy::cartridge::Cartridge;
-use gameroy::gameboy::GameBoy;
+use gameroy::gameboy::{cartridge::Cartridge, GameBoy};
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {

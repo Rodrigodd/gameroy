@@ -1,5 +1,4 @@
-use std::convert::TryInto;
-use std::io::Read;
+use std::{convert::TryInto, io::Read};
 
 use crate::save_state::{LoadStateError, SaveState};
 

@@ -7,7 +7,6 @@ use giui::{
     widgets::{ListBuilder, ScrollBar, ScrollView, ViewLayout},
     BuilderContext, ControlBuilder, Gui, GuiRender, Id,
 };
-
 use sprite_render::{Camera, SpriteInstance, SpriteRender};
 use winit::{
     dpi::PhysicalSize,

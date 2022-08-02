@@ -1,10 +1,3 @@
-use crate::{
-    event_table::EventTable,
-    style::Style,
-    ui::{Textures, Ui},
-    widget::{PixelPerfectLayout, SplitView},
-    EmulatorEvent, UserEvent,
-};
 use std::{cell::RefCell, rc::Rc};
 
 use giui::{
@@ -14,8 +7,15 @@ use giui::{
     widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
     BuilderContext, Context, Gui, Id,
 };
-
 use winit::event_loop::EventLoopProxy;
+
+use crate::{
+    event_table::EventTable,
+    style::Style,
+    ui::{Textures, Ui},
+    widget::{PixelPerfectLayout, SplitView},
+    EmulatorEvent, UserEvent,
+};
 mod disassembler_viewer;
 mod ppu_viewer;
 

@@ -1,10 +1,12 @@
-use gameroy_lib::gameroy::consts::CLOCK_SPEED;
-use gameroy_lib::gameroy::gameboy::cartridge::Cartridge;
-use gameroy_lib::gameroy::gameboy::GameBoy;
-use gameroy_lib::gameroy::interpreter::Interpreter;
 use std::{
     path::PathBuf,
     time::{Duration, Instant},
+};
+
+use gameroy_lib::gameroy::{
+    consts::CLOCK_SPEED,
+    gameboy::{cartridge::Cartridge, GameBoy},
+    interpreter::Interpreter,
 };
 
 // Return the mean and standart error of the samples

@@ -748,8 +748,9 @@ mod mooneye {
     }
 
     fn test_rom(rom: &str, timeout: u64) {
-        use super::*;
         use std::path::PathBuf;
+
+        use super::*;
         let rom_path: PathBuf =
             (TEST_ROM_PATH.to_string() + "mooneye-test-suite/" + rom + ".gb").into();
         let rom = std::fs::read(&rom_path).unwrap();

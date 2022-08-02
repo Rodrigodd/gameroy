@@ -1,4 +1,5 @@
 use std::panic;
+
 use wasm_bindgen::prelude::*;
 
 pub static RESIZE: parking_lot::Mutex<Option<(u32, u32)>> = parking_lot::const_mutex(None);

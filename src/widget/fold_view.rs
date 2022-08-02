@@ -1,7 +1,9 @@
-use giui::graphics::Graphic;
-use giui::layouts::{FitGraphic, HBoxLayout, VBoxLayout};
-use giui::text::Text;
-use giui::{Behaviour, BuilderContext, Id};
+use giui::{
+    graphics::Graphic,
+    layouts::{FitGraphic, HBoxLayout, VBoxLayout},
+    text::Text,
+    Behaviour, BuilderContext, Id,
+};
 
 use crate::style::Style;
 

@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::atomic::AtomicU32;
+use std::{collections::HashMap, future::Future, pin::Pin, sync::atomic::AtomicU32};
 
 use giui::Context;
 use winit::event_loop::EventLoopProxy;

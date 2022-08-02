@@ -1,6 +1,6 @@
-use giui::Context;
-use giui::Id;
 use std::collections::HashMap;
+
+use giui::{Context, Id};
 
 pub struct GamePad {
     buttons: [Id; 9],
@@ -105,9 +105,8 @@ impl giui::Behaviour for GamePad {
 
 #[cfg(test)]
 mod test {
-    use crate::AppState;
-
     use super::*;
+    use crate::AppState;
 
     fn ctx_and_game_pad() -> giui::Gui {
         let size = 900.0;

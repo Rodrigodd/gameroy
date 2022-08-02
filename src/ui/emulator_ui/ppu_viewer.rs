@@ -13,11 +13,9 @@ use winit::event_loop::EventLoopProxy;
 use crate::{
     event_table::{EmulatorUpdated, EventTable, FrameUpdated, Handle},
     style::Style,
-    ui::Textures,
+    ui::{scroll_viewer, Textures},
     UserEvent,
 };
-
-use crate::ui::scroll_viewer;
 
 struct TilemapViewer {
     info_text: Id,

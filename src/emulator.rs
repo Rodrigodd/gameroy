@@ -1,10 +1,8 @@
-use flume::{Receiver, TryRecvError};
-use instant::Instant;
 use std::{collections::VecDeque, io::Write, sync::Arc, time::Duration};
 
 #[cfg(feature = "audio-engine")]
 use audio_engine::{AudioEngine, SoundSource};
-
+use flume::{Receiver, TryRecvError};
 use gameroy::{
     consts::CLOCK_SPEED,
     debugger::{Debugger, RunResult},
@@ -13,12 +11,12 @@ use gameroy::{
     parser::Vbm,
     save_state::SaveState,
 };
+use instant::Instant;
 use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
 
-use crate::rom_loading::RomFile;
-
 use super::UserEvent;
+use crate::rom_loading::RomFile;
 
 #[derive(Debug)]
 pub enum EmulatorEvent {

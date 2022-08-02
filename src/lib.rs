@@ -1,14 +1,3 @@
-pub use rfd;
-
-use std::{path::PathBuf, rc::Rc, sync::Arc, thread};
-
-use gameroy::{
-    debugger::{Debugger, DebuggerEvent},
-    gameboy::GameBoy,
-    parser::Vbm,
-};
-use parking_lot::Mutex;
-
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
@@ -31,10 +20,26 @@ mod widget {
 }
 pub mod config;
 
+use std::{path::PathBuf, rc::Rc, sync::Arc, thread};
+
 use config::{config, normalize_config_path};
 use emulator::{Emulator, EmulatorEvent};
-
 pub use gameroy;
+use gameroy::{
+    debugger::{Debugger, DebuggerEvent},
+    gameboy::GameBoy,
+    parser::Vbm,
+};
+use parking_lot::Mutex;
+pub use rfd;
+use rom_loading::load_gameboy;
+pub use rom_loading::RomFile;
+use winit::{
+    dpi::PhysicalSize,
+    event::{Event, WindowEvent},
+    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    window::{Icon, Window, WindowBuilder},
+};
 
 #[macro_use]
 extern crate giui;
@@ -147,17 +152,6 @@ pub fn main(gb: Option<(RomFile, Box<GameBoy>)>, movie: Option<Vbm>) {
         }
     };
 }
-
-use winit::{
-    dpi::PhysicalSize,
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
-    window::{Icon, Window, WindowBuilder},
-};
-
-use crate::rom_loading::load_gameboy;
-
-pub use self::rom_loading::RomFile;
 
 pub struct AppState {
     /// The current state of the joypad. It is a bitmask, where 0 means pressed, and 1 released.

@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
-
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 
 pub fn load_boot_rom() -> Option<[u8; 256]> {

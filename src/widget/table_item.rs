@@ -1,6 +1,6 @@
+use std::{cell::RefCell, rc::Rc};
+
 use giui::{Behaviour, Context, Id, InputFlags, Layout, MouseEvent};
-use std::cell::RefCell;
-use std::rc::Rc;
 use winit::window::CursorIcon;
 
 type ColumnIndex = u16;

@@ -7,10 +7,9 @@
     windows_subsystem = "console"
 )]
 
-use clap::{arg, Command};
-
 use std::path::PathBuf;
 
+use clap::{arg, Command};
 use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile, VERSION};
 
 mod bench;

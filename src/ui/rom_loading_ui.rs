@@ -1,18 +1,20 @@
-use std::cell::RefCell;
-use std::path::PathBuf;
-use std::rc::Rc;
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
-use giui::graphics::Graphic;
-use giui::layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout};
-use giui::text::Text;
-use giui::widgets::{Button, ListBuilder};
-use winit::event_loop::EventLoopProxy;
-use winit::window::Window;
+use giui::{
+    graphics::Graphic,
+    layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
+    text::Text,
+    widgets::{Button, ListBuilder},
+};
+use winit::{event_loop::EventLoopProxy, window::Window};
 
-use crate::rom_loading::{load_gameboy, RomFile};
-use crate::style::Style;
-use crate::widget::table_item::{TableGroup, TableItem};
-use crate::{executor, UserEvent};
+use crate::{
+    executor,
+    rom_loading::{load_gameboy, RomFile},
+    style::Style,
+    widget::table_item::{TableGroup, TableItem},
+    UserEvent,
+};
 
 #[derive(Clone, Debug)]
 pub struct RomEntry {

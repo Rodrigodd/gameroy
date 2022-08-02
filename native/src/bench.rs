@@ -1,9 +1,11 @@
-use gameroy::gameboy::cartridge::Cartridge;
-use gameroy::gameboy::GameBoy;
-use instant::Instant;
-use std::{path::PathBuf, time::Duration};
-
-use gameroy::interpreter::Interpreter;
+use gameroy_lib::gameroy::consts::CLOCK_SPEED;
+use gameroy_lib::gameroy::gameboy::cartridge::Cartridge;
+use gameroy_lib::gameroy::gameboy::GameBoy;
+use gameroy_lib::gameroy::interpreter::Interpreter;
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 // Return the mean and standart error of the samples
 fn mean(samples: &[Duration]) -> (Duration, Duration) {
@@ -56,7 +58,7 @@ pub fn benchmark(path: &str, timeout: u64, len: usize) {
     let (mean_time, mean_error) = mean(&times);
     println!("mean time: {:?} +/- {:?}", mean_time, mean_error);
 
-    let emulated_time = game_boy.clock_count as f64 / gameroy::consts::CLOCK_SPEED as f64;
+    let emulated_time = game_boy.clock_count as f64 / CLOCK_SPEED as f64;
     let times = emulated_time / mean_time.as_secs_f64();
     let times_err = times * mean_error.as_secs_f64() / mean_time.as_secs_f64();
     println!(

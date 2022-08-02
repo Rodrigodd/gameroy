@@ -11,7 +11,9 @@ use clap::{arg, Command};
 
 use std::path::PathBuf;
 
-use gameroy_lib::{bench, config, gameroy, rom_loading::load_gameboy, RomFile, VERSION};
+use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile, VERSION};
+
+mod bench;
 
 pub fn main() {
     let _logger = flexi_logger::Logger::try_with_env_or_str("gameroy=info")

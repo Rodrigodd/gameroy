@@ -14,9 +14,6 @@ mod wasm;
 
 mod waker_fn;
 
-#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-pub mod bench;
-
 mod emulator;
 mod event_table;
 mod executor;

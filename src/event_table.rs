@@ -30,6 +30,10 @@ impl Event for BreakpointsUpdated {}
 pub struct WatchsUpdated;
 impl Event for WatchsUpdated {}
 
+#[derive(Clone, Copy)]
+pub struct UpdateRomList;
+impl Event for UpdateRomList {}
+
 /// A handle to a registered event callback. When this is dropped, the callback is unregistered.
 pub struct Handle<E: Event> {
     /// The value of the pointer that the callback have.

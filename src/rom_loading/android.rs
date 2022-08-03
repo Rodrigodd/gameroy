@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
+    Ok(vec![])
+}
+
 pub fn load_boot_rom() -> Option<[u8; 256]> {
     None
 }

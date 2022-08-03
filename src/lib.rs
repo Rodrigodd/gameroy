@@ -311,7 +311,7 @@ impl App for RomLoadingApp {
     fn handle_event(
         &mut self,
         event: Event<UserEvent>,
-        _ui: &mut ui::Ui,
+        ui: &mut ui::Ui,
         _window: &winit::window::Window,
         _control: &mut ControlFlow,
         proxy: &EventLoopProxy<UserEvent>,
@@ -341,8 +341,9 @@ impl App for RomLoadingApp {
                         })
                         .unwrap();
                 };
-                executor::Executor::spawn_task(task, &mut _ui.gui.get_context());
+                executor::Executor::spawn_task(task, &mut ui.gui.get_context());
             }
+            Event::UserEvent(UserEvent::UpdateRomList) => ui.notify(event_table::UpdateRomList),
             _ => {}
         }
     }
@@ -350,7 +351,7 @@ impl App for RomLoadingApp {
     fn build_ui(&self, ui: &mut ui::Ui) {
         let gui = &mut ui.gui;
         let style = &gui.get::<style::Style>().clone();
-        ui::create_rom_loading_ui(gui, style);
+        ui::create_rom_loading_ui(gui, style, ui.event_table.clone());
     }
 }
 
@@ -530,6 +531,7 @@ impl App for EmulatorApp {
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
                     LoadRom { .. } => unreachable!(),
                     SpawnTask(_) => {}
+                    UpdateRomList => {}
                 }
             }
             _ => {}
@@ -551,4 +553,5 @@ pub enum UserEvent {
         game_boy: Box<GameBoy>,
     },
     SpawnTask(u32),
+    UpdateRomList,
 }

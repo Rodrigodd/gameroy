@@ -9,6 +9,8 @@ use giui::{
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
+    config::config,
+    event_table::{self, EventTable, Handle},
     executor,
     rom_loading::{load_gameboy, RomFile},
     style::Style,
@@ -45,6 +47,15 @@ impl RomEntry {
         self.size
     }
 }
+impl From<RomFile> for RomEntry {
+    fn from(file: RomFile) -> Self {
+        Self {
+            name: file.file_name().to_string(),
+            size: 0,
+            file,
+        }
+    }
+}
 
 struct SetSelected(usize);
 
@@ -53,14 +64,22 @@ struct RomList {
     table_group: Rc<RefCell<TableGroup>>,
     last_selected: Option<usize>,
     selected: Option<usize>,
+    rebuild_everthing: bool,
+    _handle: Handle<event_table::UpdateRomList>,
 }
 impl RomList {
-    fn new(roms: Vec<RomEntry>, table_group: Rc<RefCell<TableGroup>>) -> Self {
+    fn new(
+        roms: Vec<RomEntry>,
+        table_group: Rc<RefCell<TableGroup>>,
+        handle: Handle<event_table::UpdateRomList>,
+    ) -> Self {
         Self {
             roms,
             table_group,
             last_selected: None,
+            rebuild_everthing: false,
             selected: None,
+            _handle: handle,
         }
     }
 }
@@ -71,6 +90,10 @@ impl ListBuilder for RomList {
         item_id: giui::Id,
         ctx: &mut dyn giui::BuilderContext,
     ) -> bool {
+        if self.rebuild_everthing {
+            return false;
+        }
+
         if self.last_selected.is_some() {
             if Some(index) == self.last_selected || Some(index) == self.selected {
                 *ctx.get_graphic_mut(item_id) = if self.selected == Some(index) {
@@ -85,6 +108,7 @@ impl ListBuilder for RomList {
 
     fn finished_layout(&mut self) {
         self.last_selected = None;
+        self.rebuild_everthing = false;
     }
 
     fn item_count(&mut self, _ctx: &mut dyn giui::BuilderContext) -> usize {
@@ -98,6 +122,10 @@ impl ListBuilder for RomList {
             }
             self.last_selected = self.selected.or(Some(index));
             self.selected = Some(index);
+            ctx.dirty_layout(this);
+        } else if event.is::<event_table::UpdateRomList>() {
+            self.roms = list_roms();
+            self.rebuild_everthing = true;
             ctx.dirty_layout(this);
         }
     }
@@ -197,7 +225,11 @@ impl ListBuilder for RomList {
     }
 }
 
-pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
+pub fn create_rom_loading_ui(
+    ctx: &mut giui::Gui,
+    style: &Style,
+    event_table: Rc<RefCell<EventTable>>,
+) {
     let v_box = ctx
         .create_control()
         .layout(VBoxLayout::new(2.0, [0.0; 4], -1))
@@ -263,6 +295,49 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         })
         .build(ctx);
 
+    #[cfg(all(feature = "rfd", not(target_arch = "wasm32")))]
+    let _folder_button = ctx
+        .create_control()
+        .parent(h_box)
+        .layout(HBoxLayout::new(0.0, [0.0; 4], -1))
+        .behaviour(Button::new(
+            style.delete_button.clone(),
+            true,
+            move |_, ctx| {
+                let handle = ctx.get::<std::rc::Rc<Window>>().clone();
+                let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
+                let task = async move {
+                    let handle = &*handle;
+                    let folder = rfd::AsyncFileDialog::new()
+                        .set_title("Open GameBoy Rom file")
+                        .add_filter("GameBoy roms", &["gb"])
+                        .set_parent(handle)
+                        .pick_folder()
+                        .await;
+
+                    if let Some(folder) = folder {
+                        let path = folder.path().to_string_lossy().to_string();
+                        config().rom_folder = Some(path);
+
+                        proxy.send_event(UserEvent::UpdateRomList).unwrap();
+                    }
+                };
+                executor::Executor::spawn_task(task, ctx);
+            },
+        ))
+        .child(ctx, |cb, _| {
+            cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+        })
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "choose folder".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitGraphic)
+        })
+        .build(ctx);
+
     let _remain = ctx
         .create_control()
         .graphic(style.background.clone())
@@ -270,40 +345,25 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
         .expand_x(true)
         .build(ctx);
 
-    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-    let roms = crate::config()
-        .rom_folder
-        .as_ref()
-        .and_then(|x| {
-            load_roms(&x)
-                .map_err(|e| log::error!("error reading roms folder: {}", e))
-                .ok()
-        })
-        .unwrap_or_default();
-    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-    let roms = vec![
-        // RomEntry {
-        // name: "OH DEMO".to_string(),
-        // size: 32 << 10,
-        // rom: include_bytes!("../../roms/Tetris (World) (Rev A).gb")
-        //     .to_vec()
-        //     .into_boxed_slice()
-        //     .into(),
-        // file_name: "oh.gb".to_string(),
-    // }
-    ];
+    let roms = list_roms();
 
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
         .column(120.0, false)
         .column(490.0, false)
         .column(60.0, false);
 
+    let rom_list_id = ctx.reserve_id();
+
     crate::ui::list(
-        ctx.create_control(),
+        ctx.create_control_reserved(rom_list_id),
         ctx,
         style,
         [0.0; 4],
-        RomList::new(roms, Rc::new(RefCell::new(table))),
+        RomList::new(
+            roms,
+            Rc::new(RefCell::new(table)),
+            event_table.borrow_mut().register(rom_list_id),
+        ),
     )
     .graphic(style.background.clone())
     .parent(v_box)
@@ -311,19 +371,16 @@ pub fn create_rom_loading_ui(ctx: &mut giui::Gui, style: &Style) {
     .build(ctx);
 }
 
-#[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-fn load_roms(roms_path: &str) -> Result<Vec<RomEntry>, std::io::Error> {
-    let roms_path = crate::normalize_config_path(roms_path);
-
-    let roms = std::fs::read_dir(&roms_path)?
-        .flat_map(|x| x.map_err(|e| log::error!("error: {}", e)).ok())
-        .filter_map(|x| {
-            if x.path().extension()? != "gb" {
-                return None;
-            }
-            Some(x)
+fn list_roms() -> Vec<RomEntry> {
+    let roms = crate::config()
+        .rom_folder
+        .as_ref()
+        .and_then(|x| {
+            crate::rom_loading::load_roms(&x)
+                .map_err(|e| log::error!("error reading roms folder: {}", e))
+                .ok()
         })
-        .filter_map(|x| RomEntry::from_path(x.path()).ok())
-        .collect::<Vec<_>>();
-    Ok(roms)
+        .unwrap_or_default();
+    let roms = roms.into_iter().map(|x| RomEntry::from(x)).collect();
+    roms
 }

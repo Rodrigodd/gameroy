@@ -4,6 +4,22 @@ use gameroy::gameboy::cartridge::CartridgeHeader;
 
 use crate::config;
 
+pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
+    let roms_path = crate::normalize_config_path(roms_path);
+
+    let roms = std::fs::read_dir(&roms_path)?
+        .flat_map(|x| x.map_err(|e| log::error!("error: {}", e)).ok())
+        .filter_map(|x| {
+            if x.path().extension()? != "gb" {
+                return None;
+            }
+            Some(x)
+        })
+        .map(|x| RomFile::from_path(x.path()))
+        .collect::<Vec<_>>();
+    Ok(roms)
+}
+
 fn open_and_read(
     rom_path: &std::path::Path,
     writer: &mut impl std::io::Write,

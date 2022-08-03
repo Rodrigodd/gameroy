@@ -120,9 +120,11 @@ pub struct RomFile {
 }
 impl RomFile {
     pub fn file_name(&self) -> Cow<str> {
-        self.uri
+        urlencoding::decode(&self.uri)
+            .unwrap()
             .rsplit_once("/")
             .map_or(self.uri.as_str(), |x| x.1)
+            .to_string()
             .into()
     }
 

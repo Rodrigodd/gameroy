@@ -9,6 +9,7 @@
     )
 ))]
 pub fn main() {
+    gameroy_lib::log_panic();
     log::info!("Starting android gameroy!");
     gameroy_lib::main(None, None)
 }

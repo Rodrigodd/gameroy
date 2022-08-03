@@ -38,7 +38,7 @@ impl<'a> GuiRenderer for Render<'a> {
     }
     fn resize_font_texture(&mut self, font_texture: u32, new_size: [u32; 2]) {
         self.0
-            .resize_texture(new_size[0], new_size[1], font_texture, &[]);
+            .resize_texture(font_texture, new_size[0], new_size[1], &[]);
     }
 }
 

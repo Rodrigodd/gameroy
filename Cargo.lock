@@ -776,7 +776,7 @@ dependencies = [
 [[package]]
 name = "giui"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#7cb3ac96c1648a854cc6f5f65d3242beed4840fb"
+source = "git+https://github.com/Rodrigodd/giui#50a8cf3d2cd775fcad6f7aaa0abc5610532f6fac"
 dependencies = [
  "ab_glyph",
  "bitflags",
@@ -795,7 +795,7 @@ dependencies = [
 [[package]]
 name = "giui-derive"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#7cb3ac96c1648a854cc6f5f65d3242beed4840fb"
+source = "git+https://github.com/Rodrigodd/giui#50a8cf3d2cd775fcad6f7aaa0abc5610532f6fac"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1855,7 +1855,7 @@ dependencies = [
 [[package]]
 name = "sprite-render"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/sprite-render-rs#b5523606930481a32686d01f6ca32d34215f2c0a"
+source = "git+https://github.com/Rodrigodd/sprite-render-rs#b5bdf38cf0f259725800be84aeefc176f4e93482"
 dependencies = [
  "cfg-if 1.0.0",
  "gl_generator",

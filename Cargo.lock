@@ -1699,7 +1699,7 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 [[package]]
 name = "rfd"
 version = "0.9.1"
-source = "git+https://github.com/Rodrigodd/rfd.git?branch=android#0084cae4475f21f5dc22e65069c9bdf814106c5d"
+source = "git+https://github.com/Rodrigodd/rfd.git?branch=android#4014e3bc4738dd9481c5c162acfe7eb1267c055d"
 dependencies = [
  "block",
  "cfg-if 1.0.0",

@@ -195,8 +195,8 @@ impl ListBuilder for RomList {
             if let Some(entry) = entry {
                 item.set_on_click(move |click_count, ctx| {
                     if click_count == 1 {
-                        ctx.send_event_to(list_id, SetSelected(index))
-                    } else if click_count == 2 {
+                        // ctx.send_event_to(list_id, SetSelected(index))
+                        // } else if click_count == 2 {
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
                         let p = proxy.clone();
                         let file = entry.file.clone();
@@ -317,6 +317,7 @@ pub fn create_rom_loading_ui(
 
                     if let Some(folder) = folder {
                         let path = folder.path().to_string_lossy().to_string();
+                        log::info!("setting rom folder to '{}'", path);
                         config().rom_folder = Some(path);
 
                         proxy.send_event(UserEvent::UpdateRomList).unwrap();

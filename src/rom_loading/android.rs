@@ -1,7 +1,58 @@
 use std::borrow::Cow;
 
+use jni::objects::JString;
+
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
-    Ok(vec![])
+    log::trace!("loading rom list in android from uri '{}'", roms_path);
+    let android_context = ndk_context::android_context();
+    let vm =
+        std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+    let childs = jni::Executor::new(vm)
+        .with_attached(|env| {
+            let roms_path = env.new_string(roms_path)?;
+            let string_array = env.call_method(
+                android_context.context() as jni::sys::jobject,
+                "listChild",
+                "(Ljava/lang/String;)[Ljava/lang/String;",
+                &[roms_path.into()],
+            )?;
+
+            let string_array = match string_array {
+                jni::objects::JValue::Object(x) => {
+                    if x.is_null() {
+                        return Ok(None);
+                    }
+                    x
+                }
+                _ => return Err(jni::errors::Error::WrongJValueType("a", "b")),
+            };
+
+            let size = env.get_array_length(*string_array)?;
+            let mut childs = Vec::with_capacity(size as usize);
+            for i in 0..size {
+                let obj = env.get_object_array_element(*string_array, i)?;
+                let string = env
+                    .get_string(JString::from(obj))?
+                    .to_str()
+                    // TODO: I don't know if this is true.
+                    .expect("android.net.Uri.toString should give a valid UTF-8, rigth?")
+                    .to_string();
+                childs.push(string);
+            }
+
+            Ok(Some(childs))
+        })
+        .unwrap();
+
+    let childs = match childs {
+        Some(x) => x,
+        None => return Err(panic!("failed to load children of uri: {}", roms_path)),
+    };
+
+    Ok(childs
+        .into_iter()
+        .map(|x| rfd::FileHandle::wrap(x).into())
+        .collect::<Vec<RomFile>>())
 }
 
 pub fn load_boot_rom() -> Option<[u8; 256]> {

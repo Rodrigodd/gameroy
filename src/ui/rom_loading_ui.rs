@@ -195,8 +195,8 @@ impl ListBuilder for RomList {
             if let Some(entry) = entry {
                 item.set_on_click(move |click_count, ctx| {
                     if click_count == 1 {
-                        // ctx.send_event_to(list_id, SetSelected(index))
-                        // } else if click_count == 2 {
+                       ctx.send_event_to(list_id, SetSelected(index))
+                    } else if click_count == 2 {
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
                         let p = proxy.clone();
                         let file = entry.file.clone();

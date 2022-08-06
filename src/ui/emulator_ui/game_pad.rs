@@ -157,8 +157,8 @@ mod test {
         let mut gui = ctx_and_game_pad();
 
         // 0
+        log::info!("test 0");
 
-        gui.mouse_enter(0);
         gui.mouse_moved(0, 150.0, 150.0);
         gui.mouse_down(0, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x01);
@@ -166,8 +166,8 @@ mod test {
         assert_eq!(gui.get::<AppState>().joypad, !0x00);
 
         // 1
+        log::info!("test 1");
 
-        gui.mouse_enter(1);
         gui.mouse_moved(1, 450.0, 750.0); // 1, 2 => 7
         gui.mouse_down(1, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x80);
@@ -175,21 +175,43 @@ mod test {
         assert_eq!(gui.get::<AppState>().joypad, !0x00);
 
         // 0 & 2
+        log::info!("test 0 & 2");
 
-        gui.mouse_enter(0);
         gui.mouse_moved(0, 150.0, 150.0);
         gui.mouse_down(0, giui::MouseButton::Left);
         assert_eq!(gui.get::<AppState>().joypad, !0x01);
 
-        gui.mouse_enter(2);
         gui.mouse_moved(2, 450.0, 750.0); // 1, 2 => 7
         gui.mouse_down(2, giui::MouseButton::Left);
+        gui.mouse_moved(0, 150.0, 150.0);
+        gui.mouse_moved(2, 450.0, 750.0); // 1, 2 => 7
         assert_eq!(gui.get::<AppState>().joypad, !0x81);
 
         gui.mouse_exit(0);
         assert_eq!(gui.get::<AppState>().joypad, !0x80);
+        gui.mouse_moved(2, 450.0, 750.0); // 1, 2 => 7
+        assert_eq!(gui.get::<AppState>().joypad, !0x80);
 
         gui.mouse_exit(2);
+        assert_eq!(gui.get::<AppState>().joypad, !0x00);
+
+        // 1 & 2
+        log::info!("test 1 & 2");
+
+        gui.mouse_moved(1, 150.0, 150.0);
+        gui.mouse_down(1, giui::MouseButton::Left);
+        assert_eq!(gui.get::<AppState>().joypad, !0x01);
+
+        gui.mouse_moved(2, 450.0, 750.0); // 1, 2 => 7
+        gui.mouse_down(2, giui::MouseButton::Left);
+        gui.mouse_moved(1, 150.0, 150.0);
+        assert_eq!(gui.get::<AppState>().joypad, !0x81);
+
+        gui.mouse_exit(2);
+        gui.mouse_moved(1, 150.0, 150.0);
+        assert_eq!(gui.get::<AppState>().joypad, !0x01);
+
+        gui.mouse_exit(1);
         assert_eq!(gui.get::<AppState>().joypad, !0x00);
     }
 }

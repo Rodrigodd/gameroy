@@ -133,7 +133,8 @@ public class MainActivity extends NativeActivity {
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME
             };
 
-            c = resolver.query(childrenUri, projections, null, null);
+            // I could not make the query sorting work so I sort afterwards
+            c = resolver.query(childrenUri, projections, null, null, null);
 
             if (c != null && c.moveToFirst()) {
                 do {
@@ -145,12 +146,12 @@ public class MainActivity extends NativeActivity {
                     String documentUri = DocumentsContract.buildDocumentUriUsingTree(
                             treeUri, documentId).toString();
 
-
-                    Log.d(TAG, "  " + documentId + ", " + name + ", " + documentUri);
                     uris.add(documentUri);
 
                 } while(c.moveToNext());
             }
+
+            java.util.Collections.sort(uris, java.text.Collator.getInstance());
 
             return uris.toArray(new String[0]);
         } catch(Exception ex) {

@@ -9,7 +9,7 @@ pub fn run() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
     let _logger = wasm_logger::init(wasm_logger::Config::default().module_prefix("gameroy"));
     super::log_panic();
-    super::main();
+    super::main(None, None);
 }
 
 #[wasm_bindgen]

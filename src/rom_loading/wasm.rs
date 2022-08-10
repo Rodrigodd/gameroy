@@ -3,6 +3,11 @@ use std::borrow::Cow;
 use gameroy::gameboy::cartridge::CartridgeHeader;
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 
+pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
+    Ok(Vec::new())
+}
+
+
 pub fn load_boot_rom() -> Option<[u8; 256]> {
     None
 }

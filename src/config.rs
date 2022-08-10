@@ -1,9 +1,30 @@
 use std::path::{Path, PathBuf};
 
+use cfg_if::cfg_if;
 use once_cell::sync::OnceCell;
 use parking_lot::{Mutex, MutexGuard};
 use serde::Deserialize;
 use winit::event::VirtualKeyCode;
+
+cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        pub fn load_config() -> Result<Config, String> {
+            Err("unimplemented".to_string())
+        }
+    } else if #[cfg(target_os = "android")] {
+        pub fn load_config() -> Result<Config, String> {
+            Err("unimplemented".to_string())
+        }
+    } else {
+        pub fn load_config() -> Result<Config, String> {
+            let config_path = normalize_config_path("gameroy.toml");
+            log::info!("using '{}' as config path", config_path.display());
+            let config = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
+            let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
+            Ok(config)
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(default)]
@@ -16,11 +37,7 @@ pub struct Config {
 
 impl Config {
     pub fn load() -> Result<Self, String> {
-        let config_path = normalize_config_path("gameroy.toml");
-        log::info!("using '{}' as config path", config_path.display());
-        let config = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
-        let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
-        Ok(config)
+        load_config()
     }
 }
 

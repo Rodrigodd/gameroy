@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use cfg_if::cfg_if;
 use once_cell::sync::OnceCell;
 use parking_lot::{Mutex, MutexGuard};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use winit::event::VirtualKeyCode;
 
 cfg_if! {
@@ -11,9 +11,72 @@ cfg_if! {
         pub fn load_config() -> Result<Config, String> {
             Err("unimplemented".to_string())
         }
-    } else if #[cfg(target_os = "android")] {
-        pub fn load_config() -> Result<Config, String> {
+
+        pub fn save_config(config: &Config) -> Result<(), String> {
             Err("unimplemented".to_string())
+        }
+    } else if #[cfg(target_os = "android")] {
+        use jni::objects::{JString, JValue};
+        pub fn load_config() -> Result<Config, String> {
+            let android_context = ndk_context::android_context();
+            let vm =
+                std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+
+            let saved = jni::Executor::new(vm)
+                .with_attached(|env| {
+                    let retrn = env.call_method(
+                        android_context.context() as jni::sys::jobject,
+                        "loadPreferences",
+                        "()Ljava/lang/String;",
+                        &[],
+                    )?;
+
+                    let obj = if let JValue::Object(x) = retrn { x } else {
+                        panic!("expected object");
+                    };
+
+                    if obj.is_null() {
+                        return Ok(None);
+                    }
+
+                    let string = env.get_string(obj.into())?.to_string_lossy().into_owned();
+
+                    Ok(Some(string))
+                })
+            .unwrap();
+
+            if let Some(saved) = saved {
+                log::info!("load config: {:?}", saved);
+                let conf = toml::from_str(&saved).map_err(|e| e.to_string())?;
+                Ok(conf)
+            } else {
+                Err("there is no saved config".to_string())
+            }
+        }
+
+        pub fn save_config(conf: &Config) -> Result<(), String> {
+            let android_context = ndk_context::android_context();
+            let vm =
+                std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+
+            jni::Executor::new(vm)
+                .with_attached(|env| {
+                    let serialized = toml::to_string(&conf).unwrap();
+                    log::info!("saving config: {:?}", serialized );
+                    let conf= env.new_string(&serialized)?;
+
+                    env.call_method(
+                        android_context.context() as jni::sys::jobject,
+                        "savePreferences",
+                        "(Ljava/lang/String;)V",
+                        &[conf.into()],
+                    )?;
+
+                    Ok(())
+                })
+            .unwrap();
+
+            Ok(())
         }
     } else {
         pub fn load_config() -> Result<Config, String> {
@@ -23,10 +86,14 @@ cfg_if! {
             let config: Config = toml::from_str(&config).map_err(|e| e.to_string())?;
             Ok(config)
         }
+
+        pub fn save_config(config: &Config) -> Result<(), String> {
+            Err("unimplemented".to_string())
+        }
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct Config {
     pub start_in_debug: bool,
@@ -38,6 +105,10 @@ pub struct Config {
 impl Config {
     pub fn load() -> Result<Self, String> {
         load_config()
+    }
+
+    pub fn save(&self) -> Result<(), String> {
+        save_config(self)
     }
 }
 
@@ -83,7 +154,7 @@ impl Default for Config {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct KeyMap {
     pub left: VirtualKeyCode,

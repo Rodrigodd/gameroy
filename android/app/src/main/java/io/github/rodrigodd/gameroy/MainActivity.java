@@ -4,23 +4,24 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.nio.channels.Channels;
-import java.nio.ByteBuffer;
 
 import android.app.NativeActivity;
-import android.database.Cursor;
-import android.content.Intent;
-import android.os.Bundle;
-import android.util.Log;
-import android.net.Uri;
-import android.provider.DocumentsContract;
 import android.content.ContentResolver;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Bundle;
+import android.provider.DocumentsContract;
+import android.util.Log;
 
 public class MainActivity extends NativeActivity {
 
@@ -116,6 +117,10 @@ public class MainActivity extends NativeActivity {
         Log.d(TAG, "List Child of Uri: " + uriString);
         Uri treeUri = Uri.parse(uriString);
         ContentResolver resolver = getContentResolver();
+
+        int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
+        resolver.takePersistableUriPermission(treeUri, takeFlags);
+
         Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
             treeUri, DocumentsContract.getTreeDocumentId(treeUri));
 
@@ -182,6 +187,21 @@ public class MainActivity extends NativeActivity {
         }
 
     }
+
+    final String preference_file_key = "io.github.rodrigodd.gameroy.PREFERENCE_FILE_KEY";
+
+    public void savePreferences(String config) {
+        SharedPreferences sharedPref = getSharedPreferences(preference_file_key, MODE_PRIVATE);
+        sharedPref.edit()
+            .putString("config", config)
+            .apply();
+    }
+
+    public String loadPreferences() {
+        SharedPreferences sharedPref = getSharedPreferences(preference_file_key, MODE_PRIVATE);
+        return sharedPref.getString("config", null);
+    }
+
 
     private native void filePickerResult(long callback_ptr, String uri);
 }

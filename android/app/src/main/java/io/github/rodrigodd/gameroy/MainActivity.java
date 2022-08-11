@@ -35,7 +35,7 @@ public class MainActivity extends NativeActivity {
 
     private static final AtomicInteger nextID = new AtomicInteger(1);
 
-    // TODOo: make this persiste Activity destruction.
+    // TODO: make this persiste Activity destruction.
     private Hashtable<Integer, Long> callback_ptrs = new Hashtable<>();
 
     @Override
@@ -97,12 +97,13 @@ public class MainActivity extends NativeActivity {
         }
     }
 
-    public ByteBuffer readUri(String uriString) {
+    /// If `bytes` is 0, read the entiry file. Otherwise read only the first `bytes` bytes.
+    public ByteBuffer readUri(String uriString, int bytes) {
         Log.d(TAG, "Read Uri: " + uriString);
         Uri uri = Uri.parse(uriString);
         try {
             InputStream in = getContentResolver().openInputStream(uri);
-            ByteBuffer buffer = ByteBuffer.allocateDirect(in.available());
+            ByteBuffer buffer = ByteBuffer.allocateDirect(bytes == 0 ? in.available() : bytes);
             Channels.newChannel(in).read(buffer);
             buffer.position(0);
 

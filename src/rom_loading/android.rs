@@ -1,6 +1,6 @@
+use gameroy::gameboy::cartridge::CartridgeHeader;
+use jni::objects::{JString, JValue};
 use std::borrow::Cow;
-
-use jni::objects::JString;
 
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
     log::trace!("loading rom list in android from uri '{}'", roms_path);
@@ -18,7 +18,7 @@ pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
             )?;
 
             let string_array = match string_array {
-                jni::objects::JValue::Object(x) => {
+                JValue::Object(x) => {
                     if x.is_null() {
                         return Ok(None);
                     }
@@ -74,7 +74,7 @@ pub fn load_file(file_name: &str) -> Option<Vec<u8>> {
             )?;
 
             let buffer = match buffer {
-                jni::objects::JValue::Object(x) => {
+                JValue::Object(x) => {
                     if x.is_null() {
                         return Ok(None);
                     }
@@ -114,11 +114,44 @@ pub fn save_file(file_name: &str, data: &[u8]) {
         .unwrap();
 }
 
+fn read_uri(uri: &str, bytes: i32) -> Result<Vec<u8>, String> {
+    let android_context = ndk_context::android_context();
+    let vm =
+        std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+    Ok(jni::Executor::new(vm)
+        .with_attached(|env| {
+            let uri = env.new_string(uri)?;
+            let buffer = env.call_method(
+                android_context.context() as jni::sys::jobject,
+                "readUri",
+                "(Ljava/lang/String;I)Ljava/nio/ByteBuffer;",
+                &[uri.into(), JValue::Int(bytes)],
+            )?;
+            let buffer = match buffer {
+                JValue::Object(x) => jni::objects::JByteBuffer::from(x),
+                _ => return Err(jni::errors::Error::WrongJValueType("a", "b")),
+            };
+
+            let data = env.get_direct_buffer_address(buffer)?.to_vec();
+
+            Ok(data)
+        })
+        .unwrap())
+}
+
 #[derive(Clone, Debug)]
 pub struct RomFile {
     uri: String,
 }
 impl RomFile {
+    pub async fn get_header(&self) -> Result<CartridgeHeader, String> {
+        let header = read_uri(self.uri.as_str(), 0x150)?;
+        match CartridgeHeader::from_bytes(&header) {
+            Ok(x) | Err((Some(x), _)) => Ok(x),
+            Err((_, e)) => Err(e),
+        }
+    }
+
     pub fn file_name(&self) -> Cow<str> {
         urlencoding::decode(&self.uri)
             .unwrap()
@@ -129,7 +162,7 @@ impl RomFile {
     }
 
     pub async fn read(&self) -> Result<Vec<u8>, String> {
-        Ok(rfd::FileHandle::wrap(self.uri.clone()).read().await)
+        read_uri(self.uri.as_str(), 0)
     }
 
     pub fn save_ram_data(&self, data: &[u8]) -> Result<(), String> {

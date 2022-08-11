@@ -41,6 +41,8 @@ use winit::{
     window::{Icon, Window, WindowBuilder},
 };
 
+use self::ui::RomEntry;
+
 #[macro_use]
 extern crate giui;
 
@@ -343,7 +345,10 @@ impl App for RomLoadingApp {
                 };
                 executor::Executor::spawn_task(task, &mut ui.gui.get_context());
             }
-            Event::UserEvent(UserEvent::UpdateRomList) => ui.notify(event_table::UpdateRomList),
+            Event::UserEvent(UserEvent::UpdateRomList { id, roms }) => {
+                ui.gui
+                    .send_event_to(id, Box::new(event_table::UpdateRomList(roms)));
+            }
             _ => {}
         }
     }
@@ -530,8 +535,7 @@ impl App for EmulatorApp {
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
                     LoadRom { .. } => unreachable!(),
-                    SpawnTask(_) => {}
-                    UpdateRomList => {}
+                    _ => {}
                 }
             }
             _ => {}
@@ -553,5 +557,8 @@ pub enum UserEvent {
         game_boy: Box<GameBoy>,
     },
     SpawnTask(u32),
-    UpdateRomList,
+    UpdateRomList {
+        id: giui::Id,
+        roms: Vec<RomEntry>,
+    },
 }

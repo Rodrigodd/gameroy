@@ -1,3 +1,4 @@
+use std::io::{Read, Write};
 use std::{borrow::Cow, path::PathBuf};
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
@@ -58,13 +59,12 @@ impl RomFile {
     }
 
     pub async fn get_header(&self) -> Result<CartridgeHeader, String> {
-        let mut file =
-            std::fs::File::open(self.path.clone()).map_err(|e| format!("io error: {}", e))?;
-        let header = match CartridgeHeader::from_reader(&mut file) {
-            Ok(x) | Err((Some(x), _)) => x,
-            Err((_, e)) => return Err(e),
-        };
-        Ok(header)
+        let path = self.path.clone();
+        let mut file = std::fs::File::open(path).map_err(|e| format!("io error: {}", e))?;
+        match CartridgeHeader::from_reader(&mut file) {
+            Ok(x) | Err((Some(x), _)) => Ok(x),
+            Err((_, e)) => Err(e),
+        }
     }
 
     pub fn file_name(&self) -> Cow<str> {

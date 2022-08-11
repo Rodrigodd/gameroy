@@ -1,5 +1,6 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
 
+use gameroy::gameboy::cartridge::CartridgeHeader;
 use giui::{
     graphics::Graphic,
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
@@ -65,21 +66,15 @@ struct RomList {
     last_selected: Option<usize>,
     selected: Option<usize>,
     rebuild_everthing: bool,
-    _handle: Handle<event_table::UpdateRomList>,
 }
 impl RomList {
-    fn new(
-        roms: Vec<RomEntry>,
-        table_group: Rc<RefCell<TableGroup>>,
-        handle: Handle<event_table::UpdateRomList>,
-    ) -> Self {
+    fn new(roms: Vec<RomEntry>, table_group: Rc<RefCell<TableGroup>>) -> Self {
         Self {
             roms,
             table_group,
             last_selected: None,
             rebuild_everthing: false,
             selected: None,
-            _handle: handle,
         }
     }
 }
@@ -124,7 +119,8 @@ impl ListBuilder for RomList {
             self.selected = Some(index);
             ctx.dirty_layout(this);
         } else if event.is::<event_table::UpdateRomList>() {
-            self.roms = list_roms();
+            let list = event.downcast::<event_table::UpdateRomList>().unwrap();
+            self.roms = list.0;
             self.rebuild_everthing = true;
             ctx.dirty_layout(this);
         }
@@ -230,6 +226,8 @@ pub fn create_rom_loading_ui(
     style: &Style,
     event_table: Rc<RefCell<EventTable>>,
 ) {
+    let rom_list_id = ctx.reserve_id();
+
     let v_box = ctx
         .create_control()
         .layout(VBoxLayout::new(2.0, [0.0; 4], -1))
@@ -323,7 +321,12 @@ pub fn create_rom_loading_ui(
                             .save()
                             .map_err(|x| log::error!("error saving config: {}", x));
 
-                        proxy.send_event(UserEvent::UpdateRomList).unwrap();
+                        proxy
+                            .send_event(UserEvent::UpdateRomList {
+                                id: rom_list_id,
+                                roms: list_roms().await,
+                            })
+                            .unwrap();
                     }
                 };
                 executor::Executor::spawn_task(task, ctx);
@@ -349,25 +352,30 @@ pub fn create_rom_loading_ui(
         .expand_x(true)
         .build(ctx);
 
-    let roms = list_roms();
+    let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
+    executor::Executor::spawn_task(
+        async move {
+            proxy
+                .send_event(UserEvent::UpdateRomList {
+                    id: rom_list_id,
+                    roms: list_roms().await,
+                })
+                .unwrap();
+        },
+        &mut ctx.get_context(),
+    );
 
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
         .column(120.0, false)
         .column(490.0, false)
         .column(60.0, false);
 
-    let rom_list_id = ctx.reserve_id();
-
     crate::ui::list(
         ctx.create_control_reserved(rom_list_id),
         ctx,
         style,
         [0.0; 4],
-        RomList::new(
-            roms,
-            Rc::new(RefCell::new(table)),
-            event_table.borrow_mut().register(rom_list_id),
-        ),
+        RomList::new(Vec::new(), Rc::new(RefCell::new(table))),
     )
     .graphic(style.background.clone())
     .parent(v_box)
@@ -375,7 +383,9 @@ pub fn create_rom_loading_ui(
     .build(ctx);
 }
 
-fn list_roms() -> Vec<RomEntry> {
+async fn list_roms() -> Vec<RomEntry> {
+    let start = instant::Instant::now();
+
     let roms = crate::config()
         .rom_folder
         .as_ref()
@@ -385,6 +395,24 @@ fn list_roms() -> Vec<RomEntry> {
                 .ok()
         })
         .unwrap_or_default();
-    let roms = roms.into_iter().map(|x| RomEntry::from(x)).collect();
-    roms
+    let mut entries = Vec::with_capacity(roms.len());
+    for file in roms.into_iter() {
+        let header: CartridgeHeader = match file.get_header().await {
+            Ok(x) => x,
+            Err(err) => {
+                log::error!("error reading '{}' header: {}", file.file_name(), err);
+                continue;
+            }
+        };
+        let entry = RomEntry {
+            name: header.title_as_string(),
+            size: header.rom_size_in_bytes().unwrap_or(0) as u64,
+            file,
+        };
+        entries.push(entry);
+    }
+
+    log::info!("loading roms took: {:?}", start.elapsed());
+
+    entries
 }

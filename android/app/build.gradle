@@ -18,6 +18,10 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    packagingOptions {
+        jniLibs.keepDebugSymbols += "**/libgameroy_android.so"
+    }
+
     buildTypes {
         release {
             minifyEnabled false

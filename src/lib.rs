@@ -480,23 +480,47 @@ impl App for EmulatorApp {
             }
             #[cfg(any(target_arch = "wasm32"))]
             Event::MainEventsCleared => {
+                let mut poll = true;
                 if let Ok(mut event) = self.recv.try_recv() {
                     loop {
                         if self.emulator.handle_event(event) {
                             // break 'event_loop;
                         }
                         match self.emulator.poll() {
-                            _ => {}
+                            emulator::Control::Poll => {
+                                poll = true;
+                                *_control = ControlFlow::Poll
+                            }
+                            emulator::Control::Wait => {
+                                poll = false;
+                                *_control = ControlFlow::Wait
+                            }
                         }
                         match self.recv.try_recv() {
                             Ok(x) => event = x,
                             _ => break,
                         }
                     }
-                } else {
-                    match self.emulator.poll() {
-                        emulator::Control::Poll => *_control = ControlFlow::Poll,
-                        emulator::Control::Wait => {}
+                }
+
+                if poll {
+                    use instant::{Duration, Instant};
+
+                    // This assumes that every frame has 10 ms of slack time. Should estimate this
+                    // somehow.
+                    let next_frame = Instant::now() + Duration::from_micros(10_000);
+
+                    'polling: while Instant::now() < next_frame {
+                        match self.emulator.poll() {
+                            emulator::Control::Poll => {
+                                *_control = ControlFlow::Poll;
+                                continue 'polling;
+                            }
+                            emulator::Control::Wait => {
+                                *_control = ControlFlow::Wait;
+                                break 'polling;
+                            }
+                        }
                     }
                 }
             }

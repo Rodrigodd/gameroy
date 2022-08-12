@@ -2,7 +2,7 @@ use gameroy::gameboy::cartridge::CartridgeHeader;
 use jni::objects::{JString, JValue};
 use std::borrow::Cow;
 
-pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
+pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, String> {
     log::trace!("loading rom list in android from uri '{}'", roms_path);
     let android_context = ndk_context::android_context();
     let vm =
@@ -46,7 +46,7 @@ pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
 
     let childs = match childs {
         Some(x) => x,
-        None => return Err(panic!("failed to load children of uri: {}", roms_path)),
+        None => return Err(format!("failed to load children of uri: {}", roms_path)),
     };
 
     Ok(childs

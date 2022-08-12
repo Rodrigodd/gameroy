@@ -2,7 +2,6 @@ use std::{collections::VecDeque, io::Write, sync::Arc, time::Duration};
 
 #[cfg(feature = "audio-engine")]
 use audio_engine::{AudioEngine, SoundSource};
-use flume::{Receiver, TryRecvError};
 use gameroy::{
     consts::CLOCK_SPEED,
     debugger::{Debugger, RunResult},
@@ -449,18 +448,6 @@ impl Emulator {
         this
     }
 
-    pub fn run(
-        gb: Arc<ParkMutex<GameBoy>>,
-        debugger: Arc<ParkMutex<Debugger>>,
-        recv: Receiver<EmulatorEvent>,
-        proxy: EventLoopProxy<UserEvent>,
-        movie: Option<Vbm>,
-        rom: RomFile,
-    ) {
-        let mut this = Self::new(gb, debugger, proxy, movie, rom);
-        this.event_loop(recv);
-    }
-
     fn set_state(&mut self, new_state: EmulatorState) {
         if self.state == EmulatorState::Idle {
             self.proxy.send_event(UserEvent::EmulatorStarted).unwrap();
@@ -471,7 +458,8 @@ impl Emulator {
         self.state = new_state;
     }
 
-    fn event_loop(&mut self, recv: Receiver<EmulatorEvent>) {
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    pub fn event_loop(&mut self, recv: flume::Receiver<EmulatorEvent>) {
         'event_loop: while let Ok(mut event) = recv.recv() {
             'handle_event: loop {
                 if self.handle_event(event) {
@@ -484,7 +472,7 @@ impl Emulator {
                                 event = next_event;
                                 continue 'handle_event;
                             }
-                            Err(TryRecvError::Disconnected) => break 'event_loop,
+                            Err(flume::TryRecvError::Disconnected) => break 'event_loop,
                             _ => {
                                 continue 'pool;
                             }

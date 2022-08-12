@@ -35,7 +35,7 @@ pub use rom_loading::RomFile;
 use winit::{
     dpi::PhysicalSize,
     event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
     window::{Icon, Window, WindowBuilder},
 };
 
@@ -95,7 +95,7 @@ pub fn main(gb: Option<(RomFile, Box<GameBoy>)>, movie: Option<Vbm>) {
     };
 
     // create winit's window and event_loop
-    let event_loop = EventLoop::with_user_event();
+    let event_loop = EventLoopBuilder::with_user_event().build();
     let wb = WindowBuilder::new()
         .with_inner_size(PhysicalSize::new(768u32, 400))
         // wait every thing to be loaded before showing the window
@@ -126,16 +126,14 @@ pub fn main(gb: Option<(RomFile, Box<GameBoy>)>, movie: Option<Vbm>) {
     let window = Rc::new(window);
     ui.gui.set(window.clone());
 
-    let proxy = event_loop.create_proxy();
-
     // initiate in the apropriated screen
     match gb {
-        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
         Some((file, gb)) => {
             window.set_title(&format!(
                 "{} - gameroy",
                 gb.cartridge.header.title_as_string()
             ));
+            let proxy = event_loop.create_proxy();
             let emu = EmulatorApp::new(
                 gb,
                 proxy,
@@ -195,11 +193,7 @@ fn start_event_loop(
             Event::NewEvents(_) => {
                 ui.new_events(control, &window);
             }
-            Event::WindowEvent {
-                ref event,
-                window_id,
-                ..
-            } => {
+            Event::WindowEvent { ref event, .. } => {
                 ui.window_event(&event, &window);
                 match event {
                     WindowEvent::CloseRequested => {
@@ -435,7 +429,9 @@ impl EmulatorApp {
         let emu_thread = {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
-                .spawn(move || Emulator::run(gb, debugger, recv, proxy, movie, rom))
+                .spawn(move || {
+                    Emulator::new(gb, debugger, proxy, movie, rom).event_loop(recv);
+                })
                 .unwrap();
             Some(join_handle)
         };
@@ -474,9 +470,9 @@ impl App for EmulatorApp {
                     .unwrap();
                 self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
             }
-            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
             Event::LoopDestroyed => {
                 self.emu_channel.send(EmulatorEvent::Kill).unwrap();
+                #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
                 self.emu_thread.take().unwrap().join().unwrap();
             }
             Event::Suspended => {

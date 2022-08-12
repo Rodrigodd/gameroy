@@ -1,14 +1,13 @@
-use std::io::{Read, Write};
 use std::{borrow::Cow, path::PathBuf};
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
 
 use crate::config::config;
 
-pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
+pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, String> {
     let roms_path = crate::config::normalize_config_path(roms_path);
 
-    let roms = std::fs::read_dir(&roms_path)?
+    let roms = std::fs::read_dir(&roms_path).map_err(|e| e.to_string())?
         .flat_map(|x| x.map_err(|e| log::error!("error: {}", e)).ok())
         .filter_map(|x| {
             if x.path().extension()? != "gb" {

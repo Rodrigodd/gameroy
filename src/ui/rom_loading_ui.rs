@@ -1,6 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
 
-use gameroy::gameboy::cartridge::CartridgeHeader;
 use giui::{
     graphics::Graphic,
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
@@ -11,7 +10,6 @@ use giui::{
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
-    config::config,
     event_table::{self, EventTable},
     executor,
     rom_loading::{load_gameboy, RomFile},
@@ -39,7 +37,7 @@ impl RomEntries {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn start_loading(&self, proxy: EventLoopProxy<UserEvent>) {
-        let roms_path = &config().rom_folder;
+        let roms_path = &crate::config::config().rom_folder;
 
         let roms_path = match roms_path {
             Some(x) => x.clone(),
@@ -54,7 +52,7 @@ impl RomEntries {
             let start = instant::Instant::now();
 
             let roms = crate::rom_loading::load_roms(&roms_path)
-                .map_err(|e| log::error!("error reading roms folder: {}", e))
+                .map_err(|e: String| log::error!("error reading roms: {}", e))
                 .ok()
                 .unwrap_or_default();
             let mut entries = Vec::with_capacity(roms.len());
@@ -65,7 +63,7 @@ impl RomEntries {
                     executor::block_on(task)
                 };
 
-                let header: CartridgeHeader = match header {
+                let header = match header {
                     Ok(x) => x,
                     Err(err) => {
                         log::error!("error reading '{}' header: {}", file.file_name(), err);
@@ -396,8 +394,10 @@ pub fn create_rom_loading_ui(
                     if let Some(folder) = folder {
                         let path = folder.path().to_string_lossy().to_string();
                         log::info!("setting rom folder to '{}'", path);
-                        config().rom_folder = Some(path);
-                        let _ = config()
+
+                        let mut conf = crate::config::config();
+                        conf.rom_folder = Some(path);
+                        let _ = conf
                             .save()
                             .map_err(|x| log::error!("error saving config: {}", x));
 

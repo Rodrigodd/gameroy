@@ -12,11 +12,11 @@ cfg_if! {
             Err("unimplemented".to_string())
         }
 
-        pub fn save_config(config: &Config) -> Result<(), String> {
+        pub fn save_config(_config: &Config) -> Result<(), String> {
             Err("unimplemented".to_string())
         }
     } else if #[cfg(target_os = "android")] {
-        use jni::objects::{JString, JValue};
+        use jni::objects::JValue;
         pub fn load_config() -> Result<Config, String> {
             let android_context = ndk_context::android_context();
             let vm =
@@ -87,7 +87,7 @@ cfg_if! {
             Ok(config)
         }
 
-        pub fn save_config(config: &Config) -> Result<(), String> {
+        pub fn save_config(_config: &Config) -> Result<(), String> {
             Err("unimplemented".to_string())
         }
     }

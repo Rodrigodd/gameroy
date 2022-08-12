@@ -5,7 +5,7 @@ mod waker_fn;
 
 mod emulator;
 mod event_table;
-mod executor;
+pub mod executor;
 pub mod rom_loading;
 mod style;
 mod ui;

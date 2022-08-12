@@ -1,6 +1,7 @@
+use std::borrow::Cow;
+
 use gameroy::gameboy::cartridge::CartridgeHeader;
 use jni::objects::{JString, JValue};
-use std::borrow::Cow;
 
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, String> {
     log::trace!("loading rom list in android from uri '{}'", roms_path);

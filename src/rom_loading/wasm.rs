@@ -7,7 +7,6 @@ pub fn load_roms(_roms_path: &str) -> Result<Vec<RomFile>, String> {
     Ok(Vec::new())
 }
 
-
 pub fn load_boot_rom() -> Option<[u8; 256]> {
     None
 }

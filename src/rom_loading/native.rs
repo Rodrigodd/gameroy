@@ -3,10 +3,10 @@ use std::{borrow::Cow, path::PathBuf};
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
 
-use crate::config;
+use crate::config::config;
 
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, std::io::Error> {
-    let roms_path = crate::normalize_config_path(roms_path);
+    let roms_path = crate::config::normalize_config_path(roms_path);
 
     let roms = std::fs::read_dir(&roms_path)?
         .flat_map(|x| x.map_err(|e| log::error!("error: {}", e)).ok())

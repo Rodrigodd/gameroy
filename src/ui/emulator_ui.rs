@@ -52,7 +52,7 @@ pub fn create_gui(
             let mut set_key = |key: u8, value: bool| {
                 app_state.joypad = (app_state.joypad & !(1 << key)) | ((!value as u8) << key)
             };
-            let km = &crate::config().keymap;
+            let km = &crate::config::config().keymap;
             match event {
                 Pressed(x) if x == km.right => set_key(0, true), // Left
                 Release(x) if x == km.right => set_key(0, false),

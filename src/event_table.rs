@@ -8,8 +8,6 @@ use std::{
 
 use giui::{Context, Id};
 
-use crate::ui::RomEntry;
-
 pub trait Event: Clone + 'static {}
 
 #[derive(Clone)]
@@ -32,7 +30,7 @@ impl Event for BreakpointsUpdated {}
 pub struct WatchsUpdated;
 impl Event for WatchsUpdated {}
 
-pub struct UpdateRomList(pub Vec<RomEntry>);
+pub struct UpdatedRomList;
 
 /// A handle to a registered event callback. When this is dropped, the callback is unregistered.
 pub struct Handle<E: Event> {

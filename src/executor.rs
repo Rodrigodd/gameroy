@@ -30,3 +30,19 @@ impl Executor {
             .unwrap();
     }
 }
+
+/// This works reasonably as long the given Future do not do any Async operation. Not very
+/// useful.
+pub fn block_on<T>(mut task: Pin<&mut impl Future<Output = T>>) -> T {
+    let waker = crate::waker_fn::waker_fn(move || ());
+    let mut cx = std::task::Context::from_waker(&waker);
+
+    loop {
+        match Future::poll(task.as_mut(), &mut cx) {
+            std::task::Poll::Ready(x) => {
+                return x;
+            }
+            std::task::Poll::Pending => {}
+        }
+    }
+}

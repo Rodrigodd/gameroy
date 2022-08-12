@@ -1,4 +1,4 @@
-use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc};
+use std::{cell::RefCell, rc::Rc};
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
 use giui::{
@@ -6,18 +6,100 @@ use giui::{
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
     widgets::{Button, ListBuilder},
+    Id,
 };
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
     config::config,
-    event_table::{self, EventTable, Handle},
+    event_table::{self, EventTable},
     executor,
     rom_loading::{load_gameboy, RomFile},
     style::Style,
     widget::table_item::{TableGroup, TableItem},
     UserEvent,
 };
+
+pub struct RomEntries {
+    roms: Vec<RomEntry>,
+    pub observers: Vec<giui::Id>,
+}
+impl RomEntries {
+    pub fn new(proxy: EventLoopProxy<UserEvent>) -> Self {
+        let this = Self {
+            roms: Vec::new(),
+            observers: Vec::new(),
+        };
+        this.start_loading(proxy);
+        this
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn start_loading(&self, _: EventLoopProxy<UserEvent>) {}
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn start_loading(&self, proxy: EventLoopProxy<UserEvent>) {
+        let roms_path = &config().rom_folder;
+
+        let roms_path = match roms_path {
+            Some(x) => x.clone(),
+            None => {
+                proxy
+                    .send_event(UserEvent::UpdatedRomList { roms: Vec::new() })
+                    .unwrap();
+                return;
+            }
+        };
+        std::thread::spawn(move || {
+            let start = instant::Instant::now();
+
+            let roms = crate::rom_loading::load_roms(&roms_path)
+                .map_err(|e| log::error!("error reading roms folder: {}", e))
+                .ok()
+                .unwrap_or_default();
+            let mut entries = Vec::with_capacity(roms.len());
+            for file in roms.into_iter() {
+                let header = {
+                    let mut task = file.get_header();
+                    let task = unsafe { std::pin::Pin::new_unchecked(&mut task) };
+                    executor::block_on(task)
+                };
+
+                let header: CartridgeHeader = match header {
+                    Ok(x) => x,
+                    Err(err) => {
+                        log::error!("error reading '{}' header: {}", file.file_name(), err);
+                        continue;
+                    }
+                };
+
+                let entry = RomEntry {
+                    name: header.title_as_string(),
+                    size: header.rom_size_in_bytes().unwrap_or(0) as u64,
+                    file,
+                };
+                entries.push(entry);
+            }
+
+            log::info!("loading roms took: {:?}", start.elapsed());
+            proxy
+                .send_event(UserEvent::UpdatedRomList { roms: entries })
+                .unwrap();
+        });
+    }
+
+    fn roms(&self) -> &[RomEntry] {
+        &self.roms
+    }
+
+    pub fn set_roms(&mut self, roms: Vec<RomEntry>) {
+        self.roms = roms;
+    }
+
+    fn register(&mut self, id: Id) {
+        self.observers.push(id);
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct RomEntry {
@@ -30,7 +112,7 @@ pub struct RomEntry {
 }
 impl RomEntry {
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-    pub fn from_path(path: PathBuf) -> Result<RomEntry, String> {
+    pub fn from_path(path: std::path::PathBuf) -> Result<RomEntry, String> {
         let file = RomFile::from_path(path);
         // let header = file.get_header()?;
         Ok(RomEntry {
@@ -61,16 +143,14 @@ impl From<RomFile> for RomEntry {
 struct SetSelected(usize);
 
 struct RomList {
-    roms: Vec<RomEntry>,
     table_group: Rc<RefCell<TableGroup>>,
     last_selected: Option<usize>,
     selected: Option<usize>,
     rebuild_everthing: bool,
 }
 impl RomList {
-    fn new(roms: Vec<RomEntry>, table_group: Rc<RefCell<TableGroup>>) -> Self {
+    fn new(table_group: Rc<RefCell<TableGroup>>) -> Self {
         Self {
-            roms,
             table_group,
             last_selected: None,
             rebuild_everthing: false,
@@ -106,8 +186,8 @@ impl ListBuilder for RomList {
         self.rebuild_everthing = false;
     }
 
-    fn item_count(&mut self, _ctx: &mut dyn giui::BuilderContext) -> usize {
-        self.roms.len() + 1
+    fn item_count(&mut self, ctx: &mut dyn giui::BuilderContext) -> usize {
+        ctx.get::<RomEntries>().roms().len() + 1
     }
 
     fn on_event(&mut self, event: Box<dyn std::any::Any>, this: giui::Id, ctx: &mut giui::Context) {
@@ -118,9 +198,8 @@ impl ListBuilder for RomList {
             self.last_selected = self.selected.or(Some(index));
             self.selected = Some(index);
             ctx.dirty_layout(this);
-        } else if event.is::<event_table::UpdateRomList>() {
-            let list = event.downcast::<event_table::UpdateRomList>().unwrap();
-            self.roms = list.0;
+        } else if event.is::<event_table::UpdatedRomList>() {
+            log::trace!("rebuilding rom list ui");
             self.rebuild_everthing = true;
             ctx.dirty_layout(this);
         }
@@ -136,7 +215,8 @@ impl ListBuilder for RomList {
         let style = &ctx.get::<Style>().clone();
         let header = index == 0;
         let (name, size, file, entry) = if !header {
-            let entry = self.roms[index - 1].clone();
+            let roms = ctx.get::<RomEntries>().roms();
+            let entry = roms[index - 1].clone();
             let size = entry.size();
             let size = if size < (1 << 20) {
                 format!("{} KiB", size >> 10)
@@ -224,7 +304,7 @@ impl ListBuilder for RomList {
 pub fn create_rom_loading_ui(
     ctx: &mut giui::Gui,
     style: &Style,
-    event_table: Rc<RefCell<EventTable>>,
+    _event_table: Rc<RefCell<EventTable>>,
 ) {
     let rom_list_id = ctx.reserve_id();
 
@@ -321,12 +401,7 @@ pub fn create_rom_loading_ui(
                             .save()
                             .map_err(|x| log::error!("error saving config: {}", x));
 
-                        proxy
-                            .send_event(UserEvent::UpdateRomList {
-                                id: rom_list_id,
-                                roms: list_roms().await,
-                            })
-                            .unwrap();
+                        proxy.send_event(UserEvent::UpdateRomList).unwrap();
                     }
                 };
                 executor::Executor::spawn_task(task, ctx);
@@ -352,67 +427,21 @@ pub fn create_rom_loading_ui(
         .expand_x(true)
         .build(ctx);
 
-    let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
-    executor::Executor::spawn_task(
-        async move {
-            proxy
-                .send_event(UserEvent::UpdateRomList {
-                    id: rom_list_id,
-                    roms: list_roms().await,
-                })
-                .unwrap();
-        },
-        &mut ctx.get_context(),
-    );
-
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
         .column(120.0, false)
         .column(490.0, false)
         .column(60.0, false);
 
+    ctx.get_mut::<RomEntries>().register(rom_list_id);
     crate::ui::list(
         ctx.create_control_reserved(rom_list_id),
         ctx,
         style,
         [0.0; 4],
-        RomList::new(Vec::new(), Rc::new(RefCell::new(table))),
+        RomList::new(Rc::new(RefCell::new(table))),
     )
     .graphic(style.background.clone())
     .parent(v_box)
     .expand_y(true)
     .build(ctx);
-}
-
-async fn list_roms() -> Vec<RomEntry> {
-    let start = instant::Instant::now();
-
-    let roms = crate::config()
-        .rom_folder
-        .as_ref()
-        .and_then(|x| {
-            crate::rom_loading::load_roms(&x)
-                .map_err(|e| log::error!("error reading roms folder: {}", e))
-                .ok()
-        })
-        .unwrap_or_default();
-    let mut entries = Vec::with_capacity(roms.len());
-    for file in roms.into_iter() {
-        let header: CartridgeHeader = match file.get_header().await {
-            Ok(x) => x,
-            Err(err) => {
-                log::error!("error reading '{}' header: {}", file.file_name(), err);
-                continue;
-            }
-        };
-        let entry = RomEntry {
-            name: header.title_as_string(),
-            size: header.rom_size_in_bytes().unwrap_or(0) as u64,
-            file,
-        };
-        entries.push(entry);
-    }
-
-    log::info!("loading roms took: {:?}", start.elapsed());
-
-    entries
 }

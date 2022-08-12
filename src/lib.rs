@@ -20,9 +20,8 @@ mod widget {
 }
 pub mod config;
 
-use std::{path::PathBuf, rc::Rc, sync::Arc, thread};
+use std::{rc::Rc, sync::Arc, thread};
 
-use config::{config, normalize_config_path};
 use emulator::{Emulator, EmulatorEvent};
 pub use gameroy;
 use gameroy::{
@@ -32,7 +31,6 @@ use gameroy::{
 };
 use parking_lot::Mutex;
 pub use rfd;
-use rom_loading::load_gameboy;
 pub use rom_loading::RomFile;
 use winit::{
     dpi::PhysicalSize,
@@ -41,7 +39,7 @@ use winit::{
     window::{Icon, Window, WindowBuilder},
 };
 
-use self::ui::RomEntry;
+use self::ui::{RomEntries, RomEntry};
 
 #[macro_use]
 extern crate giui;
@@ -149,7 +147,7 @@ pub fn main(gb: Option<(RomFile, Box<GameBoy>)>, movie: Option<Vbm>) {
             start_event_loop(event_loop, window, ui, Box::new(emu));
         }
         _ => {
-            let rom_loading = RomLoadingApp::new();
+            let rom_loading = RomLoadingApp::new(&mut ui.gui, event_loop.create_proxy());
             start_event_loop(event_loop, window, ui, Box::new(rom_loading))
         }
     };
@@ -304,7 +302,8 @@ trait App {
 
 struct RomLoadingApp;
 impl RomLoadingApp {
-    fn new() -> Self {
+    fn new(gui: &mut giui::Gui, proxy: EventLoopProxy<UserEvent>) -> Self {
+        gui.set(RomEntries::new(proxy));
         Self
     }
 }
@@ -339,15 +338,25 @@ impl App for RomLoadingApp {
                     proxy
                         .send_event(UserEvent::LoadRom {
                             file: file,
-                            game_boy: load_gameboy(rom, ram).unwrap(),
+                            game_boy: rom_loading::load_gameboy(rom, ram).unwrap(),
                         })
                         .unwrap();
                 };
                 executor::Executor::spawn_task(task, &mut ui.gui.get_context());
             }
-            Event::UserEvent(UserEvent::UpdateRomList { id, roms }) => {
-                ui.gui
-                    .send_event_to(id, Box::new(event_table::UpdateRomList(roms)));
+            Event::UserEvent(UserEvent::UpdateRomList) => {
+                ui.gui.get::<ui::RomEntries>().start_loading(proxy.clone());
+            }
+            Event::UserEvent(UserEvent::UpdatedRomList { roms }) => {
+                let rom_entries = &mut ui.gui.get_mut::<ui::RomEntries>();
+                rom_entries.set_roms(roms);
+                let observers = std::mem::take(&mut rom_entries.observers);
+                log::trace!("send events to {:?}", observers);
+                for id in observers.iter() {
+                    ui.gui
+                        .send_event_to(*id, Box::new(event_table::UpdatedRomList));
+                }
+                ui.gui.get_mut::<ui::RomEntries>().observers = observers;
             }
             _ => {}
         }
@@ -557,8 +566,8 @@ pub enum UserEvent {
         game_boy: Box<GameBoy>,
     },
     SpawnTask(u32),
-    UpdateRomList {
-        id: giui::Id,
+    UpdateRomList,
+    UpdatedRomList {
         roms: Vec<RomEntry>,
     },
 }

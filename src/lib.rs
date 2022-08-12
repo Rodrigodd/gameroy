@@ -368,11 +368,11 @@ struct EmulatorApp {
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
     emu_channel: flume::Sender<EmulatorEvent>,
-    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    #[cfg(not(any(target_arch = "wasm32")))]
     emu_thread: Option<thread::JoinHandle<()>>,
-    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+    #[cfg(any(target_arch = "wasm32"))]
     emulator: Emulator,
-    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+    #[cfg(any(target_arch = "wasm32"))]
     recv: flume::Receiver<emulator::EmulatorEvent>,
 }
 impl EmulatorApp {
@@ -425,7 +425,7 @@ impl EmulatorApp {
         ui.gui.set(emu_channel.clone());
         ui.gui.set(AppState::new(debug));
 
-        #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+        #[cfg(not(any(target_arch = "wasm32")))]
         let emu_thread = {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
@@ -439,11 +439,11 @@ impl EmulatorApp {
         EmulatorApp {
             lcd_screen,
             emu_channel,
-            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+            #[cfg(not(any(target_arch = "wasm32")))]
             emu_thread,
-            #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+            #[cfg(any(target_arch = "wasm32"))]
             emulator: Emulator::new(gb, debugger, proxy, movie, rom),
-            #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+            #[cfg(any(target_arch = "wasm32"))]
             recv,
         }
     }
@@ -472,13 +472,13 @@ impl App for EmulatorApp {
             }
             Event::LoopDestroyed => {
                 self.emu_channel.send(EmulatorEvent::Kill).unwrap();
-                #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+                #[cfg(not(any(target_arch = "wasm32")))]
                 self.emu_thread.take().unwrap().join().unwrap();
             }
             Event::Suspended => {
                 self.emu_channel.send(EmulatorEvent::SaveRam).unwrap();
             }
-            #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+            #[cfg(any(target_arch = "wasm32"))]
             Event::MainEventsCleared => {
                 if let Ok(mut event) = self.recv.try_recv() {
                     loop {

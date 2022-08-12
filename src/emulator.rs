@@ -458,7 +458,7 @@ impl Emulator {
         self.state = new_state;
     }
 
-    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+    #[cfg(not(any(target_arch = "wasm32")))]
     pub fn event_loop(&mut self, recv: flume::Receiver<EmulatorEvent>) {
         'event_loop: while let Ok(mut event) = recv.recv() {
             'handle_event: loop {

@@ -12,11 +12,17 @@ build = "build.rs"
 # On windows, a application with console subsystem opens a terminal at startup, wich is undesirable
 console = []
 
-default = ["console"]
+static = ["gameroy/static"]
+rfd = ["gameroy/rfd"]
+audio-engine = ["gameroy/audio-engine"]
+threads = ["gameroy/threads"]
+
+default = ["threads", "console", "audio-engine", "static", "rfd"]
+
 
 [dependencies]
 
-gameroy = { path = ".." }
+gameroy = { path = "..", default-features = false }
 winit = "0.26.1"
 flexi_logger = "0.22.3"
 clap = "3.1.5"

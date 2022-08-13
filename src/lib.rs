@@ -30,6 +30,7 @@ use gameroy::{
     parser::Vbm,
 };
 use parking_lot::Mutex;
+#[cfg(feature = "rfd")]
 pub use rfd;
 pub use rom_loading::RomFile;
 use winit::{
@@ -368,11 +369,11 @@ struct EmulatorApp {
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
     emu_channel: flume::Sender<EmulatorEvent>,
-    #[cfg(not(any(target_arch = "wasm32")))]
+    #[cfg(feature = "threads")]
     emu_thread: Option<thread::JoinHandle<()>>,
-    #[cfg(any(target_arch = "wasm32"))]
+    #[cfg(not(feature = "threads"))]
     emulator: Emulator,
-    #[cfg(any(target_arch = "wasm32"))]
+    #[cfg(not(feature = "threads"))]
     recv: flume::Receiver<emulator::EmulatorEvent>,
 }
 impl EmulatorApp {
@@ -425,7 +426,7 @@ impl EmulatorApp {
         ui.gui.set(emu_channel.clone());
         ui.gui.set(AppState::new(debug));
 
-        #[cfg(not(any(target_arch = "wasm32")))]
+        #[cfg(feature = "threads")]
         let emu_thread = {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
@@ -439,11 +440,11 @@ impl EmulatorApp {
         EmulatorApp {
             lcd_screen,
             emu_channel,
-            #[cfg(not(any(target_arch = "wasm32")))]
+            #[cfg(feature = "threads")]
             emu_thread,
-            #[cfg(any(target_arch = "wasm32"))]
+            #[cfg(not(feature = "threads"))]
             emulator: Emulator::new(gb, debugger, proxy, movie, rom),
-            #[cfg(any(target_arch = "wasm32"))]
+            #[cfg(not(feature = "threads"))]
             recv,
         }
     }
@@ -472,13 +473,13 @@ impl App for EmulatorApp {
             }
             Event::LoopDestroyed => {
                 self.emu_channel.send(EmulatorEvent::Kill).unwrap();
-                #[cfg(not(any(target_arch = "wasm32")))]
+                #[cfg(feature = "threads")]
                 self.emu_thread.take().unwrap().join().unwrap();
             }
             Event::Suspended => {
                 self.emu_channel.send(EmulatorEvent::SaveRam).unwrap();
             }
-            #[cfg(any(target_arch = "wasm32"))]
+            #[cfg(not(feature = "threads"))]
             Event::MainEventsCleared => {
                 let mut poll = true;
                 if let Ok(mut event) = self.recv.try_recv() {

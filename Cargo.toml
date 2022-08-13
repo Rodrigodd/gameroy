@@ -18,14 +18,13 @@ path = "src/lib.rs"
 
 [features]
 
-# Enables console output.
-# On windows, a application with console subsystem opens a terminal at startup, wich is undesirable
-console = []
-
 # Staticly include files in the binary
 static = []
 
-default = ["console", "rfd", "audio-engine"]
+# Enable multithreading. Not support in wasm for example.
+threads = []
+
+default = ["rfd", "audio-engine", "threads"]
 
 [dev-dependencies]
 flexi_logger = "0.22.3"

@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use giui::{
-    graphics::{Graphic, Texture},
+    graphics::{Graphic, Icon, Texture},
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
     widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
@@ -335,7 +335,8 @@ fn create_screen(
 
     let gamepad = cfg!(target_os = "android");
     if gamepad {
-        let mut create_button = |graphic, [ax, ay]: [f32; 2], [x, y]: [f32; 2]| -> Id {
+        let scale_factor = ctx.scale_factor() as f32;
+        let mut create_control = |graphic, [ax, ay]: [f32; 2], [x, y]: [f32; 2]| -> Id {
             let w = 200.0 / 2.0;
             let h = 200.0 / 2.0;
             ctx.create_control()
@@ -346,22 +347,100 @@ fn create_screen(
                 .build(ctx)
         };
 
-        let cross = create_button(style.gamepad.cross.clone(), [0.20, 1.0], [0.0, -150.0]);
-        let r = create_button(Graphic::None, [0.20, 1.0], [40.0, -150.0]);
-        let l = create_button(Graphic::None, [0.20, 1.0], [-40.0, -150.0]);
-        let u = create_button(Graphic::None, [0.20, 1.0], [0.0, -190.0]);
-        let d = create_button(Graphic::None, [0.20, 1.0], [0.0, -110.0]);
+        let cross_anchor = [0.20, 1.0];
+        let cross_margin = [0.0, -150.0];
+        // let _cross = create_control(style.gamepad.cross.clone(), cross_anchor, cross_margin);
 
-        let a = create_button(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -170.0]);
-        let b = create_button(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -140.0]);
-        let select = create_button(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -60.0]);
-        let start = create_button(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -60.0]);
-        let buttons = [r, l, u, d, a, b, select, start, cross];
+        let [su, sd, sl, sr, scenter] = match &style.gamepad.cross {
+            Graphic::Icon(icon) => {
+                let mut section = |section: [f32; 4]| {
+                    let section = section.map(|x| x / 212.0);
+                    let uv_rect = [
+                        icon.uv_rect[0] + icon.uv_rect[2] * section[0],
+                        icon.uv_rect[1] + icon.uv_rect[3] * section[1],
+                        icon.uv_rect[2] * section[2],
+                        icon.uv_rect[3] * section[3],
+                    ];
+                    let size = [icon.size[0] * section[2], icon.size[1] * section[3]];
+                    let graphic = Graphic::Icon(Icon::new(icon.texture, uv_rect, size));
+                    let offset = [
+                        (section[0] + section[2] / 2.0) - 0.5,
+                        (section[1] + section[3] / 2.0) - 0.5,
+                    ];
+                    create_control(
+                        graphic,
+                        cross_anchor,
+                        [
+                            cross_margin[0] + offset[0] * icon.size[0] / scale_factor,
+                            cross_margin[1] + offset[1] * icon.size[1] / scale_factor,
+                        ],
+                    )
+                };
+
+                // using the 212x212 cross texture as reference.
+                let u = section([66.0, 0.00, 80.0, 66.0]);
+                let d = section([66.0, 146., 80.0, 66.0]);
+                let l = section([0.00, 66.0, 66.0, 80.0]);
+                let r = section([146., 66.0, 66.0, 80.0]);
+
+                let center = section([66.0, 66.0, 80.0, 80.0]);
+
+                [u, d, l, r, center]
+            }
+
+            _ => panic!("expected gamepad.cross to be Texture"),
+        };
+
+        let a = create_control(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -170.0]);
+        let b = create_control(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -140.0]);
+        let ab = create_control(
+            style.gamepad.ab.clone(),
+            [1.0, 1.0],
+            [-75.0 - 15.0, -155.0 - 25.0],
+        );
+        let select = create_control(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -60.0]);
+        let start = create_control(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -60.0]);
+
+        // let r = create_control(Graphic::None, [0.20, 1.0], [40.0, -150.0]);
+        // let l = create_control(Graphic::None, [0.20, 1.0], [-40.0, -150.0]);
+        // let u = create_control(Graphic::None, [0.20, 1.0], [0.0, -190.0]);
+        // let d = create_control(Graphic::None, [0.20, 1.0], [0.0, -110.0]);
+        let [r, rd, d, ld, l, lu, u, ru] = std::array::from_fn(|i| {
+            let angle = (i as f32 / 8.0) * std::f32::consts::TAU;
+            let dist = game_pad::GamePad::MAX_DIST;
+            let offset = [angle.cos() * dist, angle.sin() * dist];
+            create_control(
+                Graphic::None,
+                cross_anchor,
+                [cross_margin[0] + offset[0], cross_margin[1] + offset[1]],
+            )
+        });
+
+        let mut buttons = vec![
+            (r, 1 << 0),
+            (l, 1 << 1),
+            (u, 1 << 2),
+            (d, 1 << 3),
+            (a, 1 << 4),
+            (b, 1 << 5),
+            (select, 1 << 6),
+            (start, 1 << 7),
+        ];
+
+        buttons.extend_from_slice(&[
+            (ru, buttons[0].1 | buttons[2].1),
+            (lu, buttons[1].1 | buttons[2].1),
+            (rd, buttons[0].1 | buttons[3].1),
+            (ld, buttons[1].1 | buttons[3].1),
+            (ab, buttons[4].1 | buttons[5].1),
+        ]);
+
+        let sprites = [sr, sl, su, sd, a, b, select, start, scenter];
 
         ctx.create_control_reserved(*screen_id)
             .parent(parent)
             .graphic(style.background.clone())
-            .behaviour(game_pad::GamePad::new(buttons))
+            .behaviour(game_pad::GamePad::new(buttons, sprites))
             .build(ctx);
     } else {
         ctx.create_control_reserved(*screen_id)

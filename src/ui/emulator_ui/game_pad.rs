@@ -3,31 +3,48 @@ use std::collections::HashMap;
 use giui::{Context, Id};
 
 pub struct GamePad {
-    buttons: [Id; 9],
+    /// The Id of the control that represent the button position, and a button bit flag that can
+    /// represent multiple buttons.
+    buttons: Vec<(Id, u8)>,
+    /// The sprites of each button, plus the cross center. Gamepad is responsible to change they
+    /// opacity.
+    sprites: [Id; 9],
     pressed: HashMap<giui::MouseId, u8>,
 }
 
 impl GamePad {
-    pub fn new(buttons: [Id; 9]) -> Self {
+    pub const MAX_DIST: f32 = 35.0;
+    pub fn new(buttons: Vec<(Id, u8)>, sprites: [Id; 9]) -> Self {
         Self {
             buttons,
+            sprites,
             pressed: HashMap::default(),
         }
     }
 
-    fn on_change(pressed: bool, b: u8, ctx: &mut Context) {
+    fn on_change(&self, ctx: &mut Context) {
+        let mut joypad = 0;
+        for (_, p) in self.pressed.iter() {
+            joypad |= self.buttons[*p as usize].1;
+        }
+
+        for i in 0..8 {
+            let alpha = if (joypad >> i) & 1 != 0 { 255 } else { 128 };
+            ctx.get_graphic_mut(self.sprites[i as usize])
+                .set_alpha(alpha);
+        }
+        ctx.get_graphic_mut(self.sprites[8])
+            .set_alpha([128, 255][((joypad & 0xf) != 0) as usize]);
+
         let app_state = ctx.get_mut::<crate::AppState>();
-        app_state.joypad = (app_state.joypad & !(1 << b)) | ((!pressed as u8) << b);
+        app_state.joypad = !joypad;
     }
 }
 
 impl giui::Behaviour for GamePad {
     fn on_active(&mut self, _this: Id, ctx: &mut Context) {
-        for id in self.buttons {
-            ctx.get_graphic_mut(id)
-                .set_color([255, 255, 255, 128].into());
-        }
         self.pressed.clear();
+        self.on_change(ctx);
     }
 
     fn input_flags(&self) -> giui::InputFlags {
@@ -38,23 +55,23 @@ impl giui::Behaviour for GamePad {
         let pressed = *self.pressed.get(&mouse.id).unwrap_or(&u8::MAX);
 
         if mouse.buttons.left.pressed() {
-            const MAX_DIST: f32 = 35.0;
             // find closest
-            let (b, dist) = self.buttons[0..8]
+            let (b, dist) = self
+                .buttons
                 .iter()
                 .enumerate()
-                .map(|(i, &x)| {
-                    let x = ctx.get_rect(x);
+                .map(|(i, &(id, _))| {
+                    let x = ctx.get_rect(id);
                     let center = [(x[0] + x[2]) / 2.0, (x[1] + x[3]) / 2.0];
                     let dx = mouse.pos[0] - center[0];
                     let dy = mouse.pos[1] - center[1];
                     // distance
                     (i, dx * dx + dy * dy)
                 })
-                .min_by_key(|x| x.1.min((MAX_DIST + 1.0).powi(2)) as u32)
+                .min_by_key(|x| x.1.min((Self::MAX_DIST + 1.0).powi(2)) as u32)
                 .unwrap();
 
-            let b = if dist > MAX_DIST.powi(2) {
+            let b = if dist > Self::MAX_DIST.powi(2) {
                 u8::MAX
             } else {
                 b as u8
@@ -63,41 +80,19 @@ impl giui::Behaviour for GamePad {
             // unpress the previous button
             if pressed != b && pressed != u8::MAX {
                 self.pressed.remove(&mouse.id);
-                let id = if pressed < 4 {
-                    self.buttons[8]
-                } else {
-                    self.buttons[pressed as usize]
-                };
-                ctx.get_graphic_mut(id)
-                    .set_color([255, 255, 255, 128].into());
-                Self::on_change(false, pressed, ctx);
             }
 
             // press the current on
             if b != u8::MAX {
                 self.pressed.insert(mouse.id, b);
-                let id = if b < 4 {
-                    self.buttons[8]
-                } else {
-                    self.buttons[b as usize]
-                };
-                ctx.get_graphic_mut(id)
-                    .set_color([255, 255, 255, 255].into());
-                Self::on_change(true, b, ctx);
             }
+            self.on_change(ctx);
         } else {
             let b = u8::MAX;
             // unpress the previous button
             if pressed != b && pressed != u8::MAX {
                 self.pressed.remove(&mouse.id);
-                let id = if pressed < 4 {
-                    self.buttons[8]
-                } else {
-                    self.buttons[pressed as usize]
-                };
-                ctx.get_graphic_mut(id)
-                    .set_color([255, 255, 255, 128].into());
-                Self::on_change(false, pressed, ctx);
+                self.on_change(ctx);
             }
         }
     }
@@ -136,10 +131,10 @@ mod test {
                 let x = w * ((i % W) as f32 + 0.5);
                 let y = w * ((i / W) as f32 + 0.5);
                 i += 1;
-                create_button([x, y])
+                (create_button([x, y]), 1 << (i - 1) as u8)
             });
             ctx.create_control()
-                .behaviour(GamePad::new(buttons))
+                .behaviour(GamePad::new(buttons[0..8].to_vec(), buttons.map(|x| x.0)))
                 .build(ctx);
         };
         gui

@@ -126,6 +126,7 @@ pub struct GamePad {
     pub select: Graphic,
     pub a: Graphic,
     pub b: Graphic,
+    pub ab: Graphic,
 }
 
 #[derive(LoadStyle, Clone)]

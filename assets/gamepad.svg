@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="444mm"
+   height="294mm"
+   viewBox="0 0 444 294.00001"
+   version="1.1"
+   id="svg408"
+   inkscape:version="1.2 (dc2aedaf03, 2022-05-15)"
+   sodipodi:docname="gamepad.svg"
+   inkscape:export-filename="gamepad.png"
+   inkscape:export-xdpi="25.4"
+   inkscape:export-ydpi="25.4"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview410"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="0.48259428"
+     inkscape:cx="809.16832"
+     inkscape:cy="731.46329"
+     inkscape:window-width="1366"
+     inkscape:window-height="705"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="button_ghost" />
+  <defs
+     id="defs405" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(3.1839404e-6,1.0294796e-4)">
+    <g
+       id="button_b"
+       transform="matrix(0.03247944,0,0,0.03247944,-229.62479,-774.69219)"
+       style="display:inline;stroke-width:8.6824;stroke-dasharray:none">
+      <circle
+         style="fill:#00ff00;stroke-width:4.09547"
+         id="circle602"
+         cx="19292.967"
+         cy="25298.838"
+         r="1447.0692" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2578.01px;line-height:1.25;font-family:'Nes Controller';-inkscape-font-specification:'Nes Controller, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;fill-opacity:1;stroke:none;stroke-width:8.6824;stroke-dasharray:none"
+         x="18663.57"
+         y="25865.295"
+         id="text606"><tspan
+           id="tspan604"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2578.01px;font-family:'Nes Controller';-inkscape-font-specification:'Nes Controller, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;stroke-width:8.6824;stroke-dasharray:none"
+           x="18663.57"
+           y="25865.295"
+           sodipodi:role="line">b</tspan></text>
+    </g>
+    <g
+       id="cross"
+       style="display:inline;stroke-width:8.59684;stroke-dasharray:none"
+       transform="matrix(0.03280271,0,0,0.03280271,-41.704917,-757.14286)">
+      <rect
+         style="fill:#4d4d4d;stroke-width:8.59684"
+         id="rect594"
+         width="2438.823"
+         height="6462.8799"
+         x="25093.744"
+         y="-7734.2661"
+         ry="227.03326"
+         transform="rotate(90)" />
+      <rect
+         style="fill:#4d4d4d;stroke-width:8.59684"
+         id="rect592"
+         width="2438.823"
+         height="6462.8799"
+         x="3283.415"
+         y="23081.715"
+         ry="227.03326" />
+      <ellipse
+         style="fill:#333333;stroke-width:8.59684"
+         id="ellipse598"
+         cx="4502.8267"
+         cy="26313.154"
+         rx="838.34534"
+         ry="838.3454" />
+    </g>
+    <g
+       id="button_a"
+       style="display:inline;stroke-width:8.68239;stroke-dasharray:none"
+       transform="matrix(0.03247944,0,0,0.03247944,-229.62479,-674.69215)">
+      <circle
+         style="fill:#00ff00;stroke-width:4.09548"
+         id="circle618"
+         cx="19292.967"
+         cy="25298.838"
+         r="1447.0692" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2578.01px;line-height:1.25;font-family:'Nes Controller';-inkscape-font-specification:'Nes Controller, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#000000;fill-opacity:1;stroke:none;stroke-width:8.68239;stroke-dasharray:none"
+         x="18663.57"
+         y="25865.295"
+         id="text622"><tspan
+           id="tspan620"
+           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:2578.01px;font-family:'Nes Controller';-inkscape-font-specification:'Nes Controller, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;stroke-width:8.68239;stroke-dasharray:none"
+           x="18663.57"
+           y="25865.295"
+           sodipodi:role="line">a</tspan></text>
+    </g>
+    <g
+       id="button_ghost"
+       style="display:inline;stroke-width:8.68239;stroke-dasharray:none"
+       transform="matrix(0.03247944,0,0,0.03247944,-229.62476,-564.69219)">
+      <circle
+         style="fill:#bfffbf;fill-opacity:0.12323943;stroke-width:4.09548"
+         id="circle618-3"
+         cx="19292.967"
+         cy="24990.951"
+         r="1447.0692" />
+    </g>
+    <g
+       id="start"
+       style="display:inline;stroke-width:8.67594;stroke-dasharray:none"
+       transform="matrix(0.0325036,0,0,0.0325036,3.2875319,-906.48987)">
+      <rect
+         style="fill:#666666;stroke-width:4.09243"
+         id="rect626"
+         width="4209.9038"
+         height="952.24017"
+         x="-8719.1582"
+         y="31515.525"
+         ry="476.12009"
+         transform="rotate(-26.663914)" />
+      <text
+         xml:space="preserve"
+         x="-8483.0234"
+         y="32122.615"
+         id="text630"
+         transform="rotate(-27.513371)"
+         style="font-size:1058.33px;line-height:1.25;font-family:'Nes Controller';-inkscape-font-specification:'Nes Controller, Normal';fill:#ffffff;stroke:none;stroke-width:4.09243"><tspan
+           sodipodi:role="line"
+           id="tspan628"
+           x="-8483.0234"
+           y="32122.615"
+           style="stroke-width:8.67594">start</tspan></text>
+    </g>
+    <g
+       id="select"
+       style="display:inline;stroke-width:8.67594;stroke-dasharray:none"
+       transform="matrix(0.0325036,0,0,0.0325036,-155.61551,-988.94968)"
+       inkscape:export-filename="gamepad.png"
+       inkscape:export-xdpi="83.449287"
+       inkscape:export-ydpi="83.449287">
+      <rect
+         style="fill:#666666;stroke-width:4.09243"
+         id="rect610"
+         width="4209.9038"
+         height="952.24017"
+         x="-4384.2378"
+         y="33777.027"
+         ry="476.12009"
+         transform="rotate(-26.663914)" />
+      <text
+         xml:space="preserve"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:1058.33px;line-height:1.25;font-family:'Nes Controller';-inkscape-font-specification:'Nes Controller, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:8.67594;stroke-dasharray:none"
+         x="-4466.3257"
+         y="34448.137"
+         id="text614"
+         transform="rotate(-27.513371)"><tspan
+           sodipodi:role="line"
+           id="tspan612"
+           x="-4466.3257"
+           y="34448.137"
+           style="stroke-width:8.67594">select</tspan></text>
+    </g>
+  </g>
+</svg>

@@ -777,7 +777,7 @@ dependencies = [
 [[package]]
 name = "giui"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#e27ee8f0a012debcba194ce09522fc52003ea85d"
+source = "git+https://github.com/Rodrigodd/giui#3b0899047b942dba3cc75b3251e22908e307c8cc"
 dependencies = [
  "ab_glyph",
  "bitflags",
@@ -797,7 +797,7 @@ dependencies = [
 [[package]]
 name = "giui-derive"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#e27ee8f0a012debcba194ce09522fc52003ea85d"
+source = "git+https://github.com/Rodrigodd/giui#3b0899047b942dba3cc75b3251e22908e307c8cc"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -1,0 +1,25 @@
+[package]
+name = "gameroy_wasm"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "gameroy_wasm"
+crate_type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[features]
+
+static = ["gameroy/static"]
+rfd = ["gameroy/rfd"]
+audio-engine = ["gameroy/audio-engine"]
+
+default = ["audio-engine", "static", "rfd"]
+
+[dependencies]
+gameroy = { path = "..", default-features = false }
+wasm-bindgen = "0.2.80"
+console_error_panic_hook = "0.1.7"
+wasm-logger = "0.2.0"

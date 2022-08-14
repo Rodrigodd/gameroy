@@ -73,12 +73,12 @@
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
 
     <script defer type="module">
-        import init, { run, resize_canvas } from './pkg/gameroy_lib.js';
+        import init, { run, resize_canvas } from './pkg/gameroy_wasm.js';
 
         let elem = document.getElementById('loading');
 
         $.ajax({
-            url: './pkg/gameroy_lib_bg.wasm',
+            url: './pkg/gameroy_wasm_bg.wasm',
             xhr: function () {
                 var xhr = new window.XMLHttpRequest();
                 xhr.responseType = 'arraybuffer';

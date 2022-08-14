@@ -666,7 +666,6 @@ dependencies = [
  "audio-engine",
  "base64",
  "cfg-if 1.0.0",
- "console_error_panic_hook",
  "flexi_logger",
  "flume",
  "gameroy-core",
@@ -688,7 +687,6 @@ dependencies = [
  "urlencoding",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "wasm-logger",
  "web-sys",
  "winit",
 ]
@@ -709,6 +707,16 @@ dependencies = [
  "jni",
  "log",
  "ndk-glue",
+]
+
+[[package]]
+name = "gameroy_wasm"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "gameroy",
+ "wasm-bindgen",
+ "wasm-logger",
 ]
 
 [[package]]

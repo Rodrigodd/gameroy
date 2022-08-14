@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "android", "native"]
+members = ["core", "android", "native", "wasm"]
 
 [package]
 name = "gameroy"
@@ -63,8 +63,6 @@ toml = "0.5.9"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
 wasm-bindgen = "0.2.80"
-console_error_panic_hook = "0.1.7"
-wasm-logger = "0.2.0"
 js-sys = "0.3"
 wasm-bindgen-futures = "0.4"
 base64 = "0.13"

@@ -1,5 +1,5 @@
 #[cfg(target_arch = "wasm32")]
-mod wasm;
+pub static RESIZE: parking_lot::Mutex<Option<(u32, u32)>> = parking_lot::const_mutex(None);
 
 mod waker_fn;
 
@@ -227,7 +227,7 @@ fn start_event_loop(
             Event::RedrawRequested(window_id) => {
                 #[cfg(target_arch = "wasm32")]
                 {
-                    if let Some((width, height)) = wasm::RESIZE.lock().take() {
+                    if let Some((width, height)) = RESIZE.lock().take() {
                         let size = winit::dpi::PhysicalSize { width, height };
                         ui.resize(size.clone(), &window);
                         window.set_inner_size(size);

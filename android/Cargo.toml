@@ -26,7 +26,3 @@ jni = "0.19.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk-glue = { version = "0.6", features = ["logger"] }
-
-[package.metadata.android.application]
-theme = "@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
-label = "GameRoy"

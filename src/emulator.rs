@@ -41,6 +41,7 @@ enum EmulatorState {
     RunNoBreak,
 }
 
+#[cfg(feature = "audio-engine")]
 struct Buffer {
     buffer: Arc<ParkMutex<VecDeque<i16>>>,
     sample_rate: u32,

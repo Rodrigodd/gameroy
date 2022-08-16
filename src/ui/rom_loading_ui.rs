@@ -236,7 +236,7 @@ impl ListBuilder for RomList {
             Graphic::None
         };
         let parent = cb.id();
-        for text in [name, file, size] {
+        for text in [file, name, size] {
             let cb = ctx
                 .create_control()
                 .parent(parent)
@@ -423,8 +423,8 @@ pub fn create_rom_loading_ui(
         .build(ctx);
 
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
-        .column(120.0, false)
         .column(490.0, false)
+        .column(120.0, false)
         .column(60.0, false);
 
     ctx.get_mut::<RomEntries>().register(rom_list_id);

@@ -565,7 +565,7 @@ impl App for EmulatorApp {
                         self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
-                    LoadRom { .. } => unreachable!(),
+                    LoadRom { .. } => unimplemented!(),
                     _ => {}
                 }
             }

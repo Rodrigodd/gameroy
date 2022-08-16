@@ -16,7 +16,7 @@ use crate::{
     ui::{Textures, Ui},
     widget::{
         menu::{create_menu, MenuOption},
-        PixelPerfectLayout, SplitView,
+        ScreenLayout, SplitView,
     },
     EmulatorEvent, UserEvent,
 };
@@ -331,7 +331,7 @@ fn create_screen(
     let _screen = ctx
         .create_control()
         .parent(*screen_id)
-        .layout(PixelPerfectLayout::new((160, 144), (0, 0)))
+        .layout(ScreenLayout::new((160, 144)))
         .child(ctx, |cb, _| {
             cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
         })
@@ -352,7 +352,7 @@ fn create_screen(
         };
 
         let cross_anchor = [0.20, 1.0];
-        let cross_margin = [0.0, -150.0];
+        let cross_margin = [0.0, -190.0];
         // let _cross = create_control(style.gamepad.cross.clone(), cross_anchor, cross_margin);
 
         let [su, sd, sl, sr, scenter] = match &style.gamepad.cross {
@@ -395,15 +395,15 @@ fn create_screen(
             _ => panic!("expected gamepad.cross to be Texture"),
         };
 
-        let a = create_control(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -170.0]);
-        let b = create_control(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -140.0]);
+        let a = create_control(style.gamepad.a.clone(), [1.0, 1.0], [-50.0, -210.0]);
+        let b = create_control(style.gamepad.b.clone(), [1.0, 1.0], [-100.0, -180.0]);
         let ab = create_control(
             style.gamepad.ab.clone(),
             [1.0, 1.0],
-            [-75.0 - 15.0, -155.0 - 25.0],
+            [-75.0 - 15.0, -195.0 - 25.0],
         );
-        let select = create_control(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -60.0]);
-        let start = create_control(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -60.0]);
+        let select = create_control(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -80.0]);
+        let start = create_control(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -80.0]);
 
         let [r, rd, d, ld, l, lu, u, ru] = std::array::from_fn(|i| {
             let angle = (i as f32 / 8.0) * std::f32::consts::TAU;

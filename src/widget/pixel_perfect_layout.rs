@@ -1,15 +1,14 @@
 use giui::{Id, Layout, LayoutContext, MinSizeContext};
 
-pub struct PixelPerfectLayout {
+pub struct ScreenLayout {
     size: (u32, u32),
-    align: (i8, i8),
 }
-impl PixelPerfectLayout {
-    pub fn new(size: (u32, u32), align: (i8, i8)) -> Self {
-        Self { size, align }
+impl ScreenLayout {
+    pub fn new(size: (u32, u32)) -> Self {
+        Self { size }
     }
 }
-impl Layout for PixelPerfectLayout {
+impl Layout for ScreenLayout {
     fn compute_min_size(&mut self, this: Id, ctx: &mut MinSizeContext) -> [f32; 2] {
         let mut min_size = [self.size.0 as f32, self.size.1 as f32];
         let ratio = min_size[0] / min_size[1];
@@ -43,20 +42,16 @@ impl Layout for PixelPerfectLayout {
         } else {
             des_height = self.size.1 as f32 * (height / self.size.1 as f32).floor();
             des_width = des_height * ratio;
-        };
+        }
 
-        match self.align.0 {
-            -1 => {}
-            0 => x += (width - des_width) / 2.0,
-            1 => x += (width - des_width).round(),
-            _ => {}
+        x += (width - des_width) / 2.0;
+
+        if width / height >= ratio {
+            y += (height - des_height) / 2.0;
+        } else {
+            y += (width - des_width) / 2.0;
         }
-        match self.align.1 {
-            -1 => {}
-            0 => y += (height - des_height) / 2.0,
-            1 => y += height - des_height,
-            _ => {}
-        }
+
         let des_rect = [x.floor(), y.floor(), x + des_width, y + des_height];
         for child in ctx.get_active_children(this) {
             ctx.set_designed_rect(child, des_rect);

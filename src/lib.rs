@@ -16,7 +16,7 @@ mod widget {
     mod split_view;
     pub mod table_item;
 
-    pub use pixel_perfect_layout::PixelPerfectLayout;
+    pub use pixel_perfect_layout::ScreenLayout;
     pub use split_view::SplitView;
 }
 pub mod config;

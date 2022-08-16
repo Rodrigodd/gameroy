@@ -757,7 +757,7 @@ impl Emulator {
                 // if the buffer is empty, add zeros to increase it
                 lock.extend((0..1600 * 5).map(|_| 0));
             }
-            lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 20));
+            lock.extend(buffer.iter().map(|&x| (x as i16 - 128) * 30));
 
             *last_buffer_len = lock.len();
         }

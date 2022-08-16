@@ -17,7 +17,7 @@ rfd = ["gameroy/rfd"]
 audio-engine = ["gameroy/audio-engine"]
 threads = ["gameroy/threads"]
 
-default = ["threads", "console", "audio-engine", "static", "rfd"]
+default = ["threads", "console", "audio-engine", "rfd"]
 
 
 [dependencies]

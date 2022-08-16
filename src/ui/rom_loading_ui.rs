@@ -55,10 +55,24 @@ impl RomEntries {
                 .map_err(|e: String| log::error!("error reading roms: {}", e))
                 .ok()
                 .unwrap_or_default();
-            let mut entries = Vec::with_capacity(roms.len());
-            for file in roms.into_iter() {
+            let mut entries: Vec<RomEntry> = roms
+                .into_iter()
+                .map(|x| RomEntry {
+                    file: x,
+                    name: None,
+                    size: None,
+                })
+                .collect();
+
+            proxy
+                .send_event(UserEvent::UpdatedRomList {
+                    roms: entries.clone(),
+                })
+                .unwrap();
+
+            for entry in entries.iter_mut() {
                 let header = {
-                    let mut task = file.get_header();
+                    let mut task = entry.file.get_header();
                     let task = unsafe { std::pin::Pin::new_unchecked(&mut task) };
                     executor::block_on(task)
                 };
@@ -66,17 +80,15 @@ impl RomEntries {
                 let header = match header {
                     Ok(x) => x,
                     Err(err) => {
-                        log::error!("error reading '{}' header: {}", file.file_name(), err);
+                        entry.name = Some("Error reading header...".to_string());
+                        entry.size = None;
+                        log::error!("error reading '{}' header: {}", entry.file.file_name(), err);
                         continue;
                     }
                 };
 
-                let entry = RomEntry {
-                    name: header.title_as_string(),
-                    size: header.rom_size_in_bytes().unwrap_or(0) as u64,
-                    file,
-                };
-                entries.push(entry);
+                entry.name = Some(header.title_as_string());
+                entry.size = Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
             }
 
             log::info!("loading roms took: {:?}", start.elapsed());
@@ -102,38 +114,26 @@ impl RomEntries {
 #[derive(Clone, Debug)]
 pub struct RomEntry {
     /// The name of the game as write in the rom header.
-    name: String,
+    name: Option<String>,
     /// The size of the rom file in bytes
-    size: u64,
+    size: Option<u64>,
     /// The path to the rom
     pub file: RomFile,
 }
 impl RomEntry {
-    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-    pub fn from_path(path: std::path::PathBuf) -> Result<RomEntry, String> {
-        let file = RomFile::from_path(path);
-        // let header = file.get_header()?;
-        Ok(RomEntry {
-            name: "name".to_string(), //header.title_as_string(),
-            size: 0,                  // header.rom_size_in_bytes().unwrap_or(0) as u64,
-            file,
-        })
-    }
-
     pub fn name(&self) -> String {
-        self.name.clone()
+        self.name.clone().unwrap_or("Loading...".to_string())
     }
 
-    fn size(&self) -> u64 {
-        self.size
-    }
-}
-impl From<RomFile> for RomEntry {
-    fn from(file: RomFile) -> Self {
-        Self {
-            name: file.file_name().to_string(),
-            size: 0,
-            file,
+    fn size(&self) -> String {
+        if let Some(size) = self.size {
+            if size < (1 << 20) {
+                format!("{} KiB", size >> 10)
+            } else {
+                format!("{}.{} MiB", size >> 20, ((size * 10) >> 20) % 10)
+            }
+        } else {
+            "-".to_string()
         }
     }
 }
@@ -216,11 +216,6 @@ impl ListBuilder for RomList {
             let roms = ctx.get::<RomEntries>().roms();
             let entry = roms[index - 1].clone();
             let size = entry.size();
-            let size = if size < (1 << 20) {
-                format!("{} KiB", size >> 10)
-            } else {
-                format!("{}.{} MiB", size >> 20, ((size * 10) >> 20) % 10)
-            };
             (
                 entry.name(),
                 size,

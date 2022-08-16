@@ -11,6 +11,7 @@ mod style;
 mod ui;
 mod widget {
     pub mod fold_view;
+    pub mod menu;
     mod pixel_perfect_layout;
     mod split_view;
     pub mod table_item;

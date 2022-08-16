@@ -132,6 +132,8 @@ pub struct GamePad {
 #[derive(LoadStyle, Clone)]
 pub struct Style {
     pub text_style: TextStyle,
+    pub text_menu: TextStyle,
+    pub blocker: Graphic,
     pub split_background: Graphic,
     pub terminal_background: Graphic,
     pub terminal_text_style: TextStyle,

@@ -17,12 +17,37 @@ use winit::event_loop::EventLoopProxy;
 use super::UserEvent;
 use crate::rom_loading::RomFile;
 
+#[derive(Debug, Clone, Copy)]
+pub enum Bool {
+    True,
+    False,
+    Toggle,
+}
+impl From<bool> for Bool {
+    fn from(v: bool) -> Self {
+        if v {
+            Self::True
+        } else {
+            Self::False
+        }
+    }
+}
+impl Bool {
+    fn apply(self, v: &mut bool) {
+        *v = match self {
+            Bool::True => true,
+            Bool::False => false,
+            Bool::Toggle => !*v,
+        };
+    }
+}
+
 #[derive(Debug)]
 pub enum EmulatorEvent {
     Kill,
     RunFrame,
     FrameLimit(bool),
-    Rewind(bool),
+    Rewind(Bool),
     SetJoypad(u8),
     Debug(bool),
     Step,
@@ -32,6 +57,8 @@ pub enum EmulatorEvent {
     SaveState,
     LoadState,
     SaveRam,
+    Pause,
+    Resume,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -551,10 +578,10 @@ impl Emulator {
                 }
             }
             Rewind(value) => {
-                self.rewind = value;
+                value.apply(&mut self.rewind);
                 {
                     let joypad = &mut *self.joypad.lock();
-                    joypad.rewinding = value;
+                    joypad.rewinding = self.rewind;
                     joypad.joypad_timeline.clear();
                 }
                 if !self.rewind {
@@ -621,6 +648,12 @@ impl Emulator {
                 self.state = EmulatorState::Idle;
                 // This will send EmulatorUpdated to the gui
                 self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+            }
+            Pause => {
+                self.debug = true;
+            }
+            Resume => {
+                self.debug = false;
             }
         }
         false

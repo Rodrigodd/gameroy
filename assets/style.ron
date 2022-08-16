@@ -1,9 +1,15 @@
 (
     // text_style: (color: "#34ff30", font_size: 15, font_id: "NotoSansMono.ttf"),
     text_style: (color: "#2dd929", font_size: 15, font_id: "NotoSansMono.ttf"),
+    text_menu: (color: "#2dd929", font_size: 25, font_id: "NotoSansMono.ttf"),
     split_background: Texture(
         texture: "white.png",
         color: "#001600",
+        uv_rect: (0, 0, 1, 1),
+    ),
+    blocker: Texture(
+        texture: "white.png",
+        color: "#000000a0",
         uv_rect: (0, 0, 1, 1),
     ),
     terminal_background: Texture(

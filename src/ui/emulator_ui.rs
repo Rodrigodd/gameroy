@@ -4,16 +4,20 @@ use giui::{
     graphics::{Graphic, Icon, Texture},
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
-    widgets::{ButtonGroup, OnKeyboardEvent, TabButton},
-    BuilderContext, Context, Gui, Id,
+    widgets::{Button, ButtonGroup, OnKeyboardEvent, TabButton},
+    BuilderContext, Context, Gui, Id, RectFill,
 };
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
+    emulator::Bool,
     event_table::EventTable,
     style::Style,
     ui::{Textures, Ui},
-    widget::{PixelPerfectLayout, SplitView},
+    widget::{
+        menu::{create_menu, MenuOption},
+        PixelPerfectLayout, SplitView,
+    },
     EmulatorEvent, UserEvent,
 };
 mod disassembler_viewer;
@@ -126,7 +130,7 @@ pub fn create_gui(
                                 .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
                                 .unwrap(),
                             Pressed(x) | Release(x) if x == km.rewind => sender
-                                .send(EmulatorEvent::Rewind(matches!(event, Pressed(_))))
+                                .send(EmulatorEvent::Rewind(matches!(event, Pressed(_)).into()))
                                 .unwrap(),
 
                             _ => {}
@@ -401,10 +405,6 @@ fn create_screen(
         let select = create_control(style.gamepad.select.clone(), [0.4, 1.0], [0.0, -60.0]);
         let start = create_control(style.gamepad.start.clone(), [0.6, 1.0], [0.0, -60.0]);
 
-        // let r = create_control(Graphic::None, [0.20, 1.0], [40.0, -150.0]);
-        // let l = create_control(Graphic::None, [0.20, 1.0], [-40.0, -150.0]);
-        // let u = create_control(Graphic::None, [0.20, 1.0], [0.0, -190.0]);
-        // let d = create_control(Graphic::None, [0.20, 1.0], [0.0, -110.0]);
         let [r, rd, d, ld, l, lu, u, ru] = std::array::from_fn(|i| {
             let angle = (i as f32 / 8.0) * std::f32::consts::TAU;
             let dist = game_pad::GamePad::MAX_DIST;
@@ -446,6 +446,53 @@ fn create_screen(
         ctx.create_control_reserved(*screen_id)
             .parent(parent)
             .graphic(style.background.clone())
+            .build(ctx);
+    }
+
+    let menu = cfg!(target_os = "android");
+    if menu {
+        let _open_menu = ctx
+            .create_control()
+            .parent(*screen_id)
+            .layout(MarginLayout::default())
+            .child(ctx, |cb, _| {
+                cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+            })
+            .fill_x(RectFill::ShrinkEnd)
+            .fill_y(RectFill::ShrinkEnd)
+            .min_size([48.0; 2])
+            .behaviour(Button::new(
+                style.delete_button.clone(),
+                true,
+                move |_, ctx| {
+                    let style = ctx.get::<Style>().clone();
+                    fn option<'a>(
+                        a: &'a str,
+                        b: impl FnMut(&mut Context) + 'static,
+                    ) -> MenuOption<'a> {
+                        (a, Box::new(b))
+                    }
+                    fn send_emu<'a>(ctx: &'a mut Context, event: EmulatorEvent) {
+                        ctx.get::<flume::Sender<EmulatorEvent>>()
+                            .send(event)
+                            .unwrap()
+                    }
+
+                    send_emu(ctx, EmulatorEvent::Pause);
+
+                    let options = vec![
+                        option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
+                        option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
+                        option("Rewind", |ctx| {
+                            send_emu(ctx, EmulatorEvent::Rewind(Bool::Toggle))
+                        }),
+                    ];
+
+                    let on_close = |ctx: &mut Context| send_emu(ctx, EmulatorEvent::Resume);
+
+                    create_menu(options, on_close, ctx, &style);
+                },
+            ))
             .build(ctx);
     }
 }

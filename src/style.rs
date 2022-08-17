@@ -14,27 +14,47 @@ pub struct Loader<'a> {
     pub fonts: &'a mut Fonts,
     pub render: &'a mut (dyn SpriteRender + 'a),
     pub textures: HashMap<String, (u32, u32, u32)>,
+    pub scale_factor: f64,
 }
 
 #[cfg(not(feature = "static"))]
 mod loaded_files {
-    use giui::{font::Font, style_loader::StyleLoaderCallback};
+    use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
+    use image::{ImageBuffer, Rgba};
 
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
-        fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
+        fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {
+            if self.scale_factor >= 1.5 {
+                if name == "icons.png" {
+                    name = "icons2x.png".to_string();
+                }
+            }
+
             if let Some(texture) = self.textures.get(&name) {
                 return *texture;
             }
 
-            let path = format!("assets/{}", name);
-            let data = match image::open(&path) {
-                Ok(x) => x,
-                Err(_) => {
-                    log::error!("not found texture in '{}'", path);
-                    return (0, 0, 0);
+            let data = loop {
+                if name == "white.png" {
+                    let mut image_buffer = ImageBuffer::new(1, 1);
+                    image_buffer
+                        .pixels_mut()
+                        .for_each(|x| *x = Rgba::<u8>::from([255, 255, 255, 255]));
+                    break image_buffer;
                 }
+
+                let path = format!("assets/{}", name);
+                let data = match image::open(&path) {
+                    Ok(x) => x,
+                    Err(_) => {
+                        log::error!("not found texture in '{}'", path);
+                        return (0, 0, 0);
+                    }
+                };
+                let data = data.to_rgba8();
+
+                break data;
             };
-            let data = data.to_rgba8();
 
             let texture = (
                 self.render
@@ -44,6 +64,15 @@ mod loaded_files {
             );
             self.textures.insert(name, texture);
             texture
+        }
+
+        fn modify_graphic(&mut self, graphic: &mut Graphic) {
+            if let Graphic::Icon(icon) = graphic {
+                if self.scale_factor >= 1.5 {
+                    icon.size = icon.size.map(|x| 2.0 * x);
+                    icon.uv_rect = icon.uv_rect.map(|x| 2.0 * x);
+                }
+            }
         }
 
         fn load_font(&mut self, name: String) -> giui::font::FontId {
@@ -58,21 +87,20 @@ mod loaded_files {
 
 #[cfg(feature = "static")]
 mod static_files {
-    use giui::{font::Font, style_loader::StyleLoaderCallback};
+    use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
+    use image::{ImageBuffer, Rgba};
 
     pub struct StaticFiles {
         pub font: &'static [u8],
         pub style: &'static str,
-        pub white_texture: &'static [u8],
         pub icons_texture: &'static [u8],
-        pub gamepad: &'static [u8],
+        pub icons2x_texture: &'static [u8],
     }
     pub static FILES: StaticFiles = StaticFiles {
         font: include_bytes!("../assets/NotoSansMono.ttf"),
         style: include_str!("../assets/style.ron"),
-        white_texture: include_bytes!("../assets/white.png"),
         icons_texture: include_bytes!("../assets/icons.png"),
-        gamepad: include_bytes!("../assets/gamepad.png"),
+        icons2x_texture: include_bytes!("../assets/icons2x.png"),
     };
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
@@ -80,22 +108,36 @@ mod static_files {
                 return *texture;
             }
 
-            let data = match name.as_str() {
-                "white.png" => FILES.white_texture,
-                "icons.png" => FILES.icons_texture,
-                "gamepad.png" => FILES.gamepad,
-                _ => panic!("unkown texture '{}'", name),
-            };
+            let data = loop {
+                let data = match name.as_str() {
+                    "white.png" => {
+                        let mut image_buffer = ImageBuffer::new(1, 1);
+                        image_buffer
+                            .pixels_mut()
+                            .for_each(|x| *x = Rgba::<u8>::from([255, 255, 255, 255]));
+                        break image_buffer;
+                    }
+                    "icons.png" => {
+                        if self.scale_factor >= 1.5 {
+                            FILES.icons2x_texture
+                        } else {
+                            FILES.icons_texture
+                        }
+                    }
+                    _ => panic!("unkown texture '{}'", name),
+                };
 
-            let data = match image::load_from_memory(data) {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!("cannot load texture in '{}': {}", name, e);
-                    return (0, 0, 0);
-                }
-            };
+                let data = match image::load_from_memory(data) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        log::error!("cannot load texture in '{}': {}", name, e);
+                        return (0, 0, 0);
+                    }
+                };
 
-            let data = data.to_rgba8();
+                let data = data.to_rgba8();
+                break data;
+            };
 
             let texture = (
                 self.render
@@ -105,6 +147,15 @@ mod static_files {
             );
             self.textures.insert(name, texture);
             texture
+        }
+
+        fn modify_graphic(&mut self, graphic: &mut Graphic) {
+            if let Graphic::Icon(icon) = graphic {
+                if self.scale_factor >= 1.5 {
+                    icon.size = icon.size.map(|x| 2.0 * x);
+                    icon.uv_rect = icon.uv_rect.map(|x| 2.0 * x);
+                }
+            }
         }
 
         fn load_font(&mut self, name: String) -> giui::font::FontId {
@@ -149,15 +200,21 @@ pub struct Style {
     pub gamepad: GamePad,
 }
 impl Style {
-    pub fn load(fonts: &mut Fonts, render: &mut dyn SpriteRender) -> Option<Self> {
+    pub fn load(
+        fonts: &mut Fonts,
+        render: &mut dyn SpriteRender,
+        scale_factor: f64,
+    ) -> Option<Self> {
         let loader = Loader {
             fonts,
             render,
             textures: HashMap::default(),
+            scale_factor,
         };
 
         #[cfg(not(feature = "static"))]
-        let file = std::fs::read_to_string("assets/style.ron").unwrap();
+        let file = std::fs::read_to_string("assets/style.ron")
+            .unwrap_or_else(|err| panic!("failed reading 'assets/style.ron': {}", err));
         #[cfg(feature = "static")]
         let file = static_files::FILES.style;
 

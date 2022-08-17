@@ -75,7 +75,7 @@ impl Ui {
             let mut render: Box<dyn SpriteRender + 'static> = Box::new(());
 
             let font_texture = render.new_texture(128, 128, &[], false);
-            let style = Style::load(fonts, render.as_mut()).unwrap();
+            let style = Style::load(fonts, render.as_mut(), window.scale_factor()).unwrap();
             let textures = Textures {
                 white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
                 screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
@@ -264,7 +264,7 @@ fn load_graphics(
     let mut render: Box<dyn SpriteRender + 'static> = render;
 
     let font_texture = render.new_texture(128, 128, &[], false);
-    let style = Style::load(fonts, render.as_mut()).unwrap();
+    let style = Style::load(fonts, render.as_mut(), window.scale_factor()).unwrap();
     let textures = Textures {
         white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
         screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),

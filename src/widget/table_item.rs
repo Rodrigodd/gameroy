@@ -16,6 +16,8 @@ pub struct TableGroup {
     dragging: Option<(ColumnIndex, bool)>,
     /// The width of the current dragging column is computed by `mouse_pos[0] - dragging_anchor`.
     dragging_anchor: f32,
+    /// The width of the table. Updates every time is queried, unless a dragging is happening.
+    total_width: f32,
 }
 impl TableGroup {
     pub fn new(h_spacing: f32, v_spacing: f32, h_margins: [f32; 2]) -> Self {
@@ -34,6 +36,26 @@ impl TableGroup {
             ..Default::default()
         });
         self
+    }
+
+    /// The total width, i.e., the sum of the width of each collumn width + h_spacing's + h_margin.
+    pub fn total_width(&mut self) -> f32 {
+        if self.dragging.is_some() {
+            return self.total_width;
+        }
+
+        let width = {
+            if self.columns.len() == 0 {
+                return self.h_margins[0] + self.h_margins[1];
+            }
+            self.columns.iter().map(|x| x.width).sum::<f32>()
+                + self.h_margins[0]
+                + self.h_margins[1]
+                + self.h_spacing * (self.columns.len() - 1) as f32
+        };
+
+        self.total_width = width;
+        self.total_width
     }
 }
 
@@ -107,12 +129,15 @@ impl TableItem {
 }
 impl Behaviour for TableItem {
     fn input_flags(&self) -> InputFlags {
-        InputFlags::MOUSE
+        let mut flags = InputFlags::MOUSE;
+        if self.resizable {
+            flags |= InputFlags::DRAG;
+        }
+        flags
     }
 
     fn on_mouse_event(&mut self, mouse: giui::MouseInfo, this: Id, ctx: &mut giui::Context) {
         if let MouseEvent::Up(giui::MouseButton::Left) = mouse.event {
-            println!("calling click");
             self.on_click.as_mut().map(|x| x(mouse.click_count, ctx));
         };
         if !self.resizable {
@@ -133,6 +158,11 @@ impl Behaviour for TableItem {
                 let g = &mut self.group.borrow_mut();
                 g.dragging = None;
                 ctx.lock_cursor(false, mouse.id);
+
+                // update total width
+                g.total_width();
+
+                ctx.dirty_layout(this);
             }
             MouseEvent::Exit => ctx.set_cursor(CursorIcon::Default),
             MouseEvent::Moved => {

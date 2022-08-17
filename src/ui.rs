@@ -374,7 +374,6 @@ pub fn list(
         .build(ctx);
 
     cb.behaviour_and_layout(List::new(
-        670.0,
         0.0,
         margin,
         view,

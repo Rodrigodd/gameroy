@@ -157,6 +157,10 @@ impl RomList {
     }
 }
 impl ListBuilder for RomList {
+    fn content_width(&mut self) -> f32 {
+        self.table_group.borrow_mut().total_width()
+    }
+
     fn update_item(
         &mut self,
         index: usize,

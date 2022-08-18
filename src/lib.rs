@@ -21,7 +21,7 @@ mod widget {
 }
 pub mod config;
 
-use std::{rc::Rc, sync::Arc, thread};
+use std::{any::Any, rc::Rc, sync::Arc, thread};
 
 use emulator::{Emulator, EmulatorEvent};
 pub use gameroy;
@@ -241,6 +241,16 @@ fn start_event_loop(
                     *control = ControlFlow::Poll;
                 }
             }
+            Event::UserEvent(UserEvent::GoToRomList) => {
+                if let Some(emu) = app.as_any().downcast_mut::<EmulatorApp>() {
+                    emu.kill_emulator();
+                    let rom_loading = RomLoadingApp::new(&mut ui.gui, proxy.clone());
+                    app = Box::new(rom_loading);
+                    log::trace!("rebuilding ui for rom list");
+                    ui.clear();
+                    app.build_ui(&mut ui);
+                }
+            }
             Event::UserEvent(UserEvent::LoadRom { file, game_boy }) => {
                 let gb = game_boy;
                 window.set_title(&format!("{} - gameroy", file.file_name()));
@@ -254,11 +264,9 @@ fn start_event_loop(
                     file,
                 );
                 app = Box::new(emu);
-                log::trace!("ui clear!!");
+                log::trace!("rebuilding ui for emulator");
                 ui.clear();
-                log::trace!("build ui!!");
                 app.build_ui(&mut ui);
-                log::trace!("return!!");
                 return;
             }
             Event::UserEvent(UserEvent::SpawnTask(task_id)) => {
@@ -283,7 +291,7 @@ fn start_event_loop(
     })
 }
 
-trait App {
+trait App: Any {
     fn handle_event(
         &mut self,
         event: Event<UserEvent>,
@@ -294,6 +302,8 @@ trait App {
     );
 
     fn build_ui(&self, ui: &mut ui::Ui);
+
+    fn as_any(&mut self) -> &mut dyn Any;
 }
 
 struct RomLoadingApp;
@@ -362,6 +372,10 @@ impl App for RomLoadingApp {
         let gui = &mut ui.gui;
         let style = &gui.get::<style::Style>().clone();
         ui::create_rom_loading_ui(gui, style, ui.event_table.clone());
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -449,6 +463,12 @@ impl EmulatorApp {
             recv,
         }
     }
+
+    fn kill_emulator(&mut self) {
+        self.emu_channel.send(EmulatorEvent::Kill).unwrap();
+        #[cfg(feature = "threads")]
+        self.emu_thread.take().unwrap().join().unwrap();
+    }
 }
 impl App for EmulatorApp {
     fn build_ui(&self, ui: &mut ui::Ui) {
@@ -473,9 +493,7 @@ impl App for EmulatorApp {
                 self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
             }
             Event::LoopDestroyed => {
-                self.emu_channel.send(EmulatorEvent::Kill).unwrap();
-                #[cfg(feature = "threads")]
-                self.emu_thread.take().unwrap().join().unwrap();
+                self.kill_emulator();
             }
             Event::Suspended => {
                 self.emu_channel.send(EmulatorEvent::SaveRam).unwrap();
@@ -572,6 +590,10 @@ impl App for EmulatorApp {
             _ => {}
         }
     }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -583,6 +605,7 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
+    GoToRomList,
     LoadRom {
         file: RomFile,
         game_boy: Box<GameBoy>,

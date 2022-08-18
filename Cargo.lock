@@ -113,9 +113,9 @@ dependencies = [
 
 [[package]]
 name = "audio-engine"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcdafec9202fc7365f0d2b97e43b077e677857d700e7108e91e98ac1417015d9"
+checksum = "5b7d9237df104b6bfa5d8ff1dd5e2ef8a763286a609847043c019c3fe9ff7040"
 dependencies = [
  "cpal",
  "gcd",

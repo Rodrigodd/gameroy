@@ -42,7 +42,7 @@ sprite-render = { git = "https://github.com/Rodrigodd/sprite-render-rs", feature
     "opengles",
 ] }
 # audio-engine = { path = "../audio-engine", optional = true }
-audio-engine = { version = "0.4.0", optional = true }
+audio-engine = { version = "0.4.1", optional = true }
 
 rfd = { version = "0.9.1", optional = true, features = ["file-handle-inner"] }
 

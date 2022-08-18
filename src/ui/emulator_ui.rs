@@ -486,6 +486,11 @@ fn create_screen(
                         option("Rewind", |ctx| {
                             send_emu(ctx, EmulatorEvent::Rewind(Bool::Toggle))
                         }),
+                        option("Exit Game", |ctx| {
+                            ctx.get::<EventLoopProxy<UserEvent>>()
+                                .send_event(UserEvent::GoToRomList)
+                                .unwrap();
+                        }),
                     ];
 
                     let on_close = |ctx: &mut Context| send_emu(ctx, EmulatorEvent::Resume);

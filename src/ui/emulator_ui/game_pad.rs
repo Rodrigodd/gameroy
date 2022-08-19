@@ -131,7 +131,10 @@ mod test {
                 let x = w * ((i % W) as f32 + 0.5);
                 let y = w * ((i / W) as f32 + 0.5);
                 i += 1;
-                (create_button([x, y]), 1 << (i - 1) as u8)
+                (
+                    create_button([x, y]),
+                    1_u8.checked_shl(i as u32 - 1).unwrap_or(0),
+                )
             });
             ctx.create_control()
                 .behaviour(GamePad::new(buttons[0..8].to_vec(), buttons.map(|x| x.0)))

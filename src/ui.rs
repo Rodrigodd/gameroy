@@ -168,7 +168,8 @@ impl Ui {
     }
 
     pub fn clear(&mut self) {
-        self.gui.clear_controls()
+        self.gui.clear_controls();
+        self.gui.clear_animations();
     }
 
     pub fn new_events(&mut self, control: &mut ControlFlow, window: &Window) {

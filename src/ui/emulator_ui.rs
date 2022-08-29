@@ -456,11 +456,10 @@ fn create_screen(
             .parent(*screen_id)
             .layout(MarginLayout::default())
             .child(ctx, |cb, _| {
-                cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+                cb.graphic(style.menu_icon.clone()).layout(FitGraphic)
             })
             .fill_x(RectFill::ShrinkEnd)
             .fill_y(RectFill::ShrinkEnd)
-            .min_size([48.0; 2])
             .behaviour(Button::new(
                 style.delete_button.clone(),
                 true,

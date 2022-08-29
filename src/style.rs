@@ -197,6 +197,8 @@ pub struct Style {
     pub fold_icon: FoldIcon,
     pub delete_icon: Graphic,
     pub open_icon: Graphic,
+    pub forward_icon: Graphic,
+    pub menu_icon: Graphic,
     pub gamepad: GamePad,
 }
 impl Style {

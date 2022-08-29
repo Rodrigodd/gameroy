@@ -60,6 +60,8 @@
     ),
     delete_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (3,118,10,10), size: (10, 10)),
     open_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (16,131,16,16), size: (16, 16)),
+    forward_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (32,115,16,16), size: (16, 16)),
+    menu_icon: Icon(texture: "icons.png", uv_rect: (107,80,48,48), size: (48, 48)),
 
     gamepad: GamePad(
         cross: Icon(texture: "icons.png", uv_rect: (0,0,106,106), size: (106, 106)),

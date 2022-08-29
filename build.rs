@@ -15,7 +15,7 @@ fn render_svg_assets() {
     let dir = std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo");
 
     let out = Command::new("resvg")
-        .args([icons_svg, "assets/icons.png", "--zoom=0.5"])
+        .args([icons_svg, "assets/icons.png"])
         .current_dir(&dir)
         .output()
         .expect("'resvg' should be installed");
@@ -25,7 +25,7 @@ fn render_svg_assets() {
     }
 
     let out = Command::new("resvg")
-        .args([icons_svg, "assets/icons2x.png"])
+        .args([icons_svg, "assets/icons2x.png", "--zoom=2"])
         .current_dir(&dir)
         .output()
         .expect("'resvg' should be installed");

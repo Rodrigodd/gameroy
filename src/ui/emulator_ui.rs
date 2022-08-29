@@ -3,6 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use giui::{
     graphics::{Graphic, Icon, Texture},
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
+    style::ButtonStyle,
     text::Text,
     widgets::{Button, ButtonGroup, OnKeyboardEvent, TabButton},
     BuilderContext, Context, Gui, Id, RectFill,
@@ -454,14 +455,19 @@ fn create_screen(
         let _open_menu = ctx
             .create_control()
             .parent(*screen_id)
-            .layout(MarginLayout::default())
+            .layout(MarginLayout::new([12.0; 4]))
             .child(ctx, |cb, _| {
                 cb.graphic(style.menu_icon.clone()).layout(FitGraphic)
             })
             .fill_x(RectFill::ShrinkEnd)
             .fill_y(RectFill::ShrinkEnd)
             .behaviour(Button::new(
-                style.delete_button.clone(),
+                Rc::new(ButtonStyle {
+                    normal: style.button_panel.clone().with_alpha(128),
+                    hover: style.button_panel.clone().with_alpha(200),
+                    pressed: style.button_panel.clone().with_alpha(255),
+                    focus: style.button_panel.clone().with_alpha(150),
+                }),
                 true,
                 move |_, ctx| {
                     let style = ctx.get::<Style>().clone();
@@ -476,9 +482,7 @@ fn create_screen(
                             .send(event)
                             .unwrap()
                     }
-
                     send_emu(ctx, EmulatorEvent::Pause);
-
                     let options = vec![
                         option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
                         option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
@@ -491,9 +495,7 @@ fn create_screen(
                                 .unwrap();
                         }),
                     ];
-
                     let on_close = |ctx: &mut Context| send_emu(ctx, EmulatorEvent::Resume);
-
                     create_menu(options, on_close, ctx, &style);
                 },
             ))

@@ -24,11 +24,18 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
 
 You can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
 
-You can also compile and run a release build of this project by cloning this repo and running the
-following command in the project root:
+### from source 
+
+This project depends on [resvg](https://github.com/RazrFalcon/resvg) (version
+0.23, at time of writing) for rendering icons.svg into pngs. You can install it
+by running `cargo install resvg`, by downloading it from [resvg Releses
+page](https://github.com/RazrFalcon/resvg/releases) or any other way you find.
+
+With resvg installed, you can compile and run a release build of this project
+by cloning this repo and running the following command in the project root:
 
 ```shell
-cargo run --release
+cargo run --release -p native
 ```
 
 #### WebAssembly

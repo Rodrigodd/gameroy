@@ -201,6 +201,7 @@ pub struct Style {
     pub forward_icon: Graphic,
     pub menu_icon: Graphic,
     pub foward_icon: Graphic,
+    pub rewind_icon: Graphic,
     pub gamepad: GamePad,
 }
 impl Style {

@@ -66,6 +66,7 @@
     forward_icon: Icon(texture: "icons.png", color: "#34ff30", uv_rect: (32,115,16,16), size: (16, 16)),
     menu_icon: Icon(texture: "icons.png", uv_rect: (56,123,24,24), size: (24, 24)),
     foward_icon: Icon(texture: "icons.png", uv_rect: (32,123,24,24), size: (24, 24)),
+    rewind_icon: Icon(texture: "icons.png", uv_rect: (80,123,24,24), size: (24, 24)),
 
     gamepad: GamePad(
         cross: Icon(texture: "icons.png", uv_rect: (0,0,106,106), size: (106, 106)),

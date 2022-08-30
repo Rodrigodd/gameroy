@@ -2,10 +2,16 @@ use giui::{Id, Layout, LayoutContext, MinSizeContext};
 
 pub struct ScreenLayout {
     size: (u32, u32),
+    pub foward_button: Option<Id>,
+    pub rewind_button: Option<Id>,
 }
 impl ScreenLayout {
     pub fn new(size: (u32, u32)) -> Self {
-        Self { size }
+        Self {
+            size,
+            foward_button: None,
+            rewind_button: None,
+        }
     }
 }
 impl Layout for ScreenLayout {
@@ -55,6 +61,20 @@ impl Layout for ScreenLayout {
         let des_rect = [x.floor(), y.floor(), x + des_width, y + des_height];
         for child in ctx.get_active_children(this) {
             ctx.set_designed_rect(child, des_rect);
+        }
+
+        if let Some(button) = self.foward_button {
+            let [w, h] = ctx.get_min_size(button);
+            let x = x + des_width;
+            let y = 10.0 + y + des_height;
+            ctx.set_designed_rect(button, [x - w, y, x, y + h]);
+        }
+
+        if let Some(button) = self.rewind_button {
+            let [w, h] = ctx.get_min_size(button);
+            let x = x;
+            let y = 10.0 + y + des_height;
+            ctx.set_designed_rect(button, [x, y, x + w, y + h]);
         }
     }
 }

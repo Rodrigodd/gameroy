@@ -2,10 +2,14 @@ use std::collections::HashMap;
 
 use giui::{Context, Id};
 
+pub type OtherButton = (Id, Box<dyn FnMut(bool, &mut Context)>);
+
 pub struct GamePad {
     /// The Id of the control that represent the button position, and a button bit flag that can
     /// represent multiple buttons.
-    buttons: Vec<(Id, u8)>,
+    joy_buttons: Vec<(Id, u8)>,
+    /// Other buttons like fast foward and rewind.
+    other_buttons: Vec<OtherButton>,
     /// The sprites of each button, plus the cross center. Gamepad is responsible to change they
     /// opacity.
     sprites: [Id; 9],
@@ -14,18 +18,33 @@ pub struct GamePad {
 
 impl GamePad {
     pub const MAX_DIST: f32 = 35.0;
-    pub fn new(buttons: Vec<(Id, u8)>, sprites: [Id; 9]) -> Self {
+    pub fn new(joypad: Vec<(Id, u8)>, other: Vec<OtherButton>, sprites: [Id; 9]) -> Self {
         Self {
-            buttons,
+            joy_buttons: joypad,
+            other_buttons: other,
             sprites,
             pressed: HashMap::default(),
         }
     }
 
-    fn on_change(&self, ctx: &mut Context) {
+    fn on_change(&mut self, ctx: &mut Context) {
         let mut joypad = 0;
-        for (_, p) in self.pressed.iter() {
-            joypad |= self.buttons[*p as usize].1;
+        let joys = self.joy_buttons.len();
+        let mut others = vec![false; self.other_buttons.len()];
+        for (_, i) in self.pressed.iter() {
+            let i = *i as usize;
+            if i < joys {
+                joypad |= self.joy_buttons[i].1;
+            } else {
+                let i = i - joys;
+                others[i] = true;
+            }
+        }
+
+        for (v, b) in others.into_iter().zip(self.other_buttons.iter_mut()) {
+            let alpha = if v { 255 } else { 128 };
+            ctx.get_graphic_mut(b.0).set_alpha(alpha);
+            (b.1)(v, ctx);
         }
 
         for i in 0..8 {
@@ -56,11 +75,12 @@ impl giui::Behaviour for GamePad {
 
         if mouse.buttons.left.pressed() {
             // find closest
-            let (b, dist) = self
-                .buttons
-                .iter()
+            let joy_buttons = self.joy_buttons.iter().map(|(id, _)| *id);
+            let other_buttons = self.other_buttons.iter().map(|(id, _)| *id);
+            let (b, dist) = joy_buttons
+                .chain(other_buttons)
                 .enumerate()
-                .map(|(i, &(id, _))| {
+                .map(|(i, id)| {
                     let x = ctx.get_rect(id);
                     let center = [(x[0] + x[2]) / 2.0, (x[1] + x[3]) / 2.0];
                     let dx = mouse.pos[0] - center[0];
@@ -137,7 +157,11 @@ mod test {
                 )
             });
             ctx.create_control()
-                .behaviour(GamePad::new(buttons[0..8].to_vec(), buttons.map(|x| x.0)))
+                .behaviour(GamePad::new(
+                    buttons[0..8].to_vec(),
+                    Vec::new(),
+                    buttons.map(|x| x.0),
+                ))
                 .build(ctx);
         };
         gui

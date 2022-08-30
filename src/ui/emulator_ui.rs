@@ -21,7 +21,9 @@ use crate::{
     },
     EmulatorEvent, UserEvent,
 };
+
 mod disassembler_viewer;
+mod game_pad;
 mod ppu_viewer;
 
 pub fn create_emulator_ui(ui: &mut Ui, debug: bool) {
@@ -318,7 +320,11 @@ fn open_debug_panel(
     proxy.send_event(UserEvent::Debug(true)).unwrap();
 }
 
-mod game_pad;
+fn send_emu<'a>(ctx: &'a mut Context, event: EmulatorEvent) {
+    ctx.get::<flume::Sender<EmulatorEvent>>()
+        .send(event)
+        .unwrap()
+}
 
 fn create_screen(
     ctx: &mut Context,
@@ -328,15 +334,8 @@ fn create_screen(
     style: &Style,
 ) {
     *screen_id = ctx.reserve();
-
-    let _screen = ctx
-        .create_control()
-        .parent(*screen_id)
-        .layout(ScreenLayout::new((160, 144)))
-        .child(ctx, |cb, _| {
-            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
-        })
-        .build(ctx);
+    let screen = ctx.reserve();
+    let mut layout = ScreenLayout::new((160, 144));
 
     let gamepad = cfg!(target_os = "android");
     if gamepad {
@@ -417,7 +416,30 @@ fn create_screen(
             )
         });
 
-        let mut buttons = vec![
+        let foward_button = ctx
+            .create_control()
+            .parent(screen)
+            .graphic(style.button_panel.clone())
+            .layout(MarginLayout::new([12.0; 4]))
+            .child(ctx, |cb, _| {
+                cb.graphic(style.foward_icon.clone()).layout(FitGraphic)
+            })
+            .build(ctx);
+
+        let rewind_button = ctx
+            .create_control()
+            .parent(screen)
+            .graphic(style.button_panel.clone())
+            .layout(MarginLayout::new([12.0; 4]))
+            .child(ctx, |cb, _| {
+                cb.graphic(style.rewind_icon.clone()).layout(FitGraphic)
+            })
+            .build(ctx);
+
+        layout.foward_button = Some(foward_button);
+        layout.rewind_button = Some(rewind_button);
+
+        let mut joypad = vec![
             (r, 1 << 0),
             (l, 1 << 1),
             (u, 1 << 2),
@@ -428,20 +450,29 @@ fn create_screen(
             (start, 1 << 7),
         ];
 
-        buttons.extend_from_slice(&[
-            (ru, buttons[0].1 | buttons[2].1),
-            (lu, buttons[1].1 | buttons[2].1),
-            (rd, buttons[0].1 | buttons[3].1),
-            (ld, buttons[1].1 | buttons[3].1),
-            (ab, buttons[4].1 | buttons[5].1),
+        joypad.extend_from_slice(&[
+            (ru, joypad[0].1 | joypad[2].1),
+            (lu, joypad[1].1 | joypad[2].1),
+            (rd, joypad[0].1 | joypad[3].1),
+            (ld, joypad[1].1 | joypad[3].1),
+            (ab, joypad[4].1 | joypad[5].1),
         ]);
+
+        use EmulatorEvent::*;
+        fn bx<T>(x: T) -> Box<T> {
+            Box::new(x)
+        }
+        let other: Vec<game_pad::OtherButton> = vec![
+            (foward_button, bx(|v, ctx| send_emu(ctx, FrameLimit(!v)))),
+            (rewind_button, bx(|v, ctx| send_emu(ctx, Rewind(v.into())))),
+        ];
 
         let sprites = [sr, sl, su, sd, a, b, select, start, scenter];
 
         ctx.create_control_reserved(*screen_id)
             .parent(parent)
             .graphic(style.background.clone())
-            .behaviour(game_pad::GamePad::new(buttons, sprites))
+            .behaviour(game_pad::GamePad::new(joypad, other, sprites))
             .build(ctx);
     } else {
         ctx.create_control_reserved(*screen_id)
@@ -449,6 +480,17 @@ fn create_screen(
             .graphic(style.background.clone())
             .build(ctx);
     }
+
+    let _screen = ctx
+        .create_control_reserved(screen)
+        .parent(*screen_id)
+        .layout(layout)
+        .child(ctx, |cb, _| {
+            cb.graphic(Texture::new(textures.screen, [0.0, 0.0, 1.0, 1.0]))
+        })
+        .build(ctx);
+
+    ctx.move_to_back(screen);
 
     let menu = cfg!(target_os = "android");
     if menu {
@@ -476,11 +518,6 @@ fn create_screen(
                         b: impl FnMut(&mut Context) + 'static,
                     ) -> MenuOption<'a> {
                         (a, Box::new(b))
-                    }
-                    fn send_emu<'a>(ctx: &'a mut Context, event: EmulatorEvent) {
-                        ctx.get::<flume::Sender<EmulatorEvent>>()
-                            .send(event)
-                            .unwrap()
                     }
                     send_emu(ctx, EmulatorEvent::Pause);
                     let options = vec![

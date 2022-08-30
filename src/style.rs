@@ -24,7 +24,9 @@ mod loaded_files {
 
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {
-            if self.scale_factor >= 1.5 {
+            let scale2x = self.scale_factor >= 1.5;
+
+            if scale2x {
                 if name == "icons.png" {
                     name = "icons2x.png".to_string();
                 }
@@ -56,22 +58,34 @@ mod loaded_files {
                 break data;
             };
 
-            let texture = (
+            let mut texture = (
                 self.render
                     .new_texture(data.width(), data.height(), data.as_ref(), true),
                 data.width(),
                 data.height(),
             );
+            if scale2x {
+                // unscale texture width and height
+                texture.1 /= 2;
+                texture.2 /= 2;
+            }
             self.textures.insert(name, texture);
             texture
         }
 
         fn modify_graphic(&mut self, graphic: &mut Graphic) {
-            if let Graphic::Icon(icon) = graphic {
-                if self.scale_factor >= 1.5 {
-                    icon.size = icon.size.map(|x| 2.0 * x);
-                    icon.uv_rect = icon.uv_rect.map(|x| 2.0 * x);
+            match graphic {
+                Graphic::Icon(icon) => {
+                    if self.scale_factor >= 1.5 {
+                        icon.size = icon.size.map(|x| 2.0 * x);
+                    }
                 }
+                Graphic::Panel(panel) => {
+                    if self.scale_factor >= 1.5 {
+                        panel.border = panel.border.map(|x| 2.0 * x);
+                    }
+                }
+                _ => (),
             }
         }
 
@@ -108,6 +122,8 @@ mod static_files {
                 return *texture;
             }
 
+            let scale2x = self.scale_factor >= 1.5;
+
             let data = loop {
                 let data = match name.as_str() {
                     "white.png" => {
@@ -118,7 +134,7 @@ mod static_files {
                         break image_buffer;
                     }
                     "icons.png" => {
-                        if self.scale_factor >= 1.5 {
+                        if scale2x {
                             FILES.icons2x_texture
                         } else {
                             FILES.icons_texture
@@ -139,22 +155,34 @@ mod static_files {
                 break data;
             };
 
-            let texture = (
+            let mut texture = (
                 self.render
                     .new_texture(data.width(), data.height(), data.as_ref(), true),
                 data.width(),
                 data.height(),
             );
+            if scale2x {
+                // unscale texture width and height
+                texture.1 /= 2;
+                texture.2 /= 2;
+            }
             self.textures.insert(name, texture);
             texture
         }
 
         fn modify_graphic(&mut self, graphic: &mut Graphic) {
-            if let Graphic::Icon(icon) = graphic {
-                if self.scale_factor >= 1.5 {
-                    icon.size = icon.size.map(|x| 2.0 * x);
-                    icon.uv_rect = icon.uv_rect.map(|x| 2.0 * x);
+            match graphic {
+                Graphic::Icon(icon) => {
+                    if self.scale_factor >= 1.5 {
+                        icon.size = icon.size.map(|x| 2.0 * x);
+                    }
                 }
+                Graphic::Panel(panel) => {
+                    if self.scale_factor >= 1.5 {
+                        panel.border = panel.border.map(|x| 2.0 * x);
+                    }
+                }
+                _ => (),
             }
         }
 

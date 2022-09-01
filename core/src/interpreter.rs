@@ -877,6 +877,11 @@ impl Interpreter<'_> {
         if self.0.cpu.state == CpuState::Halt {
             self.0.tick(2);
         }
+        
+        // TODO: I don't know the behaviour of Stopped state. Treating the same as Halt.
+        if self.0.cpu.state == CpuState::Stopped {
+            self.0.tick(2);
+        }
 
         if interrupts != 0 {
             self.0.cpu.state = CpuState::Running;
@@ -1026,6 +1031,8 @@ impl Interpreter<'_> {
             0x10 => {
                 // STOP 0 2:4 - - - -
                 self.0.cpu.state = CpuState::Stopped;
+                self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+                return;
             }
             0x11 => {
                 // LD DE,d16 3:12 - - - -

@@ -1,6 +1,9 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
+use std::{
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use gameroy::{
@@ -13,7 +16,117 @@ use rand::{Rng, SeedableRng};
 const SCREEN_HEIGHT: usize = 144;
 const SCREEN_WIDTH: usize = 160;
 
-const TEST_ROM_PATH: &str = "tests/gameboy-test-roms/";
+const CLOCK_SPEED: u64 = 2u64.pow(22);
+
+const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-test-roms/");
+
+macro_rules! screen {
+    { $( $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
+        $(#[test]
+        fn $test() {
+            test_screen($rom, $expec, $timeout);
+        })*
+    };
+}
+
+fn lcd_to_rgb(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
+    for y in 0..SCREEN_HEIGHT {
+        for x in 0..SCREEN_WIDTH {
+            let i = (x + y * SCREEN_WIDTH) as usize * 3;
+            let c = screen[i / 3];
+            const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+            img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+        }
+    }
+}
+
+fn test_screen(rom: &str, reference: &str, timeout: u64) {
+    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+    let reference_path = TEST_ROM_PATH.to_string() + reference;
+    let rom = std::fs::read(&rom_path).unwrap();
+
+    let cartridge = Cartridge::new(rom).unwrap();
+
+    let mut game_boy = GameBoy::new(None, cartridge);
+    let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+        Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+    let screen_clone = screen.clone();
+    game_boy.v_blank = Some(Box::new(move |gb| {
+        *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
+    }));
+
+    let mut inter = Interpreter(&mut game_boy);
+    while inter.0.clock_count < timeout {
+        inter.interpret_op();
+        // 0x40 = LD B, B
+        if inter.0.read(inter.0.cpu.pc) == 0x40 {
+            break;
+        }
+    }
+    println!("final clock_count: {}", inter.0.clock_count);
+
+    if inter.0.clock_count >= timeout {
+        println!("reach timeout!!");
+    }
+
+    let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+    lcd_to_rgb(&*screen.lock().unwrap(), &mut img_data);
+    let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
+
+    if img_data != reference_img_data {
+        let path: PathBuf = ("test_output/".to_string()
+            + &rom_path.file_stem().unwrap().to_string_lossy()
+            + "_output.png")
+            .into();
+        path.parent().map(|x| std::fs::create_dir_all(x).unwrap());
+        image::save_buffer(
+            &path,
+            &img_data,
+            SCREEN_WIDTH as u32,
+            SCREEN_HEIGHT as u32,
+            image::ColorType::Rgb8,
+        )
+        .unwrap();
+        panic!("screen don't match with expected image");
+    }
+}
+
+fn test_registers(rom: &str, timeout: u64) {
+    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+    let rom = std::fs::read(&rom_path).unwrap();
+
+    let cartridge = Cartridge::new(rom).unwrap();
+
+    let mut game_boy = GameBoy::new(None, cartridge);
+    let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+        Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+    let screen_clone = screen.clone();
+    game_boy.v_blank = Some(Box::new(move |gb| {
+        *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
+    }));
+
+    let mut inter = Interpreter(&mut game_boy);
+    while inter.0.clock_count < timeout {
+        inter.interpret_op();
+        // 0x40 = LD B, B
+        if inter.0.read(inter.0.cpu.pc) == 0x40 {
+            break;
+        }
+    }
+    println!("final clock_count: {}", inter.0.clock_count);
+
+    if inter.0.clock_count >= timeout {
+        panic!("reach timeout!!");
+    }
+    let regs = game_boy.cpu;
+
+    if regs.a != 0 {
+        panic!("{} assertion failures in hardware test", regs.a);
+    }
+    if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34 {
+        panic!("Hardware test failed");
+    }
+}
 
 mod blargg {
     use super::*;
@@ -394,79 +507,19 @@ fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
 }
 
 mod mattcurrie {
-    use std::path::PathBuf;
-
     use super::*;
 
-    fn lcd_to_rgb(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
-        for y in 0..SCREEN_HEIGHT {
-            for x in 0..SCREEN_WIDTH {
-                let i = (x + y * SCREEN_WIDTH) as usize * 3;
-                let c = screen[i / 3];
-                const COLOR: [[u8; 3]; 4] =
-                    [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
-                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-            }
-        }
-    }
-
-    fn test_screen(rom: &str, reference: &str, timeout: u64) {
-        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
-        let reference_path = TEST_ROM_PATH.to_string() + reference;
-        let rom = std::fs::read(&rom_path).unwrap();
-
-        let cartridge = Cartridge::new(rom).unwrap();
-
-        let mut game_boy = GameBoy::new(None, cartridge);
-        let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
-            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-        let screen_clone = screen.clone();
-        game_boy.v_blank = Some(Box::new(move |gb| {
-            *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
-        }));
-
-        let mut inter = Interpreter(&mut game_boy);
-        while inter.0.clock_count < timeout {
-            inter.interpret_op();
-            if inter.0.read(inter.0.cpu.pc) == 0x40 {
-                break;
-            }
-        }
-        println!("final clock_count: {}", inter.0.clock_count);
-
-        if inter.0.clock_count >= timeout {
-            println!("reach timeout!!");
-        }
-
-        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
-        lcd_to_rgb(&*screen.lock().unwrap(), &mut img_data);
-        let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
-
-        if img_data != reference_img_data {
-            let path: PathBuf = ("test_output/".to_string()
-                + &rom_path.file_stem().unwrap().to_string_lossy()
-                + "_output.png")
-                .into();
-            path.parent().map(|x| std::fs::create_dir_all(x).unwrap());
-            image::save_buffer(
-                &path,
-                &img_data,
-                SCREEN_WIDTH as u32,
-                SCREEN_HEIGHT as u32,
-                image::ColorType::Rgb8,
-            )
-            .unwrap();
-            panic!("screen don't match with expected image");
-        }
-    }
-
-    macro_rules! screen {
-        { $( $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
+    macro_rules! registers {
+        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
             $(#[test]
             fn $test() {
-                test_screen($rom, $expec, $timeout);
+                test_registers(concat!("mealybug-tearoom-tests/", $rom, ".gb"), $timeout);
             })*
         };
+    }
+
+    registers! {
+        mbc3_rtc("mbc/mbc3_rtc", 204_872_220);
     }
 
     screen! {
@@ -639,16 +692,16 @@ mod mattcurrie {
 }
 
 mod mooneye {
+    use super::*;
+
     macro_rules! registers {
         { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
             $(#[test]
             fn $test() {
-                test_rom($rom, $timeout);
+                test_registers(concat!("mooneye-test-suite/", $rom, ".gb"), $timeout);
             })*
         };
     }
-
-    const CLOCK_SPEED: u64 = 2u64.pow(22);
 
     registers! {
       add_sp_e_timing("acceptance/add_sp_e_timing", 120*CLOCK_SPEED);
@@ -746,45 +799,61 @@ mod mooneye {
       mbc5_rom_32mb("emulator-only/mbc5/rom_32Mb", 120*CLOCK_SPEED);
       mbc5_rom_64mb("emulator-only/mbc5/rom_64Mb", 120*CLOCK_SPEED);
     }
+}
 
-    fn test_rom(rom: &str, timeout: u64) {
-        use std::path::PathBuf;
+mod age {
+    use super::*;
 
-        use super::*;
-        let rom_path: PathBuf =
-            (TEST_ROM_PATH.to_string() + "mooneye-test-suite/" + rom + ".gb").into();
-        let rom = std::fs::read(&rom_path).unwrap();
+    macro_rules! registers {
+        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test]
+            fn $test() {
+                test_registers(concat!("age-test-roms/", $rom, ".gb"), $timeout);
+            })*
+        };
+    }
 
-        let cartridge = Cartridge::new(rom).unwrap();
+    screen! {
+        bgp(
+            "age-test-roms/m3-bg-bgp/m3-bg-bgp.gb",
+            "age-test-roms/m3-bg-bgp/m3-bg-bgp-dmgC.png",
+            24_554_332,
+        );
+        lcdc(
+            "age-test-roms/m3-bg-lcdc/m3-bg-lcdc.gb",
+            "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-dmgC.png",
+            24_554_332,
+        );
+        scx(
+            "age-test-roms/m3-bg-scx/m3-bg-scx.gb",
+            "age-test-roms/m3-bg-scx/m3-bg-scx-dmgC.png",
+            24_554_332,
+        );
+    }
 
-        let mut game_boy = GameBoy::new(None, cartridge);
-        let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
-            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-        let screen_clone = screen.clone();
-        game_boy.v_blank = Some(Box::new(move |gb| {
-            *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
-        }));
+    registers! {
+        ly("ly/ly-dmgC-cgbB", 120*CLOCK_SPEED);
+        stat_int("stat-interrupt/stat-int-dmgC-cgbBE", 120*CLOCK_SPEED);
+        state_mode("stat-mode/stat-mode-dmgC-cgbB", 120*CLOCK_SPEED);
+        vram_read("vram/vram-read-dmgC", 120*CLOCK_SPEED);
+    }
+}
 
-        let mut inter = Interpreter(&mut game_boy);
-        while inter.0.clock_count < timeout {
-            inter.interpret_op();
-            if inter.0.read(inter.0.cpu.pc) == 0x40 {
-                break;
-            }
-        }
-        println!("final clock_count: {}", inter.0.clock_count);
+mod same_suite {
+    use super::*;
 
-        if inter.0.clock_count >= timeout {
-            panic!("reach timeout!!");
-        }
-        let regs = game_boy.cpu;
+    macro_rules! registers {
+        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test]
+            fn $test() {
+                test_registers(concat!("same-suite/", $rom, ".gb"), $timeout);
+            })*
+        };
+    }
 
-        if regs.a != 0 {
-            panic!("{} assertion failures in hardware test", regs.a);
-        }
-        if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34
-        {
-            panic!("Hardware test failed");
-        }
+    registers! {
+        div_write_trigger("apu/div_write_trigger", 12*CLOCK_SPEED);
+        div_write_trigger_10("apu/div_write_trigger_10", 12*CLOCK_SPEED);
+        ei_delay_halt("interrupt/ei_delay_halt", 12*CLOCK_SPEED);
     }
 }

@@ -522,6 +522,7 @@ fn create_screen(
                     let options = vec![
                         option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
                         option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
+                        option("Reset", |ctx| send_emu(ctx, EmulatorEvent::Reset)),
                         option("Exit Game", |ctx| {
                             ctx.get::<EventLoopProxy<UserEvent>>()
                                 .send_event(UserEvent::GoToRomList)

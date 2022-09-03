@@ -282,12 +282,15 @@ impl ListBuilder for RomList {
                                     None
                                 }
                             };
+                            let game_boy = match load_gameboy(rom, ram) {
+                                Ok(x) => x,
+                                Err(err) => {
+                                    log::error!("failed to load rom: {}", err);
+                                    return;
+                                }
+                            };
                             log::debug!("sending LoadRom");
-                            p.send_event(UserEvent::LoadRom {
-                                file,
-                                game_boy: load_gameboy(rom, ram).unwrap(),
-                            })
-                            .unwrap();
+                            p.send_event(UserEvent::LoadRom { file, game_boy }).unwrap();
                         };
                         executor::Executor::spawn_task(task, ctx);
                     }

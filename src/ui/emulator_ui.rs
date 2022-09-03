@@ -11,7 +11,6 @@ use giui::{
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
-    emulator::Bool,
     event_table::EventTable,
     style::Style,
     ui::{Textures, Ui},
@@ -133,7 +132,7 @@ pub fn create_gui(
                                 .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
                                 .unwrap(),
                             Pressed(x) | Release(x) if x == km.rewind => sender
-                                .send(EmulatorEvent::Rewind(matches!(event, Pressed(_)).into()))
+                                .send(EmulatorEvent::Rewind(matches!(event, Pressed(_))))
                                 .unwrap(),
 
                             _ => {}
@@ -464,7 +463,7 @@ fn create_screen(
         }
         let other: Vec<game_pad::OtherButton> = vec![
             (foward_button, bx(|v, ctx| send_emu(ctx, FrameLimit(!v)))),
-            (rewind_button, bx(|v, ctx| send_emu(ctx, Rewind(v.into())))),
+            (rewind_button, bx(|v, ctx| send_emu(ctx, Rewind(v)))),
         ];
 
         let sprites = [sr, sl, su, sd, a, b, select, start, scenter];
@@ -523,9 +522,6 @@ fn create_screen(
                     let options = vec![
                         option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
                         option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
-                        option("Rewind", |ctx| {
-                            send_emu(ctx, EmulatorEvent::Rewind(Bool::Toggle))
-                        }),
                         option("Exit Game", |ctx| {
                             ctx.get::<EventLoopProxy<UserEvent>>()
                                 .send_event(UserEvent::GoToRomList)

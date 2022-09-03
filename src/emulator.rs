@@ -17,37 +17,12 @@ use winit::event_loop::EventLoopProxy;
 use super::UserEvent;
 use crate::rom_loading::RomFile;
 
-#[derive(Debug, Clone, Copy)]
-pub enum Bool {
-    True,
-    False,
-    Toggle,
-}
-impl From<bool> for Bool {
-    fn from(v: bool) -> Self {
-        if v {
-            Self::True
-        } else {
-            Self::False
-        }
-    }
-}
-impl Bool {
-    fn apply(self, v: &mut bool) {
-        *v = match self {
-            Bool::True => true,
-            Bool::False => false,
-            Bool::Toggle => !*v,
-        };
-    }
-}
-
 #[derive(Debug)]
 pub enum EmulatorEvent {
     Kill,
     RunFrame,
     FrameLimit(bool),
-    Rewind(Bool),
+    Rewind(bool),
     SetJoypad(u8),
     Debug(bool),
     Step,
@@ -578,7 +553,7 @@ impl Emulator {
                 }
             }
             Rewind(value) => {
-                value.apply(&mut self.rewind);
+                self.rewind = value;
                 {
                     let joypad = &mut *self.joypad.lock();
                     joypad.rewinding = self.rewind;

@@ -221,6 +221,31 @@ fn start_event_loop(
                         log::debug!("build ui");
                         app.build_ui(&mut ui);
                     }
+                    // Load Dropped File
+                    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+                    WindowEvent::DroppedFile(path) => {
+                        let proxy = proxy.clone();
+                        let path = path.clone();
+                        let task = async move {
+                            log::info!("The file {:?} was dropped", path);
+                            let file = RomFile::from_path(path);
+                            let rom = file.read().await.unwrap();
+                            let ram = match file.load_ram_data().await {
+                                Ok(x) => Some(x),
+                                Err(err) => {
+                                    log::error!("{}", err);
+                                    None
+                                }
+                            };
+                            proxy
+                                .send_event(UserEvent::LoadRom {
+                                    file,
+                                    game_boy: rom_loading::load_gameboy(rom, ram).unwrap(),
+                                })
+                                .unwrap();
+                        };
+                        executor::Executor::spawn_task(task, &mut ui.gui.get_context());
+                    }
                     _ => {}
                 }
             }
@@ -324,32 +349,6 @@ impl App for RomLoadingApp {
         proxy: &EventLoopProxy<UserEvent>,
     ) {
         match event {
-            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-            Event::WindowEvent {
-                event: WindowEvent::DroppedFile(path),
-                ..
-            } => {
-                let proxy = proxy.clone();
-                let task = async move {
-                    log::info!("The file {:?} was dropped", path);
-                    let file = RomFile::from_path(path);
-                    let rom = file.read().await.unwrap();
-                    let ram = match file.load_ram_data().await {
-                        Ok(x) => Some(x),
-                        Err(err) => {
-                            log::error!("{}", err);
-                            None
-                        }
-                    };
-                    proxy
-                        .send_event(UserEvent::LoadRom {
-                            file: file,
-                            game_boy: rom_loading::load_gameboy(rom, ram).unwrap(),
-                        })
-                        .unwrap();
-                };
-                executor::Executor::spawn_task(task, &mut ui.gui.get_context());
-            }
             Event::UserEvent(UserEvent::UpdateRomList) => {
                 ui.gui.get::<ui::RomEntries>().start_loading(proxy.clone());
             }
@@ -583,7 +582,6 @@ impl App for EmulatorApp {
                         self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                     UpdateTexture(texture, data) => ui.update_texture(texture, &data),
-                    LoadRom { .. } => unimplemented!(),
                     _ => {}
                 }
             }

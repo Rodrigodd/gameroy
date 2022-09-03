@@ -724,7 +724,7 @@ crate::save_state!(MBC3, self, data {
 impl MBC3 {
     fn new() -> Self {
         Self {
-            selected_bank: 0,
+            selected_bank: 1,
             ram_enabled: false,
             ram_bank: 0,
             rtc: [0; 5],
@@ -732,8 +732,15 @@ impl MBC3 {
         }
     }
 
-    fn curr_bank(&self, _rom: &[u8]) -> u16 {
-        self.selected_bank as u16
+    fn curr_bank(&self, rom: &[u8]) -> u16 {
+        let mut bank = self.selected_bank;
+
+        // cannot adress a bank where the 7-bit bank register is 0
+        debug_assert!(bank != 0);
+
+        // mask upper bits if the bank is out of bounds
+        bank %= (rom.len() / 0x4000) as u8;
+        bank as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -745,7 +752,15 @@ impl MBC3 {
                 let bank = self.curr_bank(rom);
 
                 let address_start = 0x4000 * bank as usize;
-                rom[address as usize - 0x4000 + address_start]
+                let i = address as usize - 0x4000 + address_start;
+                let len = rom.len();
+                if i > len {
+                    panic!(
+                        "reading from bank {:02x}, address {:04x}, but rom length is {:04x}",
+                        bank, i, len
+                    );
+                }
+                rom[i]
             }
             // RAM Bank 00-03, or RTC registers 08-0C
             0xA000..=0xBFFF => {
@@ -784,7 +799,14 @@ impl MBC3 {
             // ROM Bank Number
             0x2000..=0x3FFF => {
                 // all 7 bits are written
-                self.selected_bank = value & 0x7F;
+                let value = value & 0x7F;
+                let value = if value == 0 {
+                    // Write 0 became 1 (register cannot be 0)
+                    1
+                } else {
+                    value
+                };
+                self.selected_bank = value;
             }
             // RAM Bank Number - or - Upper Bits of ROM Bank Number
             0x4000..=0x5FFF => {
@@ -801,9 +823,7 @@ impl MBC3 {
                     self.latch_clock_data = 0;
                     // TODO: complete the rtc implementation
 
-                    let now = std::time::UNIX_EPOCH
-                        .elapsed()
-                        .unwrap_or(std::time::Duration::ZERO);
+                    let now = std::time::Duration::ZERO;
                     let seconds = now.as_secs();
                     let secs = (seconds % 60) as u8;
                     let mins = ((seconds / 60) % 60) as u8;

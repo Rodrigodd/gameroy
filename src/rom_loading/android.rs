@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
+use gameroy::save_state::SaveStateHeader;
 use jni::objects::{JString, JValue};
 
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, String> {
@@ -91,6 +92,34 @@ pub fn load_file(file_name: &str) -> Option<Vec<u8>> {
         .unwrap()
 }
 
+pub fn file_date(file_name: &str) -> Option<u64> {
+    let android_context = ndk_context::android_context();
+    let vm =
+        std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+    jni::Executor::new(vm)
+        .with_attached(|env| {
+            let filename = env.new_string(file_name)?;
+            let size = env.call_method(
+                android_context.context() as jni::sys::jobject,
+                "getFileDate",
+                "(Ljava/lang/String;)J",
+                &[filename.into()],
+            )?;
+
+            match size {
+                JValue::Long(x) => {
+                    if x == 0 {
+                        Ok(None)
+                    } else {
+                        Ok(Some(x as u64))
+                    }
+                },
+                _ => panic!("unexpected type")
+            }
+        })
+        .unwrap()
+}
+
 pub fn save_file(file_name: &str, data: &[u8]) {
     let android_context = ndk_context::android_context();
     let vm =
@@ -177,6 +206,12 @@ impl RomFile {
         let file_name = self.file_name().to_owned() + ".sav";
 
         load_file(&file_name).ok_or_else(|| "load save failed".to_string())
+    }
+
+    pub fn get_save_time(&self) -> Result<u64, String> {
+        let file_name = self.file_name().to_owned() + ".sav";
+
+        file_date(&file_name).ok_or_else(|| "file date failed".to_string())
     }
 
     pub fn save_state(&self, state: &[u8]) -> Result<(), String> {

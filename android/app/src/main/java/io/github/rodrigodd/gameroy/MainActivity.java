@@ -187,6 +187,17 @@ public class MainActivity extends NativeActivity {
             Log.d(TAG, "error saving ram: " + ex.toString());
             return null;
         }
+    }
+
+    public long getFileDate(String filename) {
+        try {
+            File file = new File(getFilesDir(), filename);
+            // Get time in milliseconds since epoch.
+            return file.lastModified();
+        } catch (SecurityException ex) {
+            Log.d(TAG, "error getting file date: " + ex.toString());
+            return 0;
+        }
 
     }
 

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, ops::Add, rc::Rc};
 
 use giui::{
     graphics::Graphic,
@@ -57,10 +57,15 @@ impl RomEntries {
                 .unwrap_or_default();
             let mut entries: Vec<RomEntry> = roms
                 .into_iter()
-                .map(|x| RomEntry {
-                    file: x,
-                    name: None,
-                    size: None,
+                .map(|x| {
+                    let save_time = x.get_save_time();
+                    log::debug!("{}", x.file_name());
+                    RomEntry {
+                        file: x,
+                        name: None,
+                        size: None,
+                        save_time: save_time.ok(),
+                    }
                 })
                 .collect();
 
@@ -117,6 +122,8 @@ pub struct RomEntry {
     name: Option<String>,
     /// The size of the rom file in bytes
     size: Option<u64>,
+    /// The instant in millisenconds since epoch of this rom's ram save file
+    save_time: Option<u64>,
     /// The path to the rom
     pub file: RomFile,
 }
@@ -134,6 +141,41 @@ impl RomEntry {
             }
         } else {
             "-".to_string()
+        }
+    }
+
+    fn save_age(&self) -> String {
+        use instant::{Duration, SystemTime};
+
+        let last_played = match self.save_time {
+            Some(x) => x,
+            None => return " - ".to_string(),
+        };
+        let then = SystemTime::UNIX_EPOCH.add(Duration::from_millis(last_played));
+        let now = SystemTime::now();
+
+        let delta = now.duration_since(then);
+
+        let delta = match delta {
+            Ok(x) => x.as_secs(),
+            Err(_) => return " - ".to_string(),
+        };
+
+        const SECOND: u64 = 1;
+        const MINUTE: u64 = 60 * SECOND;
+        const HOUR: u64 = 60 * MINUTE;
+        const DAY: u64 = 24 * HOUR;
+        // const WEEK: u64 = 7 * DAY;
+        const MONTH: u64 = 30 * DAY;
+        const YEAR: u64 = 365 * DAY;
+
+        match delta {
+            x if x < SECOND => format!("Just Now"),
+            x if x < MINUTE => format!("{}s agi", x / SECOND),
+            x if x < HOUR => format!("{}min ago", x / MINUTE),
+            x if x < DAY => format!("{}h ago", x / HOUR),
+            x if x < MONTH => format!("{}d ago", x / DAY),
+            x => format!("{} years", x / YEAR),
         }
     }
 }
@@ -216,14 +258,16 @@ impl ListBuilder for RomList {
     ) -> giui::ControlBuilder {
         let style = &ctx.get::<Style>().clone();
         let header = index == 0;
-        let (name, size, file, entry) = if !header {
+        let (name, size, file, age, entry) = if !header {
             let roms = ctx.get::<RomEntries>().roms();
             let entry = roms[index - 1].clone();
             let size = entry.size();
+            let age = entry.save_age();
             (
                 entry.name(),
                 size,
                 entry.file.file_name().into_owned(),
+                age,
                 Some(entry),
             )
         } else {
@@ -231,6 +275,7 @@ impl ListBuilder for RomList {
                 "Header Name".to_string(),
                 "Size".to_string(),
                 "File".to_string(),
+                "Last played".to_string(),
                 None,
             )
         };
@@ -240,7 +285,7 @@ impl ListBuilder for RomList {
             Graphic::None
         };
         let parent = cb.id();
-        for text in [file, name, size] {
+        for text in [file, name, size, age] {
             let cb = ctx
                 .create_control()
                 .parent(parent)
@@ -432,7 +477,8 @@ pub fn create_rom_loading_ui(
     let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
         .column(490.0, false)
         .column(120.0, false)
-        .column(60.0, false);
+        .column(60.0, false)
+        .column(100.0, false);
 
     ctx.get_mut::<RomEntries>().register(rom_list_id);
     crate::ui::list(

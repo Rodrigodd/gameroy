@@ -113,6 +113,23 @@ impl RomFile {
         let save_path = self.save_state_path();
         std::fs::read(save_path).map_err(|x| x.to_string())
     }
+
+    pub fn get_save_time(&self) -> Result<u64, String> {
+        let save_path = self.save_path();
+        let data = std::fs::metadata(&save_path)
+            .map_err(|err| format!("Failed getting '{}' metadata: {}", save_path.display(), err))?;
+
+        let time = data.modified().map_err(|err| {
+            format!(
+                "Failed to get '{}' modfied time: {}",
+                save_path.display(),
+                err
+            )
+        })?;
+        Ok(time
+            .duration_since(instant::SystemTime::UNIX_EPOCH)
+            .map_or(0, |x| x.as_millis() as u64))
+    }
 }
 #[cfg(feature = "rfd")]
 impl From<rfd::FileHandle> for RomFile {

@@ -10,10 +10,93 @@ pub enum LoadStateError {
     SoundControllerDesync(u64, u64),
     ConstMismatch(String, String),
     IoError(std::io::Error),
+    InvalidMagicConst([u8; 4]),
+    UnknownVersion(u32),
 }
 impl From<std::io::Error> for LoadStateError {
     fn from(error: std::io::Error) -> Self {
         Self::IoError(error)
+    }
+}
+
+/// The Header of a save state. Contains some metadata like version and time of save.
+#[derive(Debug)]
+pub struct SaveStateHeader {
+    /// "GameRoy Save State" magic contant.
+    ///
+    /// Should have value b"GRST".
+    pub magic: [u8; 4],
+    /// The version of this save
+    pub version: u32,
+    /// The instant that this file was saved, in number of milliseconds since the UNIX_EPOCH
+    pub time: Option<u64>,
+}
+impl SaveStateHeader {
+    /// The current version of the save state format
+    const SAVE_STATE_VERSION: u32 = 2;
+    const MAGIC_CONST: [u8; 4] = *b"GRST";
+
+    /// Create a new SaveStateHeader with default values and current SystemTime.
+    pub fn new() -> Self {
+        use std::{
+            convert::TryInto,
+            time::{Duration, SystemTime},
+        };
+
+        // TODO: this does not work for negative values. Maybe need to use a time crate? In this
+        // case the time would need to be provide by the calee (to avoid dependencies).
+        let since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+        let time: Result<u64, _> = since_epoch.unwrap_or(Duration::ZERO).as_millis().try_into();
+        // Also not handle times after 584 millions years after epoch.
+        let time = time.unwrap_or(u64::max_value());
+
+        Self {
+            magic: Self::MAGIC_CONST,
+            version: Self::SAVE_STATE_VERSION,
+            time: Some(time),
+        }
+    }
+}
+impl Default for SaveStateHeader {
+    fn default() -> Self {
+        Self {
+            magic: Self::MAGIC_CONST,
+            version: Self::SAVE_STATE_VERSION,
+            time: None,
+        }
+    }
+}
+impl SaveState for SaveStateHeader {
+    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+        self.magic.save_state(data)?;
+        self.version.save_state(data)?;
+        self.time
+            .expect("SaveStateHeader::new() always have time")
+            .save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        self.magic.load_state(data)?;
+        self.version.load_state(data)?;
+
+        if self.version > 1 {
+            let mut time = 0;
+            time.load_state(data)?;
+            self.time = Some(time);
+        } else {
+            self.time = None;
+        }
+
+        if self.magic != Self::MAGIC_CONST {
+            return Err(LoadStateError::InvalidMagicConst(self.magic));
+        }
+
+        if self.version > Self::SAVE_STATE_VERSION {
+            return Err(LoadStateError::UnknownVersion(self.version));
+        }
+
+        Ok(())
     }
 }
 

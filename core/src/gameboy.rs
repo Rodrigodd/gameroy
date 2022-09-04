@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use crate::{
     disassembler::Trace,
-    save_state::{LoadStateError, SaveState},
+    save_state::{LoadStateError, SaveState, SaveStateHeader},
 };
 
 pub mod cartridge;
@@ -117,11 +117,8 @@ impl PartialEq for GameBoy {
         // && self.v_blank == other.v_blank
     }
 }
-/// The current version of the save state format
-const SAVE_STATE_VERSION: u32 = 1;
 crate::save_state!(GameBoy, self, data {
-    const [b'G', b'R', b'S', b'T']; // "GameRoy Save State" magic constant
-    const SAVE_STATE_VERSION;
+    SaveStateHeader::new();
     // self.trace;
     self.cpu;
     self.cartridge;

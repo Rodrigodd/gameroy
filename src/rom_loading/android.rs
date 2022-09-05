@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use gameroy::gameboy::cartridge::CartridgeHeader;
-use gameroy::save_state::SaveStateHeader;
 use jni::objects::{JString, JValue};
 
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, String> {

@@ -134,7 +134,7 @@ public class MainActivity extends NativeActivity {
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME
             };
 
-            // I could not make the query sorting work so I sort afterwards
+            // I could not make the query sorting work, but the rom list ui will sort it anyway.
             c = resolver.query(childrenUri, projections, null, null, null);
 
             if (c != null && c.moveToFirst()) {
@@ -151,8 +151,6 @@ public class MainActivity extends NativeActivity {
 
                 } while(c.moveToNext());
             }
-
-            java.util.Collections.sort(uris, java.text.Collator.getInstance());
 
             return uris.toArray(new String[0]);
         } catch(Exception ex) {

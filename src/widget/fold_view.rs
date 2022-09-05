@@ -77,7 +77,7 @@ pub fn folder(ctx: &mut dyn BuilderContext, title: String, style: &Style) -> giu
     let _header = ctx
         .create_control()
         .parent(this.id())
-        .graphic(style.header_background.clone())
+        .graphic(style.entry_selected.clone())
         .layout(HBoxLayout::new(0.0, [0.0, 0.0, 0.0, 1.0], -1))
         .child_reserved(icon, ctx, |cb, _| {
             cb.graphic(style.fold_icon.open.clone()).layout(FitGraphic)

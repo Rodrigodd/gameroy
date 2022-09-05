@@ -675,7 +675,7 @@ pub fn side_panel(
     ctx.create_control()
         .expand_y(true)
         .parent(right_panel)
-        .graphic(style.header_background.clone())
+        .graphic(style.entry_selected.clone())
         .build(ctx);
 }
 

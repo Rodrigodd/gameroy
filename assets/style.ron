@@ -23,10 +23,12 @@
         color: "#000a05",
         uv_rect: (0, 0, 1, 1),
     ),
-    header_background: Texture(
-        texture: "white.png",
-        color: "#000f05",
-        uv_rect: (0, 0, 1, 1),
+    entry_selected: Texture(texture: "white.png", color: "#000f05"),
+    header_style: ButtonStyle(
+        normal: Texture(texture: "white.png", color: "#000f05"),
+        hover: Texture(texture: "white.png", color: "#000f05"),
+        pressed: Texture(texture: "white.png", color: "#000f05"),
+        focus: Texture(texture: "white.png", color: "#000f05"),
     ),
     text_field: TextFieldStyle(
         background: OnFocusStyle(

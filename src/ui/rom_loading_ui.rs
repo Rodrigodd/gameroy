@@ -18,8 +18,17 @@ use crate::{
     UserEvent,
 };
 
+struct SortBy(usize);
+#[derive(Clone, Copy)]
+enum SortDirection {
+    Ascending,
+    Descending,
+}
+
 pub struct RomEntries {
     roms: Vec<RomEntry>,
+    sort_collumn: usize,
+    sort_direction: SortDirection,
     pub observers: Vec<giui::Id>,
 }
 impl RomEntries {
@@ -27,9 +36,62 @@ impl RomEntries {
         let this = Self {
             roms: Vec::new(),
             observers: Vec::new(),
+            sort_collumn: 0,
+            sort_direction: SortDirection::Ascending,
         };
         this.start_loading(proxy);
         this
+    }
+
+    pub fn sort_by(&mut self, collumn_index: usize) {
+        if self.sort_collumn == collumn_index {
+            self.sort_direction = match self.sort_direction {
+                SortDirection::Ascending => SortDirection::Descending,
+                SortDirection::Descending => SortDirection::Ascending,
+            };
+        } else {
+            self.sort_direction = SortDirection::Ascending;
+        }
+        self.sort_collumn = collumn_index;
+
+        self.update_sort();
+    }
+
+    pub fn update_sort(&mut self) {
+        use std::cmp::Ordering;
+
+        let sort_direction = self.sort_direction;
+        let sort_collumn = self.sort_collumn;
+
+        self.roms.sort_by(|a, b| {
+            let ord = match sort_collumn {
+                0 => a.file.file_name().cmp(&b.file.file_name()),
+                1 => a.name.cmp(&b.name),
+                2 => a.size.cmp(&b.size),
+                3 => a.save_time.cmp(&b.save_time).reverse(),
+                _ => {
+                    log::error!("Unknown collumn index: {}", sort_collumn);
+                    Ordering::Equal
+                }
+            };
+
+            #[rustfmt::skip]
+            fn fn_<F: for<'a> Fn(&'a RomEntry) -> (std::borrow::Cow<'a, str>, Option<&String>, Option<&u64>)>(x: F) -> F { x }
+
+            let default_key =
+                fn_(|a: &RomEntry| (a.file.file_name(), a.name.as_ref(), a.size.as_ref()));
+
+            let ord = match ord {
+                Ordering::Equal => default_key(a).cmp(&default_key(b)),
+                _ => ord,
+            };
+
+            if let SortDirection::Ascending =sort_direction {
+                ord
+            } else {
+                ord.reverse()
+            }
+        })
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -109,6 +171,7 @@ impl RomEntries {
 
     pub fn set_roms(&mut self, roms: Vec<RomEntry>) {
         self.roms = roms;
+        self.update_sort();
     }
 
     fn register(&mut self, id: Id) {
@@ -216,7 +279,7 @@ impl ListBuilder for RomList {
         if self.last_selected.is_some() {
             if Some(index) == self.last_selected || Some(index) == self.selected {
                 *ctx.get_graphic_mut(item_id) = if self.selected == Some(index) {
-                    ctx.get::<Style>().header_background.clone()
+                    ctx.get::<Style>().entry_selected.clone()
                 } else {
                     Graphic::None
                 };
@@ -244,6 +307,10 @@ impl ListBuilder for RomList {
             ctx.dirty_layout(this);
         } else if event.is::<event_table::UpdatedRomList>() {
             log::trace!("rebuilding rom list ui");
+            self.rebuild_everthing = true;
+            ctx.dirty_layout(this);
+        } else if let Some(&SortBy(index)) = event.downcast_ref() {
+            ctx.get_mut::<RomEntries>().sort_by(index);
             self.rebuild_everthing = true;
             ctx.dirty_layout(this);
         }
@@ -279,13 +346,9 @@ impl ListBuilder for RomList {
                 None,
             )
         };
-        let cell_backgroud = if header {
-            style.header_background.clone()
-        } else {
-            Graphic::None
-        };
         let parent = cb.id();
-        for text in [file, name, size, age] {
+        // calling `.into_iter()` as a method was coercing the array as slice (dunno why).
+        for (collumn_index, text) in IntoIterator::into_iter([file, name, size, age]).enumerate() {
             let cb = ctx
                 .create_control()
                 .parent(parent)
@@ -295,14 +358,33 @@ impl ListBuilder for RomList {
                     cb.min_size([0.0, text_style.font_size])
                         .graphic(Text::new(text, (-1, 0), text_style).with_wrap(false))
                         .expand_x(true)
-                })
-                .graphic(cell_backgroud.clone());
+                });
 
             if header {
+                let (sort_collumn, sort_direction) = {
+                    let rom_entries = ctx.get::<RomEntries>();
+                    (rom_entries.sort_collumn, rom_entries.sort_direction)
+                };
+
+                let header_style = style.header_style.clone();
                 cb.layout(HBoxLayout::new(0.0, [2.0; 4], -1))
                     .child(ctx, move |cb, _| {
-                        cb.graphic(style.fold_icon.close.clone()).layout(FitGraphic)
+                        if collumn_index == sort_collumn {
+                            let graphic = match sort_direction {
+                                SortDirection::Ascending => style.fold_icon.close.clone(),
+                                SortDirection::Descending => {
+                                    style.fold_icon.close.clone().with_flip_y()
+                                }
+                            };
+                            cb.graphic(graphic).layout(FitGraphic)
+                        } else {
+                            cb
+                        }
                     })
+                    .behaviour(Button::new(header_style, false, move |_, ctx| {
+                        log::info!("sort by {collumn_index}");
+                        ctx.send_event_to(list_id, SortBy(collumn_index))
+                    }))
             } else {
                 cb.layout(MarginLayout::new([2.0; 4]))
             }

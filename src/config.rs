@@ -99,6 +99,7 @@ pub struct Config {
     pub start_in_debug: bool,
     pub rom_folder: Option<String>,
     pub boot_rom: Option<String>,
+    pub sort_list: Option<String>,
     pub keymap: KeyMap,
 }
 
@@ -129,7 +130,7 @@ pub fn base_folder() -> Option<PathBuf> {
     static BASE_FOLDER: OnceCell<Option<PathBuf>> = OnceCell::new();
     BASE_FOLDER
         .get_or_init(|| {
-            let base_folder = if let Some(path) = std::env::var("CARGO_MANIFEST_DIR")
+            let base_folder = if let Some(path) = std::env::var("CARGO_WORKSPACE_DIR")
                 .ok()
                 .map(|x| PathBuf::from(x))
             {
@@ -211,6 +212,7 @@ const DEFAULT_CONFIG: Config = Config {
     start_in_debug: false,
     rom_folder: None,
     boot_rom: None,
+    sort_list: None,
     keymap: DEFAULT_KEYMAP,
 };
 

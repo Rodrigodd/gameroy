@@ -10,6 +10,7 @@ use giui::{
 use winit::{event_loop::EventLoopProxy, window::Window};
 
 use crate::{
+    config::config,
     event_table::{self, EventTable},
     executor,
     rom_loading::{load_gameboy, RomFile},
@@ -18,8 +19,15 @@ use crate::{
     UserEvent,
 };
 
+const COLLUMNS: &[(&'static str, f32)] = &[
+    ("File", 490.0),
+    ("Header Name", 129.0),
+    ("Size", 60.0),
+    ("Last played", 100.0),
+];
+
 struct SortBy(usize);
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum SortDirection {
     Ascending,
     Descending,
@@ -33,11 +41,40 @@ pub struct RomEntries {
 }
 impl RomEntries {
     pub fn new(proxy: EventLoopProxy<UserEvent>) -> Self {
+        let (sort_collumn, sort_direction) = match &config().sort_list {
+            Some(sort_config) => {
+                let sort_config = sort_config.clone().to_lowercase();
+                let mut sort_config = sort_config.as_str();
+
+                let dir = if sort_config.starts_with("-") {
+                    sort_config = &sort_config[1..];
+                    SortDirection::Descending
+                } else if sort_config.starts_with("+") {
+                    sort_config = &sort_config[1..];
+                    SortDirection::Ascending
+                } else {
+                    // Don't specifing a direction defaults to ascending.
+                    SortDirection::Ascending
+                };
+
+                let col = COLLUMNS
+                    .iter()
+                    .position(|&(title, _)| sort_config.contains(&title.to_lowercase()))
+                    .unwrap_or_else(|| {
+                        log::error!("Unkown collumn name '{}'", sort_config);
+                        0
+                    });
+
+                (col, dir)
+            }
+            None => (0, SortDirection::Ascending),
+        };
+
         let this = Self {
             roms: Vec::new(),
             observers: Vec::new(),
-            sort_collumn: 0,
-            sort_direction: SortDirection::Ascending,
+            sort_collumn,
+            sort_direction,
         };
         this.start_loading(proxy);
         this
@@ -53,6 +90,19 @@ impl RomEntries {
             self.sort_direction = SortDirection::Ascending;
         }
         self.sort_collumn = collumn_index;
+
+        {
+            if let Some((title, _)) = COLLUMNS.get(collumn_index) {
+                let dir = match self.sort_direction {
+                    SortDirection::Ascending => "+".to_string(),
+                    SortDirection::Descending => "-".to_string(),
+                };
+                config().sort_list = Some(dir + title);
+                let _ = config()
+                    .save()
+                    .map_err(|x| log::error!("error saving config: {}", x));
+            }
+        }
 
         self.update_sort();
     }
@@ -325,24 +375,24 @@ impl ListBuilder for RomList {
     ) -> giui::ControlBuilder {
         let style = &ctx.get::<Style>().clone();
         let header = index == 0;
-        let (name, size, file, age, entry) = if !header {
+        let (file, name, size, age, entry) = if !header {
             let roms = ctx.get::<RomEntries>().roms();
             let entry = roms[index - 1].clone();
             let size = entry.size();
             let age = entry.save_age();
             (
+                entry.file.file_name().into_owned(),
                 entry.name(),
                 size,
-                entry.file.file_name().into_owned(),
                 age,
                 Some(entry),
             )
         } else {
             (
-                "Header Name".to_string(),
-                "Size".to_string(),
-                "File".to_string(),
-                "Last played".to_string(),
+                COLLUMNS[0].0.to_string(),
+                COLLUMNS[1].0.to_string(),
+                COLLUMNS[2].0.to_string(),
+                COLLUMNS[3].0.to_string(),
                 None,
             )
         };
@@ -556,11 +606,13 @@ pub fn create_rom_loading_ui(
         .expand_x(true)
         .build(ctx);
 
-    let table = TableGroup::new(4.0, 2.0, [1.0, 1.0])
-        .column(490.0, false)
-        .column(120.0, false)
-        .column(60.0, false)
-        .column(100.0, false);
+    let table = {
+        let mut tg = TableGroup::new(4.0, 2.0, [1.0, 1.0]);
+        for &(_, width) in COLLUMNS.iter() {
+            tg.add_column(width, false)
+        }
+        tg
+    };
 
     ctx.get_mut::<RomEntries>().register(rom_list_id);
     crate::ui::list(

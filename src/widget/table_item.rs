@@ -29,13 +29,12 @@ impl TableGroup {
         }
     }
 
-    pub fn column(mut self, width: f32, expand: bool) -> Self {
+    pub fn add_column(&mut self, width: f32, expand: bool) {
         self.columns.push(Column {
             width,
             expand,
             ..Default::default()
         });
-        self
     }
 
     /// The total width, i.e., the sum of the width of each collumn width + h_spacing's + h_margin.

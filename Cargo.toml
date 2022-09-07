@@ -43,7 +43,7 @@ sprite-render = { git = "https://github.com/Rodrigodd/sprite-render-rs", feature
     "opengles",
 ] }
 # audio-engine = { path = "../audio-engine", optional = true }
-audio-engine = { version = "0.4.1", optional = true }
+audio-engine = { version = "0.4.2", optional = true }
 
 rfd = { version = "0.9.1", optional = true, features = ["file-handle-inner"] }
 
@@ -88,9 +88,6 @@ instant = { git = "https://github.com/Rodrigodd/instant.git" }
 # and this volume buttons fix: https://github.com/rust-windowing/winit/pull/1919
 winit = { git = "https://github.com/Rodrigodd/winit.git", rev = "5eb9e3095c19f929b7aa1c02623cd09fadc87d50" }
 # winit = { path = "../winit" }
-
-# for android support, needs https://github.com/RustAudio/cpal/commit/32cee3949b802038bb368c9c408af81650873d80
-cpal = { git = "https://github.com/RustAudio/cpal.git", rev = "32cee3949b802038bb368c9c408af81650873d80" }
 
 # fork contains a android backend
 rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }

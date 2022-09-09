@@ -248,7 +248,12 @@ impl Timeline {
 
     fn save_state(&mut self, gb: &GameBoy) {
         self.buffer.clear();
-        gb.save_state(&mut self.buffer).unwrap();
+        {
+            let mut encoder =
+                flate2::write::DeflateEncoder::new(&mut self.buffer, flate2::Compression::fast());
+            gb.save_state(&mut encoder).unwrap();
+            encoder.finish().unwrap();
+        }
         // println!("{:.3} KiB", (self.buffer.len() as f32) * 2f32.powi(-10));
         while self.savestate_buffer.free_len() < self.buffer.len() {
             let (_, _, (_, end)) = self
@@ -280,8 +285,11 @@ impl Timeline {
         self.buffer.clear();
         debug_assert!(self.savestate_buffer.head == range.1);
         self.savestate_buffer.copy_slice(range, &mut self.buffer);
-        gb.load_state(&mut std::io::Cursor::new(&self.buffer))
-            .unwrap();
+
+        {
+            let mut decoder = flate2::read::DeflateDecoder::new(std::io::Cursor::new(&self.buffer));
+            gb.load_state(&mut decoder).unwrap();
+        }
         debug_assert_eq!(gb.clock_count, clock_count);
         true
     }

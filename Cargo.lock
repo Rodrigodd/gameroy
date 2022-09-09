@@ -791,6 +791,7 @@ dependencies = [
  "audio-engine",
  "base64",
  "cfg-if 1.0.0",
+ "flate2",
  "flexi_logger",
  "flume",
  "gameroy-core",

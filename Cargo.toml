@@ -60,6 +60,7 @@ instant = { version = "0.1.12", features = ["wasm-bindgen"] }
 flume = { version = "0.10.12", default-features = false }
 cfg-if = "1.0.0"
 toml = "0.5.9"
+flate2 = "1.0.24"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
@@ -96,6 +97,8 @@ rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", option
 [profile.dev]
 opt-level = 1
 [profile.dev.package.audio-engine]
+opt-level = 3
+[profile.dev.package.flate2]
 opt-level = 3
 
 [profile.release]

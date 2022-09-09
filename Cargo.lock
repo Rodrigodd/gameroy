@@ -827,7 +827,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy_android"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "gameroy",
  "jni",
@@ -1281,7 +1281,7 @@ checksum = "717e29a243b81f8130e31e24e04fb151b04a44b5a7d05370935f7d937e9de06d"
 
 [[package]]
 name = "native"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap",
  "embed-resource",

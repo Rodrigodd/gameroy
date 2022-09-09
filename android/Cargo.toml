@@ -1,7 +1,7 @@
 [package]
 name = "gameroy_android"
 version = "0.1.1"
-edition = "2018"
+edition = "2021"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 license = "MIT OR Apache-2.0"
 

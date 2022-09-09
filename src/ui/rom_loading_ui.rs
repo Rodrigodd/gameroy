@@ -397,8 +397,7 @@ impl ListBuilder for RomList {
             )
         };
         let parent = cb.id();
-        // calling `.into_iter()` as a method was coercing the array as slice (dunno why).
-        for (collumn_index, text) in IntoIterator::into_iter([file, name, size, age]).enumerate() {
+        for (collumn_index, text) in [file, name, size, age].into_iter().enumerate() {
             let cb = ctx
                 .create_control()
                 .parent(parent)

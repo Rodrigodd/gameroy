@@ -2,11 +2,11 @@
 
 ::a script for packaging the app for windows release.
 
-cargo about generate -c license\about.toml license\about.hbs > license\license.html
-cargo build --profile minsize --no-default-features --features=static,audio-engine,rfd
+cargo about generate -m native\Cargo.toml -c license\about.toml license\about.hbs > license\license.html
+cargo build -p native --profile minsize --no-default-features --features=static,rfd,audio-engine,threads
 
 mkdir package
-copy /Y target\minsize\gameroy.exe package\
+copy /Y target\minsize\native.exe package\gameroy.exe
 copy /Y gameroy.toml package\
 copy /Y license\license.html package\
 

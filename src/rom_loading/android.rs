@@ -112,8 +112,8 @@ pub fn file_date(file_name: &str) -> Option<u64> {
                     } else {
                         Ok(Some(x as u64))
                     }
-                },
-                _ => panic!("unexpected type")
+                }
+                _ => panic!("unexpected type"),
             }
         })
         .unwrap()

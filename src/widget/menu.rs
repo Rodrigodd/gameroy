@@ -1,10 +1,11 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use giui::layouts::{FitGraphic, MarginLayout, VBoxLayout};
-use giui::text::Text;
-use giui::widgets::{Blocker, Button};
-use giui::{BuilderContext, Context, Id, RectFill};
+use giui::{
+    layouts::{FitGraphic, MarginLayout, VBoxLayout},
+    text::Text,
+    widgets::{Blocker, Button},
+    BuilderContext, Context, Id, RectFill,
+};
 
 use crate::style::Style;
 

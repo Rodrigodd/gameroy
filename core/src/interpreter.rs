@@ -877,7 +877,7 @@ impl Interpreter<'_> {
         if self.0.cpu.state == CpuState::Halt {
             self.0.tick(2);
         }
-        
+
         // TODO: I don't know the behaviour of Stopped state. Treating the same as Halt.
         if self.0.cpu.state == CpuState::Stopped {
             self.0.tick(2);

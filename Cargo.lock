@@ -911,7 +911,7 @@ dependencies = [
 [[package]]
 name = "giui"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#6deac6b4f93be042d9346b67d7293fdd3f7b7814"
+source = "git+https://github.com/Rodrigodd/giui#47335a48d31abddcdb02c8d0b6e0b0b7f6b6bf95"
 dependencies = [
  "ab_glyph",
  "bitflags",
@@ -920,7 +920,6 @@ dependencies = [
  "instant",
  "keyed_priority_queue",
  "log",
- "mock_instant",
  "serde",
  "texture-cache",
  "unicode-linebreak",
@@ -931,7 +930,7 @@ dependencies = [
 [[package]]
 name = "giui-derive"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#6deac6b4f93be042d9346b67d7293fdd3f7b7814"
+source = "git+https://github.com/Rodrigodd/giui#47335a48d31abddcdb02c8d0b6e0b0b7f6b6bf95"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1272,12 +1271,6 @@ dependencies = [
  "wasi",
  "windows-sys",
 ]
-
-[[package]]
-name = "mock_instant"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "717e29a243b81f8130e31e24e04fb151b04a44b5a7d05370935f7d937e9de06d"
 
 [[package]]
 name = "native"

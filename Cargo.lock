@@ -966,9 +966,9 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "glutin_egl_sys"
-version = "0.1.6"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68900f84b471f31ea1d1355567eb865a2cf446294f06cef8d653ed7bcf5f013d"
+checksum = "2abb6aa55523480c4adc5a56bbaa249992e2dddb2fc63dc96e04a3355364c211"
 dependencies = [
  "gl_generator",
  "winapi",
@@ -1815,7 +1815,7 @@ dependencies = [
 [[package]]
 name = "raw-gl-context"
 version = "0.1.2"
-source = "git+https://github.com/Rodrigodd/raw-gl-context?rev=26a6f473acb7131d074f985369c67f2c5ea0671b#26a6f473acb7131d074f985369c67f2c5ea0671b"
+source = "git+https://github.com/Rodrigodd/raw-gl-context?rev=494a5608f81cf856f1be8557d0c46c784f24ecc0#494a5608f81cf856f1be8557d0c46c784f24ecc0"
 dependencies = [
  "cocoa 0.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "core-foundation 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2081,7 +2081,7 @@ dependencies = [
 [[package]]
 name = "sprite-render"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/sprite-render-rs#fc76f47af69f0df7725f91cbf6dafafa4529d272"
+source = "git+https://github.com/Rodrigodd/sprite-render-rs#ad95028273c82701244ef8f71764c75eed3b27f6"
 dependencies = [
  "cfg-if 1.0.0",
  "gl_generator",

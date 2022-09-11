@@ -1815,7 +1815,7 @@ dependencies = [
 [[package]]
 name = "raw-gl-context"
 version = "0.1.2"
-source = "git+https://github.com/Rodrigodd/raw-gl-context?rev=494a5608f81cf856f1be8557d0c46c784f24ecc0#494a5608f81cf856f1be8557d0c46c784f24ecc0"
+source = "git+https://github.com/Rodrigodd/raw-gl-context?rev=b8a41f021217eba90e3b95585974afe3993269f3#b8a41f021217eba90e3b95585974afe3993269f3"
 dependencies = [
  "cocoa 0.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "core-foundation 0.9.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2081,7 +2081,7 @@ dependencies = [
 [[package]]
 name = "sprite-render"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/sprite-render-rs#ad95028273c82701244ef8f71764c75eed3b27f6"
+source = "git+https://github.com/Rodrigodd/sprite-render-rs#30f9fd6af6a87a291256c5f1118cd553b804352b"
 dependencies = [
  "cfg-if 1.0.0",
  "gl_generator",

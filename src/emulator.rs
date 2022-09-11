@@ -555,12 +555,18 @@ impl Emulator {
                 }
             }
             FrameLimit(value) => {
+                if self.frame_limit == value {
+                    return false;
+                }
                 self.frame_limit = value;
                 if self.frame_limit {
                     self.start_time = recompute_start_time(self.gb.lock().clock_count);
                 }
             }
             Rewind(value) => {
+                if self.rewind == value {
+                    return false;
+                }
                 self.rewind = value;
                 {
                     let joypad = &mut *self.joypad.lock();
@@ -575,6 +581,9 @@ impl Emulator {
                 self.joypad.lock().current_joypad = joypad;
             }
             Debug(value) => {
+                if self.frame_limit == value {
+                    return false;
+                }
                 self.debug = value;
                 if self.debug {
                     self.set_state(EmulatorState::Idle);

@@ -8,7 +8,7 @@ use giui::{
 };
 use sprite_render::SpriteRender;
 
-use crate::widget::fold_view::FoldIcon;
+use crate::{config, widget::fold_view::FoldIcon};
 
 pub struct Loader<'a> {
     pub fonts: &'a mut Fonts,
@@ -19,6 +19,7 @@ pub struct Loader<'a> {
 
 #[cfg(not(feature = "static"))]
 mod loaded_files {
+    use super::config;
     use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
     use image::{ImageBuffer, Rgba};
 
@@ -45,11 +46,14 @@ mod loaded_files {
                     break image_buffer;
                 }
 
-                let path = format!("assets/{}", name);
+                let mut path = config::base_folder().unwrap();
+                path.push("assets");
+                path.push(&name);
+
                 let data = match image::open(&path) {
                     Ok(x) => x,
                     Err(_) => {
-                        log::error!("not found texture in '{}'", path);
+                        log::error!("not found texture in '{}'", path.display());
                         return (0, 0, 0);
                     }
                 };
@@ -91,8 +95,11 @@ mod loaded_files {
 
         fn load_font(&mut self, name: String) -> giui::font::FontId {
             // load a font
-            let path = "assets/".to_string() + &name;
-            log::info!("load font: '{}'", path);
+            let mut path = config::base_folder().unwrap();
+            path.push("assets");
+            path.push(&name);
+
+            log::info!("load font: '{}'", path.display());
             let font_data = std::fs::read(path).unwrap();
             self.fonts.add(Font::new(&font_data))
         }
@@ -247,8 +254,12 @@ impl Style {
         };
 
         #[cfg(not(feature = "static"))]
-        let file = std::fs::read_to_string("assets/style.ron")
-            .unwrap_or_else(|err| panic!("failed reading 'assets/style.ron': {}", err));
+        let file = {
+            let mut path = config::base_folder().unwrap();
+            path.push("assets/style.ron");
+            std::fs::read_to_string(path)
+                .unwrap_or_else(|err| panic!("failed reading 'assets/style.ron': {}", err))
+        };
         #[cfg(feature = "static")]
         let file = static_files::FILES.style;
 

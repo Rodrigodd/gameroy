@@ -3,6 +3,7 @@
 **/.settings/
 **/build/
 local.properties
+keystore.properties
 *.log
 .project
 .classpath

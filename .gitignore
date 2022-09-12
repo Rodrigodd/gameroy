@@ -7,3 +7,4 @@ test_rom/test.o
 core/test_output
 core/tests/gameboy-test-roms
 license/license.html
+android/app/release

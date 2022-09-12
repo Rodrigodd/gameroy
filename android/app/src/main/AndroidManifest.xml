@@ -33,6 +33,8 @@
                 android:name="android.app.lib_name"
                 android:value="gameroy_android" />
         </activity>
+        <activity android:name=".MainActivity$ViewWeb">
+        </activity>
     </application>
 
 </manifest>

@@ -58,6 +58,9 @@ tasks.whenTaskAdded { task ->
     if (task.name == 'mergeDebugJniLibFolders' || task.name == 'mergeReleaseJniLibFolders') {
         task.dependsOn 'cargoBuild'
     }
+    if (task.name == 'generateDebugAssets' || task.name == 'generateReleaseAssets') {
+        task.dependsOn 'generateLicenseAsset'
+    }
     if (task.name == 'cargoBuildArm64') {
         task.dependsOn 'copy_libc++_sharedArm64'
     }
@@ -72,6 +75,16 @@ tasks.register('copy_libc++_sharedArm64', Copy) {
     def archTriple = 'aarch64-linux-android'
     from "$ndkDir/toolchains/llvm/prebuilt/$hostTag/sysroot/usr/lib/$archTriple/libc++_shared.so"
     into layout.buildDirectory.dir("rustJniLibs/android/arm64-v8a")
+}
+
+tasks.register('generateLicenseAsset', Exec) {
+    inputs.file("$rootDir/../Cargo.lock")
+        .withPropertyName('lockFile')
+    standardOutput = new FileOutputStream("$rootDir/app/src/main/assets/license.html")
+    commandLine 'cargo', 'about', 'generate',
+        '-m', "$rootDir/Cargo.toml",
+        '-c', "$rootDir/../license/about.toml",
+        "$rootDir/../license/about.hbs"
 }
 
 task runDebug(type: Exec, dependsOn: ':app:installDebug') {

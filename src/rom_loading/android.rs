@@ -3,6 +3,23 @@ use std::borrow::Cow;
 use gameroy::gameboy::cartridge::CartridgeHeader;
 use jni::objects::{JString, JValue};
 
+pub fn show_licenses() {
+    log::trace!("show licenses");
+    let android_context = ndk_context::android_context();
+    let vm = std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+    jni::Executor::new(vm)
+        .with_attached(|env| {
+             env.call_method(
+                android_context.context() as jni::sys::jobject,
+                "showLicenses",
+                "()V",
+                &[],
+            ).unwrap();
+            Ok(())
+        })
+        .unwrap();
+}
+
 pub fn load_roms(roms_path: &str) -> Result<Vec<RomFile>, String> {
     log::trace!("loading rom list in android from uri '{}'", roms_path);
     let android_context = ndk_context::android_context();

@@ -605,6 +605,29 @@ pub fn create_rom_loading_ui(
         .expand_x(true)
         .build(ctx);
 
+    #[cfg(target_os = "android")]
+    let _licenses_button = ctx
+        .create_control()
+        .parent(h_box)
+        .layout(HBoxLayout::new(0.0, [0.0; 4], -1))
+        .behaviour(Button::new(
+            style.delete_button.clone(),
+            true,
+            move |_, _| crate::rom_loading::show_licenses(),
+        ))
+        .child(ctx, |cb, _| {
+            cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+        })
+        .child(ctx, |cb, _| {
+            cb.graphic(Text::new(
+                "licenses".to_string(),
+                (-1, 0),
+                style.text_style.clone(),
+            ))
+            .layout(FitGraphic)
+        })
+        .build(ctx);
+
     let table = {
         let mut tg = TableGroup::new(4.0, 2.0, [1.0, 1.0]);
         for &(_, width) in COLLUMNS.iter() {

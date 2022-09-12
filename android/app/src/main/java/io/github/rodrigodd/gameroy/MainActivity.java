@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import android.app.Activity;
 import android.app.NativeActivity;
 import android.content.ContentResolver;
 import android.content.Intent;
@@ -22,6 +23,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.DocumentsContract;
 import android.util.Log;
+import android.webkit.WebView;
 
 public class MainActivity extends NativeActivity {
 
@@ -211,6 +213,22 @@ public class MainActivity extends NativeActivity {
     public String loadPreferences() {
         SharedPreferences sharedPref = getSharedPreferences(preference_file_key, MODE_PRIVATE);
         return sharedPref.getString("config", null);
+    }
+    
+    public static class ViewWeb extends Activity {
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+            setContentView(R.layout.webview);  
+            WebView wv;  
+            wv = (WebView) findViewById(R.id.webview);  
+            wv.loadUrl("file:///android_asset/license.html");
+        }
+    }
+    
+    public void showLicenses() {
+        Intent intent = new Intent(this, ViewWeb.class);
+        startActivity(intent);
     }
 
 

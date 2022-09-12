@@ -5,6 +5,7 @@ edition = "2021"
 build = "build.rs"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/Rodrigodd/gameroy"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

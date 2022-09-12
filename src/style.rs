@@ -8,7 +8,10 @@ use giui::{
 };
 use sprite_render::SpriteRender;
 
-use crate::{config, widget::fold_view::FoldIcon};
+use crate::{widget::fold_view::FoldIcon};
+
+#[cfg(not(feature = "static"))]
+use crate::config;
 
 pub struct Loader<'a> {
     pub fonts: &'a mut Fonts,

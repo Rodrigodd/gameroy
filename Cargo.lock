@@ -836,6 +836,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gameroy_native"
+version = "0.1.1"
+dependencies = [
+ "clap",
+ "embed-resource",
+ "flexi_logger",
+ "gameroy",
+ "log",
+ "winit 0.26.1",
+]
+
+[[package]]
 name = "gameroy_wasm"
 version = "0.1.0"
 dependencies = [
@@ -1270,18 +1282,6 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys",
-]
-
-[[package]]
-name = "native"
-version = "0.1.1"
-dependencies = [
- "clap",
- "embed-resource",
- "flexi_logger",
- "gameroy",
- "log",
- "winit 0.26.1",
 ]
 
 [[package]]

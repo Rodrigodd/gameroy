@@ -6,6 +6,9 @@ plugins {
 def keystoreProperties = new Properties()
 keystoreProperties.load(new FileInputStream(rootProject.file("keystore.properties")))
 
+def localProperties = new Properties()
+localProperties.load(new FileInputStream(rootProject.file("local.properties")))
+
 android {
     signingConfigs {
         release {
@@ -74,11 +77,10 @@ tasks.whenTaskAdded { task ->
 }
 
 for (target in cargo.targets) {
-    // TODO: detect the correct host tag
     tasks.register("copy_libc++_shared${target.capitalize()}", Copy) {
         def ndkDir = android.ndkDirectory
         // hostTag and archTriple from: https://developer.android.com/ndk/guides/other_build_systems
-        def hostTag = 'windows-x86_64'
+        def hostTag = localProperties['hostTag']
         def archTriple = [
             arm: 'armv7a-linux-androideabi',
             arm64: 'aarch64-linux-android',

@@ -20,11 +20,11 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
   - Watch addresses.
   - Step code backwards.
 
-## Running
+## Building and Running
 
 You can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
 
-### from source 
+### Native
 
 This project depends on [resvg](https://github.com/RazrFalcon/resvg) (version
 0.23, at time of writing) for rendering icons.svg into pngs. You can install it
@@ -60,7 +60,19 @@ And access `localhost:8000` in a web browser.
 ### Android
 
 Gameroy uses [Gradle to build the android port](https://developer.android.com/studio/build/building-cmdline).
-To build and install the .apk in a device:
+
+First you need to create a `local.properties` file under the folder `android`,
+with at least your [NDK host tag](https://developer.android.com/ndk/guides/other_build_systems)
+name, and maybe other things like the path to your Android SDK, or which target
+ABIs to build for, if necessary.
+
+```properties
+sdk.dir=/path/to/android-sdk
+rust.targets=arm64,arm,linux-x86-64,darwin
+hostTag=windows-x86_64
+```
+
+Now to build and install the .apk in a device:
 
 ```shell
 cd android
@@ -69,8 +81,7 @@ cd android
 
 The project uses
 [rust-android-gradle](https://github.com/mozilla/rust-android-gradle) for
-building the project. Also, be aware of `TODO`s in
-[app/build.gradle](android/app/build.gradle).
+building the rust code for android.
 
 ## Config
 

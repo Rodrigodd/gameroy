@@ -20,6 +20,7 @@ pub fn main() {
         .log_to_file(
             flexi_logger::FileSpec::default()
                 .directory(config::base_folder().unwrap_or_default())
+                .basename("gameroy")
                 .suppress_timestamp(),
         )
         .duplicate_to_stderr(if cfg!(debug_assertions) {

@@ -8,3 +8,4 @@ core/test_output
 core/tests/gameboy-test-roms
 license/license.html
 android/app/release
+gameroy.log

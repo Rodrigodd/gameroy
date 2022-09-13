@@ -172,19 +172,25 @@ fn start_event_loop(
     event_loop: EventLoop<UserEvent>,
     window: Rc<Window>,
     mut ui: ui::Ui,
-    mut app: Box<dyn App>,
+    app: Box<dyn App>,
 ) -> ! {
+    let mut app = vec![app];
+    #[rustfmt::skip]
+    fn fn_<F: for<'a> Fn(&'a mut Vec<Box<dyn App>>) -> &'a mut Box<dyn App>>(x: F) -> F { x }
+    let last = fn_(|app: &mut Vec<_>| app.last_mut().unwrap());
+
     window.set_visible(true);
-    app.build_ui(&mut ui);
+    last(&mut app).build_ui(&mut ui);
     let proxy = event_loop.create_proxy();
     // winit event loop
     event_loop.run(move |event, _, control| {
+        let app = &mut app;
         match event {
             Event::Resumed => {
                 log::info!("reloading graphics");
                 ui.reload_graphics(&*window);
                 log::debug!("build ui");
-                app.build_ui(&mut ui);
+                last(app).build_ui(&mut ui);
             }
             Event::Suspended => {
                 log::info!("destroying graphics");
@@ -219,7 +225,7 @@ fn start_event_loop(
                         ui.clear();
                         ui.reload_graphics(&*window);
                         log::debug!("build ui");
-                        app.build_ui(&mut ui);
+                        last(app).build_ui(&mut ui);
                     }
                     // Load Dropped File
                     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
@@ -266,15 +272,11 @@ fn start_event_loop(
                     *control = ControlFlow::Poll;
                 }
             }
-            Event::UserEvent(UserEvent::GoToRomList) => {
-                if let Some(emu) = app.as_any().downcast_mut::<EmulatorApp>() {
-                    emu.kill_emulator();
-                    let rom_loading = RomLoadingApp::new(&mut ui.gui, proxy.clone());
-                    app = Box::new(rom_loading);
-                    log::trace!("rebuilding ui for rom list");
-                    ui.clear();
-                    app.build_ui(&mut ui);
-                }
+            Event::UserEvent(UserEvent::PopApp) => {
+                log::trace!("popping app");
+                app.pop();
+                ui.clear();
+                last(app).build_ui(&mut ui);
             }
             Event::UserEvent(UserEvent::LoadRom { file, game_boy }) => {
                 let gb = game_boy;
@@ -288,10 +290,10 @@ fn start_event_loop(
                     None,
                     file,
                 );
-                app = Box::new(emu);
+                app.push(Box::new(emu));
                 log::trace!("rebuilding ui for emulator");
                 ui.clear();
-                app.build_ui(&mut ui);
+                last(app).build_ui(&mut ui);
                 return;
             }
             Event::UserEvent(UserEvent::SpawnTask(task_id)) => {
@@ -312,7 +314,7 @@ fn start_event_loop(
             }
             _ => {}
         }
-        app.handle_event(event, &mut ui, &window, control, &proxy);
+        last(app).handle_event(event, &mut ui, &window, control, &proxy);
     })
 }
 
@@ -469,6 +471,11 @@ impl EmulatorApp {
         self.emu_thread.take().unwrap().join().unwrap();
     }
 }
+impl Drop for EmulatorApp {
+    fn drop(&mut self) {
+        self.kill_emulator();
+    }
+}
 impl App for EmulatorApp {
     fn build_ui(&self, ui: &mut ui::Ui) {
         let debug = ui.get::<AppState>().debug;
@@ -490,9 +497,6 @@ impl App for EmulatorApp {
                     .send(EmulatorEvent::SetJoypad(joypad))
                     .unwrap();
                 self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
-            }
-            Event::LoopDestroyed => {
-                self.kill_emulator();
             }
             Event::Suspended => {
                 self.emu_channel.send(EmulatorEvent::SaveRam).unwrap();
@@ -603,7 +607,7 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
-    GoToRomList,
+    PopApp,
     LoadRom {
         file: RomFile,
         game_boy: Box<GameBoy>,

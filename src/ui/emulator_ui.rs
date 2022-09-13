@@ -525,7 +525,7 @@ fn create_screen(
                         option("Reset", |ctx| send_emu(ctx, EmulatorEvent::Reset)),
                         option("Exit Game", |ctx| {
                             ctx.get::<EventLoopProxy<UserEvent>>()
-                                .send_event(UserEvent::GoToRomList)
+                                .send_event(UserEvent::PopApp)
                                 .unwrap();
                         }),
                     ];

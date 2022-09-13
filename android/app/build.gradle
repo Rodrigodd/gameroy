@@ -50,7 +50,12 @@ android {
 cargo {
     module = ".."
     libname = "gameroy_android"
-    targets = ["arm64"]
+    targets = [
+        'arm',
+        'arm64',
+        'x86',
+        'x86_64'
+    ]
     targetDirectory = "../../target"
 }
 
@@ -61,20 +66,28 @@ tasks.whenTaskAdded { task ->
     if (task.name == 'generateDebugAssets' || task.name == 'generateReleaseAssets') {
         task.dependsOn 'generateLicenseAsset'
     }
-    if (task.name == 'cargoBuildArm64') {
-        task.dependsOn 'copy_libc++_sharedArm64'
+    for (target in cargo.targets) {
+        if (task.name == "cargoBuild${target.capitalize()}") {
+            task.dependsOn "copy_libc++_shared${target.capitalize()}"
+        }
     }
 }
 
-// TODO: make a task for each architecture
-// TODO: detect the correct host tag
-tasks.register('copy_libc++_sharedArm64', Copy) {
-    def ndkDir = android.ndkDirectory
-    // hostTag and archTriple from: https://developer.android.com/ndk/guides/other_build_systems
-    def hostTag = 'windows-x86_64'
-    def archTriple = 'aarch64-linux-android'
-    from "$ndkDir/toolchains/llvm/prebuilt/$hostTag/sysroot/usr/lib/$archTriple/libc++_shared.so"
-    into layout.buildDirectory.dir("rustJniLibs/android/arm64-v8a")
+for (target in cargo.targets) {
+    // TODO: detect the correct host tag
+    tasks.register("copy_libc++_shared${target.capitalize()}", Copy) {
+        def ndkDir = android.ndkDirectory
+        // hostTag and archTriple from: https://developer.android.com/ndk/guides/other_build_systems
+        def hostTag = 'windows-x86_64'
+        def archTriple = [
+            arm: 'armv7a-linux-androideabi',
+            arm64: 'aarch64-linux-android',
+            x86: 'i686-linux-android',
+            x86_64: 'x86_64-linux-android',
+        ][target]
+        from "$ndkDir/toolchains/llvm/prebuilt/$hostTag/sysroot/usr/lib/$archTriple/libc++_shared.so"
+        into layout.buildDirectory.dir("rustJniLibs/android/arm64-v8a")
+    }
 }
 
 tasks.register('generateLicenseAsset', Exec) {

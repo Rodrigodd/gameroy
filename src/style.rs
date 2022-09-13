@@ -237,10 +237,9 @@ pub struct Style {
     pub button_panel: Graphic,
     pub delete_icon: Graphic,
     pub open_icon: Graphic,
-    pub forward_icon: Graphic,
     pub file_icon: Graphic,
     pub menu_icon: Graphic,
-    pub foward_icon: Graphic,
+    pub forward_icon: Graphic,
     pub rewind_icon: Graphic,
     pub gamepad: GamePad,
 }

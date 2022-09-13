@@ -421,7 +421,7 @@ fn create_screen(
             .graphic(style.button_panel.clone())
             .layout(MarginLayout::new([12.0; 4]))
             .child(ctx, |cb, _| {
-                cb.graphic(style.foward_icon.clone()).layout(FitGraphic)
+                cb.graphic(style.forward_icon.clone()).layout(FitGraphic)
             })
             .build(ctx);
 

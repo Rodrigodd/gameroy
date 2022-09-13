@@ -537,7 +537,7 @@ pub fn create_rom_loading_ui(
             },
         ))
         .child(ctx, |cb, _| {
-            cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+            cb.graphic(style.file_icon.clone()).layout(FitGraphic)
         })
         .child(ctx, |cb, _| {
             cb.graphic(Text::new(
@@ -616,7 +616,7 @@ pub fn create_rom_loading_ui(
             move |_, _| crate::rom_loading::show_licenses(),
         ))
         .child(ctx, |cb, _| {
-            cb.graphic(style.open_icon.clone()).layout(FitGraphic)
+            cb.graphic(style.file_icon.clone()).layout(FitGraphic)
         })
         .child(ctx, |cb, _| {
             cb.graphic(Text::new(

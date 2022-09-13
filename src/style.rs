@@ -8,7 +8,7 @@ use giui::{
 };
 use sprite_render::SpriteRender;
 
-use crate::{widget::fold_view::FoldIcon};
+use crate::widget::fold_view::FoldIcon;
 
 #[cfg(not(feature = "static"))]
 use crate::config;
@@ -238,6 +238,7 @@ pub struct Style {
     pub delete_icon: Graphic,
     pub open_icon: Graphic,
     pub forward_icon: Graphic,
+    pub file_icon: Graphic,
     pub menu_icon: Graphic,
     pub foward_icon: Graphic,
     pub rewind_icon: Graphic,

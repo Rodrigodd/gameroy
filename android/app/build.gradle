@@ -93,17 +93,11 @@ for (target in cargo.targets) {
             hostTag = "linux-x86_64"
         }
 
-        def archTriple = [
-            arm: 'arm-linux-androideabi',
-            arm64: 'aarch64-linux-android',
-            x86: 'i686-linux-android',
-            x86_64: 'x86_64-linux-android',
-        ][target]
-        def abi = [
-            arm: 'armabi-v7a',
-            arm64: 'arm64-v8a',
-            x86: 'x86',
-            x86_64: 'x86_64',
+        def (abi, archTriple) = [
+            arm: ['armabi-v7a', 'arm-linux-androideabi'],
+            arm64: ['arm64-v8a', 'aarch64-linux-android'],
+            x86: ['x86', 'i686-linux-android'],
+            x86_64: ['x86_64', 'x86_64-linux-android'],
         ][target]
 
         def from_path = "$ndkDir/toolchains/llvm/prebuilt/$hostTag/sysroot/usr/lib/$archTriple/libc++_shared.so"

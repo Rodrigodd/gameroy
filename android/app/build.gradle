@@ -1,3 +1,5 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
 plugins {
     id 'com.android.application'
     id 'org.mozilla.rust-android-gradle.rust-android'
@@ -5,9 +7,6 @@ plugins {
 
 def keystoreProperties = new Properties()
 keystoreProperties.load(new FileInputStream(rootProject.file("keystore.properties")))
-
-def localProperties = new Properties()
-localProperties.load(new FileInputStream(rootProject.file("local.properties")))
 
 android {
     signingConfigs {
@@ -80,7 +79,20 @@ for (target in cargo.targets) {
     tasks.register("copy_libc++_shared${target.capitalize()}", Copy) {
         def ndkDir = android.ndkDirectory
         // hostTag, abi and archTriple from: https://developer.android.com/ndk/guides/other_build_systems
-        def hostTag = localProperties['hostTag']
+
+        def hostTag
+        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+            if (Os.isArch("x86_64") || Os.isArch("amd64")) {
+                hostTag = "windows-x86_64"
+            } else {
+                hostTag = "windows"
+            }
+        } else if (Os.isFamily(Os.FAMILY_MAC)) {
+            hostTag = "darwin-x86_64"
+        } else {
+            hostTag = "linux-x86_64"
+        }
+
         def archTriple = [
             arm: 'arm-linux-androideabi',
             arm64: 'aarch64-linux-android',

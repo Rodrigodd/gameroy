@@ -60,19 +60,7 @@ And access `localhost:8000` in a web browser.
 ### Android
 
 Gameroy uses [Gradle to build the android port](https://developer.android.com/studio/build/building-cmdline).
-
-First you need to create a `local.properties` file under the folder `android`,
-with at least your [NDK host tag](https://developer.android.com/ndk/guides/other_build_systems)
-name, and maybe other things like the path to your Android SDK, or which target
-ABIs to build for, if necessary.
-
-```properties
-sdk.dir=/path/to/android-sdk
-rust.targets=arm64,arm,linux-x86-64,darwin
-hostTag=windows-x86_64
-```
-
-Now to build and install the .apk in a device:
+To build and install the .apk in a device:
 
 ```shell
 cd android

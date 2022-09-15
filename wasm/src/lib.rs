@@ -11,6 +11,7 @@ pub fn run() {
 }
 
 #[wasm_bindgen]
+#[cfg(target_arch = "wasm32")]
 pub fn resize_canvas(width: u32, height: u32) {
     *gameroy_lib::RESIZE.lock() = Some((width, height))
 }

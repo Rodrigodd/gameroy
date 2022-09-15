@@ -53,6 +53,8 @@ jobs:
 
     - name: Install resvg
       run: cargo install resvg
+    - name: Install cargo-about
+      run: cargo install cargo-about
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew

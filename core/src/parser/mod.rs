@@ -89,6 +89,7 @@ impl From<std::io::Error> for VbmParseError {
 }
 
 #[test]
+#[ignore]
 fn parse_vbm() {
     let mut file = std::fs::File::open("../roms/mugg-kirbysdreamland.vbm").unwrap();
     let vbm = vbm(&mut file).unwrap();

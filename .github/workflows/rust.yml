@@ -46,6 +46,11 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Update apt
+      run: sudo apt update
+    - name: Install depencies
+      run: sudo apt-get install libasound2-dev libgtk-3-dev
+
     - name: Install resvg
       run: cargo install resvg
 

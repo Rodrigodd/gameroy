@@ -21,8 +21,8 @@ const CLOCK_SPEED: u64 = 2u64.pow(22);
 const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-test-roms/");
 
 macro_rules! screen {
-    { $( $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
-        $(#[test]
+    { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
+        $(#[test] $(#[$($attrib)*])*
         fn $test() {
             test_screen($rom, $expec, $timeout);
         })*
@@ -132,8 +132,8 @@ mod blargg {
     use super::*;
 
     macro_rules! console {
-        { $( ( $test:ident, $path:expr, $timeout:expr ); )* } => {
-            $(#[test]
+        { $($(#[$($attrib:meta)*])* ( $test:ident, $path:expr, $timeout:expr ); )* } => {
+            $(#[test] $(#[$($attrib)*])*
             fn $test() {
                 test_rom_serial($path, $timeout).unwrap();
             })*
@@ -141,8 +141,8 @@ mod blargg {
     }
 
     macro_rules! memory {
-        { $( ( $test:ident, $path:expr, $timeout:expr ); )* } => {
-            $(#[test]
+        { $($(#[$($attrib:meta)*])* ( $test:ident, $path:expr, $timeout:expr ); )* } => {
+            $(#[test] $(#[$($attrib)*])*
             fn $test() {
                 test_rom_memory($path, $timeout).unwrap();
             })*
@@ -199,6 +199,7 @@ mod blargg {
     }
 
     memory! {
+        #[ignore]
         (oam_bug, "oam_bug/oam_bug.gb", 83_000_000);
     }
 
@@ -510,8 +511,8 @@ mod mattcurrie {
     use super::*;
 
     macro_rules! registers {
-        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
-            $(#[test]
+        { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test] $(#[$($attrib)*])*
             fn $test() {
                 test_registers(concat!("mealybug-tearoom-tests/", $rom, ".gb"), $timeout);
             })*
@@ -519,6 +520,7 @@ mod mattcurrie {
     }
 
     registers! {
+        #[ignore]
         mbc3_rtc("mbc/mbc3_rtc", 204_872_220);
     }
 
@@ -533,16 +535,19 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m2_win_en_toggle_dmg_blob.png",
             30_222_844,
         );
+        #[ignore]
         m3_bgp_change(
             "mealybug-tearoom-tests/ppu/m3_bgp_change.gb",
             "mealybug-tearoom-tests/ppu/m3_bgp_change_dmg_blob.png",
             24_065_976,
         );
+        #[ignore]
         m3_bgp_change_sprites(
             "mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb",
             "mealybug-tearoom-tests/ppu/m3_bgp_change_sprites_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_bg_en_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change_dmg_blob.png",
@@ -553,6 +558,7 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change2_dmg_blob.png",
         //     25_000_000,
         // );
+        #[ignore]
         m3_lcdc_bg_map_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change_dmg_blob.png",
@@ -563,26 +569,31 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change2_dmg_blob.png",
         //     25_000_000,
         // );
+        #[ignore]
         m3_lcdc_obj_en_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_obj_en_change_variant(
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_en_change_variant_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_obj_size_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_obj_size_change_scx(
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_tile_sel_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change_dmg_blob.png",
@@ -593,6 +604,7 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change2_dmg_blob.png",
         //     25_000_000,
         // );
+        #[ignore]
         m3_lcdc_tile_sel_win_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png",
@@ -603,16 +615,19 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change2_dmg_blob.png",
         //     25_000_000,
         // );
+        #[ignore]
         m3_lcdc_win_en_change_multiple(
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_win_en_change_multiple_wx(
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_lcdc_win_map_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change_dmg_blob.png",
@@ -623,11 +638,13 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change2_dmg_blob.png",
         //     25_000_000,
         // );
+        #[ignore]
         m3_obp0_change(
             "mealybug-tearoom-tests/ppu/m3_obp0_change.gb",
             "mealybug-tearoom-tests/ppu/m3_obp0_change_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_scx_high_5_bits(
             "mealybug-tearoom-tests/ppu/m3_scx_high_5_bits.gb",
             "mealybug-tearoom-tests/ppu/m3_scx_high_5_bits_dmg_blob.png",
@@ -643,6 +660,7 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m3_scx_low_3_bits_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_scy_change(
             "mealybug-tearoom-tests/ppu/m3_scy_change.gb",
             "mealybug-tearoom-tests/ppu/m3_scy_change_dmg_blob.png",
@@ -653,31 +671,37 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_scy_change2_dmg_blob.png",
         //     25_000_000,
         // );
+        #[ignore]
         m3_window_timing(
             "mealybug-tearoom-tests/ppu/m3_window_timing.gb",
             "mealybug-tearoom-tests/ppu/m3_window_timing_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_window_timing_wx_0(
             "mealybug-tearoom-tests/ppu/m3_window_timing_wx_0.gb",
             "mealybug-tearoom-tests/ppu/m3_window_timing_wx_0_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_wx_4_change(
             "mealybug-tearoom-tests/ppu/m3_wx_4_change.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_4_change_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_wx_4_change_sprites(
             "mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_wx_5_change(
             "mealybug-tearoom-tests/ppu/m3_wx_5_change.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_5_change_dmg_blob.png",
             25_000_000,
         );
+        #[ignore]
         m3_wx_6_change(
             "mealybug-tearoom-tests/ppu/m3_wx_6_change.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_6_change_dmg_blob.png",
@@ -695,8 +719,8 @@ mod mooneye {
     use super::*;
 
     macro_rules! registers {
-        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
-            $(#[test]
+        { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test] $(#[$($attrib)*])*
             fn $test() {
                 test_registers(concat!("mooneye-test-suite/", $rom, ".gb"), $timeout);
             })*
@@ -805,8 +829,8 @@ mod age {
     use super::*;
 
     macro_rules! registers {
-        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
-            $(#[test]
+        { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test] $(#[$($attrib)*])*
             fn $test() {
                 test_registers(concat!("age-test-roms/", $rom, ".gb"), $timeout);
             })*
@@ -814,6 +838,7 @@ mod age {
     }
 
     screen! {
+        #[ignore]
         bgp(
             "age-test-roms/m3-bg-bgp/m3-bg-bgp.gb",
             "age-test-roms/m3-bg-bgp/m3-bg-bgp-dmgC.png",
@@ -824,6 +849,7 @@ mod age {
             "age-test-roms/m3-bg-lcdc/m3-bg-lcdc-dmgC.png",
             24_554_332,
         );
+        #[ignore]
         scx(
             "age-test-roms/m3-bg-scx/m3-bg-scx.gb",
             "age-test-roms/m3-bg-scx/m3-bg-scx-dmgC.png",
@@ -832,9 +858,13 @@ mod age {
     }
 
     registers! {
+        #[ignore]
         ly("ly/ly-dmgC-cgbB", 120*CLOCK_SPEED);
+        #[ignore]
         stat_int("stat-interrupt/stat-int-dmgC-cgbBE", 120*CLOCK_SPEED);
+        #[ignore]
         state_mode("stat-mode/stat-mode-dmgC-cgbB", 120*CLOCK_SPEED);
+        #[ignore]
         vram_read("vram/vram-read-dmgC", 120*CLOCK_SPEED);
     }
 }
@@ -843,17 +873,19 @@ mod same_suite {
     use super::*;
 
     macro_rules! registers {
-        { $( $test:ident($rom:expr, $timeout:expr ); )* } => {
-            $(#[test]
+        { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $timeout:expr ); )* } => {
+            $(#[test] $(#[$($attrib)*])*
             fn $test() {
                 test_registers(concat!("same-suite/", $rom, ".gb"), $timeout);
             })*
         };
     }
-
     registers! {
+        #[ignore]
         div_write_trigger("apu/div_write_trigger", 12*CLOCK_SPEED);
+        #[ignore]
         div_write_trigger_10("apu/div_write_trigger_10", 12*CLOCK_SPEED);
+        #[ignore]
         ei_delay_halt("interrupt/ei_delay_halt", 12*CLOCK_SPEED);
     }
 }

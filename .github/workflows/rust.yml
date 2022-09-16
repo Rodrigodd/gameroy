@@ -51,6 +51,13 @@ jobs:
     - name: Install depencies
       run: sudo apt-get install libasound2-dev libgtk-3-dev
 
+    - name: Install android targets
+      run: rustup target install \
+        aarch64-linux-android \
+        armv7-linux-androideabi \
+        i686-linux-android \
+        x86_64-linux-android
+
     - name: Install resvg
       run: cargo install resvg
     - name: Install cargo-about

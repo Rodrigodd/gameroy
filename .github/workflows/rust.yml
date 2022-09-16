@@ -27,6 +27,16 @@ jobs:
 
     - name: Build Native
       run: cargo build --verbose -p gameroy_native
+
+    - uses: robinraju/release-downloader@v1.5
+      with: 
+        repository: "ac-sp/gameboy-test-roms"
+        tag: "v3.2"
+        fileName: "gameboy-test-roms-v3.2.zip"
+
+    - name: Unzip test roms
+      run: unzip gameboy-test-roms-v3.2.zip -d core\tests\gameboy-test-roms\
+
     - name: Run tests
       run: cargo test --verbose --workspace
 
@@ -38,7 +48,9 @@ jobs:
       run:
         working-directory: ./android
     steps:
+
     - uses: actions/checkout@v3
+
     - name: set up JDK 11
       uses: actions/setup-java@v3
       with:

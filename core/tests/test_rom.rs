@@ -301,8 +301,7 @@ mod blargg {
 /// Run cpu_instrs for a random ammount of instructions, do a save state, and compare the load
 /// state with the original. They should always be equal.
 fn save_state1() {
-    // let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs.gb";
-    let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
+    let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
@@ -348,8 +347,7 @@ fn save_state1() {
 /// run the same ammount of instructions, and compare with the first one. They should always be
 /// equal.
 fn save_state2() {
-    // let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs.gb";
-    let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
+    let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
@@ -398,8 +396,7 @@ fn save_state2() {
 /// state, run the same number of instructions, and compare with the first one. They should always
 /// be equal.
 fn save_state3() {
-    // let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs.gb";
-    let rom_path = "../roms/Kirby's Dream Land (USA, Europe).gb";
+    let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();

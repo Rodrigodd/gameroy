@@ -12,6 +12,8 @@ env:
 jobs:
   rust-build:
 
+    if: ${{ false }}  # disable for now
+
     runs-on: ubuntu-latest
 
     steps:
@@ -75,6 +77,16 @@ jobs:
       run: cargo install resvg
     - name: Install cargo-about
       run: cargo install cargo-about
+
+    - name: Write Keystore.properties
+      env:
+        KEYSTORE_PROPERTIES: ${{ secrets.KEYSTORE_PROPERTIES }}
+      run: echo $KEYSTORE_PROPERTIES > keystore.properties
+
+    - name: Write keystore.jks
+      env:
+        ENCODED_KEYSTORE: ${{ secrets.KEYSTORE }}
+      run: echo $ENCODED_KEYSTORE | base64 -di > keystore.jks
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew

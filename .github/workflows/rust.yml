@@ -17,6 +17,10 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
+    - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "gameroy-cache"
+
     - name: Update apt
       run: sudo apt update
     - name: Install depencies
@@ -50,6 +54,10 @@ jobs:
     steps:
 
     - uses: actions/checkout@v3
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: "gameroy-cache"
 
     - name: set up JDK 11
       uses: actions/setup-java@v3

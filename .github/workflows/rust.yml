@@ -81,7 +81,7 @@ jobs:
     - name: Write Keystore.properties
       env:
         KEYSTORE_PROPERTIES: ${{ secrets.KEYSTORE_PROPERTIES }}
-      run: echo $KEYSTORE_PROPERTIES > keystore.properties
+      run: echo "$KEYSTORE_PROPERTIES" > keystore.properties
 
     - name: Write keystore.jks
       env:

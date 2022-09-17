@@ -9,6 +9,12 @@ def keystoreProperties = new Properties()
 keystoreProperties.load(new FileInputStream(rootProject.file("keystore.properties")))
 
 android {
+    sourceSets {
+        main {
+            assets.srcDirs layout.buildDirectory.dir("generatedAssets")
+        }
+    }
+
     signingConfigs {
         release {
             storeFile file(keystoreProperties['storeFile'])
@@ -111,13 +117,20 @@ for (target in cargo.targets) {
 }
 
 tasks.register('generateLicenseAsset', Exec) {
-    inputs.file("$rootDir/../Cargo.lock")
-        .withPropertyName('lockFile')
-    standardOutput = new FileOutputStream("$rootDir/app/src/main/assets/license.html")
-    commandLine 'cargo', 'about', 'generate',
-        '-m', "$rootDir/Cargo.toml",
-        '-c', "$rootDir/../license/about.toml",
-        "$rootDir/../license/about.hbs"
+    def cargo = "$rootDir/Cargo.toml"
+    def about = "$rootDir/../license/about.toml"
+    def hbs = "$rootDir/../license/about.hbs"
+
+    def output = "$buildDir/generatedAssets/license.html"
+
+    inputs.files(cargo, about, hbs)
+    outputs.file(output)
+    
+    commandLine 'cargo', 'about', 'generate', 
+        '-m', cargo, 
+        '-c', about,
+        hbs,
+        '-o', output
 }
 
 task runDebug(type: Exec, dependsOn: ':app:installDebug') {

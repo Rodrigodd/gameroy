@@ -48,9 +48,6 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: ./android
     steps:
 
     - uses: actions/checkout@v3
@@ -58,6 +55,8 @@ jobs:
     - uses: Swatinem/rust-cache@v2
       with:
         shared-key: "gameroy-cache"
+
+    - run: cd android
 
     - name: set up JDK 11
       uses: actions/setup-java@v3

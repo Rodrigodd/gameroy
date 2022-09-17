@@ -64,6 +64,7 @@ jobs:
       with:
         java-version: '11'
         distribution: 'temurin'
+        working-directory: ./android
         cache: gradle
 
     - name: Update apt

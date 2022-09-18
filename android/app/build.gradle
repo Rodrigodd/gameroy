@@ -5,9 +5,6 @@ plugins {
     id 'org.mozilla.rust-android-gradle.rust-android'
 }
 
-def keystoreProperties = new Properties()
-keystoreProperties.load(new FileInputStream(rootProject.file("keystore.properties")))
-
 android {
     sourceSets {
         main {
@@ -15,14 +12,6 @@ android {
         }
     }
 
-    signingConfigs {
-        release {
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-	        keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-        }
-    }
     compileSdk 30
 
     ndkVersion "24.0.8215888"
@@ -45,13 +34,34 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
         }
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+// only sign apks if there is a keystore properties files.
+def keyStorePropertiesFile = rootProject.file("keystore.properties")
+if (keyStorePropertiesFile.exists()) {
+    def keystoreProperties = new Properties()
+    keystoreProperties.load(new FileInputStream(keyStorePropertiesFile))
+
+    android {
+        signingConfigs {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+        buildTypes {
+            debug.signingConfig signingConfigs.release
+            release.signingConfig signingConfigs.release
+        }
     }
 }
 

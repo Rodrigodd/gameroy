@@ -84,6 +84,9 @@ tasks.whenTaskAdded { task ->
     if (task.name == 'generateDebugAssets' || task.name == 'generateReleaseAssets') {
         task.dependsOn 'generateLicenseAsset'
     }
+    if (task.name == 'lintVitalAnalyzeRelease') {
+        task.dependsOn 'generateLicenseAsset'
+    }
     for (target in cargo.targets) {
         if (task.name == "cargoBuild${target.capitalize()}") {
             task.dependsOn "copy_libc++_shared${target.capitalize()}"

@@ -99,9 +99,9 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: app-debug
-        path: android\app\build\outputs\apk\debug\app-debug.apk
+        path: android/app/build/outputs/apk/debug/app-debug.apk
     - name: Archive release APK
       uses: actions/upload-artifact@v3
       with:
         name: app-release
-        path: android\app\build\outputs\apk\release\app-release.apk
+        path: android/app/build/outputs/apk/release/app-release.apk

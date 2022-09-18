@@ -94,3 +94,14 @@ jobs:
       run: chmod +x gradlew
     - name: Build with Gradle
       run: ./gradlew build
+
+    - name: Archive debug APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: app-debug
+        path: android\app\build\outputs\apk\debug\app-debug.apk
+    - name: Archive release APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: app-release
+        path: android\app\build\outputs\apk\release\app-release.apk

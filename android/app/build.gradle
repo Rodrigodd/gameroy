@@ -26,10 +26,6 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    packagingOptions {
-        jniLibs.keepDebugSymbols += "**/libgameroy_android.so"
-    }
-
     buildTypes {
         release {
             minifyEnabled false
@@ -63,6 +59,10 @@ if (keyStorePropertiesFile.exists()) {
             release.signingConfig signingConfigs.release
         }
     }
+}
+
+if (false) {
+    android.packagingOptions.jniLibs.keepDebugSymbols += "**/arm64-v8a/libgameroy_android.so"
 }
 
 cargo {

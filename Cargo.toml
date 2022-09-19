@@ -84,8 +84,7 @@ urlencoding = "2.1"
 # waiting for https://github.com/sebcrozet/instant/pull/46
 instant = { git = "https://github.com/Rodrigodd/instant.git" }
 
-# contains hack workaround for https://github.com/rust-windowing/winit/issues/2299
-# this dead lock fix: https://github.com/rust-windowing/winit/pull/2343
+# contains hacky workaround for https://github.com/rust-windowing/winit/issues/2299
 # and this volume buttons fix: https://github.com/rust-windowing/winit/pull/1919
 winit = { git = "https://github.com/Rodrigodd/winit.git", rev = "ef67150f330d073eea0cddb062608dfb8e181927" }
 # winit = { path = "../winit" }

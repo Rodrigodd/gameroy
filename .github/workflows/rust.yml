@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust-build:
+  linux-build-and-test:
 
     runs-on: ubuntu-latest
 
@@ -26,9 +26,8 @@ jobs:
 
     - name: Install resvg
       run: cargo install resvg
-
-    - name: Build Native
-      run: cargo build --verbose -p gameroy_native
+    - name: Install cargo-about
+      run: cargo install cargo-about
 
     - uses: robinraju/release-downloader@v1.5
       with: 
@@ -41,6 +40,86 @@ jobs:
 
     - name: Run tests
       run: cargo test --verbose --workspace
+
+    - uses: jetli/wasm-pack-action@v0.3.0
+      with:
+        # Optional version of wasm-pack to install(eg. 'v0.9.1', 'latest')
+        version: 'latest'
+
+    - name: Build Linux
+      run: >
+        cargo build --profile=fast --verbose -p gameroy_native
+        --target=x86_64-unknown-linux-gnu 
+        --features=static
+
+    - name: Cargo About
+      run: cargo about generate -m native/Cargo.toml -c license/about.toml license/about.hbs > license/license.html
+
+    - name: Form a Package
+      run: |
+        mkdir package
+        cp target/x86_64-unknown-linux-gnu/fast/gameroy_native package/gameroy.exe
+        cp license/license.html package/
+        cp gameroy.toml package/
+
+    - name: Archive Linux
+      uses: actions/upload-artifact@v3
+      with:
+        name: gameroy-x86_64-unknown-linux-gnu
+        path: package/
+
+    - name: Build Wasm
+      run: |
+        cd wasm
+        wasm-pack build --target web
+        cp ../license/license.html .
+
+    - name: Archive Web
+      uses: actions/upload-artifact@v3
+      with:
+        name: gameroy-wasm
+        path: |
+          wasm/index.html
+          wasm/license.html
+          wasm/pkg/gameroy_wasm_bg.wasm
+          wasm/pkg/gameroy_wasm.js
+
+  windows-build:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - uses: Swatinem/rust-cache@v2
+
+    - name: Install resvg
+      run: cargo install resvg
+    - name: Install cargo-about
+      run: cargo install cargo-about
+
+    - name: Build Windows
+      run: >
+        cargo build -p gameroy_native --profile=fast --verbose
+        --target=x86_64-pc-windows-msvc  
+        --no-default-features --features=static,rfd,audio-engine,threads
+
+    - name: Cargo About
+      run: cargo about generate -m native\Cargo.toml -c license\about.toml license\about.hbs > license\license.html
+
+    - name: Form a Package
+      run: |
+        mkdir package
+        copy target\x86_64-pc-windows-msvc\fast\gameroy_native.exe package\gameroy.exe
+        copy license\license.html package\
+        copy gameroy.toml package\
+
+
+    - name: Archive Windows
+      uses: actions/upload-artifact@v3
+      with:
+        name: gameroy-x86_64-pc-windows-msvc 
+        path: package/
 
   android-build:
 
@@ -92,16 +171,11 @@ jobs:
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
-    - name: Build with Gradle
+    - name: Build Android
       run: ./gradlew build
 
-    - name: Archive debug APK
-      uses: actions/upload-artifact@v3
-      with:
-        name: app-debug
-        path: android/app/build/outputs/apk/debug/app-debug.apk
     - name: Archive release APK
       uses: actions/upload-artifact@v3
       with:
-        name: app-release
+        name: gameroy-android
         path: android/app/build/outputs/apk/release/app-release.apk

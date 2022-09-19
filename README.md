@@ -24,18 +24,24 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
 
 You can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
 
-### Native
-
 This project depends on [resvg](https://github.com/RazrFalcon/resvg) (version
-0.23, at time of writing) for rendering icons.svg into pngs. You can install it
-by running `cargo install resvg`, by downloading it from [resvg Releses
-page](https://github.com/RazrFalcon/resvg/releases) or any other way you find.
+0.23, at time of writing) for rendering assets, and cargo-about for generate
+a list of licenses (this last one is optional). 
 
-With resvg installed, you can compile and run a release build of this project
-by cloning this repo and running the following command in the project root:
+You can install them using cargo:
 
 ```shell
-cargo run --release -p native
+cargo install resvg
+cargo install cargo-about
+```
+
+### Native
+
+Compiling and running for native, i.e, Windows and Linux (other platforms are
+untested), only needs cargo:
+
+```shell
+cargo run --release -p gameroy_native
 ```
 
 #### WebAssembly
@@ -44,20 +50,24 @@ You can also build for WebAssembly, and run the emulator on the web. Using
 [web-pack](https://rustwasm.github.io/wasm-pack/), run the following command:
 
 ```shell
-wasm-pack build --target web -- --no-default-features --features=static,rfd,audio-engine
+cd wasm
+wasm-pack build --target web
 ```
 
-After that, open a web server in the root folder that serve [index.html].
+After that, open a web server in the root folder that serves [wasm/index.html].
 
-For example, you can create a server using python `http.server` module:
+For example, you can use python's `http.server` module:
 
 ```
+cd wasm
 python -m http.server
 ```
 
 And access `localhost:8000` in a web browser.
 
 ### Android
+
+For building to android, you need to have [Anroid NDK](https://developer.android.com/ndk) installed.
 
 Gameroy uses [Gradle to build the android port](https://developer.android.com/studio/build/building-cmdline).
 To build and install the .apk in a device:
@@ -73,8 +83,8 @@ building the rust code for android.
 
 ## Config
 
-GameRoy uses a file named `gameroy.toml`, located in the same folder as the executable. The default
-[`gameroy.toml`](gameroy.toml) file comes documented.
+GameRoy uses a file named `gameroy.toml`, located in the same folder as the executable.
+The default [`gameroy.toml`](gameroy.toml) file comes documented.
 
 ### Controls
 
@@ -97,21 +107,21 @@ registers, etc. At the bottom there is a text field for command input.
 ### Debugger commands
 
 - `step` (`F8`): execute 1 opcode.
-- `stepback` (`F7`): reverse execute 1 opcode.
+- `stepback` (`F7`): reverse by 1 opcode.
 - `run` (`F9`): continue to run.
 - `run for <clock_count>`: run for the given number of cycles.
 - `run until <clock_count>`: run until the total clock count reach the given value.
 - `runto <address>`: run until reaching the address.
 - `watch <address>`: add a memory address to the watch list, where its value will be displayed.
-- `break <flags> <address>`: add a breakpoint to a memory address. Flags is a string containing at
-  least one of the following:
+- `break <flags> <address>`: add a breakpoint to a memory address. Flags is a continuous
+   string containing at least one of the following letters:
   - `x`: break immediately before executing an opcode in the address.
   - `j`: break immediately before jumping to the address.
   - `r`: break immediately before reading the address
   - `w`: break immediately before writing to the address
-- `reset`: restart the Game Boy.
-- `dump <path>`: write the current disassembled code to a file. This disassembly is not complete
-  nor is in a known format.
+- `reset`: restarts the Game Boy.
+- `dump <path>`: write the current disassembled code to a file. This disassembly is not
+  complete nor is in a known format.
 
 Pressing `Enter` with the text field empty will run a step.
 
@@ -124,7 +134,7 @@ Pressing `Enter` with the text field empty will run a step.
 ## Test suite
 
 All test roms used were obtained from [https://github.com/c-sp/gameboy-test-roms/releases/tag/v3.2],
-but the emulator was only run against the following tests.
+but the emulator was only run against the following tests. Only 
 
 To run the tests, follow the instructions in [core/tests](core/tests/).
 
@@ -169,14 +179,26 @@ Only tests that were expected to pass on DMG were tested.
 | Test | GameRoy |
 |------|---------|
 | ppu  | 3/25    |
-| mbc  | N/A\*   |
+| mbc  | 0/1     |
 | dma  | N/A\*   |
 
-\* Not tested.
+\* CGB only
 
 ### DMG Acid 2
 
 :+1:
+
+### Age
+
+1/7\*
+
+\* Only tests that passed on SameBoy were tested.
+
+### Same suite
+
+0/3\*
+
+\* Only tests that passed on SameBoy were tested. Was not sure which tests should pass on DMG.
 
 ## Resources To Be Thankful For
 

@@ -75,6 +75,7 @@ cargo {
         'x86_64'
     ]
     targetDirectory = "../../target"
+    profile = "release"
 }
 
 tasks.whenTaskAdded { task ->

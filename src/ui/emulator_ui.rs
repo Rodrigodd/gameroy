@@ -337,7 +337,6 @@ fn create_screen(
     let mut layout = ScreenLayout::new((160, 144));
 
     let gamepad = cfg!(target_os = "android");
-    let gamepad = true;
     if gamepad {
         let scale_factor = ctx.scale_factor() as f32;
         let mut create_control = |graphic, [ax, ay]: [f32; 2], [x, y]: [f32; 2]| -> Id {

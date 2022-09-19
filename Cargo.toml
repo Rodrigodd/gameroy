@@ -93,6 +93,9 @@ winit = { git = "https://github.com/Rodrigodd/winit.git", rev = "ef67150f330d073
 # fork contains a android backend
 rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }
 
+# hard code oboe's performance mode to low latency
+cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" } 
+
 
 [profile.dev]
 opt-level = 1

@@ -600,8 +600,7 @@ dependencies = [
 [[package]]
 name = "cpal"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d466b47cf0ea4100186a7c12d7d0166813dda7cf648553554c9c39c6324841b"
+source = "git+https://github.com/Rodrigodd/cpal.git?branch=oboe-low-latency#9b9189c86afe5f38b6b64e5dbe5f182e4602799a"
 dependencies = [
  "alsa",
  "core-foundation-sys 0.8.3 (registry+https://github.com/rust-lang/crates.io-index)",

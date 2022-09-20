@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - add `gameroy bench` subcommand.
 - add a table view for the rom loading UI.
+- make UI dpi aware.
 - add a WebAssembly port.
 - add a Android port.
 - add button to change the rom folder (only update config on Android).

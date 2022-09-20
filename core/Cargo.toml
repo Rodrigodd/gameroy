@@ -1,6 +1,6 @@
 [package]
 name = "gameroy-core"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 repository = "https://github.com/Rodrigodd/gameroy"
 edition = "2018"

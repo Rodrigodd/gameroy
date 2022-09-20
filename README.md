@@ -25,8 +25,8 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
 You can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
 
 This project depends on [resvg](https://github.com/RazrFalcon/resvg) (version
-0.23, at time of writing) for rendering assets, and cargo-about for generate
-a list of licenses (this last one is optional). 
+0.23, at time of writing) for rendering assets, and [cargo-about](https://github.com/EmbarkStudios/cargo-about)
+(0.5.1) for generate a list of licenses (this last one is optional). 
 
 You can install them using cargo:
 
@@ -44,7 +44,7 @@ untested), only needs cargo:
 cargo run --release -p gameroy_native
 ```
 
-#### WebAssembly
+### WebAssembly
 
 You can also build for WebAssembly, and run the emulator on the web. Using
 [web-pack](https://rustwasm.github.io/wasm-pack/), run the following command:

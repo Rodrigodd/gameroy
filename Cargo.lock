@@ -785,7 +785,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "gameroy"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "audio-engine",
  "base64",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
  "rand",
@@ -826,7 +826,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy_android"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "gameroy",
  "jni",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy_native"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "clap",
  "embed-resource",
@@ -848,7 +848,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy_wasm"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "console_error_panic_hook",
  "gameroy",

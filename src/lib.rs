@@ -48,7 +48,7 @@ extern crate giui;
 
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
-pub const VERSION: &'static str = "0.1.1";
+pub const VERSION: &'static str = "0.2.0";
 
 pub fn log_panic() {
     let default_hook = std::panic::take_hook();

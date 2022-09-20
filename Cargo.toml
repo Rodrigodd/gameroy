@@ -3,7 +3,7 @@ members = ["core", "android", "native", "wasm"]
 
 [package]
 name = "gameroy"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 edition = "2021"
 repository = "https://github.com/Rodrigodd/gameroy"
@@ -93,7 +93,7 @@ winit = { git = "https://github.com/Rodrigodd/winit.git", rev = "ef67150f330d073
 rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }
 
 # hard code oboe's performance mode to low latency
-cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" } 
+cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" }
 
 
 [profile.dev]

@@ -67,4 +67,5 @@ pub fn benchmark(path: &str, timeout: u64, len: usize) {
         "            {} times faster than real time.",
         print_val(times, times_err),
     );
+    log::info!("faster than real time: {} +/- {}", times, times_err);
 }

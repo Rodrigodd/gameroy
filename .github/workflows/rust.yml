@@ -104,6 +104,9 @@ jobs:
     - name: Install cargo-about
       run: cargo install cargo-about
 
+    - name: Install android targets
+      run: rustup target install x86_64-unknown-linux-musl 
+
     - name: Build Linux Musl
       run: >
         cargo build --profile=fast --verbose -p gameroy_native

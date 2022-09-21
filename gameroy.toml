@@ -15,7 +15,7 @@ sort_list = "+File"
 # KeyCode names came from this list: https://docs.rs/winit/0.26.1/winit/event/enum.VirtualKeyCode.html
 
 left = "Left"
-rigth = "Rigth"
+right = "Right"
 up = "Up"
 down = "Down"
 

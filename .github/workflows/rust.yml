@@ -85,50 +85,6 @@ jobs:
           wasm/pkg/gameroy_wasm_bg.wasm
           wasm/pkg/gameroy_wasm.js
 
-  linux-musl-build:
-
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - uses: Swatinem/rust-cache@v2
-
-    - name: Update apt
-      run: sudo apt update
-    - name: Install depencies
-      run: sudo apt-get install libasound2-dev libgtk-3-dev
-
-    - name: Install resvg
-      run: cargo install resvg
-    - name: Install cargo-about
-      run: cargo install cargo-about
-
-    - name: Install android targets
-      run: rustup target install x86_64-unknown-linux-musl 
-
-    - name: Build Linux Musl
-      run: >
-        cargo build --profile=fast --verbose -p gameroy_native
-        --target=x86_64-unknown-linux-musl 
-        --features=static
-
-    - name: Cargo About
-      run: cargo about generate -m native/Cargo.toml -c license/about.toml license/about.hbs > license/license.html
-
-    - name: Form a Package
-      run: |
-        mkdir package
-        cp target/x86_64-unknown-linux-musl/fast/gameroy_native package/gameroy
-        cp license/license.html package/
-        cp gameroy.toml package/
-
-    - name: Archive Linux
-      uses: actions/upload-artifact@v3
-      with:
-        name: gameroy-x86_64-unknown-linux-musl
-        path: package/
-
   windows-build:
     if: ${{ false }}
 

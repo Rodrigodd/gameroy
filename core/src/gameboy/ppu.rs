@@ -146,37 +146,6 @@ impl SaveState for Sprite {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy)]
-enum Mode {
-    HBlank = 0,
-    VBlank = 1,
-    // Oam mode is divide in two, the OamSearchEntry changes the stat mode at lx = 4 and become the
-    // second. The second one is necessary in ppu on for setting the mode without changing the stat
-    // mode.
-    OamSearchEntry = 2,
-    OamSearch = 4,
-    Draw = 3,
-}
-impl SaveState for Mode {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        (*self as u8).save_state(data)
-    }
-
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-        let mut v = 0u8;
-        v.load_state(data)?;
-        *self = match v {
-            0 => Self::HBlank,
-            1 => Self::VBlank,
-            2 => Self::OamSearchEntry,
-            4 => Self::OamSearch,
-            3 => Self::Draw,
-            _ => return Err(LoadStateError::InvalidPpuMode(v)),
-        };
-        Ok(())
-    }
-}
-
 #[derive(PartialEq, Eq, Clone)]
 pub struct Ppu {
     /// 8000-9FFF: Video RAM

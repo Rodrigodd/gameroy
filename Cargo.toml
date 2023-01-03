@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "android", "native", "wasm"]
+members = ["core", "android", "native", "wasm", "libretro"]
 
 [package]
 name = "gameroy"

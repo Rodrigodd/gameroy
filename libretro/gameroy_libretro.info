@@ -1,0 +1,20 @@
+# Software Information
+display_name = "Nintendo - Game Boy (GameRoy)"
+authors = "Rodrigodd"
+supported_extensions = "gb"
+corename = "GameBoy"
+display_version = "v0.2.0"
+categories = "Emulator"
+license = "MIT OR Apache-2.0"
+permissions = ""
+
+# Hardware Information
+manufacturer = "Nintendo"
+systemname = "Game Boy"
+systemid = "game_boy"
+
+# Libretro Features
+database = "Nintendo - Game Boy"
+supports_no_game = "false"
+
+description = "A highly accurate Game Boy emulator, written in Rust"

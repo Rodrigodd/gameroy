@@ -102,11 +102,11 @@ pub struct SoundController {
     ch4_lfsr: u16,
     ch4_frequency_timer: u16,
 
-    /// Output Buffer
+    /// Audio buffer with generated samples. Each frame has two samples: left and right.
     output: Vec<u16>,
     /// Clock count at the last sound update
     pub last_clock: u64,
-    /// The frequency in Hertz at which the sound controller is sampled. Default value is 0, witch
+    /// The frequency in Hertz at which the sound controller is sampled. Default value is 0, which
     /// means that there will be no sampling.
     pub sample_frequency: u64,
     sample_mod: u64,
@@ -308,7 +308,7 @@ impl Default for SoundController {
 const WAVE_DUTY_TABLE: [u8; 4] = [0b0000_0001, 0b0000_0011, 0b0000_1111, 0b1111_1100];
 
 impl SoundController {
-    /// Return the currently generated audio output. The buffer is cleared.
+    /// Updates itself and return the currently generated audio output. The buffer is cleared.
     pub fn get_output(&mut self, clock_count: u64) -> Vec<u16> {
         self.update(clock_count);
         std::mem::take(&mut self.output)

@@ -63,7 +63,8 @@ pub struct GameBoy {
 
     /// This trigger control if in the next interpret the `v_blank` callback will be called.
     pub v_blank_trigger: bool,
-    /// A callback that is called after a VBlank. This is called at the
+    /// A callback that is called after a VBlank. This is called when a vblank interrupt is
+    /// triggered.
     #[cfg(not(target_arch = "wasm32"))]
     pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
     #[cfg(target_arch = "wasm32")]

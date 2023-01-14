@@ -36,11 +36,10 @@ gameroy-core = { path = "core" }
 
 # giui = { path = "../giui" }
 giui = { git = "https://github.com/Rodrigodd/giui" }
-# sprite-render = { path = "../sprite-render-rs", features=["opengl", "webgl", "opengles"] }
+# sprite-render = { path = "../sprite-render-rs", features=["opengl", "webgl"] }
 sprite-render = { git = "https://github.com/Rodrigodd/sprite-render-rs", features = [
     "opengl",
     "webgl",
-    "opengles",
 ] }
 # audio-engine = { path = "../audio-engine", optional = true }
 audio-engine = { version = "0.4.2", optional = true }
@@ -50,7 +49,7 @@ rfd = { version = "0.9.1", optional = true, features = ["file-handle-inner"] }
 serde = { version = "1", features = ["derive"] }
 ron = "0.6"
 
-winit = { version = "0.27.2", features = ["serde"] }
+winit = { version = "0.27.5", features = ["serde"] }
 log = "0.4.14"
 
 image = { version = "0.24.3", default-features = false, features = ["png"] }
@@ -86,14 +85,16 @@ instant = { git = "https://github.com/Rodrigodd/instant.git" }
 
 # contains hacky workaround for https://github.com/rust-windowing/winit/issues/2299
 # and this volume buttons fix: https://github.com/rust-windowing/winit/pull/1919
-winit = { git = "https://github.com/Rodrigodd/winit.git", rev = "ef67150f330d073eea0cddb062608dfb8e181927" }
-# winit = { path = "../winit" }
+winit = { git = "https://github.com/Rodrigodd/winit.git", branch = "v0.27.5-gameroy" }
 
 # fork contains a android backend
 rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }
 
 # hard code oboe's performance mode to low latency
 cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" }
+
+# contains this fix: https://github.com/Nercury/android_logger-rs/pull/62
+android_logger = { git = "https://github.com/TiggeZaki/android_logger-rs", branch = "patch-1" }
 
 
 [profile.dev]

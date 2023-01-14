@@ -7,7 +7,7 @@ use giui::{
     widgets::{ListBuilder, ScrollBar, ScrollView, ViewLayout},
     BuilderContext, ControlBuilder, Gui, GuiRender, Id,
 };
-use sprite_render::{Camera, SpriteInstance, SpriteRender};
+use sprite_render::{Camera, NoopSpriteRender, SpriteInstance, SpriteRender, Texture, TextureId};
 use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
@@ -30,15 +30,20 @@ impl<'a> GuiRenderer for Render<'a> {
         for byte in data_tex.iter() {
             data.extend([0xff, 0xff, 0xff, *byte].iter());
         }
-        self.0.update_texture(
-            font_texture,
-            &data,
-            Some([rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]]),
-        );
+        self.0
+            .update_texture(
+                TextureId(font_texture),
+                Some(&data),
+                Some([rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]]),
+            )
+            .unwrap();
     }
     fn resize_font_texture(&mut self, font_texture: u32, new_size: [u32; 2]) {
-        self.0
-            .resize_texture(font_texture, new_size[0], new_size[1], &[]);
+        Texture::new(new_size[0], new_size[1])
+            .id(TextureId(font_texture))
+            .create(self.0)
+            .unwrap()
+            .0;
     }
 }
 
@@ -72,16 +77,23 @@ impl Ui {
         #[cfg(target_os = "android")]
         let (render, font_texture, style, textures) = {
             let fonts: &mut Fonts = &mut fonts;
-            let mut render: Box<dyn SpriteRender + 'static> = Box::new(());
+            let mut render: Box<dyn SpriteRender + 'static> = Box::new(NoopSpriteRender);
 
-            let font_texture = render.new_texture(128, 128, &[], false);
+            let font_texture = Texture::new(128, 128).create(render.as_mut()).unwrap().0;
             let style = Style::load(fonts, render.as_mut(), window.scale_factor()).unwrap();
             let textures = Textures {
-                white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
-                screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
-                tilemap: render.new_texture(128, 192, &[], false),
-                background: render.new_texture(256, 256, &[], false),
-                window: render.new_texture(256, 256, &[], false),
+                white: Texture::new(1, 1)
+                    .data(&[255, 255, 255, 255])
+                    .create(render.as_mut())
+                    .unwrap()
+                    .0,
+                screen: Texture::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+                    .create(render.as_mut())
+                    .unwrap()
+                    .0,
+                tilemap: Texture::new(128, 192).create(render.as_mut()).unwrap().0,
+                background: Texture::new(256, 256).create(render.as_mut()).unwrap().0,
+                window: Texture::new(256, 256).create(render.as_mut()).unwrap().0,
             };
 
             (render, font_texture, style, textures)
@@ -120,13 +132,13 @@ impl Ui {
     }
 
     pub fn destroy_graphics(&mut self) {
-        self.render = Box::new(());
+        self.render = Box::new(NoopSpriteRender);
     }
 
     pub fn reload_graphics(&mut self, window: &Window) {
         // TODO: I need to drop this SpriteRender before creation the next one. Discovery why and
         // try to fix this.
-        self.render = Box::new(());
+        self.render = Box::new(NoopSpriteRender);
         log::info!("reloading graphics");
         let (render, font_texture, style, textures) = load_graphics(window, self.gui.fonts_mut());
         self.render = render;
@@ -201,11 +213,14 @@ impl Ui {
 
     pub fn update_screen_texture(&mut self, img_data: &[u8]) {
         self.render
-            .update_texture(self.textures.screen, &img_data, None);
+            .update_texture(TextureId(self.textures.screen), Some(&img_data), None)
+            .unwrap();
     }
 
     pub fn update_texture(&mut self, texture: u32, img_data: &[u8]) {
-        self.render.update_texture(texture, &img_data, None);
+        self.render
+            .update_texture(TextureId(texture), Some(&img_data), None)
+            .unwrap();
     }
 
     pub fn render(&mut self, window_id: WindowId) {
@@ -229,7 +244,7 @@ impl Ui {
                         uv_rect: x.uv_rect,
                         color: x.color.to_array(),
                         pos: [x.rect[0] + width / 2.0, x.rect[1] + height / 2.0],
-                        texture: x.texture,
+                        texture: TextureId(x.texture),
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -255,27 +270,52 @@ fn load_graphics(
 ) -> (Box<dyn SpriteRender>, u32, Style, Textures) {
     // create the render and camera, and a texture for the glyphs rendering
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
-    let render = Box::new(sprite_render::GLSpriteRender::new(window, true).unwrap());
+    let render = Box::new(sprite_render::GlSpriteRender::new(window, true).unwrap());
     #[cfg(target_arch = "wasm32")]
     let render = Box::new(sprite_render::WebGLSpriteRender::new(window));
     #[cfg(target_os = "android")]
-    let render = sprite_render::GlesSpriteRender::new(window, true)
+    let render = sprite_render::GlSpriteRender::new(window, true)
         .map(|x| Box::new(x) as Box<dyn SpriteRender>)
         .unwrap_or_else(|err| {
-            log::error!("failed to create GlesSpriteRender: {}", err);
-            Box::new(())
+            log::error!("failed to create GlSpriteRender: {:?}", err);
+            Box::new(NoopSpriteRender)
         });
 
     let mut render: Box<dyn SpriteRender + 'static> = render;
 
-    let font_texture = render.new_texture(128, 128, &[], false);
+    let font_texture = Texture::new(128, 128)
+        .filter(sprite_render::TextureFilter::Nearest)
+        .create(render.as_mut())
+        .unwrap()
+        .0;
     let style = Style::load(fonts, render.as_mut(), window.scale_factor()).unwrap();
+
     let textures = Textures {
-        white: render.new_texture(1, 1, &[255, 255, 255, 255], false),
-        screen: render.new_texture(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, &[], false),
-        tilemap: render.new_texture(128, 192, &[], false),
-        background: render.new_texture(256, 256, &[], false),
-        window: render.new_texture(256, 256, &[], false),
+        white: Texture::new(1, 1)
+            .data(&[255, 255, 255, 255])
+            .create(render.as_mut())
+            .unwrap()
+            .0,
+        screen: Texture::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+            .filter(sprite_render::TextureFilter::Nearest)
+            .create(render.as_mut())
+            .unwrap()
+            .0,
+        tilemap: Texture::new(128, 192)
+            .filter(sprite_render::TextureFilter::Nearest)
+            .create(render.as_mut())
+            .unwrap()
+            .0,
+        background: Texture::new(256, 256)
+            .filter(sprite_render::TextureFilter::Nearest)
+            .create(render.as_mut())
+            .unwrap()
+            .0,
+        window: Texture::new(256, 256)
+            .filter(sprite_render::TextureFilter::Nearest)
+            .create(render.as_mut())
+            .unwrap()
+            .0,
     };
 
     (render, font_texture, style, textures)

@@ -25,6 +25,7 @@ mod loaded_files {
     use super::config;
     use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
     use image::{ImageBuffer, Rgba};
+    use sprite_render::Texture;
 
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {
@@ -66,8 +67,11 @@ mod loaded_files {
             };
 
             let mut texture = (
-                self.render
-                    .new_texture(data.width(), data.height(), data.as_ref(), true),
+                Texture::new(data.width(), data.height())
+                    .data(data.as_ref())
+                    .create(self.render)
+                    .unwrap()
+                    .0,
                 data.width(),
                 data.height(),
             );
@@ -113,6 +117,7 @@ mod loaded_files {
 mod static_files {
     use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
     use image::{ImageBuffer, Rgba};
+    use sprite_render::Texture;
 
     pub struct StaticFiles {
         pub font: &'static [u8],
@@ -166,8 +171,11 @@ mod static_files {
             };
 
             let mut texture = (
-                self.render
-                    .new_texture(data.width(), data.height(), data.as_ref(), true),
+                Texture::new(data.width(), data.height())
+                    .data(data.as_ref())
+                    .create(self.render)
+                    .unwrap()
+                    .0,
                 data.width(),
                 data.height(),
             );

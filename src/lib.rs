@@ -186,12 +186,14 @@ fn start_event_loop(
     event_loop.run(move |event, _, control| {
         let app = &mut app;
         match event {
+            #[cfg(target_os = "android")]
             Event::Resumed => {
                 log::info!("reloading graphics");
                 ui.reload_graphics(&*window);
                 log::debug!("build ui");
                 last(app).build_ui(&mut ui);
             }
+            #[cfg(target_os = "android")]
             Event::Suspended => {
                 log::info!("destroying graphics");
 

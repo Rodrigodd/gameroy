@@ -1,4 +1,9 @@
-use std::{cell::RefCell, ops::Add, rc::Rc};
+use std::{
+    cell::RefCell,
+    ops::Add,
+    rc::Rc,
+    sync::{Arc, RwLock, RwLockReadGuard},
+};
 
 use giui::{
     graphics::Graphic,
@@ -34,7 +39,7 @@ enum SortDirection {
 }
 
 pub struct RomEntries {
-    roms: Vec<RomEntry>,
+    roms: Arc<RwLock<Vec<RwLock<RomEntry>>>>,
     sort_collumn: usize,
     sort_direction: SortDirection,
     pub observers: Vec<giui::Id>,
@@ -71,7 +76,7 @@ impl RomEntries {
         };
 
         let this = Self {
-            roms: Vec::new(),
+            roms: Default::default(),
             observers: Vec::new(),
             sort_collumn,
             sort_direction,
@@ -113,7 +118,9 @@ impl RomEntries {
         let sort_direction = self.sort_direction;
         let sort_collumn = self.sort_collumn;
 
-        self.roms.sort_by(|a, b| {
+        self.roms.write().unwrap().sort_by(|a, b| {
+            let a = a.read().unwrap();
+            let b = b.read().unwrap();
             let ord = match sort_collumn {
                 0 => a.file.file_name().cmp(&b.file.file_name()),
                 1 => a.name.cmp(&b.name),
@@ -125,18 +132,22 @@ impl RomEntries {
                 }
             };
 
-            #[rustfmt::skip]
-            fn fn_<F: for<'a> Fn(&'a RomEntry) -> (std::borrow::Cow<'a, str>, Option<&String>, Option<&u64>)>(x: F) -> F { x }
-
-            let default_key =
-                fn_(|a: &RomEntry| (a.file.file_name(), a.name.as_ref(), a.size.as_ref()));
+            fn default_key<'a>(
+                a: &'a RwLockReadGuard<'a, RomEntry>,
+            ) -> (
+                std::borrow::Cow<'a, str>,
+                Option<&'a String>,
+                Option<&'a u64>,
+            ) {
+                (a.file.file_name(), a.name.as_ref(), a.size.as_ref())
+            }
 
             let ord = match ord {
-                Ordering::Equal => default_key(a).cmp(&default_key(b)),
+                Ordering::Equal => default_key(&a).cmp(&default_key(&b)),
                 _ => ord,
             };
 
-            if let SortDirection::Ascending =sort_direction {
+            if let SortDirection::Ascending = sort_direction {
                 ord
             } else {
                 ord.reverse()
@@ -154,12 +165,11 @@ impl RomEntries {
         let roms_path = match roms_path {
             Some(x) => x.clone(),
             None => {
-                proxy
-                    .send_event(UserEvent::UpdatedRomList { roms: Vec::new() })
-                    .unwrap();
+                proxy.send_event(UserEvent::UpdatedRomList).unwrap();
                 return;
             }
         };
+        let entries = self.roms.clone();
         std::thread::spawn(move || {
             let start = instant::Instant::now();
 
@@ -167,61 +177,53 @@ impl RomEntries {
                 .map_err(|e: String| log::error!("error reading roms: {}", e))
                 .ok()
                 .unwrap_or_default();
-            let mut entries: Vec<RomEntry> = roms
+
+            *entries.write().unwrap() = roms
                 .into_iter()
                 .map(|x| {
                     let save_time = x.get_save_time();
                     log::debug!("{}", x.file_name());
-                    RomEntry {
+                    RwLock::new(RomEntry {
                         file: x,
                         name: None,
                         size: None,
                         save_time: save_time.ok(),
-                    }
+                    })
                 })
                 .collect();
 
-            proxy
-                .send_event(UserEvent::UpdatedRomList {
-                    roms: entries.clone(),
-                })
-                .unwrap();
+            proxy.send_event(UserEvent::UpdatedRomList).unwrap();
 
-            for entry in entries.iter_mut() {
+            for entry in entries.read().unwrap().iter() {
                 let header = {
-                    let mut task = entry.file.get_header();
+                    let rom_file = entry.read().unwrap().file.clone();
+                    let mut task = rom_file.get_header();
                     let task = unsafe { std::pin::Pin::new_unchecked(&mut task) };
                     executor::block_on(task)
                 };
 
-                let header = match header {
-                    Ok(x) => x,
+                match header {
+                    Ok(header) => {
+                        let mut entry = entry.write().unwrap();
+                        entry.name = Some(header.title_as_string());
+                        entry.size = Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
+                    }
                     Err(err) => {
+                        let mut entry = entry.write().unwrap();
                         entry.name = Some("Error reading header...".to_string());
                         entry.size = None;
                         log::error!("error reading '{}' header: {}", entry.file.file_name(), err);
-                        continue;
                     }
                 };
-
-                entry.name = Some(header.title_as_string());
-                entry.size = Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
+                proxy.send_event(UserEvent::UpdatedRomList).unwrap();
             }
 
             log::info!("loading roms took: {:?}", start.elapsed());
-            proxy
-                .send_event(UserEvent::UpdatedRomList { roms: entries })
-                .unwrap();
         });
     }
 
-    fn roms(&self) -> &[RomEntry] {
-        &self.roms
-    }
-
-    pub fn set_roms(&mut self, roms: Vec<RomEntry>) {
-        self.roms = roms;
-        self.update_sort();
+    fn roms(&self) -> RwLockReadGuard<Vec<RwLock<RomEntry>>> {
+        self.roms.read().unwrap()
     }
 
     fn register(&mut self, id: Id) {
@@ -377,7 +379,7 @@ impl ListBuilder for RomList {
         let header = index == 0;
         let (file, name, size, age, entry) = if !header {
             let roms = ctx.get::<RomEntries>().roms();
-            let entry = roms[index - 1].clone();
+            let entry = roms[index - 1].read().unwrap().clone();
             let size = entry.size();
             let age = entry.save_age();
             (

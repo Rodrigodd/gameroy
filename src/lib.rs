@@ -41,7 +41,7 @@ use winit::{
     window::{Icon, Window, WindowBuilder},
 };
 
-use self::ui::{RomEntries, RomEntry};
+use self::ui::RomEntries;
 
 #[macro_use]
 extern crate giui;
@@ -350,9 +350,8 @@ impl App for RomLoadingApp {
             Event::UserEvent(UserEvent::UpdateRomList) => {
                 ui.gui.get::<ui::RomEntries>().start_loading(proxy.clone());
             }
-            Event::UserEvent(UserEvent::UpdatedRomList { roms }) => {
+            Event::UserEvent(UserEvent::UpdatedRomList) => {
                 let rom_entries = &mut ui.gui.get_mut::<ui::RomEntries>();
-                rom_entries.set_roms(roms);
                 let observers = std::mem::take(&mut rom_entries.observers);
                 log::trace!("send events to {:?}", observers);
                 for id in observers.iter() {
@@ -610,7 +609,5 @@ pub enum UserEvent {
     },
     SpawnTask(u32),
     UpdateRomList,
-    UpdatedRomList {
-        roms: Vec<RomEntry>,
-    },
+    UpdatedRomList,
 }

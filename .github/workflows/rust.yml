@@ -53,7 +53,7 @@ jobs:
         --features=static
 
     - name: Cargo About
-      run: cargo about generate -m native/Cargo.toml -c license/about.toml license/about.hbs > license/license.html
+      run: cargo about generate -m native/Cargo.toml -c license/about-linux.toml license/about.hbs > license/license.html
 
     - name: Form a Package
       run: |
@@ -105,7 +105,7 @@ jobs:
         --no-default-features --features=static,rfd,audio-engine,threads
 
     - name: Cargo About
-      run: cargo about generate -m native\Cargo.toml -c license\about.toml license\about.hbs > license\license.html
+      run: cargo about generate -m native\Cargo.toml -c license\about-windows.toml license\about.hbs > license\license.html
 
     - name: Form a Package
       run: |

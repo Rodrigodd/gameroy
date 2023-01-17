@@ -133,7 +133,7 @@ for (target in cargo.targets) {
 
 tasks.register('generateLicenseAsset', Exec) {
     def cargo = "$rootDir/Cargo.toml"
-    def about = "$rootDir/../license/about.toml"
+    def about = "$rootDir/../license/about-android.toml"
     def hbs = "$rootDir/../license/about.hbs"
 
     def output = "$buildDir/generatedAssets/license.html"

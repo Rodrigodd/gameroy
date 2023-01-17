@@ -2,7 +2,7 @@
 
 ::a script for packaging the app for windows release.
 
-cargo about generate -m native\Cargo.toml -c license\about.toml license\about.hbs > license\license.html
+cargo about generate -m native\Cargo.toml -c license\about-windows.toml license\about.hbs > license\license.html
 cargo build -p native --profile minsize --no-default-features --features=static,rfd,audio-engine,threads
 
 mkdir package

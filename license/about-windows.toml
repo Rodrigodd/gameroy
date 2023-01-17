@@ -1,0 +1,12 @@
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "Unicode-DFS-2016",
+    "ISC",
+    "BSD-3-Clause",
+    "BSL-1.0",
+]
+
+targets = ["x86_64-pc-windows-msvc"]

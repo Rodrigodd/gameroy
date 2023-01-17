@@ -25,7 +25,7 @@ mod loaded_files {
     use super::config;
     use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
     use image::{ImageBuffer, Rgba};
-    use sprite_render::Texture;
+    use sprite_render::{Texture, TextureId};
 
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {
@@ -66,8 +66,16 @@ mod loaded_files {
                 break data;
             };
 
+            // FIXME: this is vunerable to hash collisions, and relies on how TextureId is used
+            // internally
+            let id = {
+                let hash = super::hash(name.as_bytes());
+                (hash & 0x7fff_ffff) as u32
+            };
+
             let mut texture = (
                 Texture::new(data.width(), data.height())
+                    .id(TextureId(id))
                     .data(data.as_ref())
                     .create(self.render)
                     .unwrap()
@@ -117,7 +125,7 @@ mod loaded_files {
 mod static_files {
     use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
     use image::{ImageBuffer, Rgba};
-    use sprite_render::Texture;
+    use sprite_render::{Texture, TextureId};
 
     pub struct StaticFiles {
         pub font: &'static [u8],
@@ -170,8 +178,16 @@ mod static_files {
                 break data;
             };
 
+            // FIXME: this is vunerable to hash collisions, and relies on how TextureId is used
+            // internally
+            let id = {
+                let hash = super::hash(name.as_bytes());
+                (hash & 0x7fff_ffff) as u32
+            };
+
             let mut texture = (
                 Texture::new(data.width(), data.height())
+                    .id(TextureId(id))
                     .data(data.as_ref())
                     .create(self.render)
                     .unwrap()
@@ -279,4 +295,13 @@ impl Style {
 
         Some(style.unwrap())
     }
+}
+
+// From https://stackoverflow.com/a/7666577 or http://www.cse.yorku.ca/~oz/hash.html
+fn hash(s: &[u8]) -> u64 {
+    let mut hash = 5381;
+    for &c in s {
+        hash = ((hash << 5) + hash) + c as u64;
+    }
+    hash
 }

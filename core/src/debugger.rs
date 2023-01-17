@@ -26,6 +26,11 @@ pub enum DebuggerEvent {
     WatchsUpdate,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+type DebuggerCallback = Box<dyn FnMut(&Debugger, DebuggerEvent) + Send>;
+#[cfg(target_arch = "wasm32")]
+type DebuggerCallback = Box<dyn FnMut(&Debugger, DebuggerEvent)>;
+
 #[derive(Default)]
 pub struct Debugger {
     write_breakpoints: HashSet<u16>,
@@ -42,10 +47,7 @@ pub struct Debugger {
     /// The clock_count in the previous instruction, used for stepback.
     pub last_op_clock: u64,
     /// Callback called when self is mutated
-    #[cfg(not(target_arch = "wasm32"))]
-    pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent) + Send>>,
-    #[cfg(target_arch = "wasm32")]
-    pub callback: Option<Box<dyn FnMut(&Self, DebuggerEvent)>>,
+    pub callback: Option<DebuggerCallback>,
 }
 impl Debugger {
     pub fn execute_command<'a>(&mut self, gb: &GameBoy, args: &[&'a str]) -> Result<(), String> {
@@ -121,12 +123,9 @@ impl Debugger {
             }
             "break" => {
                 if args.len() == 2 {
-                    match args[1] {
-                        "interrupt" => {
-                            self.interrupt_breakpoint = true;
-                            return Ok(());
-                        }
-                        _ => {}
+                    if let "interrupt" = args[1] {
+                        self.interrupt_breakpoint = true;
+                        return Ok(());
                     }
                 }
                 if args.len() != 3 {
@@ -211,8 +210,7 @@ impl Debugger {
                 // save to file
                 let stf = |name: &str| {
                     let path = dir.to_string() + "/" + name;
-                    let file = std::fs::File::create(&path).unwrap();
-                    file
+                    std::fs::File::create(path).unwrap()
                 };
 
                 // gb.trace.save_state(output)?;
@@ -271,8 +269,9 @@ impl Debugger {
         self.execute_breakpoints.remove(address);
 
         let mut take = self.callback.take();
-        take.as_mut()
-            .map(|x| x(self, DebuggerEvent::BreakpointsUpdate));
+        if let Some(x) = take.as_mut() {
+            x(self, DebuggerEvent::BreakpointsUpdate)
+        }
         self.callback = take;
     }
 
@@ -292,8 +291,9 @@ impl Debugger {
             self.jump_breakpoints.insert(address);
         }
         let mut take = self.callback.take();
-        take.as_mut()
-            .map(|x| x(self, DebuggerEvent::BreakpointsUpdate));
+        if let Some(x) = take.as_mut() {
+            x(self, DebuggerEvent::BreakpointsUpdate)
+        }
         self.callback = take;
     }
 
@@ -304,14 +304,18 @@ impl Debugger {
     pub fn remove_watch(&mut self, address: u16) {
         self.watchs.remove(&address);
         let mut take = self.callback.take();
-        take.as_mut().map(|x| x(self, DebuggerEvent::WatchsUpdate));
+        if let Some(x) = take.as_mut() {
+            x(self, DebuggerEvent::WatchsUpdate)
+        }
         self.callback = take;
     }
 
     pub fn add_watch(&mut self, address: u16) {
         self.watchs.insert(address);
         let mut take = self.callback.take();
-        take.as_mut().map(|x| x(self, DebuggerEvent::WatchsUpdate));
+        if let Some(x) = take.as_mut() {
+            x(self, DebuggerEvent::WatchsUpdate)
+        }
         self.callback = take;
     }
 

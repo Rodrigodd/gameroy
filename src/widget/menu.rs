@@ -49,7 +49,9 @@ pub fn create_menu(
                     ctx.remove(menu);
                     ctx.remove(blocker);
                     ctx.remove_animation(anim_id);
-                    on_close.take().map(|x| x(ctx));
+                    if let Some(x) = on_close.take() {
+                        x(ctx)
+                    }
                     return;
                 }
 
@@ -72,7 +74,9 @@ pub fn create_menu(
         .create_control_reserved(blocker)
         .parent(Id::ROOT_ID)
         .behaviour(Blocker::new(move |_, ctx| {
-            close_.take().map(|x| x(ctx));
+            if let Some(x) = close_.take() {
+                x(ctx)
+            }
         }))
         .graphic(style.blocker.clone())
         .build(ctx);

@@ -184,7 +184,7 @@ pub fn vbm(file: &mut (impl Read + Seek)) -> Result<Vbm, VbmParseError> {
         let null_terminate = buffer
             .iter()
             .position(|&x| x == 0)
-            .ok_or_else(|| VbmParseError::InvalidName)?;
+            .ok_or(VbmParseError::InvalidName)?;
 
         String::from_utf8_lossy(&buffer[0..null_terminate]).into_owned()
     };
@@ -194,7 +194,7 @@ pub fn vbm(file: &mut (impl Read + Seek)) -> Result<Vbm, VbmParseError> {
         let null_terminate = buffer
             .iter()
             .position(|&x| x == 0)
-            .ok_or_else(|| VbmParseError::InvalidDescription)?;
+            .ok_or(VbmParseError::InvalidDescription)?;
 
         String::from_utf8_lossy(&buffer[0..null_terminate]).into_owned()
     };

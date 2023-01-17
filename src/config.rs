@@ -130,20 +130,18 @@ pub fn base_folder() -> Option<PathBuf> {
     static BASE_FOLDER: OnceCell<Option<PathBuf>> = OnceCell::new();
     BASE_FOLDER
         .get_or_init(|| {
-            let base_folder = if let Some(path) = std::env::var("CARGO_WORKSPACE_DIR")
-                .ok()
-                .map(|x| PathBuf::from(x))
-            {
-                path
-            } else {
-                std::env::current_exe()
-                    .map_err(|e| log::error!("Could not get base folder: {}", e))
-                    .ok()?
-                    .parent()
-                    .ok_or_else(|| log::error!("Could not get base folder"))
-                    .ok()?
-                    .to_path_buf()
-            };
+            let base_folder =
+                if let Some(path) = std::env::var("CARGO_WORKSPACE_DIR").ok().map(PathBuf::from) {
+                    path
+                } else {
+                    std::env::current_exe()
+                        .map_err(|e| log::error!("Could not get base folder: {}", e))
+                        .ok()?
+                        .parent()
+                        .ok_or_else(|| log::error!("Could not get base folder"))
+                        .ok()?
+                        .to_path_buf()
+                };
             Some(base_folder)
         })
         .clone()

@@ -42,8 +42,7 @@ impl<'a> GuiRenderer for Render<'a> {
         Texture::new(new_size[0], new_size[1])
             .id(TextureId(font_texture))
             .create(self.0)
-            .unwrap()
-            .0;
+            .unwrap();
     }
 }
 
@@ -69,11 +68,11 @@ pub struct Ui {
 }
 impl Ui {
     pub fn new(window: &Window, proxy: EventLoopProxy<UserEvent>) -> Self {
-        let mut fonts = Fonts::new();
+        let fonts = Fonts::new();
 
         // create the render and camera, and a texture for the glyphs rendering
         #[cfg(not(any(target_arch = "wasm32")))]
-        let mut render = sprite_render::GlSpriteRender::new(window, true)
+        let render = sprite_render::GlSpriteRender::new(window, true)
             .map(|x| Box::new(x) as Box<dyn SpriteRender>)
             .unwrap_or_else(|err| {
                 log::error!("failed to create GlSpriteRender: {:?}", err);
@@ -113,7 +112,7 @@ impl Ui {
             gui_render,
             render,
             camera,
-            textures: textures.clone(),
+            textures,
             event_table: Rc::new(RefCell::new(EventTable::new())),
             is_animating: false,
             force_render: true,
@@ -207,13 +206,13 @@ impl Ui {
 
     pub fn update_screen_texture(&mut self, img_data: &[u8]) {
         self.render
-            .update_texture(TextureId(self.textures.screen), Some(&img_data), None)
+            .update_texture(TextureId(self.textures.screen), Some(img_data), None)
             .unwrap();
     }
 
     pub fn update_texture(&mut self, texture: u32, img_data: &[u8]) {
         self.render
-            .update_texture(TextureId(texture), Some(&img_data), None)
+            .update_texture(TextureId(texture), Some(img_data), None)
             .unwrap();
     }
 
@@ -230,8 +229,7 @@ impl Ui {
             .id(TextureId(self.textures.font_texture))
             .filter(sprite_render::TextureFilter::Nearest)
             .create(render)
-            .unwrap()
-            .0;
+            .unwrap();
         Texture::new(1, 1)
             .id(TextureId(self.textures.white))
             .data(&[255, 255, 255, 255])

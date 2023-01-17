@@ -72,9 +72,9 @@ impl<F: Fn() + 'static> Helper<F> {
         Self::drop_waker,
     );
 
+    #[allow(clippy::redundant_clone)]
     unsafe fn clone_waker(ptr: *const ()) -> RawWaker {
-        let arc = ManuallyDrop::new(Arc::from_raw(ptr as *const F));
-        mem::forget(arc.clone());
+        mem::forget(Arc::from_raw(ptr as *const F).clone());
         RawWaker::new(ptr, &Self::VTABLE)
     }
 

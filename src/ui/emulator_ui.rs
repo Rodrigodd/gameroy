@@ -272,7 +272,7 @@ fn open_debug_panel(
     let tab_group = ButtonGroup::new(|_, _| ());
 
     let disas_page = ctx.create_control().parent(tab_page).build(ctx);
-    disassembler_viewer::build(disas_page, ctx, event_table, &style, cpu_id, ppu_id);
+    disassembler_viewer::build(disas_page, ctx, event_table, style, cpu_id, ppu_id);
     let _disas_tab = ctx
         .create_control()
         .parent(tab_header)
@@ -294,7 +294,7 @@ fn open_debug_panel(
         .build(ctx);
 
     let ppu_page = ctx.create_control().parent(tab_page).build(ctx);
-    ppu_viewer::build(ppu_page, ctx, event_table, &style, textures);
+    ppu_viewer::build(ppu_page, ctx, event_table, style, textures);
     let _ppu_tab = ctx
         .create_control()
         .parent(tab_header)
@@ -308,7 +308,7 @@ fn open_debug_panel(
         })
         .layout(MarginLayout::default())
         .behaviour(TabButton::new(
-            tab_group.clone(),
+            tab_group,
             ppu_page,
             false,
             style.tab_style.clone(),
@@ -319,7 +319,7 @@ fn open_debug_panel(
     proxy.send_event(UserEvent::Debug(true)).unwrap();
 }
 
-fn send_emu<'a>(ctx: &'a mut Context, event: EmulatorEvent) {
+fn send_emu(ctx: &mut Context, event: EmulatorEvent) {
     ctx.get::<flume::Sender<EmulatorEvent>>()
         .send(event)
         .unwrap()
@@ -514,10 +514,7 @@ fn create_screen(
                 true,
                 move |_, ctx| {
                     let style = ctx.get::<Style>().clone();
-                    fn option<'a>(
-                        a: &'a str,
-                        b: impl FnMut(&mut Context) + 'static,
-                    ) -> MenuOption<'a> {
+                    fn option(a: &str, b: impl FnMut(&mut Context) + 'static) -> MenuOption {
                         (a, Box::new(b))
                     }
                     send_emu(ctx, EmulatorEvent::Pause);

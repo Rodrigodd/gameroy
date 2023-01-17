@@ -107,7 +107,7 @@ pub trait SaveState {
 
 impl SaveState for u8 {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        data.write(&[*self])?;
+        data.write_all(&[*self])?;
         Ok(())
     }
 
@@ -236,7 +236,7 @@ impl<T: SaveState, const N: usize> SaveState for [T; N] {
 
 impl SaveState for Vec<u8> {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        data.write(&(self.len() as u32).to_be_bytes())?;
+        data.write_all(&(self.len() as u32).to_be_bytes())?;
         data.write_all(self)?;
         Ok(())
     }
@@ -258,7 +258,7 @@ impl<const N: usize> SaveState for [&bool; N] {
             for &&b in self {
                 flags = (flags << 1) | b as u8;
             }
-            data.write(&[flags])?;
+            data.write_all(&[flags])?;
             Ok(())
         } else {
             unimplemented!()
@@ -281,7 +281,7 @@ impl<const N: usize> SaveState for [&mut bool; N] {
             data.read_exact(std::slice::from_mut(&mut flags))?;
             for b in self.iter_mut().rev() {
                 **b = flags & 0x1 != 0;
-                flags = flags >> 1;
+                flags >>= 1;
             }
             if flags != 0 {
                 return Err(LoadStateError::InvalidBoolBitArray(flags, N as u8));

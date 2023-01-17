@@ -32,7 +32,7 @@ macro_rules! screen {
 fn lcd_to_rgb(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
     for y in 0..SCREEN_HEIGHT {
         for x in 0..SCREEN_WIDTH {
-            let i = (x + y * SCREEN_WIDTH) as usize * 3;
+            let i = (x + y * SCREEN_WIDTH) * 3;
             let c = screen[i / 3];
             const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
             img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
@@ -70,7 +70,7 @@ fn test_screen(rom: &str, reference: &str, timeout: u64) {
     }
 
     let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
-    lcd_to_rgb(&*screen.lock().unwrap(), &mut img_data);
+    lcd_to_rgb(&screen.lock().unwrap(), &mut img_data);
     let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
 
     if img_data != reference_img_data {
@@ -78,7 +78,9 @@ fn test_screen(rom: &str, reference: &str, timeout: u64) {
             + &rom_path.file_stem().unwrap().to_string_lossy()
             + "_output.png")
             .into();
-        path.parent().map(|x| std::fs::create_dir_all(x).unwrap());
+        if let Some(x) = path.parent() {
+            std::fs::create_dir_all(x).unwrap()
+        }
         image::save_buffer(
             &path,
             &img_data,
@@ -93,16 +95,15 @@ fn test_screen(rom: &str, reference: &str, timeout: u64) {
 
 fn test_registers(rom: &str, timeout: u64) {
     let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
-    let rom = std::fs::read(&rom_path).unwrap();
+    let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom).unwrap();
 
     let mut game_boy = GameBoy::new(None, cartridge);
     let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-    let screen_clone = screen.clone();
     game_boy.v_blank = Some(Box::new(move |gb| {
-        *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
+        *screen.lock().unwrap() = gb.ppu.borrow().screen;
     }));
 
     let mut inter = Interpreter(&mut game_boy);

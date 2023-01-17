@@ -62,20 +62,17 @@ pub fn main() {
             .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
         .get_matches();
 
-    match matches.subcommand() {
-        Some(("bench", matches)) => {
-            let rom_path = matches.value_of("ROM_PATH").unwrap();
-            let frames: u64 = matches
-                .value_of("frames")
-                .and_then(|x| x.parse().ok())
-                .unwrap();
-            let len: usize = matches
-                .value_of("times")
-                .and_then(|x| x.parse().ok())
-                .unwrap();
-            return bench::benchmark(rom_path, frames * gameroy::consts::FRAME_CYCLES, len);
-        }
-        _ => {}
+    if let Some(("bench", matches)) = matches.subcommand() {
+        let rom_path = matches.value_of("ROM_PATH").unwrap();
+        let frames: u64 = matches
+            .value_of("frames")
+            .and_then(|x| x.parse().ok())
+            .unwrap();
+        let len: usize = matches
+            .value_of("times")
+            .and_then(|x| x.parse().ok())
+            .unwrap();
+        return bench::benchmark(rom_path, frames * gameroy::consts::FRAME_CYCLES, len);
     }
 
     let debug = matches.is_present("debug");
@@ -85,8 +82,7 @@ pub fn main() {
     let rom_path = matches.value_of("ROM_PATH");
     let movie = matches.value_of("movie").map(|path| {
         let mut file = std::fs::File::open(path).unwrap();
-        let vbm = gameroy::parser::vbm(&mut file).unwrap();
-        vbm
+        gameroy::parser::vbm(&mut file).unwrap()
     });
 
     gameroy_lib::config::init_config({
@@ -104,7 +100,7 @@ pub fn main() {
     // dissasembly and return early
     if diss {
         if let Some(rom_path) = rom_path {
-            let rom = std::fs::read(&rom_path);
+            let rom = std::fs::read(rom_path);
 
             let rom = match rom {
                 Ok(x) => x,
@@ -130,7 +126,7 @@ pub fn main() {
 
     // load rom if necesary
     let gb = if let Some(rom_path) = rom_path {
-        let rom = std::fs::read(&rom_path);
+        let rom = std::fs::read(rom_path);
 
         let rom = match rom {
             Ok(x) => x,

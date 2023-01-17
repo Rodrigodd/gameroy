@@ -19,6 +19,11 @@ use self::{
 /// arbitrarily, in a way that pass the serial_boot_sclk_align_dmg_abc_mgb test.
 const SERIAL_OFFSET: u64 = 8;
 
+#[cfg(not(target_arch = "wasm32"))]
+type VBlankCallback = Box<dyn FnMut(&mut GameBoy) + Send>;
+#[cfg(target_arch = "wasm32")]
+type VBlankCallback = Box<dyn FnMut(&mut GameBoy)>;
+
 pub struct GameBoy {
     pub trace: RefCell<Trace>,
     pub cpu: Cpu,
@@ -65,10 +70,7 @@ pub struct GameBoy {
     pub v_blank_trigger: bool,
     /// A callback that is called after a VBlank. This is called when a vblank interrupt is
     /// triggered.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub v_blank: Option<Box<dyn FnMut(&mut GameBoy) + Send>>,
-    #[cfg(target_arch = "wasm32")]
-    pub v_blank: Option<Box<dyn FnMut(&mut GameBoy)>>,
+    pub v_blank: Option<VBlankCallback>,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -256,13 +258,11 @@ impl GameBoy {
     }
 
     pub fn read(&self, mut address: u16) -> u8 {
-        if self.boot_rom_active {
-            if address < 0x100 {
-                let boot_rom = self
-                    .boot_rom
-                    .expect("the boot rom is only actived when there is one");
-                return boot_rom[address as usize];
-            }
+        if self.boot_rom_active && address < 0x100 {
+            let boot_rom = self
+                .boot_rom
+                .expect("the boot rom is only actived when there is one");
+            return boot_rom[address as usize];
         }
         if (0xE000..=0xFDFF).contains(&address) {
             address -= 0x2000;
@@ -371,7 +371,9 @@ impl GameBoy {
                     // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
                     self.serial_transfer_started = (self.clock_count + SERIAL_OFFSET) >> 9;
                     let data = self.serial_data;
-                    self.serial_transfer_callback.as_mut().map(|x| x(data));
+                    if let Some(x) = self.serial_transfer_callback.as_mut() {
+                        x(data)
+                    }
                 }
             }
             0x03 => {}

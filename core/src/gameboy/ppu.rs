@@ -87,8 +87,8 @@ impl PixelFifo {
         let pixel = |x| {
             let color: u8 = (((tile_hight >> x) & 0x01) << 1) | ((tile_low >> x) & 0x01);
             debug_assert!(color < 4);
-            let pixel = color | ((background_priority as u8) << 3) | ((palette as u8) << 4);
-            pixel
+
+            color | ((background_priority as u8) << 3) | ((palette as u8) << 4)
         };
 
         let mut cursor = self.tail;
@@ -935,14 +935,14 @@ impl Ppu {
                 }
                 32 => {
                     // TODO: handle extra penalty sprite at 0
-                    if ppu.sprite_at_0_penalty != 0 {
-                        if ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1].sx == 0 {
-                            // wait sprite_at_0_penalty
-                            ppu.next_clock_count += ppu.sprite_at_0_penalty as u64;
-                            ppu.sprite_at_0_penalty = 0;
-                            state = 37;
-                            continue;
-                        }
+                    if ppu.sprite_at_0_penalty != 0
+                        && ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1].sx == 0
+                    {
+                        // wait sprite_at_0_penalty
+                        ppu.next_clock_count += ppu.sprite_at_0_penalty as u64;
+                        ppu.sprite_at_0_penalty = 0;
+                        state = 37;
+                        continue;
                     }
 
                     state = 38;
@@ -1203,15 +1203,13 @@ impl Ppu {
         }
 
         // LY==LYC
-        self.stat = self.stat & !0x04;
+        self.stat &= !0x04;
         if self.ly_for_compare == self.lyc {
             self.ly_compare_signal = true;
             // STAT Coincident Flag
             self.stat |= 0x04;
-        } else {
-            if self.ly_for_compare != 0xff {
-                self.ly_compare_signal = false;
-            }
+        } else if self.ly_for_compare != 0xff {
+            self.ly_compare_signal = false;
         }
         // LY == LYC STAT Interrupt
         stat_line |= (self.stat & (1 << 6) != 0) && self.ly_compare_signal;
@@ -1240,10 +1238,9 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
         let offset = if is_in_window {
             2 * (ppu.wyc as u16 % 8)
         } else {
-            2 * ((ly.wrapping_add(ppu.scy) & 0xff) % 8) as u16
+            2 * (ly.wrapping_add(ppu.scy) % 8) as u16
         };
-        let fetch_tile_address = address + offset;
-        fetch_tile_address
+        address + offset
     };
 
     let push_to_fifo = |ppu: &mut Ppu| {
@@ -1259,6 +1256,7 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
         0 => {}
         // fetch tile number
         1 => {
+            #[allow(clippy::collapsible_else_if)]
             let tile_map = if !is_in_window {
                 if ppu.lcdc & 0x08 != 0 {
                     0x9C00
@@ -1281,7 +1279,7 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
             let ty = if is_in_window {
                 ppu.wyc / 8
             } else {
-                (ly.wrapping_add(ppu.scy) & 0xff) / 8
+                ly.wrapping_add(ppu.scy) / 8
             };
 
             let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
@@ -1464,7 +1462,7 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
                 let i = x as usize + y as usize * 32;
                 // BG Tile Map Select
                 let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
-                let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
+                let mut tile = ppu.vram[address - 0x8000 + i] as usize;
 
                 // if is using 8800 method
                 if ppu.lcdc & 0x10 == 0 {
@@ -1491,7 +1489,7 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
                 let i = x as usize + y as usize * 32;
                 // BG Tile Map Select
                 let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
-                let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
+                let mut tile = ppu.vram[address - 0x8000 + i] as usize;
 
                 // if is using 8800 method
                 if ppu.lcdc & 0x10 == 0 {
@@ -1525,7 +1523,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
 
             // BG Tile Map Select
             let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
-            let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
+            let mut tile = ppu.vram[address - 0x8000 + i] as usize;
 
             // if is using 8800 method
             if ppu.lcdc & 0x10 == 0 {
@@ -1571,7 +1569,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
 
             // BG Tile Map Select
             let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
-            let mut tile = ppu.vram[address - 0x8000 + i as usize] as usize;
+            let mut tile = ppu.vram[address - 0x8000 + i] as usize;
 
             // if is using 8800 method
             if ppu.lcdc & 0x10 == 0 {

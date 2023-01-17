@@ -19,7 +19,7 @@ use crate::{
     UserEvent,
 };
 
-const COLLUMNS: &[(&'static str, f32)] = &[
+const COLLUMNS: &[(&str, f32)] = &[
     ("File", 490.0),
     ("Header Name", 129.0),
     ("Size", 60.0),
@@ -46,10 +46,10 @@ impl RomEntries {
                 let sort_config = sort_config.clone().to_lowercase();
                 let mut sort_config = sort_config.as_str();
 
-                let dir = if sort_config.starts_with("-") {
+                let dir = if sort_config.starts_with('-') {
                     sort_config = &sort_config[1..];
                     SortDirection::Descending
-                } else if sort_config.starts_with("+") {
+                } else if sort_config.starts_with('+') {
                     sort_config = &sort_config[1..];
                     SortDirection::Ascending
                 } else {
@@ -242,7 +242,9 @@ pub struct RomEntry {
 }
 impl RomEntry {
     pub fn name(&self) -> String {
-        self.name.clone().unwrap_or("Loading...".to_string())
+        self.name
+            .clone()
+            .unwrap_or_else(|| "Loading...".to_string())
     }
 
     fn size(&self) -> String {
@@ -283,7 +285,7 @@ impl RomEntry {
         const YEAR: u64 = 365 * DAY;
 
         match delta {
-            x if x < SECOND => format!("Just Now"),
+            x if x < SECOND => "Just Now".to_string(),
             x if x < MINUTE => format!("{}s agi", x / SECOND),
             x if x < HOUR => format!("{}min ago", x / MINUTE),
             x if x < DAY => format!("{}h ago", x / HOUR),
@@ -326,14 +328,12 @@ impl ListBuilder for RomList {
             return false;
         }
 
-        if self.last_selected.is_some() {
-            if Some(index) == self.last_selected || Some(index) == self.selected {
-                *ctx.get_graphic_mut(item_id) = if self.selected == Some(index) {
-                    ctx.get::<Style>().entry_selected.clone()
-                } else {
-                    Graphic::None
-                };
-            }
+        if Some(index) == self.last_selected || Some(index) == self.selected {
+            *ctx.get_graphic_mut(item_id) = if self.selected == Some(index) {
+                ctx.get::<Style>().entry_selected.clone()
+            } else {
+                Graphic::None
+            };
         }
         true
     }
@@ -447,7 +447,7 @@ impl ListBuilder for RomList {
                         ctx.send_event_to(list_id, SetSelected(index))
                     } else if click_count == 2 {
                         let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
-                        let p = proxy.clone();
+                        let p = proxy;
                         let file = entry.file.clone();
                         let task = async move {
                             let rom = file.read().await.unwrap();

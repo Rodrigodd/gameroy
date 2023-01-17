@@ -5,7 +5,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub fn run() {
     panic::set_hook(Box::new(console_error_panic_hook::hook));
-    let _logger = wasm_logger::init(wasm_logger::Config::default().module_prefix("gameroy"));
+    wasm_logger::init(wasm_logger::Config::default().module_prefix("gameroy"));
     gameroy_lib::log_panic();
     gameroy_lib::main(None, None);
 }

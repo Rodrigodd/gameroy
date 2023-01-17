@@ -606,6 +606,7 @@ impl SoundController {
         self.last_clock = clock_count;
     }
 
+    #[allow(clippy::assign_op_pattern)]
     fn calculate_frequency(&mut self, ch1_sweep_shift: u8, is_downwards: bool) -> u16 {
         if is_downwards {
             self.ch1_has_done_sweep_calculation = true;
@@ -932,6 +933,7 @@ impl SoundController {
                         ch1_length_timer: self.ch1_length_timer,
                         nr21: self.nr21 & 0x3F,
                         ch2_length_timer: self.ch2_length_timer,
+                        #[allow(clippy::identity_op)]
                         nr31: self.nr31 & 0xFF,
                         ch3_length_timer: self.ch3_length_timer,
                         nr41: self.nr41 & 0x3F,
@@ -961,8 +963,9 @@ impl SoundController {
         }
     }
 
+    #[allow(clippy::identity_op)]
     pub fn read(&mut self, clock_count: u64, address: u8) -> u8 {
-        let value = if self.on {
+        if self.on {
             match address {
                 0x10 => self.nr10 | 0x80,
                 0x11 => self.nr11 | 0x3F,
@@ -986,13 +989,12 @@ impl SoundController {
                 0x25 => self.nr51 | 0x00,
                 0x26 => {
                     self.update(clock_count);
-                    let r = ((self.on as u8) << 7)
+                    ((self.on as u8) << 7)
                         | ((self.ch4_channel_enable as u8) << 3)
                         | ((self.ch3_channel_enable as u8) << 2)
                         | ((self.ch2_channel_enable as u8) << 1)
                         | ((self.ch1_channel_enable as u8) << 0)
-                        | 0x70;
-                    r
+                        | 0x70
                 }
                 0x30..=0x3F => {
                     self.update(clock_count);
@@ -1035,7 +1037,6 @@ impl SoundController {
                 0x30..=0x3F => self.ch3_wave_pattern[address as usize - 0x30],
                 _ => unreachable!(),
             }
-        };
-        value
+        }
     }
 }

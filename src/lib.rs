@@ -48,7 +48,7 @@ extern crate giui;
 
 const SCREEN_WIDTH: usize = 160;
 const SCREEN_HEIGHT: usize = 144;
-pub const VERSION: &'static str = "0.2.0";
+pub const VERSION: &str = "0.2.0";
 
 pub fn log_panic() {
     let default_hook = std::panic::take_hook();
@@ -186,13 +186,11 @@ fn start_event_loop(
     event_loop.run(move |event, _, control| {
         let app = &mut app;
         match event {
-            #[cfg(target_os = "android")]
-            Event::Resumed => {
+            Event::Resumed if cfg!(target_os = "android") => {
                 log::info!("reloading graphics");
-                ui.reload_graphics(&*window);
+                ui.reload_graphics(&window);
             }
-            #[cfg(target_os = "android")]
-            Event::Suspended => {
+            Event::Suspended if cfg!(target_os = "android") => {
                 log::info!("destroying graphics");
                 ui.destroy_graphics();
             }
@@ -200,13 +198,13 @@ fn start_event_loop(
                 ui.new_events(control, &window);
             }
             Event::WindowEvent { ref event, .. } => {
-                ui.window_event(&event, &window);
+                ui.window_event(event, &window);
                 match event {
                     WindowEvent::CloseRequested => {
                         *control = ControlFlow::Exit;
                     }
                     WindowEvent::Resized(size) => {
-                        ui.resize(size.clone(), &window);
+                        ui.resize(*size, &window);
                     }
                     // Rebuild the UI
                     #[cfg(not(feature = "static"))]
@@ -551,14 +549,14 @@ impl App for EmulatorApp {
                     FrameUpdated => {
                         let screen: &[u8] = &{
                             let lock = self.lcd_screen.lock();
-                            lock.clone()
+                            *lock
                         };
                         const COLOR: [[u8; 3]; 4] =
                             [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
                         let mut img_data = vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
                         for y in 0..SCREEN_HEIGHT {
                             for x in 0..SCREEN_WIDTH {
-                                let i = (x + y * SCREEN_WIDTH) as usize * 4;
+                                let i = (x + y * SCREEN_WIDTH) * 4;
                                 let c = screen[i / 4];
                                 img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
                             }

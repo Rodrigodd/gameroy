@@ -146,13 +146,13 @@ impl CartridgeHeader {
 }
 
 #[derive(PartialEq, Eq)]
-enum MBC {
-    None(MBC0),
-    MBC1(MBC1),
-    MBC1M(MBC1M),
-    MBC2(MBC2),
-    MBC3(MBC3),
-    MBC5(MBC5),
+enum Mbc {
+    None(Mbc0),
+    Mbc1(Mbc1),
+    Mbc1M(Mbc1M),
+    Mbc2(Mbc2),
+    Mbc3(Mbc3),
+    Mbc5(Mbc5),
 }
 
 #[derive(PartialEq, Eq)]
@@ -160,19 +160,19 @@ pub struct Cartridge {
     pub header: CartridgeHeader,
     pub rom: Vec<u8>,
     pub ram: Vec<u8>,
-    mbc: MBC,
+    mbc: Mbc,
 }
 impl SaveState for Cartridge {
     fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
         // self.rom.save_state(data)?;
         self.ram.save_state(data)?;
         match &self.mbc {
-            MBC::None(x) => x.save_state(data),
-            MBC::MBC1(x) => x.save_state(data),
-            MBC::MBC1M(x) => x.save_state(data),
-            MBC::MBC2(x) => x.save_state(data),
-            MBC::MBC3(x) => x.save_state(data),
-            MBC::MBC5(x) => x.save_state(data),
+            Mbc::None(x) => x.save_state(data),
+            Mbc::Mbc1(x) => x.save_state(data),
+            Mbc::Mbc1M(x) => x.save_state(data),
+            Mbc::Mbc2(x) => x.save_state(data),
+            Mbc::Mbc3(x) => x.save_state(data),
+            Mbc::Mbc5(x) => x.save_state(data),
         }
     }
 
@@ -180,12 +180,12 @@ impl SaveState for Cartridge {
         // self.rom.load_state(data)?;
         self.ram.load_state(data)?;
         match &mut self.mbc {
-            MBC::None(x) => x.load_state(data),
-            MBC::MBC1(x) => x.load_state(data),
-            MBC::MBC1M(x) => x.load_state(data),
-            MBC::MBC2(x) => x.load_state(data),
-            MBC::MBC3(x) => x.load_state(data),
-            MBC::MBC5(x) => x.load_state(data),
+            Mbc::None(x) => x.load_state(data),
+            Mbc::Mbc1(x) => x.load_state(data),
+            Mbc::Mbc1M(x) => x.load_state(data),
+            Mbc::Mbc2(x) => x.load_state(data),
+            Mbc::Mbc3(x) => x.load_state(data),
+            Mbc::Mbc5(x) => x.load_state(data),
         }
     }
 }
@@ -198,9 +198,8 @@ impl Cartridge {
         // Cartridge Type
         let mbc_kind = header.cartridge_type;
         let mbc = match mbc_kind {
-            0 => MBC::None(MBC0 {}),
-            // a use of label-break-value
-            1 | 2 | 3 => 'mbc1: loop {
+            0 => Mbc::None(Mbc0 {}),
+            1 | 2 | 3 => 'mbc1: {
                 // Detect if it is a MBC1M card
                 if header.rom_size == 5 {
                     let mut number_of_games = 0;
@@ -215,14 +214,14 @@ impl Cartridge {
                     }
                     // multicarts will have, at least, a game selecion screen, and two other games.
                     if number_of_games >= 3 {
-                        break 'mbc1 MBC::MBC1M(MBC1M::new());
+                        break 'mbc1 Mbc::Mbc1M(Mbc1M::new());
                     }
                 }
-                break 'mbc1 MBC::MBC1(MBC1::new());
-            },
-            5 | 6 => MBC::MBC2(MBC2::new()),
-            0x0F | 0x10 | 0x11 | 0x12 | 0x13 => MBC::MBC3(MBC3::new()),
-            0x19 | 0x1A | 0x1B | 0x1C | 0x1D | 0x1E => MBC::MBC5(MBC5::new()),
+                Mbc::Mbc1(Mbc1::new())
+            }
+            5 | 6 => Mbc::Mbc2(Mbc2::new()),
+            0x0F | 0x10 | 0x11 | 0x12 | 0x13 => Mbc::Mbc3(Mbc3::new()),
+            0x19 | 0x1A | 0x1B | 0x1C | 0x1D | 0x1E => Mbc::Mbc5(Mbc5::new()),
             _ => {
                 return Err(format!(
                     "MBC type '{}' ({:02x}) is not supported",
@@ -245,13 +244,13 @@ impl Cartridge {
         let ram_sizes = [
             0,
             0x800,
-            1 * 0x2000, // Single Bank
+            0x2000, // Single Bank
             4 * 0x2000,
             16 * 0x2000,
             8 * 0x2000,
         ];
         let ram_size_type = header.ram_size;
-        let ram_size = if let MBC::MBC2(_) = mbc {
+        let ram_size = if let Mbc::Mbc2(_) = mbc {
             if ram_size_type != 0 {
                 return Err(format!("Cartridge use MBC2, with a integrated ram (type '00'), but report the ram type '{:02x}'", ram_size_type));
             }
@@ -279,56 +278,56 @@ impl Cartridge {
     /// Return a string with the kind of the cartridge.
     pub fn kind_name(&self) -> &str {
         match &self.mbc {
-            MBC::None(_) => "None",
-            MBC::MBC1(_) => "MBC1",
-            MBC::MBC1M(_) => "MBC1M",
-            MBC::MBC2(_) => "MBC2",
-            MBC::MBC3(_) => "MBC3",
-            MBC::MBC5(_) => "MBC5",
+            Mbc::None(_) => "None",
+            Mbc::Mbc1(_) => "MBC1",
+            Mbc::Mbc1M(_) => "MBC1M",
+            Mbc::Mbc2(_) => "MBC2",
+            Mbc::Mbc3(_) => "MBC3",
+            Mbc::Mbc5(_) => "MBC5",
         }
     }
 
     /// The current selected ROM bank
     pub fn curr_bank(&self) -> u16 {
         match &self.mbc {
-            MBC::None(_) => 1,
-            MBC::MBC1(x) => x.curr_bank(&self.rom),
-            MBC::MBC1M(x) => x.curr_bank(&self.rom),
-            MBC::MBC2(x) => x.curr_bank(&self.rom),
-            MBC::MBC3(x) => x.curr_bank(&self.rom),
-            MBC::MBC5(x) => x.curr_bank(&self.rom),
+            Mbc::None(_) => 1,
+            Mbc::Mbc1(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc1M(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc2(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc3(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc5(x) => x.curr_bank(&self.rom),
         }
     }
 
     pub fn read(&self, address: u16) -> u8 {
         match &self.mbc {
-            MBC::None(x) => x.read(address, &self.rom, &self.ram),
-            MBC::MBC1(x) => x.read(address, &self.rom, &self.ram),
-            MBC::MBC1M(x) => x.read(address, &self.rom, &self.ram),
-            MBC::MBC2(x) => x.read(address, &self.rom, &self.ram),
-            MBC::MBC3(x) => x.read(address, &self.rom, &self.ram),
-            MBC::MBC5(x) => x.read(address, &self.rom, &self.ram),
+            Mbc::None(x) => x.read(address, &self.rom, &self.ram),
+            Mbc::Mbc1(x) => x.read(address, &self.rom, &self.ram),
+            Mbc::Mbc1M(x) => x.read(address, &self.rom, &self.ram),
+            Mbc::Mbc2(x) => x.read(address, &self.rom, &self.ram),
+            Mbc::Mbc3(x) => x.read(address, &self.rom, &self.ram),
+            Mbc::Mbc5(x) => x.read(address, &self.rom, &self.ram),
         }
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
         match &mut self.mbc {
-            MBC::None(x) => x.write(address, value, &self.rom, &mut self.ram),
-            MBC::MBC1(x) => x.write(address, value, &self.rom, &mut self.ram),
-            MBC::MBC1M(x) => x.write(address, value, &self.rom, &mut self.ram),
-            MBC::MBC2(x) => x.write(address, value, &self.rom, &mut self.ram),
-            MBC::MBC3(x) => x.write(address, value, &self.rom, &mut self.ram),
-            MBC::MBC5(x) => x.write(address, value, &self.rom, &mut self.ram),
+            Mbc::None(x) => x.write(address, value, &self.rom, &mut self.ram),
+            Mbc::Mbc1(x) => x.write(address, value, &self.rom, &mut self.ram),
+            Mbc::Mbc1M(x) => x.write(address, value, &self.rom, &mut self.ram),
+            Mbc::Mbc2(x) => x.write(address, value, &self.rom, &mut self.ram),
+            Mbc::Mbc3(x) => x.write(address, value, &self.rom, &mut self.ram),
+            Mbc::Mbc5(x) => x.write(address, value, &self.rom, &mut self.ram),
         }
     }
 }
 
 /// Cartridge without a MBC chip
 #[derive(PartialEq, Eq)]
-struct MBC0 {}
-crate::save_state!(MBC0, self, data {});
-impl MBC0 {
-    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+struct Mbc0 {}
+crate::save_state!(Mbc0, self, data {});
+impl Mbc0 {
+    pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
         match address {
             // ROM
             0x0000..=0x7FFF => rom[address as usize],
@@ -338,7 +337,7 @@ impl MBC0 {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut Vec<u8>) {
+    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut [u8]) {
         match address {
             // ROM
             0x0000..=0x7FFF => {}
@@ -353,18 +352,18 @@ impl MBC0 {
 
 /// Cartridge with a MBC1 chip
 #[derive(PartialEq, Eq)]
-struct MBC1 {
+struct Mbc1 {
     // the banking register. Includes the 5-bit register 1, and the 2-bit register 2.
     selected_bank: u8,
     // false is mode 0, true is mode 1
     mode: bool,
     ram_enabled: bool,
 }
-crate::save_state!(MBC1, self, data {
+crate::save_state!(Mbc1, self, data {
     self.selected_bank;
     bitset [self.mode, self.ram_enabled];
 });
-impl MBC1 {
+impl Mbc1 {
     fn new() -> Self {
         Self {
             selected_bank: 1,
@@ -488,7 +487,7 @@ impl MBC1 {
 
 /// Cartridge with a MBC1 multicart chip
 #[derive(PartialEq, Eq)]
-struct MBC1M {
+struct Mbc1M {
     // the banking register. Includes the 4-bit register 1 (the bit 4 of the 5-bit register is
     // skipped in the multicard), and the 2-bit register 2. A total of 6-bit.
     selected_bank: u8,
@@ -496,11 +495,11 @@ struct MBC1M {
     mode: bool,
     ram_enabled: bool,
 }
-crate::save_state!(MBC1M, self, data {
+crate::save_state!(Mbc1M, self, data {
     self.selected_bank;
     bitset [self.mode, self.ram_enabled];
 });
-impl MBC1M {
+impl Mbc1M {
     fn new() -> Self {
         Self {
             selected_bank: 1,
@@ -622,16 +621,16 @@ impl MBC1M {
 
 /// Cartridge with a MBC2 chip
 #[derive(PartialEq, Eq)]
-struct MBC2 {
+struct Mbc2 {
     // the banking register
     selected_bank: u8,
     ram_enabled: bool,
 }
-crate::save_state!(MBC2, self, data {
+crate::save_state!(Mbc2, self, data {
     self.selected_bank;
     bitset [self.ram_enabled];
 });
-impl MBC2 {
+impl Mbc2 {
     fn new() -> Self {
         Self {
             selected_bank: 1,
@@ -643,7 +642,7 @@ impl MBC2 {
         (self.selected_bank % (rom.len() / 0x4000) as u8) as u16
     }
 
-    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+    pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
         match address {
             // ROM Bank 00
             0x0000..=0x3FFF => rom[address as usize],
@@ -669,7 +668,7 @@ impl MBC2 {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut Vec<u8>) {
+    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut [u8]) {
         match address {
             // RAM Enable and ROM Bank Number
             0x0000..=0x3FFF => {
@@ -702,7 +701,7 @@ impl MBC2 {
 
 /// Cartridge with a MBC3 chip
 #[derive(PartialEq, Eq)]
-struct MBC3 {
+struct Mbc3 {
     // the banking register, including second 2-bit
     selected_bank: u8,
     // false is mode 0, true is mode 1
@@ -714,14 +713,14 @@ struct MBC3 {
     // 1 means that 0 was written
     latch_clock_data: u8,
 }
-crate::save_state!(MBC3, self, data {
+crate::save_state!(Mbc3, self, data {
     self.selected_bank;
     self.ram_bank;
     self.rtc;
     bitset [self.ram_enabled];
     self.latch_clock_data;
 });
-impl MBC3 {
+impl Mbc3 {
     fn new() -> Self {
         Self {
             selected_bank: 1,
@@ -874,17 +873,17 @@ impl MBC3 {
 
 /// Cartridge with a MBC5 chip
 #[derive(PartialEq, Eq)]
-struct MBC5 {
+struct Mbc5 {
     selected_bank: u16,
     selected_ram_bank: u8,
     ram_enabled: bool,
 }
-crate::save_state!(MBC5, self, data {
+crate::save_state!(Mbc5, self, data {
     self.selected_bank;
     self.selected_ram_bank;
     bitset [self.ram_enabled];
 });
-impl MBC5 {
+impl Mbc5 {
     fn new() -> Self {
         Self {
             selected_bank: 1,

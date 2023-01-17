@@ -13,10 +13,9 @@ pub fn main() {
     log::info!("Starting android gameroy!");
 
     gameroy_lib::config::init_config({
-        let config = gameroy_lib::config::Config::load()
+        gameroy_lib::config::Config::load()
             .map_err(|e| log::error!("error loading config: {}", e))
-            .unwrap_or_default();
-        config
+            .unwrap_or_default()
     });
 
     gameroy_lib::main(None, None)

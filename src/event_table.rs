@@ -65,7 +65,7 @@ impl<E: Event> List<E> {
     fn unregister(&self, id: Id) {
         let mut event_table = self.listeners.borrow_mut();
         if let Some(i) = event_table.iter().position(|x| *x == id) {
-            drop(event_table.remove(i));
+            event_table.remove(i);
         }
     }
 

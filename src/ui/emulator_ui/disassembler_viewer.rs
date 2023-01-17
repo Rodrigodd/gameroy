@@ -49,11 +49,11 @@ impl TextFieldCallback for Callback {
         {
             let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
             let mut debugger = ctx.get::<Arc<Mutex<Debugger>>>().lock();
-            if args.len() == 0 {
+            if args.is_empty() {
                 args.push("");
             }
 
-            match debugger.execute_command(&*gb, &args) {
+            match debugger.execute_command(&gb, &args) {
                 Ok(_) => {}
                 Err(m) => {
                     drop((gb, debugger));
@@ -165,7 +165,7 @@ impl DissasemblerList {
         );
         let label = |pc, x| {
             if let Some(address) = trace.jumps.get(&pc) {
-                let mut name = trace.labels.get(&address).unwrap().name.clone();
+                let mut name = trace.labels.get(address).unwrap().name.clone();
                 name.insert_str(0, "<l>");
                 name += "</l>";
                 return name;
@@ -201,7 +201,7 @@ impl DissasemblerList {
         } else {
             None
         };
-        let op_len = text[22..].find(" ").unwrap();
+        let op_len = text[22..].find(' ').unwrap();
 
         let mut text = Text::new(text, (-1, 0), style);
 
@@ -356,10 +356,8 @@ impl ListBuilder for DissasemblerList {
         } else if let Some(JumpToAddress { from_address }) = event.downcast_ref::<JumpToAddress>() {
             let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
             let trace = gb.trace.borrow_mut();
-            let jump_to = trace.jumps.get(&from_address).unwrap();
-            let pos = self
-                .directives
-                .binary_search_by(|x| x.address.cmp(&jump_to));
+            let jump_to = trace.jumps.get(from_address).unwrap();
+            let pos = self.directives.binary_search_by(|x| x.address.cmp(jump_to));
             drop(trace);
             drop(gb);
             if let Ok(pos) = pos {
@@ -428,11 +426,7 @@ impl ListBuilder for DissasemblerList {
     }
 
     fn update_item(&mut self, _index: usize, _item_id: Id, _ctx: &mut dyn BuilderContext) -> bool {
-        if self.items_are_dirty {
-            false
-        } else {
-            true
-        }
+        !self.items_are_dirty
     }
 
     fn finished_layout(&mut self) {

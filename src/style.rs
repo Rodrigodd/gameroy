@@ -147,14 +147,14 @@ mod static_files {
 
             let scale2x = self.scale_factor >= 1.5;
 
-            let data = loop {
+            let data = 'data: {
                 let data = match name.as_str() {
                     "white.png" => {
                         let mut image_buffer = ImageBuffer::new(1, 1);
                         image_buffer
                             .pixels_mut()
                             .for_each(|x| *x = Rgba::<u8>::from([255, 255, 255, 255]));
-                        break image_buffer;
+                        break 'data image_buffer;
                     }
                     "icons.png" => {
                         if scale2x {
@@ -174,8 +174,7 @@ mod static_files {
                     }
                 };
 
-                let data = data.to_rgba8();
-                break data;
+                data.to_rgba8()
             };
 
             // FIXME: this is vunerable to hash collisions, and relies on how TextureId is used
@@ -281,7 +280,7 @@ impl Style {
         };
 
         #[cfg(not(feature = "static"))]
-        let file = {
+        let file = &{
             let mut path = config::base_folder().unwrap();
             path.push("assets/style.ron");
             std::fs::read_to_string(path)
@@ -290,7 +289,7 @@ impl Style {
         #[cfg(feature = "static")]
         let file = static_files::FILES.style;
 
-        let mut deser = ron::Deserializer::from_str(&file).unwrap();
+        let mut deser = ron::Deserializer::from_str(file).unwrap();
         let style: Result<Self, _> = load_style(&mut deser, loader);
 
         Some(style.unwrap())

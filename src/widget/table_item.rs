@@ -44,7 +44,7 @@ impl TableGroup {
         }
 
         let width = {
-            if self.columns.len() == 0 {
+            if self.columns.is_empty() {
                 return self.h_margins[0] + self.h_margins[1];
             }
             self.columns.iter().map(|x| x.width).sum::<f32>()
@@ -68,12 +68,14 @@ pub struct Column {
     curr_width: f32,
 }
 
+type OnClick = Box<dyn FnMut(u8, &mut Context)>;
+
 /// Layout and Behaviour for table's items.
 pub struct TableItem {
     /// This table group this item belongs to.
     group: Rc<RefCell<TableGroup>>,
     pub resizable: bool,
-    on_click: Option<Box<dyn FnMut(u8, &mut Context)>>,
+    on_click: Option<OnClick>,
 }
 impl TableItem {
     pub fn new(group: Rc<RefCell<TableGroup>>) -> Self {
@@ -137,7 +139,9 @@ impl Behaviour for TableItem {
 
     fn on_mouse_event(&mut self, mouse: giui::MouseInfo, this: Id, ctx: &mut giui::Context) {
         if let MouseEvent::Up(giui::MouseButton::Left) = mouse.event {
-            self.on_click.as_mut().map(|x| x(mouse.click_count, ctx));
+            if let Some(x) = self.on_click.as_mut() {
+                x(mouse.click_count, ctx)
+            }
         };
         if !self.resizable {
             return;
@@ -215,7 +219,11 @@ impl Layout for TableItem {
         let reserved_width = g.h_spacing * (children.len() - 1) as f32
             + g.columns.iter().map(|x| x.width).sum::<f32>();
         let free_width = width - reserved_width;
-        let total_weigth: f32 = g.columns.iter().filter_map(|x| x.expand.then(|| 1.0)).sum();
+        let total_weigth: f32 = g
+            .columns
+            .iter()
+            .filter_map(|x| x.expand.then_some(1.0))
+            .sum();
 
         let rect = *rect.get_rect();
         let top = rect[1];

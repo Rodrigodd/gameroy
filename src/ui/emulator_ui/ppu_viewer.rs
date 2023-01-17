@@ -17,12 +17,14 @@ use crate::{
     UserEvent,
 };
 
+type InfoText = Box<dyn FnMut(u8, u8, &mut Context) -> String>;
+
 struct TilemapViewer {
     info_text: Id,
     tilemap: Id,
     width: u8,
     height: u8,
-    info: Box<dyn FnMut(u8, u8, &mut Context) -> String>,
+    info: InfoText,
 }
 impl Behaviour for TilemapViewer {
     fn on_start(&mut self, _this: Id, ctx: &mut Context) {
@@ -45,7 +47,7 @@ impl Behaviour for TilemapViewer {
                 let rel_x = (mouse.pos[0] - tilemap[0]) / (tilemap[2] - tilemap[0]);
                 let rel_y = (mouse.pos[1] - tilemap[1]) / (tilemap[3] - tilemap[1]);
 
-                if rel_x >= 0.0 && rel_x < 1.0 && rel_y >= 0.0 && rel_y < 1.0 {
+                if (0.0..1.0).contains(&rel_x) && (0.0..1.0).contains(&rel_y) {
                     let x = (rel_x * self.width as f32) as u8;
                     let y = (rel_y * self.height as f32) as u8;
 
@@ -67,6 +69,7 @@ struct PpuViewer {
     _emulator_updated_event: Handle<EmulatorUpdated>,
 }
 impl PpuViewer {
+    #[allow(clippy::needless_range_loop)]
     fn update(&mut self, ctx: &mut Context, emulator_updated: bool) {
         let textures = ctx.get::<Textures>();
         const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
@@ -75,7 +78,7 @@ impl PpuViewer {
 
         // clone into box to avoid stack overflow
         let ppu = {
-            let mut ppu = Box::new(Ppu::default());
+            let mut ppu: Box<Ppu> = Box::default();
             (*ppu).clone_from(&*gb.lock().ppu.borrow());
             ppu
         };

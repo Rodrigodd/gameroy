@@ -51,7 +51,7 @@ impl Address {
         }
     }
 
-    fn to_pc(&self) -> u16 {
+    fn to_pc(self) -> u16 {
         if self.bank == 0 {
             self.address
         } else {
@@ -154,9 +154,14 @@ pub struct Trace {
     /// Map between a ram address and a label
     pub ram_labels: BTreeMap<u16, String>,
 }
+impl Default for Trace {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl Trace {
     pub fn new() -> Self {
-        let this = Self {
+        Self {
             directives: BTreeSet::new(),
             code_ranges: Vec::new(),
             labels: Default::default(),
@@ -164,14 +169,7 @@ impl Trace {
             ram_code_ranges: Vec::new(),
             ram_directives: BTreeSet::new(),
             ram_labels: BTreeMap::new(),
-        };
-
-        //         const ENTRY_POINT: u16 = 0x0;
-        //         this.trace_starting_at(rom, ENTRY_POINT);
-        //         eprintln!("&this.labels = {:04x?}", this.labels);
-        //         dbg!(&this.code_ranges);
-
-        this
+        }
     }
 
     /// Disassembly some opcodes above and below, respecting `code_ranges`
@@ -212,7 +210,7 @@ impl Trace {
         }
         let label = |pc, x| {
             if let Some(address) = self.jumps.get(&pc) {
-                return self.labels.get(&address).unwrap().name.clone();
+                return self.labels.get(address).unwrap().name.clone();
             }
             format!("${:04x}", x)
         };
@@ -271,7 +269,9 @@ impl Trace {
             reg_a: None,
         }];
         if let Some(label) = label {
-            self.add_label(bank, start).map(|x| x.name = label);
+            if let Some(x) = self.add_label(bank, start) {
+                x.name = label
+            }
         }
         while !cursors.is_empty() {
             self.trace_once(gameboy, &mut cursors);
@@ -403,12 +403,9 @@ impl Trace {
     }
 
     fn add_jump(&mut self, from: Address, bank: Option<u16>, pc: u16) {
-        match self.add_label(bank, pc) {
-            Some(x) => {
-                let to = x.address;
-                self.jumps.insert(from, to);
-            }
-            None => {}
+        if let Some(x) = self.add_label(bank, pc) {
+            let to = x.address;
+            self.jumps.insert(from, to);
         }
     }
 
@@ -416,7 +413,7 @@ impl Trace {
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
         let Cursor { pc, bank, reg_a } = cursor;
-        match Address::from_pc(bank, pc as u16) {
+        match Address::from_pc(bank, pc) {
             Some(address) => {
                 let (op, len) = cursor.get_op(rom);
 
@@ -459,7 +456,7 @@ impl Trace {
 
                 let (op, len) = cursor.get_op(rom);
 
-                if len as u16 >= 0xFFFF - pc + 1 {
+                if len as u16 > 0xFFFF - pc {
                     // It is unlikely that is a valid opcode
                     return;
                 }
@@ -511,7 +508,7 @@ impl Trace {
                     &op,
                     |x| {
                         if let Some(address) = self.jumps.get(&pc) {
-                            return self.labels.get(&address).unwrap().name.clone();
+                            return self.labels.get(address).unwrap().name.clone();
                         }
                         format!("${:04x}", x)
                     },
@@ -592,7 +589,7 @@ fn compute_step(
             // TODO: this only works for MBC1
             // If it write a know value of A to 0x2000..=0x3FFF region, the bank is switched.
             let address = u16::from_le_bytes([op[1], op[2]]);
-            if address >= 0x2000 && address <= 0x3FFF {
+            if (0x2000..=0x3FFF).contains(&address) {
                 if let Some(a) = reg_a {
                     bank = Some(a as u16 & 0x1F);
                 } else {

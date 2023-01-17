@@ -434,7 +434,9 @@ impl Emulator {
             let mut old = game_boy.v_blank.take();
             let joypad = joypad.clone();
             game_boy.v_blank = Some(Box::new(move |gb| {
-                old.as_mut().map(|x| x(gb));
+                if let Some(x) = old.as_mut() {
+                    x(gb)
+                }
                 let joypad = &mut *joypad.lock();
                 if !joypad.rewinding {
                     gb.joypad = joypad.next_frame(gb);
@@ -442,7 +444,7 @@ impl Emulator {
             }));
         }
         let start_time = Instant::now() - clock_to_duration(gb.lock().clock_count);
-        let this = Self {
+        Self {
             gb,
             proxy,
             joypad,
@@ -455,8 +457,7 @@ impl Emulator {
             debugger,
             #[cfg(feature = "audio-engine")]
             sound,
-        };
-        this
+        }
     }
 
     fn set_state(&mut self, new_state: EmulatorState) {
@@ -497,7 +498,7 @@ impl Emulator {
         log::info!("exiting emulator thread");
 
         log::info!("saving game ram data... ");
-        match self.rom.save_ram_data(&mut self.gb.lock().cartridge.ram) {
+        match self.rom.save_ram_data(&self.gb.lock().cartridge.ram) {
             Ok(_) => log::info!("save success"),
             Err(x) => log::error!("saving failed: {}", x),
         }
@@ -509,7 +510,7 @@ impl Emulator {
         match event {
             SaveRam => {
                 log::info!("saving game ram data... ");
-                match self.rom.save_ram_data(&mut self.gb.lock().cartridge.ram) {
+                match self.rom.save_ram_data(&self.gb.lock().cartridge.ram) {
                     Ok(_) => log::info!("save success"),
                     Err(x) => log::error!("saving failed: {}", x),
                 }
@@ -612,7 +613,7 @@ impl Emulator {
                         if last_clock_count > clock_count - 24 {
                             joypad.pop_last_frame();
                         }
-                        if joypad.load_last_frame(&mut *gb) {
+                        if joypad.load_last_frame(&mut gb) {
                             drop(joypad);
                             drop(gb);
                             {
@@ -660,7 +661,7 @@ impl Emulator {
                     let mut gb = self.gb.lock();
                     let mut debugger = self.debugger.lock();
                     use RunResult::*;
-                    match debugger.run_for(&mut *gb, CLOCK_SPEED / 600) {
+                    match debugger.run_for(&mut gb, CLOCK_SPEED / 600) {
                         ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
                             drop(gb);
                             drop(debugger);
@@ -683,13 +684,15 @@ impl Emulator {
                     }
                     {
                         let mut c = gb.v_blank.take();
-                        c.as_mut().map(|c| c(gb));
+                        if let Some(c) = c.as_mut() {
+                            c(gb)
+                        }
                         gb.v_blank = c;
                     }
                     self.state = EmulatorState::Idle;
                 } else if self.frame_limit {
                     let mut gb = self.gb.lock();
-                    let mut inter = Interpreter(&mut *gb);
+                    let mut inter = Interpreter(&mut gb);
                     let elapsed = self.start_time.elapsed();
                     let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
                         + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
@@ -715,7 +718,7 @@ impl Emulator {
                 } else {
                     // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                     let mut gb = self.gb.lock();
-                    let mut inter = Interpreter(&mut *gb);
+                    let mut inter = Interpreter(&mut gb);
                     let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
 
                     while inter.0.clock_count < target_clock {

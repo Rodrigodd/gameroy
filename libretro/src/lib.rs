@@ -14,6 +14,7 @@ use rust_libretro_sys::{
 use std::{
     ffi::{c_char, c_void},
     io::Write,
+    mem::MaybeUninit,
 };
 
 const SCREEN_WIDTH: u32 = 160;
@@ -105,12 +106,12 @@ pub extern "C" fn retro_deinit() {
 }
 
 #[no_mangle]
-pub extern "C" fn retro_get_system_info(info: *mut retro_system_info) {
+pub extern "C" fn retro_get_system_info(info: &mut MaybeUninit<retro_system_info>) {
     log::trace!("get system info");
 
     let info = unsafe {
-        *info = std::mem::zeroed();
-        &mut *info
+        *info = MaybeUninit::zeroed();
+        info.assume_init_mut()
     };
 
     info.library_name = c_str!("GameRoy");
@@ -121,12 +122,12 @@ pub extern "C" fn retro_get_system_info(info: *mut retro_system_info) {
 }
 
 #[no_mangle]
-pub extern "C" fn retro_get_system_av_info(info: *mut retro_system_av_info) {
+pub extern "C" fn retro_get_system_av_info(info: &mut MaybeUninit<retro_system_av_info>) {
     log::trace!("get system av info");
 
     let info = unsafe {
-        *info = std::mem::zeroed();
-        &mut *info
+        *info = MaybeUninit::zeroed();
+        info.assume_init_mut()
     };
 
     *info = retro_system_av_info {
@@ -145,15 +146,8 @@ pub extern "C" fn retro_get_system_av_info(info: *mut retro_system_av_info) {
 }
 
 #[no_mangle]
-fn retro_load_game(info: *const retro_game_info) -> bool {
+extern "C" fn retro_load_game(info: Option<&retro_game_info>) -> bool {
     log::info!("retro load game");
-    let info = unsafe {
-        if info.is_null() {
-            None
-        } else {
-            Some(&*info)
-        }
-    };
 
     // load rom data into core
     let Some(info) = info else { return false } ;
@@ -175,7 +169,7 @@ fn retro_load_game(info: *const retro_game_info) -> bool {
 
     core().state = Some(gb);
 
-    return true;
+    true
 }
 
 #[no_mangle]
@@ -220,6 +214,8 @@ pub extern "C" fn retro_run() {
     if let Some(callback) = core.video_callback {
         let frame = core.screen_buffer.map(|c| {
             /// 0RGB1555 format
+            /// FIXME: this format is deprecated
+            #[allow(clippy::unusual_byte_groupings)]
             const COLOR: [u16; 4] = [
                 0b0_11111_11111_11111, //
                 0b0_10101_10101_10101,

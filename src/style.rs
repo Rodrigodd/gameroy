@@ -297,10 +297,12 @@ impl Style {
 }
 
 // From https://stackoverflow.com/a/7666577 or http://www.cse.yorku.ca/~oz/hash.html
-fn hash(s: &[u8]) -> u64 {
-    let mut hash = 5381;
+pub fn hash(s: &[u8]) -> u64 {
+    use std::num::Wrapping as w;
+    let mut hash = w(5381u64);
     for &c in s {
-        hash = ((hash << 5) + hash) + c as u64;
+        let c = w(c as u64);
+        hash = ((hash << 5) + hash) + c;
     }
-    hash
+    hash.0
 }

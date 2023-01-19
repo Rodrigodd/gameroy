@@ -39,7 +39,13 @@ enum SortDirection {
 }
 
 pub struct RomEntries {
+    /// In `start_loading`, a background thread get a write lock to the Vec to fill it. After that,
+    /// it holds a read lock for a long time while it runs. Also get a write lock when updating each
+    /// RomEntry.
+    ///
+    /// `sort_by` and `RomList` only get read locks.
     roms: Arc<RwLock<Vec<RwLock<RomEntry>>>>,
+    order: Vec<usize>,
     sort_collumn: usize,
     sort_direction: SortDirection,
     pub observers: Vec<giui::Id>,
@@ -77,6 +83,7 @@ impl RomEntries {
 
         let this = Self {
             roms: Default::default(),
+            order: Default::default(),
             observers: Vec::new(),
             sort_collumn,
             sort_direction,
@@ -118,9 +125,14 @@ impl RomEntries {
         let sort_direction = self.sort_direction;
         let sort_collumn = self.sort_collumn;
 
-        self.roms.write().unwrap().sort_by(|a, b| {
-            let a = a.read().unwrap();
-            let b = b.read().unwrap();
+        let entries = self.roms.read().unwrap();
+        if self.order.len() != entries.len() {
+            self.order = (0..entries.len()).collect();
+        }
+
+        self.order.sort_by(|a, b| {
+            let a = entries[*a].read().unwrap();
+            let b = entries[*b].read().unwrap();
             let ord = match sort_collumn {
                 0 => a.file.file_name().cmp(&b.file.file_name()),
                 1 => a.name.cmp(&b.name),
@@ -256,8 +268,18 @@ impl RomEntries {
             .unwrap();
     }
 
-    fn roms(&self) -> RwLockReadGuard<Vec<RwLock<RomEntry>>> {
-        self.roms.read().unwrap()
+    fn get_rom(&self, pos: usize) -> Option<RomEntry> {
+        let index = self.order[pos];
+        self.roms
+            .read()
+            .unwrap()
+            .get(index)
+            .map(|x| x.read().unwrap().clone())
+    }
+
+    /// The total number of roms
+    fn len(&self) -> usize {
+        self.order.len()
     }
 
     fn register(&mut self, id: Id) {
@@ -382,7 +404,7 @@ impl ListBuilder for RomList {
     }
 
     fn item_count(&mut self, ctx: &mut dyn giui::BuilderContext) -> usize {
-        ctx.get::<RomEntries>().roms().len() + 1
+        ctx.get::<RomEntries>().len()
     }
 
     fn on_event(&mut self, event: Box<dyn std::any::Any>, this: giui::Id, ctx: &mut giui::Context) {
@@ -414,8 +436,7 @@ impl ListBuilder for RomList {
         let style = &ctx.get::<Style>().clone();
         let header = index == 0;
         let (file, name, size, age, entry) = if !header {
-            let roms = ctx.get::<RomEntries>().roms();
-            let entry = roms[index - 1].read().unwrap().clone();
+            let entry = ctx.get::<RomEntries>().get_rom(index - 1).unwrap();
             let size = entry.size();
             let age = entry.save_age();
             (

@@ -366,6 +366,7 @@ impl App for RomLoadingApp {
             }
             Event::UserEvent(UserEvent::UpdatedRomList) => {
                 let rom_entries = &mut ui.gui.get_mut::<ui::RomEntries>();
+                rom_entries.update_sort();
                 let observers = std::mem::take(&mut rom_entries.observers);
                 log::trace!("send events to {:?}", observers);
                 for id in observers.iter() {

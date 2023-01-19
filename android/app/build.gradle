@@ -83,7 +83,7 @@ tasks.whenTaskAdded { task ->
     if (task.name == 'mergeDebugJniLibFolders' || task.name == 'mergeReleaseJniLibFolders') {
         task.dependsOn 'cargoBuild'
     }
-    if (task.name == 'generateDebugAssets' || task.name == 'generateReleaseAssets') {
+    if (/*task.name == 'generateDebugAssets' ||*/ task.name == 'generateReleaseAssets') {
         task.dependsOn 'generateLicenseAsset'
     }
     if (task.name == 'lintVitalAnalyzeRelease') {

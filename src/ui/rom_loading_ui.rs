@@ -350,6 +350,7 @@ impl RomEntry {
             x if x < HOUR => format!("{}min ago", x / MINUTE),
             x if x < DAY => format!("{}h ago", x / HOUR),
             x if x < MONTH => format!("{}d ago", x / DAY),
+            x if x < YEAR => format!("{}m ago", x / MONTH),
             x => format!("{} years", x / YEAR),
         }
     }

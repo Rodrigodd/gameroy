@@ -59,7 +59,7 @@ pub struct Textures {
 pub struct Ui {
     pub gui: Gui,
     gui_render: GuiRender,
-    render: Box<dyn SpriteRender>,
+    pub render: Box<dyn SpriteRender>,
     camera: Camera,
     pub event_table: Rc<RefCell<EventTable>>,
     pub textures: Textures,

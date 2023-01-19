@@ -308,6 +308,20 @@ fn start_event_loop(
                     std::task::Poll::Pending => log::info!("wait..."),
                 }
             }
+
+            Event::UserEvent(UserEvent::UpdateTexture(texture, data)) => {
+                ui.update_texture(texture, &data);
+                return;
+            }
+            Event::UserEvent(UserEvent::NewTexture(texture, width, height, data)) => {
+                log::info!("new texture!");
+                sprite_render::Texture::new(width, height)
+                    .id(sprite_render::TextureId(texture))
+                    .data(&data)
+                    .create(ui.render.as_mut())
+                    .unwrap();
+                return;
+            }
             _ => {}
         }
         last(app).handle_event(event, &mut ui, &window, control, &proxy);
@@ -580,7 +594,6 @@ impl App for EmulatorApp {
                         ui.notify(event_table::Debug(value));
                         self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
-                    UpdateTexture(texture, data) => ui.update_texture(texture, &data),
                     _ => {}
                 }
             }
@@ -602,6 +615,7 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
+    NewTexture(u32, u32, u32, Box<[u8]>),
     PopApp,
     LoadRom {
         file: RomFile,

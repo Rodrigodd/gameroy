@@ -6,7 +6,7 @@ use std::{
 };
 
 use giui::{
-    graphics::Graphic,
+    graphics::{Graphic, Texture},
     layouts::{FitGraphic, HBoxLayout, MarginLayout, VBoxLayout},
     text::Text,
     widgets::{Button, ListBuilder},
@@ -170,56 +170,112 @@ impl RomEntries {
             }
         };
         let entries = self.roms.clone();
-        std::thread::spawn(move || {
-            let start = instant::Instant::now();
+        std::thread::Builder::new()
+            .name("loading roms".to_string())
+            .spawn(move || {
+                let start = instant::Instant::now();
 
-            let roms = crate::rom_loading::load_roms(&roms_path)
-                .map_err(|e: String| log::error!("error reading roms: {}", e))
-                .ok()
-                .unwrap_or_default();
+                let roms = crate::rom_loading::load_roms(&roms_path)
+                    .map_err(|e: String| log::error!("error reading roms: {}", e))
+                    .ok()
+                    .unwrap_or_default();
 
-            *entries.write().unwrap() = roms
-                .into_iter()
-                .map(|x| {
-                    let save_time = x.get_save_time();
-                    log::debug!("{}", x.file_name());
-                    RwLock::new(RomEntry {
-                        file: x,
-                        name: None,
-                        size: None,
-                        save_time: save_time.ok(),
+                *entries.write().unwrap() = roms
+                    .into_iter()
+                    .map(|x| {
+                        let save_time = x.get_save_time();
+                        log::debug!("{}", x.file_name());
+                        RwLock::new(RomEntry {
+                            file: x,
+                            name: None,
+                            size: None,
+                            save_time: save_time.ok(),
+                            thumbnail: None,
+                        })
                     })
-                })
-                .collect();
+                    .collect();
 
-            proxy.send_event(UserEvent::UpdatedRomList).unwrap();
-
-            for entry in entries.read().unwrap().iter() {
-                let header = {
-                    let rom_file = entry.read().unwrap().file.clone();
-                    let mut task = rom_file.get_header();
-                    let task = unsafe { std::pin::Pin::new_unchecked(&mut task) };
-                    executor::block_on(task)
-                };
-
-                match header {
-                    Ok(header) => {
-                        let mut entry = entry.write().unwrap();
-                        entry.name = Some(header.title_as_string());
-                        entry.size = Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
-                    }
-                    Err(err) => {
-                        let mut entry = entry.write().unwrap();
-                        entry.name = Some("Error reading header...".to_string());
-                        entry.size = None;
-                        log::error!("error reading '{}' header: {}", entry.file.file_name(), err);
-                    }
-                };
                 proxy.send_event(UserEvent::UpdatedRomList).unwrap();
-            }
 
-            log::info!("loading roms took: {:?}", start.elapsed());
-        });
+                for entry in entries.read().unwrap().iter() {
+                    let header = {
+                        let rom_file = entry.read().unwrap().file.clone();
+                        let mut task = rom_file.get_header();
+                        let task = unsafe { std::pin::Pin::new_unchecked(&mut task) };
+                        executor::block_on(task)
+                    };
+
+                    // FIXME: check if I should use https, and enable reqwest features for that.
+                    const LIBRETRO_THUMBNAILS: &str =
+                        "http://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy/Named_Boxarts/";
+
+                    let url = LIBRETRO_THUMBNAILS.to_string()
+                        + entry
+                            .read()
+                            .unwrap()
+                            .file
+                            .file_name()
+                            .trim_end_matches(".gb")
+                        + ".png";
+
+                    log::info!("GET {url}");
+                    let res = reqwest::blocking::get(&url);
+                    let res = res.unwrap();
+                    let mut thumbnail = None;
+                    if res.status() == 200 {
+                        log::info!("request done!");
+                        let bytes = res.bytes().unwrap();
+                        log::info!("to bytes!");
+                        let image = image::load_from_memory(&bytes).unwrap();
+                        log::info!("load image!");
+                        let image = image::imageops::resize(
+                            &image,
+                            96,
+                            96,
+                            image::imageops::FilterType::Lanczos3,
+                        );
+                        log::info!("image resized!");
+
+                        let texture_id = (crate::style::hash(url.as_bytes()) & 0x7fff_ffff) as u32;
+                        proxy
+                            .send_event(UserEvent::NewTexture(
+                                texture_id,
+                                image.width(),
+                                image.height(),
+                                image.into_raw().into_boxed_slice(),
+                            ))
+                            .unwrap();
+
+                        thumbnail = Some(texture_id);
+                    } else {
+                        log::info!("request failed :(");
+                    }
+
+                    {
+                        let mut entry = entry.write().unwrap();
+                        entry.thumbnail = thumbnail;
+                        match header {
+                            Ok(header) => {
+                                entry.name = Some(header.title_as_string());
+                                entry.size = Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
+                            }
+                            Err(err) => {
+                                entry.name = Some("Error reading header...".to_string());
+                                entry.size = None;
+                                log::error!(
+                                    "error reading '{}' header: {}",
+                                    entry.file.file_name(),
+                                    err
+                                );
+                            }
+                        }
+                    }
+                    proxy.send_event(UserEvent::UpdatedRomList).unwrap();
+                }
+
+                log::info!("loading roms took: {:?}", start.elapsed());
+            })
+            .unwrap();
     }
 
     fn roms(&self) -> RwLockReadGuard<Vec<RwLock<RomEntry>>> {
@@ -241,6 +297,8 @@ pub struct RomEntry {
     save_time: Option<u64>,
     /// The path to the rom
     pub file: RomFile,
+    /// The index of the texture that contains this Rom thumbnail
+    thumbnail: Option<u32>,
 }
 impl RomEntry {
     pub fn name(&self) -> String {
@@ -399,6 +457,28 @@ impl ListBuilder for RomList {
             )
         };
         let parent = cb.id();
+
+        // Thumbnail
+        if header {
+            ctx.create_control().parent(parent).build(ctx);
+        } else {
+            let graphic = if let Some(texture) = entry.as_ref().and_then(|x| x.thumbnail) {
+                log::info!("using texture!");
+                Texture::new(texture, [0.0, 0.0, 1.0, 1.0])
+            } else {
+                Texture::new(0, [0.0, 0.0, 1.0, 1.0]).with_color([120, 120, 120, 255].into())
+            };
+            ctx.create_control()
+                .child(ctx, |cb, _| {
+                    cb.graphic(graphic)
+                        .min_size([48.0, 48.0])
+                        .fill_x(giui::RectFill::ShrinkCenter)
+                })
+                .parent(parent)
+                .layout(MarginLayout::new([2.0; 4]))
+                .build(ctx);
+        }
+
         for (collumn_index, text) in [file, name, size, age].into_iter().enumerate() {
             let cb = ctx
                 .create_control()
@@ -632,6 +712,9 @@ pub fn create_rom_loading_ui(
 
     let table = {
         let mut tg = TableGroup::new(4.0, 2.0, [1.0, 1.0]);
+
+        // Thumbnail
+        tg.add_column(60.0, false);
         for &(_, width) in COLLUMNS.iter() {
             tg.add_column(width, false)
         }

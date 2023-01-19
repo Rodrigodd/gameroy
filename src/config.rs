@@ -130,6 +130,7 @@ pub fn base_folder() -> Option<PathBuf> {
     static BASE_FOLDER: OnceCell<Option<PathBuf>> = OnceCell::new();
     BASE_FOLDER
         .get_or_init(|| {
+            #[cfg(not(target_os = "android"))]
             let base_folder =
                 if let Some(path) = std::env::var("CARGO_WORKSPACE_DIR").ok().map(PathBuf::from) {
                     path
@@ -142,6 +143,12 @@ pub fn base_folder() -> Option<PathBuf> {
                         .ok()?
                         .to_path_buf()
                 };
+
+            #[cfg(target_os = "android")]
+            let base_folder = ndk_glue::native_activity()
+                .internal_data_path()
+                .to_path_buf();
+
             Some(base_folder)
         })
         .clone()

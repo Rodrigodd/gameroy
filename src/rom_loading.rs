@@ -1,4 +1,8 @@
+use std::io::BufReader;
+
 use gameroy::gameboy::{cartridge::Cartridge, GameBoy};
+
+use crate::config::normalize_config_path;
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {
@@ -36,4 +40,81 @@ pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, 
     }
     // GameBoy is too big to live on the stack.
     Ok(Box::new(game_boy))
+}
+
+pub fn get_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
+    match load_thumb(file_name) {
+        Ok(image) => {
+            log::info!("loading thumb from file");
+            return Ok(image);
+        }
+        Err(err) => {
+            if !err.is_empty() {
+                log::error!("error loading thumbnail for '{file_name}' from file: {err}");
+            }
+        }
+    }
+
+    // FIXME: check if I should use https, and enable reqwest features for that.
+    const LIBRETRO_THUMBNAILS: &str =
+        "http://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy/Named_Boxarts/";
+
+    let url = LIBRETRO_THUMBNAILS.to_string() + file_name + ".png";
+
+    log::info!("GET {url}");
+    let res = reqwest::blocking::get(&url);
+    let res = res.unwrap();
+    if res.status() != 200 {
+        Err("status is not 200")?
+    }
+    log::info!("request done!");
+    let bytes = res.bytes().unwrap();
+    log::info!("to bytes!");
+    let image = image::load_from_memory(&bytes).unwrap();
+    log::info!("load image!");
+    let image = image::imageops::resize(&image, 96, 96, image::imageops::FilterType::Lanczos3);
+    log::info!("image resized!");
+
+    if let Err(err) = crate::rom_loading::save_thumb(&image, file_name) {
+        log::error!("failed to save thumbnail for '{file_name}': {err}");
+    }
+
+    Ok(image)
+}
+
+pub fn load_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
+    let thumbs_folder = normalize_config_path("thumbnails");
+    let save_path = thumbs_folder.join(file_name).with_extension("png");
+
+    let file = match std::fs::File::open(save_path) {
+        Ok(file) => file,
+        Err(err) => match err.kind() {
+            std::io::ErrorKind::NotFound => return Err(String::new()),
+            _ => return Err(format!("error opening thumpnail file: {err}")),
+        },
+    };
+
+    let reader = BufReader::new(file);
+    image::load(reader, image::ImageFormat::Png)
+        .map_err(|x| x.to_string())
+        .map(|x| x.to_rgba8())
+}
+
+pub fn save_thumb(
+    thumb: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    file_name: &str,
+) -> Result<(), String> {
+    let thumbs_folder = normalize_config_path("thumbnails");
+    let save_path = thumbs_folder.join(file_name).with_extension("png");
+
+    log::debug!("save thumbnail path: {}", save_path.display());
+    if let Err(err) = std::fs::create_dir(&thumbs_folder) {
+        match err.kind() {
+            std::io::ErrorKind::AlreadyExists => {}
+            _ => {
+                return Err(format!("failed to create thumbnails folder: {err}"));
+            }
+        }
+    }
+    thumb.save(save_path).map_err(|x| x.to_string())
 }

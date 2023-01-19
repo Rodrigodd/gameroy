@@ -198,45 +198,19 @@ impl RomEntries {
                 proxy.send_event(UserEvent::UpdatedRomList).unwrap();
 
                 for entry in entries.read().unwrap().iter() {
-                    let header = {
+                    let (header, file_name) = {
                         let rom_file = entry.read().unwrap().file.clone();
+                        let file_name = rom_file.file_name().trim_end_matches(".gb").to_string();
                         let mut task = rom_file.get_header();
                         let task = unsafe { std::pin::Pin::new_unchecked(&mut task) };
-                        executor::block_on(task)
+                        let header = executor::block_on(task);
+                        (header, file_name)
                     };
 
-                    // FIXME: check if I should use https, and enable reqwest features for that.
-                    const LIBRETRO_THUMBNAILS: &str =
-                        "http://thumbnails.libretro.com/Nintendo%20-%20Game%20Boy/Named_Boxarts/";
-
-                    let url = LIBRETRO_THUMBNAILS.to_string()
-                        + entry
-                            .read()
-                            .unwrap()
-                            .file
-                            .file_name()
-                            .trim_end_matches(".gb")
-                        + ".png";
-
-                    log::info!("GET {url}");
-                    let res = reqwest::blocking::get(&url);
-                    let res = res.unwrap();
                     let mut thumbnail = None;
-                    if res.status() == 200 {
-                        log::info!("request done!");
-                        let bytes = res.bytes().unwrap();
-                        log::info!("to bytes!");
-                        let image = image::load_from_memory(&bytes).unwrap();
-                        log::info!("load image!");
-                        let image = image::imageops::resize(
-                            &image,
-                            96,
-                            96,
-                            image::imageops::FilterType::Lanczos3,
-                        );
-                        log::info!("image resized!");
-
-                        let texture_id = (crate::style::hash(url.as_bytes()) & 0x7fff_ffff) as u32;
+                    if let Ok(image) = crate::rom_loading::get_thumb(&file_name) {
+                        let texture_id =
+                            (crate::style::hash(file_name.as_bytes()) & 0x7fff_ffff) as u32;
                         proxy
                             .send_event(UserEvent::NewTexture(
                                 texture_id,

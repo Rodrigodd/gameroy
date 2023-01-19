@@ -133,10 +133,20 @@ impl RomEntries {
         self.order.sort_by(|a, b| {
             let a = entries[*a].read().unwrap();
             let b = entries[*b].read().unwrap();
+
+            fn some_first<T, U: Ord>(a: &T, b: &T, map: impl Fn(&T) -> &Option<U>) -> Ordering {
+                let a = map(a);
+                let b = map(b);
+                a.is_some()
+                    .cmp(&b.is_some())
+                    .reverse()
+                    .then_with(|| a.cmp(b))
+            }
+
             let ord = match sort_collumn {
                 0 => a.file.file_name().cmp(&b.file.file_name()),
-                1 => a.name.cmp(&b.name),
-                2 => a.size.cmp(&b.size),
+                1 => some_first(&*a, &*b, |x| &x.header_name),
+                2 => some_first(&*a, &*b, |x| &x.size),
                 3 => a.save_time.cmp(&b.save_time).reverse(),
                 _ => {
                     log::error!("Unknown collumn index: {}", sort_collumn);
@@ -151,7 +161,7 @@ impl RomEntries {
                 Option<&'a String>,
                 Option<&'a u64>,
             ) {
-                (a.file.file_name(), a.name.as_ref(), a.size.as_ref())
+                (a.file.file_name(), a.header_name.as_ref(), a.size.as_ref())
             }
 
             let ord = match ord {
@@ -201,7 +211,7 @@ impl RomEntries {
                             log::debug!("{}", x.file_name());
                             RwLock::new(RomEntry {
                                 file: x,
-                                name: None,
+                                header_name: None,
                                 size: None,
                                 save_time: save_time.ok(),
                                 thumbnail: None,
@@ -243,12 +253,12 @@ impl RomEntries {
                             entry.thumbnail = thumbnail;
                             match header {
                                 Ok(header) => {
-                                    entry.name = Some(header.title_as_string());
+                                    entry.header_name = Some(header.title_as_string());
                                     entry.size =
                                         Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
                                 }
                                 Err(err) => {
-                                    entry.name = Some("Error reading header...".to_string());
+                                    entry.header_name = Some("Error reading header...".to_string());
                                     entry.size = None;
                                     log::error!(
                                         "error reading '{}' header: {}",
@@ -290,7 +300,7 @@ impl RomEntries {
 #[derive(Clone, Debug)]
 pub struct RomEntry {
     /// The name of the game as write in the rom header.
-    name: Option<String>,
+    header_name: Option<String>,
     /// The size of the rom file in bytes
     size: Option<u64>,
     /// The instant in millisenconds since epoch of this rom's ram save file
@@ -302,7 +312,7 @@ pub struct RomEntry {
 }
 impl RomEntry {
     pub fn name(&self) -> String {
-        self.name
+        self.header_name
             .clone()
             .unwrap_or_else(|| "Loading...".to_string())
     }

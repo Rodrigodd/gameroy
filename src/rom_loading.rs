@@ -62,13 +62,18 @@ pub fn get_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, 
     let url = LIBRETRO_THUMBNAILS.to_string() + file_name + ".png";
 
     log::info!("GET {url}");
-    let res = reqwest::blocking::get(&url);
-    let res = res.unwrap();
-    if res.status() != 200 {
-        Err("status is not 200")?
-    }
+    let res = ureq::get(&url).call();
+    let res = match res {
+        Ok(res) => res,
+        Err(ureq::Error::Status(code, _)) => {
+            return Err(format!("server return error code: {code}"))
+        }
+        Err(ureq::Error::Transport(x)) => return Err(format!("io error: {x}")),
+    };
     log::info!("request done!");
-    let bytes = res.bytes().unwrap();
+    let mut bytes = Vec::new();
+    res.into_reader().read_to_end(&mut bytes).unwrap();
+
     log::info!("to bytes!");
     let image = image::load_from_memory(&bytes).unwrap();
     log::info!("load image!");

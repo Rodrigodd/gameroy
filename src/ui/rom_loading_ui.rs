@@ -231,21 +231,24 @@ impl RomEntries {
                         };
 
                         let mut thumbnail = None;
-                        if let Ok(image) = crate::rom_loading::get_thumb(&file_name) {
-                            let texture_id =
-                                (crate::style::hash(file_name.as_bytes()) & 0x7fff_ffff) as u32;
-                            proxy
-                                .send_event(UserEvent::NewTexture(
-                                    texture_id,
-                                    image.width(),
-                                    image.height(),
-                                    image.into_raw().into_boxed_slice(),
-                                ))
-                                .unwrap();
+                        match crate::rom_loading::get_thumb(&file_name) {
+                            Ok(image) => {
+                                let texture_id =
+                                    (crate::style::hash(file_name.as_bytes()) & 0x7fff_ffff) as u32;
+                                proxy
+                                    .send_event(UserEvent::NewTexture(
+                                        texture_id,
+                                        image.width(),
+                                        image.height(),
+                                        image.into_raw().into_boxed_slice(),
+                                    ))
+                                    .unwrap();
 
-                            thumbnail = Some(texture_id);
-                        } else {
-                            log::info!("request failed :(");
+                                thumbnail = Some(texture_id);
+                            }
+                            Err(err) => {
+                                log::info!("get thumbnail failed: {err}");
+                            }
                         }
 
                         {
@@ -473,7 +476,6 @@ impl ListBuilder for RomList {
             ctx.create_control().parent(parent).build(ctx);
         } else {
             let graphic = if let Some(texture) = entry.as_ref().and_then(|x| x.thumbnail) {
-                log::info!("using texture!");
                 Texture::new(texture, [0.0, 0.0, 1.0, 1.0])
             } else {
                 Texture::new(0, [0.0, 0.0, 1.0, 1.0]).with_color([120, 120, 120, 255].into())

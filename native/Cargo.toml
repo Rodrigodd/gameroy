@@ -1,5 +1,5 @@
 [package]
-name = "gameroy_native"
+name = "gameroy-native"
 version = "0.2.0"
 edition = "2021"
 build = "build.rs"

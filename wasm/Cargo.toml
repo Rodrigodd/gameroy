@@ -1,5 +1,5 @@
 [package]
-name = "gameroy_wasm"
+name = "gameroy-wasm"
 version = "0.2.0"
 edition = "2021"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]

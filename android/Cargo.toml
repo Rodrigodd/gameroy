@@ -1,5 +1,5 @@
 [package]
-name = "gameroy_android"
+name = "gameroy-android"
 version = "0.2.0"
 edition = "2021"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]

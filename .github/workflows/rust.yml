@@ -48,7 +48,7 @@ jobs:
 
     - name: Build Linux
       run: >
-        cargo build --profile=fast --verbose -p gameroy_native
+        cargo build --profile=fast --verbose -p gameroy-native
         --target=x86_64-unknown-linux-gnu 
         --features=static
 
@@ -100,7 +100,7 @@ jobs:
 
     - name: Build Windows
       run: >
-        cargo build -p gameroy_native --profile=fast --verbose
+        cargo build -p gameroy-native --profile=fast --verbose
         --target=x86_64-pc-windows-msvc  
         --no-default-features --features=static,rfd,audio-engine,threads
 

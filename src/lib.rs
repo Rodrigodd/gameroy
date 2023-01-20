@@ -188,6 +188,8 @@ fn start_event_loop(
         match event {
             Event::Resumed if cfg!(target_os = "android") => {
                 log::info!("reloading graphics");
+                // poke base folder to load the internal data path from ndk_glue::native_activity
+                config::base_folder();
                 ui.reload_graphics(&window);
             }
             Event::Suspended if cfg!(target_os = "android") => {

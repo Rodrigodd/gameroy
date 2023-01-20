@@ -8,10 +8,9 @@ use giui::{
 };
 use sprite_render::SpriteRender;
 
-use crate::widget::fold_view::FoldIcon;
-
 #[cfg(not(feature = "static"))]
 use crate::config;
+use crate::widget::fold_view::FoldIcon;
 
 pub struct Loader<'a> {
     pub fonts: &'a mut Fonts,
@@ -22,10 +21,11 @@ pub struct Loader<'a> {
 
 #[cfg(not(feature = "static"))]
 mod loaded_files {
-    use super::config;
     use giui::{font::Font, graphics::Graphic, style_loader::StyleLoaderCallback};
     use image::{ImageBuffer, Rgba};
     use sprite_render::{Texture, TextureId};
+
+    use super::config;
 
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {

@@ -6,15 +6,17 @@ use jni::objects::{JString, JValue};
 pub fn show_licenses() {
     log::trace!("show licenses");
     let android_context = ndk_context::android_context();
-    let vm = std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
+    let vm =
+        std::sync::Arc::new(unsafe { jni::JavaVM::from_raw(android_context.vm().cast()).unwrap() });
     jni::Executor::new(vm)
         .with_attached(|env| {
-             env.call_method(
+            env.call_method(
                 android_context.context() as jni::sys::jobject,
                 "showLicenses",
                 "()V",
                 &[],
-            ).unwrap();
+            )
+            .unwrap();
             Ok(())
         })
         .unwrap();

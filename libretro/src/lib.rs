@@ -1,3 +1,9 @@
+use std::{
+    ffi::{c_char, c_void},
+    io::Write,
+    mem::MaybeUninit,
+};
+
 use gameroy::{
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
@@ -10,11 +16,6 @@ use rust_libretro_sys::{
     RETRO_DEVICE_ID_JOYPAD_DOWN, RETRO_DEVICE_ID_JOYPAD_LEFT, RETRO_DEVICE_ID_JOYPAD_RIGHT,
     RETRO_DEVICE_ID_JOYPAD_SELECT, RETRO_DEVICE_ID_JOYPAD_START, RETRO_DEVICE_ID_JOYPAD_UP,
     RETRO_DEVICE_JOYPAD, RETRO_ENVIRONMENT_GET_LOG_INTERFACE,
-};
-use std::{
-    ffi::{c_char, c_void},
-    io::Write,
-    mem::MaybeUninit,
 };
 
 const SCREEN_WIDTH: u32 = 160;

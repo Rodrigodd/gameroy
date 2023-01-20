@@ -80,6 +80,12 @@ cd android
 ./gradlew installDebug # or gradlew installDebug, on Windows
 ```
 
+To see the logs:
+
+```shell
+adb logcat *:S gameroy:V RustStdoutStderr:V
+```
+
 The project uses
 [rust-android-gradle](https://github.com/mozilla/rust-android-gradle) for
 building the rust code for android.

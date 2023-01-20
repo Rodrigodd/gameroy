@@ -58,7 +58,7 @@ jobs:
     - name: Form a Package
       run: |
         mkdir package
-        cp target/x86_64-unknown-linux-gnu/fast/gameroy_native package/gameroy.exe
+        cp target/x86_64-unknown-linux-gnu/fast/gameroy-native package/gameroy.exe
         cp license/license.html package/
         cp gameroy.toml package/
 
@@ -110,7 +110,7 @@ jobs:
     - name: Form a Package
       run: |
         mkdir package
-        copy target\x86_64-pc-windows-msvc\fast\gameroy_native.exe package\gameroy.exe
+        copy target\x86_64-pc-windows-msvc\fast\gameroy-native.exe package\gameroy.exe
         copy license\license.html package\
         copy gameroy.toml package\
 

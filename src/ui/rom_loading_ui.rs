@@ -222,8 +222,8 @@ impl RomEntries {
             let index = std::sync::atomic::AtomicUsize::new(0);
 
             std::thread::scope(|s| {
-                /// The threads are mainly IO bound so it makes sense to use a lot of threads. Not
-                /// sure about the right ammount through.
+                // The threads are mainly IO bound so it makes sense to use a lot of threads. Not
+                // sure about the right ammount through.
                 let max_threads = 100.min(entries.read().unwrap().len());
                 for _i in 0..max_threads {
                     let proxy = proxy.clone();

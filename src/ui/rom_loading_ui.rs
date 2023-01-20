@@ -196,87 +196,82 @@ impl RomEntries {
         std::thread::Builder::new()
             .name("loading roms".to_string())
             .spawn(move || {
-                let f = async move {
-                    let start = instant::Instant::now();
+                let start = instant::Instant::now();
 
-                    let roms = crate::rom_loading::load_roms(&roms_path)
-                        .map_err(|e: String| log::error!("error reading roms: {}", e))
-                        .ok()
-                        .unwrap_or_default();
+                let roms = crate::rom_loading::load_roms(&roms_path)
+                    .map_err(|e: String| log::error!("error reading roms: {}", e))
+                    .ok()
+                    .unwrap_or_default();
 
-                    *entries.write().unwrap() = roms
-                        .into_iter()
-                        .map(|x| {
-                            let save_time = x.get_save_time();
-                            log::debug!("{}", x.file_name());
-                            RwLock::new(RomEntry {
-                                file: x,
-                                header_name: None,
-                                size: None,
-                                save_time: save_time.ok(),
-                                thumbnail: None,
-                            })
+                *entries.write().unwrap() = roms
+                    .into_iter()
+                    .map(|x| {
+                        let save_time = x.get_save_time();
+                        log::debug!("{}", x.file_name());
+                        RwLock::new(RomEntry {
+                            file: x,
+                            header_name: None,
+                            size: None,
+                            save_time: save_time.ok(),
+                            thumbnail: None,
                         })
-                        .collect();
+                    })
+                    .collect();
 
-                    proxy.send_event(UserEvent::UpdatedRomList).unwrap();
+                proxy.send_event(UserEvent::UpdatedRomList).unwrap();
 
-                    for entry in entries.read().unwrap().iter() {
-                        let (header, file_name) = {
-                            let rom_file = entry.read().unwrap().file.clone();
-                            let file_name =
-                                rom_file.file_name().trim_end_matches(".gb").to_string();
-                            let header = rom_file.get_header().await;
-                            (header, file_name)
-                        };
+                for entry in entries.read().unwrap().iter() {
+                    let (header, file_name) = {
+                        let rom_file = entry.read().unwrap().file.clone();
+                        let file_name = rom_file.file_name().trim_end_matches(".gb").to_string();
+                        let header = rom_file.get_header();
+                        (header, file_name)
+                    };
 
-                        let mut thumbnail = None;
-                        match crate::rom_loading::get_thumb(&file_name) {
-                            Ok(image) => {
-                                let texture_id =
-                                    (crate::style::hash(file_name.as_bytes()) & 0x7fff_ffff) as u32;
-                                proxy
-                                    .send_event(UserEvent::NewTexture(
-                                        texture_id,
-                                        image.width(),
-                                        image.height(),
-                                        image.into_raw().into_boxed_slice(),
-                                    ))
-                                    .unwrap();
+                    let mut thumbnail = None;
+                    match crate::rom_loading::get_thumb(&file_name) {
+                        Ok(image) => {
+                            let texture_id =
+                                (crate::style::hash(file_name.as_bytes()) & 0x7fff_ffff) as u32;
+                            proxy
+                                .send_event(UserEvent::NewTexture(
+                                    texture_id,
+                                    image.width(),
+                                    image.height(),
+                                    image.into_raw().into_boxed_slice(),
+                                ))
+                                .unwrap();
 
-                                thumbnail = Some(texture_id);
-                            }
-                            Err(err) => {
-                                log::info!("get thumbnail failed: {err}");
-                            }
+                            thumbnail = Some(texture_id);
                         }
-
-                        {
-                            let mut entry = entry.write().unwrap();
-                            entry.thumbnail = thumbnail;
-                            match header {
-                                Ok(header) => {
-                                    entry.header_name = Some(header.title_as_string());
-                                    entry.size =
-                                        Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
-                                }
-                                Err(err) => {
-                                    entry.header_name = Some("Error reading header...".to_string());
-                                    entry.size = None;
-                                    log::error!(
-                                        "error reading '{}' header: {}",
-                                        entry.file.file_name(),
-                                        err
-                                    );
-                                }
-                            }
+                        Err(err) => {
+                            log::info!("get thumbnail failed: {err}");
                         }
-                        proxy.send_event(UserEvent::UpdatedRomList).unwrap();
                     }
 
-                    log::info!("loading roms took: {:?}", start.elapsed());
-                };
-                futures_lite::future::block_on(f);
+                    {
+                        let mut entry = entry.write().unwrap();
+                        entry.thumbnail = thumbnail;
+                        match header {
+                            Ok(header) => {
+                                entry.header_name = Some(header.title_as_string());
+                                entry.size = Some(header.rom_size_in_bytes().unwrap_or(0) as u64);
+                            }
+                            Err(err) => {
+                                entry.header_name = Some("Error reading header...".to_string());
+                                entry.size = None;
+                                log::error!(
+                                    "error reading '{}' header: {}",
+                                    entry.file.file_name(),
+                                    err
+                                );
+                            }
+                        }
+                    }
+                    proxy.send_event(UserEvent::UpdatedRomList).unwrap();
+                }
+
+                log::info!("loading roms took: {:?}", start.elapsed());
             })
             .unwrap();
     }

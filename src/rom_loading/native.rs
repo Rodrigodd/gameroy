@@ -58,7 +58,7 @@ impl RomFile {
         Self { path }
     }
 
-    pub async fn get_header(&self) -> Result<CartridgeHeader, String> {
+    pub fn get_header(&self) -> Result<CartridgeHeader, String> {
         let path = self.path.clone();
         let mut file = std::fs::File::open(path).map_err(|e| format!("io error: {}", e))?;
         match CartridgeHeader::from_reader(&mut file) {

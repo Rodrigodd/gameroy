@@ -46,15 +46,6 @@ pub struct RomFile {
     web_file: web_sys::File,
 }
 impl RomFile {
-    pub async fn get_header(&self) -> Result<CartridgeHeader, String> {
-        let mut data = self.read().await?;
-        let header = match CartridgeHeader::from_bytes(&mut data) {
-            Ok(x) | Err((Some(x), _)) => x,
-            Err((_, e)) => return Err(e),
-        };
-        Ok(header)
-    }
-
     pub fn file_name(&self) -> Cow<str> {
         self.web_file.name().into()
     }

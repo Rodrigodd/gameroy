@@ -190,7 +190,7 @@ pub struct RomFile {
     uri: String,
 }
 impl RomFile {
-    pub async fn get_header(&self) -> Result<CartridgeHeader, String> {
+    pub fn get_header(&self) -> Result<CartridgeHeader, String> {
         let header = read_uri(self.uri.as_str(), 0x150)?;
         match CartridgeHeader::from_bytes(&header) {
             Ok(x) | Err((Some(x), _)) => Ok(x),

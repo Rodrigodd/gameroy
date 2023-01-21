@@ -37,11 +37,11 @@ impl SaveStateHeader {
     const MAGIC_CONST: [u8; 4] = *b"GRST";
 
     /// Create a new SaveStateHeader with default values and current SystemTime.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
-        use std::{
-            convert::TryInto,
-            time::{Duration, SystemTime},
-        };
+        use std::time::{Duration, SystemTime};
+
+        use std::convert::TryInto;
 
         // TODO: this does not work for negative values. Maybe need to use a time crate? In this
         // case the time would need to be provide by the calee (to avoid dependencies).
@@ -55,6 +55,11 @@ impl SaveStateHeader {
             version: Self::SAVE_STATE_VERSION,
             time: Some(time),
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 impl Default for SaveStateHeader {
@@ -70,9 +75,11 @@ impl SaveState for SaveStateHeader {
     fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
         self.magic.save_state(data)?;
         self.version.save_state(data)?;
-        self.time
-            .expect("SaveStateHeader::new() always have time")
-            .save_state(data)?;
+        if let Some(time) = self.time {
+            time.save_state(data)?;
+        } else {
+            u64::max_value().save_state(data)?;
+        }
         Ok(())
     }
 
@@ -83,7 +90,7 @@ impl SaveState for SaveStateHeader {
         if self.version > 1 {
             let mut time = 0;
             time.load_state(data)?;
-            self.time = Some(time);
+            self.time = (time != u64::max_value()).then_some(time);
         } else {
             self.time = None;
         }

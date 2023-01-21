@@ -65,6 +65,9 @@ pub struct Ui {
     pub textures: Textures,
     pub is_animating: bool,
     pub force_render: bool,
+
+    #[cfg(target_os = "android")]
+    pub textures_to_reload: Vec<(u32, Box<dyn Fn() -> (u32, u32, Vec<u8>) + Send + 'static>)>,
 }
 impl Ui {
     pub fn new(window: &Window, proxy: EventLoopProxy<UserEvent>) -> Self {
@@ -116,6 +119,8 @@ impl Ui {
             event_table: Rc::new(RefCell::new(EventTable::new())),
             is_animating: false,
             force_render: true,
+            #[cfg(target_os = "android")]
+            textures_to_reload: Vec::new(),
         };
 
         let style = ui.load_graphics(window);
@@ -255,6 +260,16 @@ impl Ui {
             .filter(sprite_render::TextureFilter::Nearest)
             .create(render)
             .unwrap();
+
+        #[cfg(target_os = "android")]
+        for (id, texture) in self.textures_to_reload.iter() {
+            let (width, height, data) = texture();
+            sprite_render::Texture::new(width, height)
+                .id(TextureId(*id))
+                .data(&data)
+                .create(render)
+                .unwrap();
+        }
 
         style
     }

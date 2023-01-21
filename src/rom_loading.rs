@@ -1,6 +1,8 @@
-use std::io::BufReader;
+use std::io::Read;
 
 use gameroy::gameboy::{cartridge::Cartridge, GameBoy};
+use image::codecs::png::PngEncoder;
+use image::ImageEncoder;
 
 use crate::config::normalize_config_path;
 
@@ -42,7 +44,8 @@ pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, 
     Ok(Box::new(game_boy))
 }
 
-pub fn get_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
+/// Returns a PNG encoded image.
+pub fn get_thumb(file_name: &str) -> Result<Vec<u8>, String> {
     match load_thumb(file_name) {
         Ok(image) => {
             log::info!("loading thumb from file");
@@ -70,28 +73,36 @@ pub fn get_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, 
         }
         Err(ureq::Error::Transport(x)) => return Err(format!("io error: {x}")),
     };
-    log::info!("request done!");
+
     let mut bytes = Vec::new();
     res.into_reader().read_to_end(&mut bytes).unwrap();
 
-    log::info!("to bytes!");
     let image = image::load_from_memory(&bytes).unwrap();
-    log::info!("load image!");
     let image = image::imageops::resize(&image, 96, 96, image::imageops::FilterType::Lanczos3);
-    log::info!("image resized!");
 
-    if let Err(err) = crate::rom_loading::save_thumb(&image, file_name) {
+    let mut buffer = Vec::new();
+    PngEncoder::new(&mut buffer)
+        .write_image(
+            image.as_raw().as_slice(),
+            image.width(),
+            image.height(),
+            image::ColorType::Rgba8,
+        )
+        .map_err(|err| format!("failed to png encode thumbnail: {}", err))?;
+
+    if let Err(err) = crate::rom_loading::save_thumb(&buffer, file_name) {
         log::error!("failed to save thumbnail for '{file_name}': {err}");
     }
 
-    Ok(image)
+    Ok(buffer)
 }
 
-pub fn load_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>, Vec<u8>>, String> {
+/// Returns a PNG encoded image.
+pub fn load_thumb(file_name: &str) -> Result<Vec<u8>, String> {
     let thumbs_folder = normalize_config_path("thumbnails");
     let save_path = thumbs_folder.join(file_name).with_extension("png");
 
-    let file = match std::fs::File::open(save_path) {
+    let mut file = match std::fs::File::open(save_path) {
         Ok(file) => file,
         Err(err) => match err.kind() {
             std::io::ErrorKind::NotFound => return Err(String::new()),
@@ -99,16 +110,14 @@ pub fn load_thumb(file_name: &str) -> Result<image::ImageBuffer<image::Rgba<u8>,
         },
     };
 
-    let reader = BufReader::new(file);
-    image::load(reader, image::ImageFormat::Png)
-        .map_err(|x| x.to_string())
-        .map(|x| x.to_rgba8())
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .map_err(|err| format!("failed reading file: {err}"))?;
+    Ok(buf)
 }
 
-pub fn save_thumb(
-    thumb: &image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
-    file_name: &str,
-) -> Result<(), String> {
+/// Receives a PNG encoded image
+pub fn save_thumb(thumb: &Vec<u8>, file_name: &str) -> Result<(), String> {
     let thumbs_folder = normalize_config_path("thumbnails");
     let save_path = thumbs_folder.join(file_name).with_extension("png");
 
@@ -121,5 +130,5 @@ pub fn save_thumb(
             }
         }
     }
-    thumb.save(save_path).map_err(|x| x.to_string())
+    std::fs::write(save_path, thumb).map_err(|x| x.to_string())
 }

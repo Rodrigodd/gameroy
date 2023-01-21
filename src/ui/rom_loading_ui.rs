@@ -246,15 +246,22 @@ impl RomEntries {
 
                         let mut thumbnail = None;
                         match crate::rom_loading::get_thumb(&file_name) {
-                            Ok(image) => {
+                            Ok(buffer) => {
                                 let texture_id =
                                     (crate::style::hash(file_name.as_bytes()) & 0x7fff_ffff) as u32;
+
                                 proxy
                                     .send_event(UserEvent::NewTexture(
                                         texture_id,
-                                        image.width(),
-                                        image.height(),
-                                        image.into_raw().into_boxed_slice(),
+                                        Box::new(move || {
+                                            let image = image::load_from_memory_with_format(
+                                                &buffer,
+                                                image::ImageFormat::Png,
+                                            )
+                                            .unwrap()
+                                            .into_rgba8();
+                                            (image.width(), image.height(), image.into_raw())
+                                        }),
                                     ))
                                     .unwrap();
 

@@ -315,13 +315,18 @@ fn start_event_loop(
                 ui.update_texture(texture, &data);
                 return;
             }
-            Event::UserEvent(UserEvent::NewTexture(texture, width, height, data)) => {
+            Event::UserEvent(UserEvent::NewTexture(id, texture)) => {
                 log::info!("new texture!");
+
+                let (width, height, data) = texture();
                 sprite_render::Texture::new(width, height)
-                    .id(sprite_render::TextureId(texture))
+                    .id(sprite_render::TextureId(id))
                     .data(&data)
                     .create(ui.render.as_mut())
                     .unwrap();
+
+                #[cfg(target_os = "android")]
+                ui.textures_to_reload.push((id, texture));
                 return;
             }
             _ => {}
@@ -609,7 +614,6 @@ impl App for EmulatorApp {
     }
 }
 
-#[derive(Debug)]
 pub enum UserEvent {
     FrameUpdated,
     EmulatorPaused,
@@ -618,7 +622,7 @@ pub enum UserEvent {
     WatchsUpdated,
     Debug(bool),
     UpdateTexture(u32, Box<[u8]>),
-    NewTexture(u32, u32, u32, Box<[u8]>),
+    NewTexture(u32, Box<dyn Fn() -> (u32, u32, Vec<u8>) + Send + 'static>),
     PopApp,
     LoadRom {
         file: RomFile,
@@ -627,4 +631,32 @@ pub enum UserEvent {
     SpawnTask(u32),
     UpdateRomList,
     UpdatedRomList,
+}
+
+impl std::fmt::Debug for UserEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FrameUpdated => write!(f, "FrameUpdated"),
+            Self::EmulatorPaused => write!(f, "EmulatorPaused"),
+            Self::EmulatorStarted => write!(f, "EmulatorStarted"),
+            Self::BreakpointsUpdated => write!(f, "BreakpointsUpdated"),
+            Self::WatchsUpdated => write!(f, "WatchsUpdated"),
+            Self::Debug(arg0) => f.debug_tuple("Debug").field(arg0).finish(),
+            Self::UpdateTexture(arg0, arg1) => f
+                .debug_tuple("UpdateTexture")
+                .field(arg0)
+                .field(arg1)
+                .finish(),
+            Self::NewTexture(arg0, _) => f.debug_tuple("NewTexture").field(arg0).finish(),
+            Self::PopApp => write!(f, "PopApp"),
+            Self::LoadRom { file, game_boy } => f
+                .debug_struct("LoadRom")
+                .field("file", file)
+                .field("game_boy", game_boy)
+                .finish(),
+            Self::SpawnTask(arg0) => f.debug_tuple("SpawnTask").field(arg0).finish(),
+            Self::UpdateRomList => write!(f, "UpdateRomList"),
+            Self::UpdatedRomList => write!(f, "UpdatedRomList"),
+        }
+    }
 }

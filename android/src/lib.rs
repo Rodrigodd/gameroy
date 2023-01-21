@@ -2,9 +2,9 @@
     backtrace = "on",
     ndk_glue = "ndk_glue",
     logger(
-        level = "trace",
+        level = "info",
         tag = "gameroy",
-        filter = "gameroy,raw_gl_context::android,giui=debug,winit=debug,audio_engine=debug,rfd=debug"
+        filter = "gameroy=trace"
         // filter = "debug"
     )
 ))]

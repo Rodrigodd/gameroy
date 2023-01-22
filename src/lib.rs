@@ -588,10 +588,12 @@ impl App for EmulatorApp {
                         window.request_redraw();
                     }
                     EmulatorStarted => {
+                        log::debug!("emulator started");
                         ui.force_render = true;
                         window.request_redraw();
                     }
                     EmulatorPaused => {
+                        log::debug!("emulator paused");
                         ui.notify(event_table::EmulatorUpdated);
                         ui.force_render = false;
                     }

@@ -38,8 +38,13 @@ pub enum EmulatorEvent {
 
 #[derive(PartialEq, Eq, Debug)]
 enum EmulatorState {
+    /// Do nothing.
     Idle,
+    /// Same as Idle, but transitioning from this state does not trigger a UserEvent::EmulatorStarted.
+    WaitNextFrame,
+    /// Run the emulator, while checking for breakpoints.
     Run,
+    /// Run the emulator, without checking for breakpoints.
     RunNoBreak,
 }
 
@@ -638,9 +643,7 @@ impl Emulator {
             Reset => {
                 self.gb.lock().reset();
                 log::info!("reset");
-                self.state = EmulatorState::Idle;
-                // This will send EmulatorUpdated to the gui
-                self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+                self.set_state(EmulatorState::Idle);
             }
             Pause => {
                 self.debug = true;
@@ -654,7 +657,7 @@ impl Emulator {
 
     pub fn poll(&mut self) -> Control {
         match self.state {
-            EmulatorState::Idle => {}
+            EmulatorState::Idle | EmulatorState::WaitNextFrame => {}
             EmulatorState::Run => {
                 // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                 {
@@ -675,21 +678,23 @@ impl Emulator {
             }
             EmulatorState::RunNoBreak => {
                 if self.rewind {
-                    let gb = &mut *self.gb.lock();
                     {
-                        let joypad = &mut *self.joypad.lock();
-                        if joypad.load_last_frame(gb) {
-                            joypad.pop_last_frame();
+                        let gb = &mut *self.gb.lock();
+                        {
+                            let joypad = &mut *self.joypad.lock();
+                            if joypad.load_last_frame(gb) {
+                                joypad.pop_last_frame();
+                            }
+                        }
+                        {
+                            let mut c = gb.v_blank.take();
+                            if let Some(c) = c.as_mut() {
+                                c(gb)
+                            }
+                            gb.v_blank = c;
                         }
                     }
-                    {
-                        let mut c = gb.v_blank.take();
-                        if let Some(c) = c.as_mut() {
-                            c(gb)
-                        }
-                        gb.v_blank = c;
-                    }
-                    self.state = EmulatorState::Idle;
+                    self.set_state(EmulatorState::WaitNextFrame);
                 } else if self.frame_limit {
                     let mut gb = self.gb.lock();
                     let mut inter = Interpreter(&mut gb);
@@ -710,11 +715,7 @@ impl Emulator {
                     drop(gb);
                     self.update_audio();
 
-                    // change state to Idle, and wait for the next RunFrame
-
-                    // I don't call self.set_state, because i don't want to send the
-                    // EmulatorPaused event
-                    self.state = EmulatorState::Idle;
+                    self.set_state(EmulatorState::WaitNextFrame);
                 } else {
                     // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                     let mut gb = self.gb.lock();

@@ -582,7 +582,7 @@ impl Emulator {
                 self.joypad.lock().current_joypad = joypad;
             }
             Debug(value) => {
-                if self.frame_limit == value {
+                if self.debug == value {
                     return false;
                 }
                 self.debug = value;

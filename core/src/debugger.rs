@@ -382,7 +382,7 @@ impl Debugger {
             if self.interrupt_breakpoint {
                 let interrupts: u8 = inter.0.interrupt_flag & inter.0.interrupt_enabled;
                 if interrupts != 0 && inter.0.cpu.ime == crate::gameboy::cpu::ImeState::Enabled {
-                    return RunResult::ReachBreakpoint;
+                    break RunResult::ReachBreakpoint;
                 }
             }
         };

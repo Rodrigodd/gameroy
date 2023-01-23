@@ -278,7 +278,8 @@ impl Timeline {
         self.savestate_timeline.back().map(|&(_, x, _)| x)
     }
 
-    /// Load the save sate of the last frame in the given `GameBoy`.
+    /// Load the save sate of the last frame in the given `GameBoy`. Returns false if there is no
+    /// last frame.
     fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
         let &(_last_frame, clock_count, range) = if let Some(x) = self.savestate_timeline.back() {
             x
@@ -610,15 +611,17 @@ impl Emulator {
                 if self.debug {
                     let mut gb = self.gb.lock();
                     let mut joypad = self.joypad.lock();
-                    if let Some(last_clock_count) = joypad.last_frame_clock_count() {
-                        let clock_count = gb.clock_count;
-                        // currently, the maximum number of clocks that interpret_op
-                        // elapses is 24, so if the last_frame_clock_count is recent than
-                        // that, this could be after the last instruction. So pop it.
-                        if last_clock_count > clock_count - 24 {
-                            joypad.pop_last_frame();
-                        }
-                        if joypad.load_last_frame(&mut gb) {
+                    loop {
+                        if let Some(last_clock_count) = joypad.last_frame_clock_count() {
+                            let clock_count = gb.clock_count;
+                            // currently, the maximum number of clocks that interpret_op
+                            // elapses is 24, so if the last_frame_clock_count is recent than
+                            // that, this could be after the last instruction. So pop it.
+                            if last_clock_count > clock_count - 24 {
+                                joypad.pop_last_frame();
+                                continue;
+                            }
+                            assert!(joypad.load_last_frame(&mut gb));
                             drop(joypad);
                             drop(gb);
                             {
@@ -626,9 +629,10 @@ impl Emulator {
                                 debugger.target_clock = Some(debugger.last_op_clock);
                             }
                             self.set_state(EmulatorState::Run);
+                        } else {
+                            log::warn!("there is no last frame");
                         }
-                    } else {
-                        log::warn!("there is no last frame");
+                        break;
                     }
                 }
             }

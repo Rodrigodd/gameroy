@@ -37,6 +37,7 @@ pub struct Debugger {
     read_breakpoints: HashSet<u16>,
     jump_breakpoints: HashSet<u16>,
     execute_breakpoints: HashSet<u16>,
+    /// Break if a interrupt is flagged and enabled.
     interrupt_breakpoint: bool,
     breakpoints: BTreeMap<u16, u8>,
     watchs: BTreeSet<u16>,
@@ -351,13 +352,15 @@ impl Debugger {
         self.run_until(gb, gb.clock_count + clocks)
     }
 
-    /// Run at least one step.
-    pub fn run_until(&mut self, gb: &mut GameBoy, target_clock: u64) -> RunResult {
+    /// Run the gameboy emulator until it trigger a breakpoint, or the clock count surpess
+    /// `timeout_clock`. It will always run at least one step.
+    pub fn run_until(&mut self, gb: &mut GameBoy, timeout_clock: u64) -> RunResult {
         let mut inter = Interpreter(gb);
-        let target_clock = if let Some(clock) = self.target_clock {
-            target_clock.min(clock)
+
+        let timeout_clock = if let Some(clock) = self.target_clock {
+            timeout_clock.min(clock)
         } else {
-            target_clock
+            timeout_clock
         };
 
         let result = loop {
@@ -367,8 +370,8 @@ impl Debugger {
             if Some(inter.0.cpu.pc) == self.target_address {
                 self.target_address = None;
                 break RunResult::ReachTargetAddress;
-            } else if inter.0.clock_count >= target_clock {
-                if Some(target_clock) == self.target_clock {
+            } else if inter.0.clock_count >= timeout_clock {
+                if Some(inter.0.clock_count) == self.target_clock {
                     self.target_clock = None;
                     break RunResult::ReachTargetClock;
                 } else {

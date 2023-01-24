@@ -270,7 +270,7 @@ impl ListBuilder for DissasemblerList {
                 cpu.l,
                 cpu.sp,
                 cpu.pc,
-                gb.timer.div,
+                gb.timer.borrow().div,
             );
 
             if let Graphic::Text(text) = ctx.get_graphic_mut(self.cpu) {

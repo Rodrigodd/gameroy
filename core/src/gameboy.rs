@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use crate::{
     disassembler::Trace,
@@ -35,7 +35,7 @@ pub struct GameBoy {
     pub boot_rom: Option<[u8; 0x100]>,
     pub boot_rom_active: bool,
     pub clock_count: u64,
-    pub timer: Timer,
+    pub timer: RefCell<Timer>,
     pub sound: RefCell<SoundController>,
     pub ppu: RefCell<Ppu>,
     /// FF00: P1
@@ -46,10 +46,10 @@ pub struct GameBoy {
     /// FF01: SB
     pub serial_data: u8,
     /// FF02: SC
-    pub serial_control: u8,
+    pub serial_control: Cell<u8>,
     /// The instant, in 2^13 Hz clock count (T-clock count >> 9), in which the first bit of current
     /// serial transfer was send. It is 0 if there is no transfer happening.
-    pub serial_transfer_started: u64,
+    pub serial_transfer_started: Cell<u64>,
     #[cfg(not(target_arch = "wasm32"))]
     pub serial_transfer_callback: Option<Box<dyn FnMut(u8) + Send>>,
     #[cfg(target_arch = "wasm32")]
@@ -60,14 +60,14 @@ pub struct GameBoy {
     /// - bit 2: Timer
     /// - bit 3: Serial
     /// - bit 4: Joypad
-    pub interrupt_flag: u8,
+    pub interrupt_flag: Cell<u8>,
     /// FF46: DMA register
     pub dma: u8,
     /// FFFF: Interrupt Enabled (IE). Same scheme as `interrupt_flag`.
     pub interrupt_enabled: u8,
 
     /// This trigger control if in the next interpret the `v_blank` callback will be called.
-    pub v_blank_trigger: bool,
+    pub v_blank_trigger: Cell<bool>,
     /// A callback that is called after a VBlank. This is called when a vblank interrupt is
     /// triggered.
     pub v_blank: Option<VBlankCallback>,
@@ -129,7 +129,7 @@ crate::save_state!(GameBoy, self, data {
     self.hram;
     // self.boot_rom;
     self.clock_count;
-    self.timer;
+    self.timer.borrow_mut();
 
     self.sound.borrow_mut();
     self.ppu.borrow_mut();
@@ -158,22 +158,22 @@ impl GameBoy {
             boot_rom,
             boot_rom_active: true,
             clock_count: 0,
-            timer: Timer::new(),
+            timer: Timer::new().into(),
             sound: RefCell::new(SoundController::default()),
             ppu: Ppu::default().into(),
 
             joypad: 0xFF,
             joypad_io: 0x00,
             serial_data: 0,
-            serial_control: 0x7E,
-            serial_transfer_started: 0,
+            serial_control: 0x7E.into(),
+            serial_transfer_started: 0.into(),
             serial_transfer_callback: Some(Box::new(|c| {
                 eprint!("{}", c as char);
             })),
-            interrupt_flag: 0,
+            interrupt_flag: 0.into(),
             dma: 0xff,
             interrupt_enabled: 0,
-            v_blank_trigger: false,
+            v_blank_trigger: false.into(),
             v_blank: None,
         };
 
@@ -204,7 +204,7 @@ impl GameBoy {
         self.hram = [0; 0x7F];
         self.boot_rom_active = true;
         self.clock_count = 0;
-        self.timer = Timer::new();
+        self.timer = Timer::new().into();
         self.sound = RefCell::new(SoundController::default());
         self.ppu = Ppu::default().into();
         self.joypad = 0xFF;
@@ -240,7 +240,7 @@ impl GameBoy {
 
         self.joypad_io = 0xCF;
         self.serial_data = 0x00;
-        self.serial_control = 0x7E;
+        self.serial_control = 0x7E.into();
         self.timer = Timer {
             div: 0xabcc,
             tima: 0x00,
@@ -249,8 +249,9 @@ impl GameBoy {
             last_counter_bit: false,
             last_clock_count: self.clock_count,
             loading: 0,
-        };
-        self.interrupt_flag = 0xE1;
+        }
+        .into();
+        self.interrupt_flag = 0xE1.into();
         self.sound
             .borrow_mut()
             .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
@@ -292,6 +293,7 @@ impl GameBoy {
     }
 
     pub fn write(&mut self, mut address: u16, value: u8) {
+        self.update();
         if (0xE000..=0xFDFF).contains(&address) {
             address -= 0x2000;
         }
@@ -323,31 +325,37 @@ impl GameBoy {
     /// Advance the clock by 'count' cycles
     pub fn tick(&mut self, count: u8) {
         self.clock_count += count as u64;
+    }
 
+    pub fn update(&self) {
         // ppu
         let (v_blank_interrupt, stat_interrupt) = Ppu::update(self);
         if stat_interrupt {
-            self.interrupt_flag |= 1 << 1;
+            self.interrupt_flag
+                .set(self.interrupt_flag.get() | (1 << 1));
         }
         if v_blank_interrupt {
-            self.interrupt_flag |= 1 << 0;
-            self.v_blank_trigger = true;
+            self.interrupt_flag
+                .set(self.interrupt_flag.get() | (1 << 0));
+            self.v_blank_trigger.set(true);
         }
 
         // timer
-        if self.timer.update(self.clock_count) {
-            self.interrupt_flag |= 1 << 2;
+        if self.timer.borrow_mut().update(self.clock_count) {
+            self.interrupt_flag
+                .set(self.interrupt_flag.get() | (1 << 2));
         }
 
         // serial
-        if self.serial_transfer_started != 0
-            && self.serial_transfer_started + 7 < (self.clock_count + SERIAL_OFFSET) >> 9
+        if self.serial_transfer_started.get() != 0
+            && self.serial_transfer_started.get() + 7 < (self.clock_count + SERIAL_OFFSET) >> 9
         {
             // interrupt
-            self.interrupt_flag |= 1 << 3;
-            // clear tranfer flag bit
-            self.serial_control &= !0x80;
-            self.serial_transfer_started = 0;
+            self.interrupt_flag
+                .set(self.interrupt_flag.get() | (1 << 3));
+            // clear transfer flag bit
+            self.serial_control.set(self.serial_control.get() & !0x80);
+            self.serial_transfer_started.set(0);
         }
     }
 
@@ -362,14 +370,16 @@ impl GameBoy {
     }
 
     fn write_io(&mut self, address: u8, value: u8) {
+        self.update();
         match address {
             0x00 => self.joypad_io = 0b1100_1111 | (value & 0x30), // JOYPAD
             0x01 => self.serial_data = value,
             0x02 => {
-                self.serial_control = value | 0x7E;
+                *self.serial_control.get_mut() = value | 0x7E;
                 if value & 0x81 == 0x81 {
                     // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
-                    self.serial_transfer_started = (self.clock_count + SERIAL_OFFSET) >> 9;
+                    *self.serial_transfer_started.get_mut() =
+                        (self.clock_count + SERIAL_OFFSET) >> 9;
                     let data = self.serial_data;
                     if let Some(x) = self.serial_transfer_callback.as_mut() {
                         x(data)
@@ -377,9 +387,9 @@ impl GameBoy {
                 }
             }
             0x03 => {}
-            0x04..=0x07 => self.timer.write(address, value),
+            0x04..=0x07 => self.timer.get_mut().write(address, value),
             0x08..=0x0e => {}
-            0x0f => self.interrupt_flag = value,
+            0x0f => *self.interrupt_flag.get_mut() = value,
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound
                     .borrow_mut()
@@ -425,11 +435,20 @@ impl GameBoy {
                 r
             }
             0x01 => self.serial_data,
-            0x02 => self.serial_control,
+            0x02 => {
+                self.update();
+                self.serial_control.get()
+            }
             0x03 => 0xff,
-            0x04..=0x07 => self.timer.read(address),
+            0x04..=0x07 => {
+                self.update();
+                self.timer.borrow().read(address)
+            }
             0x08..=0x0e => 0xff,
-            0x0f => self.interrupt_flag | 0xE0,
+            0x0f => {
+                self.update();
+                self.interrupt_flag.get() | 0xE0
+            }
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound.borrow_mut().read(self.clock_count, address)
             }

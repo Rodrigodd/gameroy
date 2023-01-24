@@ -233,6 +233,7 @@ impl Debugger {
                     .save_state(&mut stf("clock_count.sav"))
                     .map_err(|x| x.to_string())?;
                 gb.timer
+                    .borrow()
                     .save_state(&mut stf("timer.sav"))
                     .map_err(|x| x.to_string())?;
                 {
@@ -386,7 +387,7 @@ impl Debugger {
                 break RunResult::ReachBreakpoint;
             }
             if self.interrupt_breakpoint {
-                let interrupts: u8 = inter.0.interrupt_flag & inter.0.interrupt_enabled;
+                let interrupts: u8 = inter.0.interrupt_flag.get() & inter.0.interrupt_enabled;
                 if interrupts != 0 && inter.0.cpu.ime == crate::gameboy::cpu::ImeState::Enabled {
                     break RunResult::ReachBreakpoint;
                 }

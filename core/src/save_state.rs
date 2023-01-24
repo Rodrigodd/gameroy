@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::io::{Read, Write};
 
 #[derive(Debug)]
@@ -16,6 +17,21 @@ pub enum LoadStateError {
 impl From<std::io::Error> for LoadStateError {
     fn from(error: std::io::Error) -> Self {
         Self::IoError(error)
+    }
+}
+
+pub trait BoolExt {
+    fn get(&self) -> bool;
+    fn get_mut(&mut self) -> &mut bool;
+}
+
+impl BoolExt for bool {
+    fn get(&self) -> bool {
+        *self
+    }
+
+    fn get_mut(&mut self) -> &mut bool {
+        self
     }
 }
 
@@ -161,8 +177,8 @@ macro_rules! save_state {
     (@accum ($n:ident, $s:ident, $d:ident, bitset [ $($e:expr),* ]; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
         $crate::save_state!(
             @accum ($n, $s, $d, $($f)* )
-            -> ($($save)* [ $( &    $e),* ].save_state($d)?; )
-            -> ($($load)* [ $( &mut $e),* ].load_state($d)?; )
+            -> ($($save)* { use $crate::save_state::BoolExt; [ $( &    $e.get()),* ].save_state($d)?; } )
+            -> ($($load)* { use $crate::save_state::BoolExt; [ $( $e.get_mut()),* ].load_state($d)?; } )
         );
     };
     // <expr>
@@ -297,5 +313,19 @@ impl<const N: usize> SaveState for [&mut bool; N] {
         } else {
             unimplemented!()
         }
+    }
+}
+
+impl<T: SaveState + Default + Copy> SaveState for Cell<T> {
+    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+        self.get().save_state(data)?;
+        Ok(())
+    }
+
+    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+        let mut x = T::default();
+        x.load_state(data)?;
+        self.set(x);
+        Ok(())
     }
 }

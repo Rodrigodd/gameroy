@@ -864,8 +864,10 @@ impl Interpreter<'_> {
     }
 
     pub fn interpret_op(&mut self) {
-        if self.0.v_blank_trigger {
-            self.0.v_blank_trigger = false;
+        self.0.update();
+
+        if self.0.v_blank_trigger.get() {
+            self.0.v_blank_trigger.set(false);
             self.0.call_v_blank_callback();
         }
 
@@ -873,7 +875,8 @@ impl Interpreter<'_> {
             self.0.tick(2);
         }
 
-        let interrupts: u8 = self.0.interrupt_flag & self.0.interrupt_enabled;
+        self.0.update();
+        let interrupts: u8 = self.0.interrupt_flag.get() & self.0.interrupt_enabled;
 
         if self.0.cpu.state == CpuState::Halt {
             self.0.tick(2);
@@ -899,8 +902,10 @@ impl Interpreter<'_> {
                     let [lsb, msb] = value.to_le_bytes();
                     self.0.tick(4); // 1 M-cycle with SP in address buss
                     self.0.write(sub16(self.0.cpu.sp, 1), msb);
-                    if self.0.interrupt_enabled & self.0.interrupt_flag != 0 {
-                        interrupt = (self.0.interrupt_flag & self.0.interrupt_enabled)
+
+                    self.0.update();
+                    if self.0.interrupt_flag.get() & self.0.interrupt_enabled != 0 {
+                        interrupt = (self.0.interrupt_flag.get() & self.0.interrupt_enabled)
                             .trailing_zeros() as usize;
                         address = [
                             0x40, // V-Blank
@@ -917,7 +922,10 @@ impl Interpreter<'_> {
                 };
 
                 if interrupt != 8 {
-                    self.0.interrupt_flag &= !(1 << interrupt);
+                    self.0.update();
+                    self.0
+                        .interrupt_flag
+                        .set(self.0.interrupt_flag.get() & !(1 << interrupt));
                     self.jump_to(address);
                 } else {
                     self.jump_to(0x0000);

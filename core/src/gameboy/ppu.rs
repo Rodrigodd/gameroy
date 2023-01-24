@@ -492,16 +492,10 @@ impl Ppu {
         }
     }
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {
-        let (mut v, mut s) = (false, false);
-
-        let mut update_and_borrow = || {
-            (v, s) = Self::update(gb);
-            gb.ppu.borrow_mut()
-        };
-
         match address {
             0x40 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 if value & 0x80 != this.lcdc & 0x80 {
                     if value & 0x80 == 0 {
                         // disable ppu
@@ -521,48 +515,53 @@ impl Ppu {
                 this.lcdc = value
             }
             0x41 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111)
             }
             0x42 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.scy = value
             }
             0x43 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.scx = value
             }
             0x44 => {} // ly is read only
             0x45 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.lyc = value
             }
             0x47 => {
-                let this = &mut *update_and_borrow();
-                this.bgp = (this.bgp & 0x40) | (value & !0x40);
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.bgp = value
             }
             0x48 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.obp0 = value
             }
             0x49 => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.obp1 = value
             }
             0x4A => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.wy = value
             }
             0x4B => {
-                let this = &mut *update_and_borrow();
+                gb.update();
+                let this = &mut *gb.ppu.borrow_mut();
                 this.wx = value
             }
             _ => unreachable!(),
         }
-
-        // for now, ppu update on read or write,should never trigger a interrupt.
-        debug_assert!(!v && !s);
     }
 
     pub fn read(gb: &GameBoy, address: u8) -> u8 {
@@ -571,16 +570,14 @@ impl Ppu {
             0x40 => this.lcdc,
             0x41 => {
                 drop(this);
-                let (v, s) = Self::update(gb);
-                debug_assert!(!v && !s);
+                gb.update();
                 gb.ppu.borrow().stat | 0x80
             }
             0x42 => this.scy,
             0x43 => this.scx,
             0x44 => {
                 drop(this);
-                let (v, s) = Self::update(gb);
-                debug_assert!(!v && !s);
+                gb.update();
                 gb.ppu.borrow().ly
             }
             0x45 => this.lyc,
@@ -654,7 +651,7 @@ impl Ppu {
     }
 
     pub fn start_dma(gb: &mut GameBoy, value: u8) {
-        Self::update(gb);
+        gb.update();
         gb.dma = value;
         let ppu = &mut *gb.ppu.borrow_mut();
         ppu.dma_started = gb.clock_count;
@@ -669,7 +666,7 @@ impl Ppu {
     }
 
     pub fn read_oam(gb: &GameBoy, address: u16) -> u8 {
-        Self::update(gb);
+        gb.update();
         let ppu = &mut *gb.ppu.borrow_mut();
         if ppu.dma_block_oam || ppu.oam_read_block {
             0xff
@@ -679,7 +676,7 @@ impl Ppu {
     }
 
     pub fn write_oam(gb: &mut GameBoy, address: u16, value: u8) {
-        Self::update(gb);
+        gb.update();
         let ppu = &mut *gb.ppu.borrow_mut();
         if !ppu.dma_block_oam && !ppu.oam_write_block {
             ppu.oam[address as usize - 0xFE00] = value;
@@ -687,7 +684,7 @@ impl Ppu {
     }
 
     pub fn read_vram(gb: &GameBoy, address: u16) -> u8 {
-        Self::update(gb);
+        gb.update();
         let ppu = &mut *gb.ppu.borrow_mut();
         if ppu.vram_read_block {
             0xff
@@ -697,7 +694,7 @@ impl Ppu {
     }
 
     pub fn write_vram(gb: &mut GameBoy, address: u16, value: u8) {
-        Self::update(gb);
+        gb.update();
         let ppu = &mut *gb.ppu.borrow_mut();
         if !ppu.vram_write_block {
             ppu.vram[address as usize - 0x8000] = value;

@@ -102,6 +102,16 @@ android_logger = { git = "https://github.com/TiggeZaki/android_logger-rs", branc
 opt-level = 1
 [profile.dev.package.audio-engine]
 opt-level = 3
+
+# Make image decoding be about 10x faster.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.png]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+[profile.dev.package.adler]
+opt-level = 3
 [profile.dev.package.flate2]
 opt-level = 3
 

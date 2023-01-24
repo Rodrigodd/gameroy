@@ -492,13 +492,16 @@ impl Ppu {
         }
     }
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {
-        // for now, ppu update on read or write,should never trigger a interrupt.
-        let (v, s) = Self::update(gb);
-        debug_assert!(!v && !s);
+        let (mut v, mut s) = (false, false);
 
-        let this = &mut *gb.ppu.borrow_mut();
+        let mut update_and_borrow = || {
+            (v, s) = Self::update(gb);
+            gb.ppu.borrow_mut()
+        };
+
         match address {
             0x40 => {
+                let this = &mut *update_and_borrow();
                 if value & 0x80 != this.lcdc & 0x80 {
                     if value & 0x80 == 0 {
                         // disable ppu
@@ -517,18 +520,49 @@ impl Ppu {
                 }
                 this.lcdc = value
             }
-            0x41 => this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111),
-            0x42 => this.scy = value,
-            0x43 => this.scx = value,
+            0x41 => {
+                let this = &mut *update_and_borrow();
+                this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111)
+            }
+            0x42 => {
+                let this = &mut *update_and_borrow();
+                this.scy = value
+            }
+            0x43 => {
+                let this = &mut *update_and_borrow();
+                this.scx = value
+            }
             0x44 => {} // ly is read only
-            0x45 => this.lyc = value,
-            0x47 => this.bgp = value,
-            0x48 => this.obp0 = value,
-            0x49 => this.obp1 = value,
-            0x4A => this.wy = value,
-            0x4B => this.wx = value,
+            0x45 => {
+                let this = &mut *update_and_borrow();
+                this.lyc = value
+            }
+            0x47 => {
+                let this = &mut *update_and_borrow();
+                this.bgp = (this.bgp & 0x40) | (value & !0x40);
+                this.bgp = value
+            }
+            0x48 => {
+                let this = &mut *update_and_borrow();
+                this.obp0 = value
+            }
+            0x49 => {
+                let this = &mut *update_and_borrow();
+                this.obp1 = value
+            }
+            0x4A => {
+                let this = &mut *update_and_borrow();
+                this.wy = value
+            }
+            0x4B => {
+                let this = &mut *update_and_borrow();
+                this.wx = value
+            }
             _ => unreachable!(),
         }
+
+        // for now, ppu update on read or write,should never trigger a interrupt.
+        debug_assert!(!v && !s);
     }
 
     pub fn read(gb: &GameBoy, address: u8) -> u8 {

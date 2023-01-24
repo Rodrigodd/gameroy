@@ -357,8 +357,8 @@ impl Debugger {
     pub fn run_until(&mut self, gb: &mut GameBoy, timeout_clock: u64) -> RunResult {
         let mut inter = Interpreter(gb);
 
-        let timeout_clock = if let Some(clock) = self.target_clock {
-            timeout_clock.min(clock)
+        let timeout_clock = if let Some(target_clock) = self.target_clock {
+            timeout_clock.min(target_clock)
         } else {
             timeout_clock
         };
@@ -371,7 +371,10 @@ impl Debugger {
                 self.target_address = None;
                 break RunResult::ReachTargetAddress;
             } else if inter.0.clock_count >= timeout_clock {
-                if Some(inter.0.clock_count) == self.target_clock {
+                if self
+                    .target_clock
+                    .map_or(false, |x| inter.0.clock_count >= x)
+                {
                     self.target_clock = None;
                     break RunResult::ReachTargetClock;
                 } else {

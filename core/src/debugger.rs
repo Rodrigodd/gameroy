@@ -399,12 +399,4 @@ impl Debugger {
 
         result
     }
-
-    // pub fn set_target_address(&mut self, address: Option<u16>) {
-    //     self.target_address = address;
-    // }
-
-    // pub fn set_target_clock(&mut self, clock: Option<u64>) {
-    //     self.target_clock = clock;
-    // }
 }

@@ -593,6 +593,7 @@ impl Emulator {
                 }
                 self.debug = value;
                 if self.debug {
+                    self.debugger.lock().last_op_clock = None;
                     self.set_state(EmulatorState::Idle);
                 } else {
                     self.set_state(EmulatorState::RunNoBreak);
@@ -612,26 +613,31 @@ impl Emulator {
                     let mut gb = self.gb.lock();
                     let mut joypad = self.joypad.lock();
                     loop {
-                        if let Some(last_clock_count) = joypad.last_frame_clock_count() {
-                            let clock_count = gb.clock_count;
-                            // currently, the maximum number of clocks that interpret_op
-                            // elapses is 24, so if the last_frame_clock_count is recent than
-                            // that, this could be after the last instruction. So pop it.
-                            if last_clock_count > clock_count - 24 {
-                                joypad.pop_last_frame();
-                                continue;
-                            }
-                            assert!(joypad.load_last_frame(&mut gb));
-                            drop(joypad);
-                            drop(gb);
-                            {
-                                let debugger = &mut *self.debugger.lock();
-                                debugger.target_clock = Some(debugger.last_op_clock);
-                            }
-                            self.set_state(EmulatorState::Run);
-                        } else {
+                        let Some(last_clock_count) = joypad.last_frame_clock_count()  else {
                             log::warn!("there is no last frame");
+                            break;
+                        };
+
+                        let clock_count = gb.clock_count;
+                        // currently, the maximum number of clocks that interpret_op
+                        // elapses is 24, so if the last_frame_clock_count is recent than
+                        // that, this could be after the last instruction. So pop it.
+                        if last_clock_count > clock_count - 24 {
+                            joypad.pop_last_frame();
+                            continue;
                         }
+                        assert!(joypad.load_last_frame(&mut gb));
+                        drop(joypad);
+                        drop(gb);
+                        {
+                            let debugger = &mut *self.debugger.lock();
+                            let Some(last_op_clock) = debugger.last_op_clock else {
+                                log::warn!("debugger don't have last op clock");
+                                break;
+                            };
+                            debugger.target_clock = Some(last_op_clock);
+                        }
+                        self.set_state(EmulatorState::Run);
                         break;
                     }
                 }

@@ -46,7 +46,7 @@ pub struct Debugger {
     /// Clock to stop at
     pub target_clock: Option<u64>,
     /// The clock_count in the previous instruction, used for stepback.
-    pub last_op_clock: u64,
+    pub last_op_clock: Option<u64>,
     /// Callback called when self is mutated
     pub callback: Option<DebuggerCallback>,
 }
@@ -364,7 +364,7 @@ impl Debugger {
         };
 
         let result = loop {
-            self.last_op_clock = inter.0.clock_count;
+            self.last_op_clock = Some(inter.0.clock_count);
             inter.interpret_op();
 
             if Some(inter.0.cpu.pc) == self.target_address {

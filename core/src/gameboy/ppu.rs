@@ -847,26 +847,26 @@ impl Ppu {
                     // Check for window activation
                     let window_enabled = ppu.lcdc & 0x20 != 0;
                     if !ppu.is_in_window && ppu.reach_window && window_enabled {
-                        let mut should_active = false;
+                        let mut should_activate = false;
                         if ppu.wx == 0 {
                             let cmp = [-7i8, -9, -10, -11, -12, -13, -14, -14];
                             if ppu.scanline_x == cmp[(ppu.scx % 8) as usize] as u8 {
-                                should_active = true;
+                                should_activate = true;
                             }
                         // else if wx166_glitch
                         } else if ppu.wx < 166 {
                             if ppu.wx == ppu.scanline_x.wrapping_add(7) {
-                                should_active = true;
+                                should_activate = true;
                             } else if ppu.wx == ppu.scanline_x.wrapping_add(6) {
                                 // TODO: && !wx_just_changed
-                                should_active = true;
+                                should_activate = true;
                                 if ppu.screen_x > 0 {
                                     ppu.screen_x -= 1;
                                 }
                             }
                         }
 
-                        if should_active {
+                        if should_activate {
                             // wrapping add, because wyc starts at -1
                             ppu.wyc = ppu.wyc.wrapping_add(1);
                             if ppu.wx == 0 && ppu.scx % 8 != 0 {

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
+use crate::save_state::SaveStateContext;
 use crate::{gameboy::GameBoy, interpreter::Interpreter, save_state::SaveState};
 
 pub mod break_flags {
@@ -214,44 +215,46 @@ impl Debugger {
                     std::fs::File::create(path).unwrap()
                 };
 
-                // gb.trace.save_state(output)?;
+                let ctx = &mut SaveStateContext::default();
+
+                // gb.trace.save_state(ctx, output)?;
                 gb.cpu
-                    .save_state(&mut stf("cpu.sav"))
+                    .save_state(ctx, &mut stf("cpu.sav"))
                     .map_err(|x| x.to_string())?;
-                // gb.cartridge.save_state(&mut stf("cpu.sav")).map_err(|x| x.to_string())?;
+                // gb.cartridge.save_state(ctx, &mut stf("cpu.sav")).map_err(|x| x.to_string())?;
                 gb.wram
-                    .save_state(&mut stf("wram.sav"))
+                    .save_state(ctx, &mut stf("wram.sav"))
                     .map_err(|x| x.to_string())?;
                 gb.hram
-                    .save_state(&mut stf("hram.sav"))
+                    .save_state(ctx, &mut stf("hram.sav"))
                     .map_err(|x| x.to_string())?;
-                // gb.boot_rom.save_state(output).map_err(|x| x.to_string())?;
+                // gb.boot_rom.save_state(ctx, output).map_err(|x| x.to_string())?;
                 [&gb.boot_rom_active]
-                    .save_state(&mut stf("boot_rom_active.sav"))
+                    .save_state(ctx, &mut stf("boot_rom_active.sav"))
                     .map_err(|x| x.to_string())?;
                 gb.clock_count
-                    .save_state(&mut stf("clock_count.sav"))
+                    .save_state(ctx, &mut stf("clock_count.sav"))
                     .map_err(|x| x.to_string())?;
                 gb.timer
                     .borrow()
-                    .save_state(&mut stf("timer.sav"))
+                    .save_state(ctx, &mut stf("timer.sav"))
                     .map_err(|x| x.to_string())?;
                 {
                     let mut sound = gb.sound.borrow_mut();
                     sound.update(gb.clock_count);
                     sound
-                        .save_state(&mut stf("sound.sav"))
+                        .save_state(ctx, &mut stf("sound.sav"))
                         .map_err(|x| x.to_string())?;
                 }
                 gb.ppu
                     .borrow()
-                    .save_state(&mut stf("ppu.sav"))
+                    .save_state(ctx, &mut stf("ppu.sav"))
                     .map_err(|x| x.to_string())?;
                 gb.joypad
-                    .save_state(&mut stf("joypad.sav"))
+                    .save_state(ctx, &mut stf("joypad.sav"))
                     .map_err(|x| x.to_string())?;
-                // gb.serial_transfer.save_state(data)?;
-                // gb.v_blank.save_state(data)
+                // gb.serial_transfer.save_state(ctx, data)?;
+                // gb.v_blank.save_state(ctx, data)
             }
             x => return Err(format!("'{}' is not a valid command", x)),
         }

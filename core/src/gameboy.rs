@@ -1,8 +1,11 @@
-use std::cell::{Cell, RefCell};
+use std::{
+    cell::{Cell, RefCell},
+    time::SystemTime,
+};
 
 use crate::{
     disassembler::Trace,
-    save_state::{LoadStateError, SaveState, SaveStateHeader},
+    save_state::{LoadStateError, SaveState, SaveStateContext, SaveStateHeader},
 };
 
 pub mod cartridge;
@@ -120,8 +123,8 @@ impl PartialEq for GameBoy {
         // && self.v_blank == other.v_blank
     }
 }
-crate::save_state!(GameBoy, self, data {
-    SaveStateHeader::new();
+crate::save_state!(GameBoy, self, ctx, data {
+    SaveStateHeader;
     // self.trace;
     self.cpu;
     self.cartridge;
@@ -129,6 +132,7 @@ crate::save_state!(GameBoy, self, data {
     self.hram;
     // self.boot_rom;
     self.clock_count;
+    on_load ctx.clock_count = Some(self.clock_count);
     self.timer.borrow_mut();
 
     self.sound.borrow_mut();
@@ -192,6 +196,24 @@ impl GameBoy {
         }
     }
 
+    pub fn save_state<W: std::io::Write>(&self, data: &mut W) -> Result<(), std::io::Error> {
+        self.update();
+        let ctx = &mut SaveStateContext::new(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64,
+            self.clock_count,
+        );
+        SaveState::save_state(self, ctx, data)
+    }
+
+    pub fn load_state<R: std::io::Read>(&mut self, data: &mut R) -> Result<(), LoadStateError> {
+        let ctx = &mut SaveStateContext::default();
+        self.update();
+        SaveState::load_state(self, ctx, data)
+    }
+
     /// Reset the gameboy to its stating state.
     pub fn reset(&mut self) {
         if self.boot_rom.is_none() {
@@ -213,6 +235,8 @@ impl GameBoy {
 
     /// Reset the gameboy to its state after disabling the boot.
     pub fn reset_after_boot(&mut self) {
+        let ctx = &mut SaveStateContext::default();
+
         self.cpu = Cpu {
             a: 0x01,
             f: cpu::Flags(0xb0),
@@ -254,7 +278,7 @@ impl GameBoy {
         self.interrupt_flag = 0xE1.into();
         self.sound
             .borrow_mut()
-            .load_state(&mut &include_bytes!("../after_boot/sound.sav")[..])
+            .load_state(ctx, &mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
     }
 

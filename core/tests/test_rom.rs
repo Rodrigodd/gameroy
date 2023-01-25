@@ -9,7 +9,6 @@ use std::{
 use gameroy::{
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
-    save_state::SaveState,
 };
 use rand::{Rng, SeedableRng};
 

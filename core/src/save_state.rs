@@ -20,6 +20,204 @@ impl From<std::io::Error> for LoadStateError {
     }
 }
 
+/// Context used throughout the serialization process.
+#[derive(Clone)]
+pub struct SaveStateContext {
+    /// The save state format version.
+    pub version: u32,
+    /// The instant that this file was saved, in number of milliseconds since the UNIX_EPOCH
+    pub time: Option<u64>,
+    /// The clock_count of the GameBoy.
+    pub clock_count: Option<u64>,
+}
+
+impl SaveStateContext {
+    pub fn new(time: u64, clock_count: u64) -> Self {
+        Self {
+            version: SaveStateHeader::SAVE_STATE_VERSION,
+            time: Some(time),
+            clock_count: Some(clock_count),
+        }
+    }
+}
+
+impl Default for SaveStateContext {
+    fn default() -> Self {
+        Self {
+            version: SaveStateHeader::SAVE_STATE_VERSION,
+            time: None,
+            clock_count: None,
+        }
+    }
+}
+
+/// The Header of a save state. Contains some metadata like version and time of save.
+#[derive(Debug)]
+pub struct SaveStateHeader;
+impl SaveStateHeader {
+    /// The current version of the save state format
+    const SAVE_STATE_VERSION: u32 = 2;
+
+    /// "GameRoy Save State" magic contant.
+    const MAGIC_CONST: [u8; 4] = *b"GRST";
+}
+impl SaveState for SaveStateHeader {
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
+        Self::MAGIC_CONST.save_state(ctx, data)?;
+        Self::SAVE_STATE_VERSION.save_state(ctx, data)?;
+        if let Some(time) = ctx.time {
+            time.save_state(ctx, data)?;
+        } else {
+            u64::max_value().save_state(ctx, data)?;
+        }
+        Ok(())
+    }
+
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
+        let mut magic = [0u8; 4];
+        magic.load_state(ctx, data)?;
+
+        let mut version = 0u32;
+        version.load_state(ctx, data)?;
+
+        ctx.version = version;
+
+        if ctx.version > 1 {
+            let mut time = 0;
+            time.load_state(ctx, data)?;
+            ctx.time = (time != u64::max_value()).then_some(time);
+        } else {
+            ctx.time = None;
+        }
+
+        if magic != Self::MAGIC_CONST {
+            return Err(LoadStateError::InvalidMagicConst(magic));
+        }
+
+        if ctx.version > Self::SAVE_STATE_VERSION {
+            return Err(LoadStateError::UnknownVersion(ctx.version));
+        }
+
+        Ok(())
+    }
+}
+
+pub trait SaveState {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error>;
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError>;
+}
+
+impl SaveState for u8 {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
+        data.write_all(&[*self])?;
+        Ok(())
+    }
+
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
+        data.read_exact(std::slice::from_mut(self))?;
+        Ok(())
+    }
+}
+
+#[macro_export]
+macro_rules! save_state {
+    // end
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident,) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        impl SaveState for $n {
+            fn save_state(&$s, $ctx: &mut $crate::save_state::SaveStateContext, $d: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+                $($save)*
+                let _ = $d;
+                Ok(())
+            }
+
+            fn load_state(&mut $s, $ctx: &mut $crate::save_state::SaveStateContext, $d: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+                $($load)*
+                let _ = $d;
+                Ok(())
+            }
+        }
+    };
+    // const <expr>
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, const $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ($($save)* ($e).save_state($ctx, $d)?; )
+            -> ($($load)* {
+                let expected = $e;
+                let mut loaded = expected;
+                loaded.load_state($ctx, $d)?;
+                if loaded != expected {
+                    LoadStateError::ConstMismatch(format!("{:?}", loaded), format!("{:?}", expected));
+                }
+            })
+        );
+    };
+    // bitset [<expr>*]
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, bitset [ $($e:expr),* ]; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ($($save)* { use $crate::save_state::BoolExt; [ $( &   $e.get()),* ].save_state($ctx, $d)?; } )
+            -> ($($load)* { use $crate::save_state::BoolExt; [ $( $e.get_mut()),* ].load_state($ctx, $d)?; } )
+        );
+    };
+    // on_load <expr>
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, on_load $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ($($save)* )
+            -> ($($load)* ($e); )
+        );
+    };
+    // <expr>
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ($($save)* ($e).save_state($ctx, $d)?; )
+            -> ($($load)* ($e).load_state($ctx, $d)?; )
+        );
+    };
+    // entry
+    ($n:ident, $s:ident, $ctx:ident, $d:ident { $($f:tt)* }) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ()
+            -> ()
+        );
+    };
+    // entry
+    ($n:ident, $s:ident, $d:ident { $($f:tt)* }) => {
+        $crate::save_state!(
+            @accum ($n, $s, _ctx, $d, $($f)* )
+            -> ()
+            -> ()
+        );
+    };
+}
+
 pub trait BoolExt {
     fn get(&self) -> bool;
     fn get_mut(&mut self) -> &mut bool;
@@ -35,177 +233,21 @@ impl BoolExt for bool {
     }
 }
 
-/// The Header of a save state. Contains some metadata like version and time of save.
-#[derive(Debug)]
-pub struct SaveStateHeader {
-    /// "GameRoy Save State" magic contant.
-    ///
-    /// Should have value b"GRST".
-    pub magic: [u8; 4],
-    /// The version of this save
-    pub version: u32,
-    /// The instant that this file was saved, in number of milliseconds since the UNIX_EPOCH
-    pub time: Option<u64>,
-}
-impl SaveStateHeader {
-    /// The current version of the save state format
-    const SAVE_STATE_VERSION: u32 = 2;
-    const MAGIC_CONST: [u8; 4] = *b"GRST";
-
-    /// Create a new SaveStateHeader with default values and current SystemTime.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub fn new() -> Self {
-        use std::time::{Duration, SystemTime};
-
-        use std::convert::TryInto;
-
-        // TODO: this does not work for negative values. Maybe need to use a time crate? In this
-        // case the time would need to be provide by the calee (to avoid dependencies).
-        let since_epoch = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
-        let time: Result<u64, _> = since_epoch.unwrap_or(Duration::ZERO).as_millis().try_into();
-        // Also not handle times after 584 millions years after epoch.
-        let time = time.unwrap_or(u64::max_value());
-
-        Self {
-            magic: Self::MAGIC_CONST,
-            version: Self::SAVE_STATE_VERSION,
-            time: Some(time),
-        }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-impl Default for SaveStateHeader {
-    fn default() -> Self {
-        Self {
-            magic: Self::MAGIC_CONST,
-            version: Self::SAVE_STATE_VERSION,
-            time: None,
-        }
-    }
-}
-impl SaveState for SaveStateHeader {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        self.magic.save_state(data)?;
-        self.version.save_state(data)?;
-        if let Some(time) = self.time {
-            time.save_state(data)?;
-        } else {
-            u64::max_value().save_state(data)?;
-        }
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        self.magic.load_state(data)?;
-        self.version.load_state(data)?;
-
-        if self.version > 1 {
-            let mut time = 0;
-            time.load_state(data)?;
-            self.time = (time != u64::max_value()).then_some(time);
-        } else {
-            self.time = None;
-        }
-
-        if self.magic != Self::MAGIC_CONST {
-            return Err(LoadStateError::InvalidMagicConst(self.magic));
-        }
-
-        if self.version > Self::SAVE_STATE_VERSION {
-            return Err(LoadStateError::UnknownVersion(self.version));
-        }
-
-        Ok(())
-    }
-}
-
-pub trait SaveState {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error>;
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError>;
-}
-
-impl SaveState for u8 {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        data.write_all(&[*self])?;
-        Ok(())
-    }
-
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
-        data.read_exact(std::slice::from_mut(self))?;
-        Ok(())
-    }
-}
-
-#[macro_export]
-macro_rules! save_state {
-    // end
-    (@accum ($n:ident, $s:ident, $d:ident,) -> ($($save:tt)*) -> ($($load:tt)*)) => {
-        impl SaveState for $n {
-            fn save_state(&$s, $d: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-                $($save)*
-                let _ = $d;
-                Ok(())
-            }
-
-            fn load_state(&mut $s, $d: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-                $($load)*
-                let _ = $d;
-                Ok(())
-            }
-        }
-    };
-    // const <expr>
-    (@accum ($n:ident, $s:ident, $d:ident, const $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
-        $crate::save_state!(
-            @accum ($n, $s, $d, $($f)* )
-            -> ($($save)* ($e).save_state($d)?; )
-            -> ($($load)* {
-                let expected = $e;
-                let mut loaded = expected;
-                loaded.load_state($d)?;
-                if loaded != expected {
-                    LoadStateError::ConstMismatch(format!("{:?}", loaded), format!("{:?}", expected));
-                }
-            })
-        );
-    };
-    // bitset [<expr>*]
-    (@accum ($n:ident, $s:ident, $d:ident, bitset [ $($e:expr),* ]; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
-        $crate::save_state!(
-            @accum ($n, $s, $d, $($f)* )
-            -> ($($save)* { use $crate::save_state::BoolExt; [ $( &    $e.get()),* ].save_state($d)?; } )
-            -> ($($load)* { use $crate::save_state::BoolExt; [ $( $e.get_mut()),* ].load_state($d)?; } )
-        );
-    };
-    // <expr>
-    (@accum ($n:ident, $s:ident, $d:ident, $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
-        $crate::save_state!(
-            @accum ($n, $s, $d, $($f)* )
-            -> ($($save)* ($e).save_state($d)?; )
-            -> ($($load)* ($e).load_state($d)?; )
-        );
-    };
-    // entry
-    ($n:ident, $s:ident, $d:ident { $($f:tt)* }) => {
-        $crate::save_state!(
-            @accum ($n, $s, $d, $($f)* )
-            -> ()
-            -> ()
-        );
-    };
-}
-
 impl SaveState for u16 {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         data.write_all(&self.to_be_bytes())?;
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         let mut bytes = [0; 2];
         data.read_exact(&mut bytes)?;
         *self = u16::from_be_bytes(bytes);
@@ -214,12 +256,20 @@ impl SaveState for u16 {
 }
 
 impl SaveState for u32 {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         data.write_all(&self.to_be_bytes())?;
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         let mut bytes = [0; 4];
         data.read_exact(&mut bytes)?;
         *self = u32::from_be_bytes(bytes);
@@ -228,12 +278,20 @@ impl SaveState for u32 {
 }
 
 impl SaveState for u64 {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         data.write_all(&self.to_be_bytes())?;
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         let mut bytes = [0; 8];
         data.read_exact(&mut bytes)?;
         *self = u64::from_be_bytes(bytes);
@@ -242,29 +300,45 @@ impl SaveState for u64 {
 }
 
 impl<T: SaveState, const N: usize> SaveState for [T; N] {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         for x in self {
-            x.save_state(data)?;
+            x.save_state(ctx, data)?;
         }
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         for x in self {
-            x.load_state(data)?;
+            x.load_state(ctx, data)?;
         }
         Ok(())
     }
 }
 
 impl SaveState for Vec<u8> {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         data.write_all(&(self.len() as u32).to_be_bytes())?;
         data.write_all(self)?;
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         let mut bytes = [0; 4];
         data.read_exact(&mut bytes)?;
         let len = u32::from_be_bytes(bytes);
@@ -275,7 +349,11 @@ impl SaveState for Vec<u8> {
 }
 
 impl<const N: usize> SaveState for [&bool; N] {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         if N <= 8 {
             let mut flags = 0;
             for &&b in self {
@@ -288,17 +366,29 @@ impl<const N: usize> SaveState for [&bool; N] {
         }
     }
 
-    fn load_state(&mut self, _data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        _data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         unimplemented!()
     }
 }
 
 impl<const N: usize> SaveState for [&mut bool; N] {
-    fn save_state(&self, _data: &mut impl Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        _data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
         unimplemented!()
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         if N <= 8 {
             let mut flags = 0;
             data.read_exact(std::slice::from_mut(&mut flags))?;
@@ -317,14 +407,22 @@ impl<const N: usize> SaveState for [&mut bool; N] {
 }
 
 impl<T: SaveState + Default + Copy> SaveState for Cell<T> {
-    fn save_state(&self, data: &mut impl Write) -> Result<(), std::io::Error> {
-        self.get().save_state(data)?;
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Write,
+    ) -> Result<(), std::io::Error> {
+        self.get().save_state(ctx, data)?;
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         let mut x = T::default();
-        x.load_state(data)?;
+        x.load_state(ctx, data)?;
         self.set(x);
         Ok(())
     }

@@ -1,6 +1,6 @@
 use crate::{
     gameboy::GameBoy,
-    save_state::{LoadStateError, SaveState},
+    save_state::{LoadStateError, SaveState, SaveStateContext},
 };
 
 #[derive(PartialEq, Eq, Default, Clone, Debug)]
@@ -12,18 +12,26 @@ pub struct PixelFifo {
     tail: u8,
 }
 impl SaveState for PixelFifo {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        self.queue.save_state(data)?;
-        self.head.save_state(data)?;
-        self.tail.save_state(data)?;
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        self.queue.save_state(ctx, data)?;
+        self.head.save_state(ctx, data)?;
+        self.tail.save_state(ctx, data)?;
 
         Ok(())
     }
 
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
-        self.queue.load_state(data)?;
-        self.head.load_state(data)?;
-        self.tail.load_state(data)?;
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Read,
+    ) -> Result<(), LoadStateError> {
+        self.queue.load_state(ctx, data)?;
+        self.head.load_state(ctx, data)?;
+        self.tail.load_state(ctx, data)?;
 
         Ok(())
     }
@@ -128,13 +136,21 @@ pub struct Sprite {
     pub flags: u8,
 }
 impl SaveState for Sprite {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        [self.sx, self.sy, self.tile, self.flags].save_state(data)
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        [self.sx, self.sy, self.tile, self.flags].save_state(ctx, data)
     }
 
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Read,
+    ) -> Result<(), LoadStateError> {
         let mut t = [0u8; 4];
-        t.load_state(data)?;
+        t.load_state(ctx, data)?;
         let [sx, sy, t, flags] = t;
         *self = Self {
             sx,
@@ -422,17 +438,18 @@ impl Default for Ppu {
 impl Ppu {
     pub fn reset_after_boot(&mut self) {
         let mut ppu_state = &include_bytes!("../../after_boot/ppu.sav")[..];
+        let ctx = &mut SaveStateContext::default();
         *self = Self {
             #[rustfmt::skip]
             vram: {
                 let mut vram = [0; 0x2000];
-                vram.load_state(&mut ppu_state).unwrap();
+                vram.load_state(ctx, &mut ppu_state).unwrap();
                 vram
 
             },
             oam: {
                 let mut oam = [0; 0xA0];
-                oam.load_state(&mut ppu_state).unwrap();
+                oam.load_state(ctx, &mut ppu_state).unwrap();
                 oam
             },
             dma_started: 0x7fff_ffff_ffff_ffff,
@@ -444,7 +461,7 @@ impl Ppu {
             vram_write_block: false,
             screen: {
                 let mut screen = [0; 0x5A00];
-                screen.load_state(&mut ppu_state).unwrap();
+                screen.load_state(ctx, &mut ppu_state).unwrap();
                 screen
             },
             sprite_buffer: [Sprite::default(); 10],

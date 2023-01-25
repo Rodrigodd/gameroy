@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::save_state::{LoadStateError, SaveState};
+use crate::save_state::{LoadStateError, SaveState, SaveStateContext};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum CpuState {
@@ -9,13 +9,21 @@ pub enum CpuState {
     Stopped = 2,
 }
 impl SaveState for CpuState {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        (*self as u8).save_state(data)
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        (*self as u8).save_state(ctx, data)
     }
 
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Read,
+    ) -> Result<(), LoadStateError> {
         let mut value = 0u8;
-        value.load_state(data)?;
+        value.load_state(ctx, data)?;
         *self = match value {
             0 => Self::Running,
             1 => Self::Halt,
@@ -41,13 +49,21 @@ pub enum ImeState {
     ToBeEnable = 2,
 }
 impl SaveState for ImeState {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
-        (*self as u8).save_state(data)
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        (*self as u8).save_state(ctx, data)
     }
 
-    fn load_state(&mut self, data: &mut impl std::io::Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Read,
+    ) -> Result<(), LoadStateError> {
         let mut value = 0u8;
-        value.load_state(data)?;
+        value.load_state(ctx, data)?;
         *self = match value {
             0 => Self::Disabled,
             1 => Self::Enabled,

@@ -8,7 +8,6 @@ use gameroy::{
     gameboy::GameBoy,
     interpreter::Interpreter,
     parser::Vbm,
-    save_state::SaveState,
 };
 use instant::Instant;
 use parking_lot::Mutex as ParkMutex;

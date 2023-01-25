@@ -1,6 +1,6 @@
 use std::{convert::TryInto, io::Read};
 
-use crate::save_state::{LoadStateError, SaveState};
+use crate::save_state::{LoadStateError, SaveState, SaveStateContext};
 
 fn mbc_type_name(code: u8) -> &'static str {
     match code {
@@ -163,29 +163,37 @@ pub struct Cartridge {
     mbc: Mbc,
 }
 impl SaveState for Cartridge {
-    fn save_state(&self, data: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+    fn save_state(
+        &self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl std::io::Write,
+    ) -> Result<(), std::io::Error> {
         // self.rom.save_state(data)?;
-        self.ram.save_state(data)?;
+        self.ram.save_state(ctx, data)?;
         match &self.mbc {
-            Mbc::None(x) => x.save_state(data),
-            Mbc::Mbc1(x) => x.save_state(data),
-            Mbc::Mbc1M(x) => x.save_state(data),
-            Mbc::Mbc2(x) => x.save_state(data),
-            Mbc::Mbc3(x) => x.save_state(data),
-            Mbc::Mbc5(x) => x.save_state(data),
+            Mbc::None(x) => x.save_state(ctx, data),
+            Mbc::Mbc1(x) => x.save_state(ctx, data),
+            Mbc::Mbc1M(x) => x.save_state(ctx, data),
+            Mbc::Mbc2(x) => x.save_state(ctx, data),
+            Mbc::Mbc3(x) => x.save_state(ctx, data),
+            Mbc::Mbc5(x) => x.save_state(ctx, data),
         }
     }
 
-    fn load_state(&mut self, data: &mut impl Read) -> Result<(), LoadStateError> {
+    fn load_state(
+        &mut self,
+        ctx: &mut SaveStateContext,
+        data: &mut impl Read,
+    ) -> Result<(), LoadStateError> {
         // self.rom.load_state(data)?;
-        self.ram.load_state(data)?;
+        self.ram.load_state(ctx, data)?;
         match &mut self.mbc {
-            Mbc::None(x) => x.load_state(data),
-            Mbc::Mbc1(x) => x.load_state(data),
-            Mbc::Mbc1M(x) => x.load_state(data),
-            Mbc::Mbc2(x) => x.load_state(data),
-            Mbc::Mbc3(x) => x.load_state(data),
-            Mbc::Mbc5(x) => x.load_state(data),
+            Mbc::None(x) => x.load_state(ctx, data),
+            Mbc::Mbc1(x) => x.load_state(ctx, data),
+            Mbc::Mbc1M(x) => x.load_state(ctx, data),
+            Mbc::Mbc2(x) => x.load_state(ctx, data),
+            Mbc::Mbc3(x) => x.load_state(ctx, data),
+            Mbc::Mbc5(x) => x.load_state(ctx, data),
         }
     }
 }

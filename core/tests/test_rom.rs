@@ -532,13 +532,11 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m2_win_en_toggle_dmg_blob.png",
             30_222_844,
         );
-        #[ignore]
         m3_bgp_change(
             "mealybug-tearoom-tests/ppu/m3_bgp_change.gb",
             "mealybug-tearoom-tests/ppu/m3_bgp_change_dmg_blob.png",
             24_065_976,
         );
-        #[ignore]
         m3_bgp_change_sprites(
             "mealybug-tearoom-tests/ppu/m3_bgp_change_sprites.gb",
             "mealybug-tearoom-tests/ppu/m3_bgp_change_sprites_dmg_blob.png",
@@ -635,7 +633,6 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change2_dmg_blob.png",
         //     25_000_000,
         // );
-        #[ignore]
         m3_obp0_change(
             "mealybug-tearoom-tests/ppu/m3_obp0_change.gb",
             "mealybug-tearoom-tests/ppu/m3_obp0_change_dmg_blob.png",
@@ -668,13 +665,11 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_scy_change2_dmg_blob.png",
         //     25_000_000,
         // );
-        #[ignore]
         m3_window_timing(
             "mealybug-tearoom-tests/ppu/m3_window_timing.gb",
             "mealybug-tearoom-tests/ppu/m3_window_timing_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_window_timing_wx_0(
             "mealybug-tearoom-tests/ppu/m3_window_timing_wx_0.gb",
             "mealybug-tearoom-tests/ppu/m3_window_timing_wx_0_dmg_blob.png",

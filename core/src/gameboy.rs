@@ -317,7 +317,6 @@ impl GameBoy {
     }
 
     pub fn write(&mut self, mut address: u16, value: u8) {
-        self.update();
         if (0xE000..=0xFDFF).contains(&address) {
             address -= 0x2000;
         }
@@ -394,11 +393,11 @@ impl GameBoy {
     }
 
     fn write_io(&mut self, address: u8, value: u8) {
-        self.update();
         match address {
             0x00 => self.joypad_io = 0b1100_1111 | (value & 0x30), // JOYPAD
             0x01 => self.serial_data = value,
             0x02 => {
+                self.update();
                 *self.serial_control.get_mut() = value | 0x7E;
                 if value & 0x81 == 0x81 {
                     // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
@@ -411,9 +410,15 @@ impl GameBoy {
                 }
             }
             0x03 => {}
-            0x04..=0x07 => self.timer.get_mut().write(address, value),
+            0x04..=0x07 => {
+                self.update();
+                self.timer.get_mut().write(address, value);
+            }
             0x08..=0x0e => {}
-            0x0f => *self.interrupt_flag.get_mut() = value,
+            0x0f => {
+                self.update();
+                *self.interrupt_flag.get_mut() = value
+            }
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound
                     .borrow_mut()
@@ -437,7 +442,10 @@ impl GameBoy {
             }
             0x51..=0x7f => {}
             0x80..=0xfe => self.hram[address as usize - 0x80] = value,
-            0xff => self.interrupt_enabled = value,
+            0xff => {
+                self.update();
+                self.interrupt_enabled = value
+            }
         }
     }
 

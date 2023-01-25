@@ -561,21 +561,9 @@ impl Ppu {
                 let this = &mut *gb.ppu.borrow_mut();
                 this.lyc = value
             }
-            0x47 => {
-                gb.update();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.bgp = value
-            }
-            0x48 => {
-                gb.update();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.obp0 = value
-            }
-            0x49 => {
-                gb.update();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.obp1 = value
-            }
+            0x47 => write_pallete_conflict(gb, value, |x| &mut x.bgp),
+            0x48 => write_pallete_conflict(gb, value, |x| &mut x.obp0),
+            0x49 => write_pallete_conflict(gb, value, |x| &mut x.obp1),
             0x4A => {
                 gb.update();
                 let this = &mut *gb.ppu.borrow_mut();
@@ -1280,6 +1268,35 @@ impl Ppu {
 
         self.stat_signal = stat_line;
     }
+}
+
+/// When writing to a pallete, its value in the first cycle is OR'ed with the current value, and it
+/// is properly updated in the following cycle.
+///
+/// Maybe because of a imprecision in the PPU timing, the write is happening two cycles in the past,
+/// so we need to relie on the lazy updating of the PPU.
+///
+/// I got this from SameBoy: https://github.com/LIJI32/SameBoy/blob/aa8b7b0c03aaae327bfb30e241b965ba055d175a/Core/sm83_cpu.c#L175-L188
+fn write_pallete_conflict<F: Fn(&mut Ppu) -> &mut u8>(gb: &mut GameBoy, value: u8, field: F) {
+    debug_assert!(
+        gb.clock_count - 2 >= gb.ppu.borrow().last_clock_count,
+        "clock_count: {}, last_clock_count: {}",
+        gb.clock_count,
+        gb.ppu.borrow().last_clock_count
+    );
+    gb.clock_count -= 2;
+    gb.update();
+    {
+        let this = &mut *gb.ppu.borrow_mut();
+        *field(this) |= value;
+    }
+    gb.clock_count += 1;
+    gb.update();
+    {
+        let this = &mut *gb.ppu.borrow_mut();
+        *field(this) = value
+    }
+    gb.clock_count += 1;
 }
 
 fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {

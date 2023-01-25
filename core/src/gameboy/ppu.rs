@@ -231,6 +231,8 @@ pub struct Ppu {
     /// to control the timing. 0xff means that this will not trigger a interrupt.
     stat_mode_for_interrupt: u8,
 
+    /// Which clock cycle the PPU where last updated
+    pub last_clock_count: u64,
     /// Next clock cycle where the PPU will be updated
     pub next_clock_count: u64,
     /// The clock count in which the current scanline has started.
@@ -297,6 +299,7 @@ impl std::fmt::Debug for Ppu {
             .field("stat_signal", &self.stat_signal)
             .field("ly_compare_signal", &self.ly_compare_signal)
             .field("stat_mode_for_interrupt", &self.stat_mode_for_interrupt)
+            .field("last_clock_count", &self.last_clock_count)
             .field("next_clock_count", &self.next_clock_count)
             .field("line_start_clock_count", &self.line_start_clock_count)
             .field("background_fifo", &self.background_fifo)
@@ -317,7 +320,7 @@ impl std::fmt::Debug for Ppu {
             .finish()
     }
 }
-crate::save_state!(Ppu, self, data {
+crate::save_state!(Ppu, self, ctx, data {
     self.vram;
     self.oam;
 
@@ -344,6 +347,9 @@ crate::save_state!(Ppu, self, data {
     self.ly_for_compare;
 
     self.stat_mode_for_interrupt;
+
+    on_save debug_assert_eq!(self.last_clock_count, ctx.clock_count.unwrap());
+    on_load self.last_clock_count = ctx.clock_count.unwrap();
 
     self.next_clock_count;
     self.line_start_clock_count;
@@ -414,6 +420,7 @@ impl Default for Ppu {
             stat_signal: false,
             ly_compare_signal: false,
             stat_mode_for_interrupt: 0xff,
+            last_clock_count: 0,
             next_clock_count: 0,
             line_start_clock_count: 0,
             background_fifo: Default::default(),
@@ -480,6 +487,8 @@ impl Ppu {
             wx: 0,
             state: 23,
             ly_for_compare: 0,
+
+            last_clock_count: 23_440_377,
             next_clock_count: 23_440_377,
             line_start_clock_count: 23_435_361,
 
@@ -723,6 +732,8 @@ impl Ppu {
         // and most of the implementation.
 
         let ppu = &mut *gb.ppu.borrow_mut();
+        ppu.last_clock_count = gb.clock_count;
+
         if ppu.lcdc & 0x80 == 0 {
             // ppu is disabled
             ppu.next_clock_count = gb.clock_count;

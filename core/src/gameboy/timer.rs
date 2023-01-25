@@ -19,7 +19,9 @@ pub struct Timer {
     /// there is no reload if = 0.
     pub loading: u8,
 }
-crate::save_state!(Timer, self, data {
+crate::save_state!(Timer, self, ctx, data {
+    on_save debug_assert_eq!(self.last_clock_count, ctx.clock_count.unwrap());
+
     self.div;
     self.tima;
     self.tma;

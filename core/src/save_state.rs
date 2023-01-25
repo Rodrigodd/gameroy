@@ -184,6 +184,14 @@ macro_rules! save_state {
             -> ($($load)* { use $crate::save_state::BoolExt; [ $( $e.get_mut()),* ].load_state($ctx, $d)?; } )
         );
     };
+    // on_save <expr>
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, on_save $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ($($save)* ($e); )
+            -> ($($load)* )
+        );
+    };
     // on_load <expr>
     (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, on_load $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
         $crate::save_state!(

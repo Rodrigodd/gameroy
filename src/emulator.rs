@@ -9,7 +9,7 @@ use gameroy::{
     interpreter::Interpreter,
     parser::Vbm,
 };
-use instant::Instant;
+use instant::{Instant, SystemTime};
 use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
 
@@ -255,7 +255,7 @@ impl Timeline {
         {
             let mut encoder =
                 flate2::write::DeflateEncoder::new(&mut self.buffer, flate2::Compression::fast());
-            gb.save_state(&mut encoder).unwrap();
+            gb.save_state(timestamp(), &mut encoder).unwrap();
             encoder.finish().unwrap();
         }
         // println!("{:.3} KiB", (self.buffer.len() as f32) * 2f32.powi(-10));
@@ -523,7 +523,7 @@ impl Emulator {
             SaveState => {
                 log::info!("save state");
                 let mut state = Vec::new();
-                self.gb.lock().save_state(&mut state).unwrap();
+                self.gb.lock().save_state(timestamp(), &mut state).unwrap();
                 match self.rom.save_state(&state) {
                     Ok(_) => {}
                     Err(e) => log::error!("error saving state: {}", e),
@@ -535,7 +535,7 @@ impl Emulator {
                         let mut gb = self.gb.lock();
 
                         let mut old_state = Vec::new();
-                        gb.save_state(&mut old_state).unwrap();
+                        gb.save_state(timestamp(), &mut old_state).unwrap();
 
                         match gb.load_state(&mut state.as_slice()) {
                             Ok(_) => {
@@ -777,4 +777,16 @@ fn clock_to_duration(clock_count: u64) -> Duration {
 
 fn recompute_start_time(clock_count: u64) -> Instant {
     Instant::now() - clock_to_duration(clock_count)
+}
+
+/// The number of milliseconds since UNIX_EPOCH.
+fn timestamp() -> Option<u64> {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        // cannot handle times before year 1970.
+        .ok()?
+        .as_millis()
+        .try_into()
+        // cannot handle times after year 584556501
+        .ok()
 }

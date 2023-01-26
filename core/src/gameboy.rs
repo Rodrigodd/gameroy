@@ -196,15 +196,17 @@ impl GameBoy {
         }
     }
 
-    pub fn save_state<W: std::io::Write>(&self, data: &mut W) -> Result<(), std::io::Error> {
+    /// Saves the current state of the GameBoy.
+    ///
+    /// `timestamp` is the instant that this file is being saved, in number of milliseconds since
+    /// the UNIX_EPOCH. it may be None if the system could not provide one.
+    pub fn save_state<W: std::io::Write>(
+        &self,
+        timestamp: Option<u64>,
+        data: &mut W,
+    ) -> Result<(), std::io::Error> {
         self.update();
-        let ctx = &mut SaveStateContext::new(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            self.clock_count,
-        );
+        let ctx = &mut SaveStateContext::new(timestamp, self.clock_count);
         SaveState::save_state(self, ctx, data)
     }
 

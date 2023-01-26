@@ -325,7 +325,7 @@ fn save_state1() {
         // save state
         use std::io::Cursor;
         vec.clear();
-        inter.0.save_state(&mut vec).unwrap();
+        inter.0.save_state(None, &mut vec).unwrap();
 
         // load state
         let cartridge = Cartridge::new(rom.clone()).unwrap();
@@ -363,7 +363,7 @@ fn save_state2() {
     while inter.0.clock_count < timeout {
         // save state
         let mut save_state = Vec::new();
-        inter.0.save_state(&mut save_state).unwrap();
+        inter.0.save_state(None, &mut save_state).unwrap();
 
         // run random number of instructions
         let r = rng.gen_range(100_000..300_000);
@@ -411,7 +411,7 @@ fn save_state3() {
         move |original| {
             // save state
             let mut state = Vec::new();
-            original.save_state(&mut state).unwrap();
+            original.save_state(None, &mut state).unwrap();
             *v_blank_state.lock().unwrap() = Some(state);
         }
     }));

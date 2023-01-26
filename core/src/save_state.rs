@@ -32,10 +32,10 @@ pub struct SaveStateContext {
 }
 
 impl SaveStateContext {
-    pub fn new(time: u64, clock_count: u64) -> Self {
+    pub fn new(time: Option<u64>, clock_count: u64) -> Self {
         Self {
             version: SaveStateHeader::SAVE_STATE_VERSION,
-            time: Some(time),
+            time,
             clock_count: Some(clock_count),
         }
     }

@@ -549,7 +549,10 @@ impl Emulator {
                         }
                         self.start_time = recompute_start_time(gb.clock_count);
                         drop(gb);
+                        // send EmulatorPaused to trigger the EmulatorUpdated event.
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+                        // and send Started again, because the emulation is not paused.
+                        self.proxy.send_event(UserEvent::EmulatorStarted).unwrap();
                     }
                     Err(e) => log::error!("error loading saved state: {}", e),
                 };

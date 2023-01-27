@@ -250,9 +250,18 @@ impl ListBuilder for DissasemblerList {
             }
 
             let cpu = &gb.cpu;
+
+            let flags = format!(
+                "{} {} {} {}",
+                ['_', 'Z'][cpu.f.z() as usize],
+                ['_', 'N'][cpu.f.n() as usize],
+                ['_', 'H'][cpu.f.h() as usize],
+                ['_', 'C'][cpu.f.c() as usize],
+            );
+
             let cpu_text = format!(
                 " clock: {}
- AF: {:02x} {:02x}
+ AF: {:02x} {:02x} {}
  BC: {:02x} {:02x}
  DE: {:02x} {:02x}
  HL: {:02x} {:02x}
@@ -262,6 +271,7 @@ impl ListBuilder for DissasemblerList {
                 decimal_mark(gb.clock_count),
                 cpu.a,
                 cpu.f.0,
+                flags,
                 cpu.b,
                 cpu.c,
                 cpu.d,

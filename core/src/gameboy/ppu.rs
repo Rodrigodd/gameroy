@@ -535,25 +535,49 @@ impl Ppu {
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {
         match address {
             0x40 => {
+                debug_assert!(
+                    gb.clock_count - 2 >= gb.ppu.borrow().last_clock_count,
+                    "clock_count: {}, last_clock_count: {}",
+                    gb.clock_count,
+                    gb.ppu.borrow().last_clock_count
+                );
+                gb.clock_count -= 2;
                 gb.update();
-                let this = &mut *gb.ppu.borrow_mut();
-                if value & 0x80 != this.lcdc & 0x80 {
-                    if value & 0x80 == 0 {
-                        // disable ppu
-                        this.ly = 0;
-                        this.line_start_clock_count = 0;
-                        // set to mode 0
-                        this.stat &= !0b11;
-                        this.state = 0;
-                    } else {
-                        // enable ppu
-                        debug_assert_eq!(this.ly, 0);
-                        this.ly_for_compare = 0;
-                        debug_assert_eq!(this.stat & 0b11, 0b00);
-                        this.next_clock_count = gb.clock_count;
+
+                let mut old_value = gb.ppu.borrow().lcdc;
+
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+
+                    const BG_EN: u8 = 0b01;
+                    const OBJ_EN: u8 = 0b10;
+
+                    // Behavior copied from SameBoy: https://github.com/LIJI32/SameBoy/blob/bbe425e695265998bc8fdd21a90d90175c2746fc/Core/sm83_cpu.c#L197-L223
+
+                    // On the first pixel of the screen, writes to OBJ enable happens without delay.
+                    if this.scanline_x == 0 && this.lcdc & OBJ_EN != 0 && value & OBJ_EN == 0 {
+                        this.lcdc &= !OBJ_EN;
                     }
+
+                    // The BG and Windows enable bit is always ON on the first cycle.
+                    this.lcdc |= value & BG_EN;
+
+                    update_lcdc(this, old_value, gb.clock_count);
+                    old_value = this.lcdc;
                 }
-                this.lcdc = value
+
+                gb.clock_count += 1;
+                // gb.clock_count -= 1;
+                gb.update();
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.lcdc = value;
+                    update_lcdc(this, old_value, gb.clock_count);
+                }
+
+                gb.clock_count += 1;
+
+                gb.update();
             }
             0x41 => {
                 gb.update();
@@ -773,11 +797,7 @@ impl Ppu {
                     ppu.vram_read_block = false;
                     ppu.vram_write_block = false;
 
-                    // In the SameBoy, there is a delay of 1 T-cycle beetween this state and the
-                    // next. I change to 0 because in the Sameboy the ppu activation happens 11
-                    // T-cycles after the opcode read, but in my emulator the delay is 12 T-cycles
-                    // (3 M-cycles). SameBoy must have a better write timing?
-                    ppu.next_clock_count += 0;
+                    ppu.next_clock_count += 1;
                     state = 1;
                 }
                 // 1
@@ -828,14 +848,15 @@ impl Ppu {
                 7 => {
                     ppu.oam_read_block = true;
 
-                    if ppu.ly == 0 {
-                        ppu.ly_for_compare = 0;
-                        ppu.set_stat_mode(0);
-                        ppu.stat_mode_for_interrupt = 0xff;
-                    } else {
+                    // OAM Stat Interrupt occurs 1 cycle late on line 0.
+                    if ppu.ly != 0 {
                         ppu.ly_for_compare = 0xFF;
                         ppu.set_stat_mode(0);
                         ppu.stat_mode_for_interrupt = 2;
+                    } else {
+                        ppu.ly_for_compare = 0;
+                        ppu.set_stat_mode(0);
+                        ppu.stat_mode_for_interrupt = 0xff;
                     }
                     ppu.update_stat(&mut stat_interrupt);
 
@@ -1282,6 +1303,25 @@ impl Ppu {
         }
 
         self.stat_signal = stat_line;
+    }
+}
+
+fn update_lcdc(this: &mut Ppu, old_value: u8, clock_count: u64) {
+    if this.lcdc & 0x80 != old_value & 0x80 {
+        if this.lcdc & 0x80 == 0 {
+            // disable ppu
+            this.ly = 0;
+            this.line_start_clock_count = 0;
+            // set to mode 0
+            this.stat &= !0b11;
+            this.state = 0;
+        } else {
+            // enable ppu
+            debug_assert_eq!(this.ly, 0);
+            this.ly_for_compare = 0;
+            debug_assert_eq!(this.stat & 0b11, 0b00);
+            this.next_clock_count = clock_count;
+        }
     }
 }
 

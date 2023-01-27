@@ -553,7 +553,6 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_bg_en_change2_dmg_blob.png",
         //     25_000_000,
         // );
-        #[ignore]
         m3_lcdc_bg_map_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_bg_map_change_dmg_blob.png",
@@ -588,7 +587,6 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m3_lcdc_obj_size_change_scx_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_lcdc_tile_sel_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change_dmg_blob.png",
@@ -599,7 +597,6 @@ mod mattcurrie {
         //     "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_change2_dmg_blob.png",
         //     25_000_000,
         // );
-        #[ignore]
         m3_lcdc_tile_sel_win_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_tile_sel_win_change_dmg_blob.png",
@@ -622,7 +619,6 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_en_change_multiple_wx_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_lcdc_win_map_change(
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change.gb",
             "mealybug-tearoom-tests/ppu/m3_lcdc_win_map_change_dmg_blob.png",

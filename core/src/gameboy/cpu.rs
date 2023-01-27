@@ -156,6 +156,13 @@ impl Cpu {
     }
 }
 
+/// The 8 bit Flag register.
+///
+/// 7 - Z: Zero flag
+/// 6 - N: Subtraction flag (BCD)
+/// 5 - H: Half Carry flag (BCD)
+/// 4 - C: Carry flag
+/// Remaning bits are read/writeable, but are not flags.
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Flags(pub u8);
 impl Flags {

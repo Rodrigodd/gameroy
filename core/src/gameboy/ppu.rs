@@ -192,8 +192,18 @@ pub struct Ppu {
     pub wyc: u8,
 
     /// FF40: LCD Control Register
+    ///
+    /// 7 - LCD and PPU enable             0=Off, 1=On
+    /// 6 - Window tile map area           0=9800-9BFF, 1=9C00-9FFF
+    /// 5 - Window enable                  0=Off, 1=On
+    /// 4 - BG and Window tile data area   0=8800-97FF, 1=8000-8FFF
+    /// 3 - BG tile map area               0=9800-9BFF, 1=9C00-9FFF
+    /// 2 - OBJ size                       0=8x8, 1=8x16
+    /// 1 - OBJ enable                     0=Off, 1=On
+    /// 0 - BG and Window enable/priority  0=Off, 1=On
     pub lcdc: u8,
     /// FF41: LCD Status Register
+    ///
     /// Bit 6 - LYC=LY STAT Interrupt source
     /// Bit 5 - Mode 2 OAM STAT Interrupt source
     /// Bit 4 - Mode 1 VBlank STAT Interrupt source
@@ -229,6 +239,11 @@ pub struct Ppu {
     ly_compare_signal: bool,
     /// use this value instead of the current stat mode when controlling the stat interrupt signal,
     /// to control the timing. 0xff means that this will not trigger a interrupt.
+    ///
+    /// Mode 0 - Horizontal Blank
+    /// Mode 1 - Vertical Blank
+    /// Mode 2 - OAM Search
+    /// Mode 3 - Drawing pixels
     stat_mode_for_interrupt: u8,
 
     /// Which clock cycle the PPU where last updated

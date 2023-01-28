@@ -270,6 +270,9 @@ pub struct Ppu {
 
     reach_window: bool,
     is_in_window: bool,
+    is_window_being_fetched: bool,
+    /// Used to insert a extra pixel after triggering the window activation.
+    insert_background_pixel: bool,
 
     /// Sprites at 0 cause a extra delay in the sprite fetching.
     sprite_at_0_penalty: u8,
@@ -450,6 +453,8 @@ impl Default for Ppu {
             sprite_tile_data_hight: 0,
             reach_window: false,
             is_in_window: false,
+            is_window_being_fetched: false,
+            insert_background_pixel: false,
             sprite_at_0_penalty: 0,
             screen_x: 0,
             scanline_x: 0,
@@ -522,6 +527,9 @@ impl Ppu {
 
             reach_window: true,
             is_in_window: false,
+            is_window_being_fetched: false,
+            insert_background_pixel: false,
+
             stat_signal: false,
             ly_compare_signal: false,
             stat_mode_for_interrupt: 1,
@@ -611,7 +619,7 @@ impl Ppu {
             0x4B => {
                 gb.update();
                 let this = &mut *gb.ppu.borrow_mut();
-                this.wx = value
+                this.wx = value;
             }
             _ => unreachable!(),
         }
@@ -940,8 +948,9 @@ impl Ppu {
                         } else if ppu.wx < 166 {
                             if ppu.wx == ppu.scanline_x.wrapping_add(7) {
                                 should_activate = true;
-                            } else if ppu.wx == ppu.scanline_x.wrapping_add(6) {
-                                // TODO: && !wx_just_changed
+                            } else if ppu.wx == ppu.scanline_x.wrapping_add(6)
+                            //TODO: && !ppu.wx_just_changed
+                            {
                                 should_activate = true;
                                 if ppu.screen_x > 0 {
                                     ppu.screen_x -= 1;
@@ -970,10 +979,21 @@ impl Ppu {
                     ppu.fetcher_x = 0;
                     ppu.fetcher_step = 0;
                     ppu.background_fifo.clear();
+                    ppu.is_window_being_fetched = true;
 
                     state = 29;
                 }
                 29 => {
+                    if ppu.is_in_window
+                        && !ppu.is_window_being_fetched
+                        && ppu.fetcher_step == 0
+                        && ppu.wx == ppu.screen_x.wrapping_add(7)
+                        && ppu.background_fifo.len() == 8
+                    {
+                        // Insert a pixel right at the FIFO's end
+                        ppu.insert_background_pixel = true;
+                    }
+
                     // Handle sprites
 
                     // discart already handled sprites
@@ -1448,7 +1468,13 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
 }
 
 fn output_pixel(ppu: &mut Ppu) {
-    if let Some(pixel) = ppu.background_fifo.pop_front() {
+    let bg_pixel = if ppu.insert_background_pixel {
+        ppu.insert_background_pixel = false;
+        Some(0)
+    } else {
+        ppu.background_fifo.pop_front()
+    };
+    if let Some(pixel) = bg_pixel {
         let sprite_pixel = ppu.sprite_fifo.pop_front();
 
         // scanline_x values greater or equal than 160 are interpreted as negative (for scrolling)
@@ -1483,6 +1509,7 @@ fn output_pixel(ppu: &mut Ppu) {
         ppu.screen[i] = color;
         ppu.screen_x += 1;
         ppu.scanline_x += 1;
+        ppu.is_window_being_fetched = false;
     }
 }
 

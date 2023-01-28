@@ -671,19 +671,16 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m3_window_timing_wx_0_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_wx_4_change(
             "mealybug-tearoom-tests/ppu/m3_wx_4_change.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_4_change_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_wx_4_change_sprites(
             "mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_4_change_sprites_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_wx_5_change(
             "mealybug-tearoom-tests/ppu/m3_wx_5_change.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_5_change_dmg_blob.png",

@@ -276,6 +276,7 @@ pub struct Ppu {
 
     /// Sprites at 0 cause a extra delay in the sprite fetching.
     sprite_at_0_penalty: u8,
+    wx_just_changed: bool,
 
     /// The x position of the next screen pixel to be draw in the current scanline
     pub screen_x: u8,
@@ -456,6 +457,7 @@ impl Default for Ppu {
             is_window_being_fetched: false,
             insert_background_pixel: false,
             sprite_at_0_penalty: 0,
+            wx_just_changed: false,
             screen_x: 0,
             scanline_x: 0,
         }
@@ -508,7 +510,7 @@ impl Ppu {
             state: 23,
             ly_for_compare: 0,
 
-            last_clock_count: 23_440_377,
+            last_clock_count: 23_440_324,
             next_clock_count: 23_440_377,
             line_start_clock_count: 23_435_361,
 
@@ -535,6 +537,7 @@ impl Ppu {
             stat_mode_for_interrupt: 1,
 
             sprite_at_0_penalty: 0,
+            wx_just_changed: false,
 
             screen_x: 0xa0,
             scanline_x: 0x00,
@@ -575,7 +578,6 @@ impl Ppu {
                 }
 
                 gb.clock_count += 1;
-                // gb.clock_count -= 1;
                 gb.update();
                 {
                     let this = &mut *gb.ppu.borrow_mut();
@@ -618,8 +620,20 @@ impl Ppu {
             }
             0x4B => {
                 gb.update();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.wx = value;
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.wx = value;
+                    this.wx_just_changed = true;
+                }
+                gb.clock_count += 1;
+                gb.update();
+
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.wx_just_changed = false;
+                }
+
+                gb.clock_count -= 1;
             }
             _ => unreachable!(),
         }
@@ -767,6 +781,10 @@ impl Ppu {
         // and most of the implementation.
 
         let ppu = &mut *gb.ppu.borrow_mut();
+
+        // Writing to wx do some time traveling shenanigans. Make sure they are not observable.
+        debug_assert!(ppu.last_clock_count <= gb.clock_count);
+
         ppu.last_clock_count = gb.clock_count;
 
         if ppu.lcdc & 0x80 == 0 {
@@ -949,7 +967,7 @@ impl Ppu {
                             if ppu.wx == ppu.scanline_x.wrapping_add(7) {
                                 should_activate = true;
                             } else if ppu.wx == ppu.scanline_x.wrapping_add(6)
-                            //TODO: && !ppu.wx_just_changed
+                                && !ppu.wx_just_changed
                             {
                                 should_activate = true;
                                 if ppu.screen_x > 0 {

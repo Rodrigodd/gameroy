@@ -686,7 +686,6 @@ mod mattcurrie {
             "mealybug-tearoom-tests/ppu/m3_wx_5_change_dmg_blob.png",
             25_000_000,
         );
-        #[ignore]
         m3_wx_6_change(
             "mealybug-tearoom-tests/ppu/m3_wx_6_change.gb",
             "mealybug-tearoom-tests/ppu/m3_wx_6_change_dmg_blob.png",

@@ -1344,21 +1344,31 @@ impl Ppu {
     }
 }
 
-fn update_lcdc(this: &mut Ppu, old_value: u8, clock_count: u64) {
-    if this.lcdc & 0x80 != old_value & 0x80 {
-        if this.lcdc & 0x80 == 0 {
+fn update_lcdc(ppu: &mut Ppu, old_value: u8, clock_count: u64) {
+    if ppu.lcdc & 0x80 != old_value & 0x80 {
+        if ppu.lcdc & 0x80 == 0 {
+            ppu.oam_read_block = false;
+            ppu.oam_write_block = false;
+            ppu.vram_read_block = false;
+            ppu.vram_write_block = false;
+
             // disable ppu
-            this.ly = 0;
-            this.line_start_clock_count = 0;
+            ppu.ly = 0;
+            ppu.line_start_clock_count = 0;
             // set to mode 0
-            this.stat &= !0b11;
-            this.state = 0;
+            ppu.stat &= !0b11;
+            ppu.state = 0;
         } else {
+            ppu.oam_read_block = false;
+            ppu.oam_write_block = false;
+            ppu.vram_read_block = false;
+            ppu.vram_write_block = false;
+
             // enable ppu
-            debug_assert_eq!(this.ly, 0);
-            this.ly_for_compare = 0;
-            debug_assert_eq!(this.stat & 0b11, 0b00);
-            this.next_clock_count = clock_count;
+            debug_assert_eq!(ppu.ly, 0);
+            ppu.ly_for_compare = 0;
+            debug_assert_eq!(ppu.stat & 0b11, 0b00);
+            ppu.next_clock_count = clock_count;
         }
     }
 }

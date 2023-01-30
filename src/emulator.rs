@@ -638,6 +638,7 @@ impl Emulator {
                                 break;
                             };
                             debugger.target_clock = Some(last_op_clock);
+                            debugger.skip_breakpoints_until_target_clock = true;
                         }
                         self.set_state(EmulatorState::Run);
                         break;

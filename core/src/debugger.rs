@@ -50,6 +50,9 @@ pub struct Debugger {
     pub last_op_clock: Option<u64>,
     /// Callback called when self is mutated
     pub callback: Option<DebuggerCallback>,
+
+    /// Used by StepBack, to ignore breakpoints between the last frame and the target clock.
+    pub skip_breakpoints_until_target_clock: bool,
 }
 impl Debugger {
     pub fn execute_command<'a>(&mut self, gb: &GameBoy, args: &[&'a str]) -> Result<(), String> {
@@ -380,10 +383,15 @@ impl Debugger {
                     .map_or(false, |x| inter.0.clock_count >= x)
                 {
                     self.target_clock = None;
+                    self.skip_breakpoints_until_target_clock = false;
                     break RunResult::ReachTargetClock;
                 } else {
                     break RunResult::TimeOut;
                 };
+            }
+
+            if self.skip_breakpoints_until_target_clock {
+                continue;
             }
 
             if self.check_break(&mut inter) {

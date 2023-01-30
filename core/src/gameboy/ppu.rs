@@ -1325,7 +1325,7 @@ impl Ppu {
 
         // LY==LYC
         self.stat &= !0x04;
-        if self.ly_for_compare == self.lyc {
+        if self.ly_for_compare != 0xff && self.ly_for_compare == self.lyc {
             self.ly_compare_signal = true;
             // STAT Coincident Flag
             self.stat |= 0x04;

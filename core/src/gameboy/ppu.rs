@@ -1,4 +1,5 @@
 use crate::{
+    consts::{SCANLINE_CYCLES, SCANLINE_PER_FRAME},
     gameboy::GameBoy,
     save_state::{LoadStateError, SaveState, SaveStateContext},
 };
@@ -253,6 +254,9 @@ pub struct Ppu {
     /// The clock count in which the current scanline has started.
     pub line_start_clock_count: u64,
 
+    /// The estimated time where the next interrupt may happen.
+    pub next_interrupt: u64,
+
     pub background_fifo: PixelFifo,
     pub sprite_fifo: PixelFifo,
 
@@ -321,6 +325,7 @@ impl std::fmt::Debug for Ppu {
             .field("last_clock_count", &self.last_clock_count)
             .field("next_clock_count", &self.next_clock_count)
             .field("line_start_clock_count", &self.line_start_clock_count)
+            .field("next_interrupt", &self.next_interrupt)
             .field("background_fifo", &self.background_fifo)
             .field("sprite_fifo", &self.sprite_fifo)
             .field("fetcher_step", &self.fetcher_step)
@@ -409,6 +414,8 @@ crate::save_state!(Ppu, self, ctx, data {
         self.reach_window,
         self.is_in_window
     ];
+
+    on_load self.next_interrupt = self.estimate_next_interrupt();
 });
 
 impl Default for Ppu {
@@ -446,6 +453,7 @@ impl Default for Ppu {
             last_clock_count: 0,
             next_clock_count: 0,
             line_start_clock_count: 0,
+            next_interrupt: 0,
             background_fifo: Default::default(),
             sprite_fifo: Default::default(),
             fetcher_step: 0,
@@ -517,6 +525,7 @@ impl Ppu {
             last_clock_count: 23_440_324,
             next_clock_count: 23_440_377,
             line_start_clock_count: 23_435_361,
+            next_interrupt: 23_440_324,
 
             background_fifo: PixelFifo::default(),
             sprite_fifo: PixelFifo::default(),
@@ -790,6 +799,8 @@ impl Ppu {
         debug_assert!(ppu.last_clock_count <= gb.clock_count);
 
         ppu.last_clock_count = gb.clock_count;
+
+        ppu.next_interrupt = ppu.estimate_next_interrupt();
 
         if ppu.lcdc & 0x80 == 0 {
             // ppu is disabled
@@ -1304,6 +1315,22 @@ impl Ppu {
             }
         }
         ppu.state = state;
+
+        if cfg!(debug_assertions)
+            && (vblank_interrupt || stat_interrupt)
+            && ppu.last_clock_count < ppu.next_interrupt
+        {
+            println!("lyc = {}", ppu.lyc);
+            println!("ly = {} ({})", ppu.ly, ppu.ly_for_compare);
+            println!(
+                "mode = {} ({})",
+                ppu.stat & 0b11,
+                ppu.stat_mode_for_interrupt
+            );
+            println!("{}: {}", ppu.last_clock_count, ppu.next_interrupt);
+            panic!();
+        }
+
         (vblank_interrupt, stat_interrupt)
     }
 
@@ -1345,6 +1372,64 @@ impl Ppu {
         }
 
         self.stat_signal = stat_line;
+    }
+    pub fn estimate_next_interrupt(&self) -> u64 {
+        let mut next_interrupt = u64::MAX;
+
+        let lines_until_vblank = if self.ly <= 144 {
+            144 - self.ly
+        } else {
+            SCANLINE_PER_FRAME - self.ly + 144
+        };
+        let next_vblank =
+            self.line_start_clock_count + SCANLINE_CYCLES * lines_until_vblank as u64 + 4;
+
+        next_interrupt = next_interrupt.min(next_vblank);
+
+        if self.lyc < SCANLINE_PER_FRAME {
+            // TODO: This predict a immediate interrupt for a entire scanline. Measure how much
+            // impact this causes, and fix this.
+            let lines_until_lyc = if self.lyc >= self.ly {
+                self.lyc - self.ly
+            } else {
+                SCANLINE_PER_FRAME - self.ly + self.lyc
+            };
+            let next_lyc = self.line_start_clock_count + SCANLINE_CYCLES * lines_until_lyc as u64;
+            next_interrupt = next_interrupt.min(next_lyc);
+        }
+
+        // assumes the shortest time for mode3
+        let next_mode0 = self.line_start_clock_count + 252;
+        let next_mode1 = next_vblank;
+        let next_mode2 = {
+            // a mode2 interrupt happens 3 or 4 cycles after start_clock_count
+            let next = self.line_start_clock_count + 3;
+            if next + 1 < self.next_clock_count {
+                next + SCANLINE_CYCLES
+            } else {
+                next
+            }
+        };
+        // let next_mode3 = {
+        //     let next = self.line_start_clock_count + 80;
+        //     if next < self.next_clock_count {
+        //         next + SCANLINE_CYCLES
+        //     } else {
+        //         next
+        //     }
+        // };
+
+        if self.stat & 0x08 != 0 {
+            next_interrupt = next_interrupt.min(next_mode0);
+        }
+        if self.stat & 0x30 != 0 {
+            next_interrupt = next_interrupt.min(next_mode1);
+        }
+        if self.stat & 0x20 != 0 {
+            next_interrupt = next_interrupt.min(next_mode2);
+        }
+
+        next_interrupt
     }
 }
 

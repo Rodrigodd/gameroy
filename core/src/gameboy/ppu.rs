@@ -333,12 +333,16 @@ impl std::fmt::Debug for Ppu {
             .field("sprite_tile_data_hight", &self.sprite_tile_data_hight)
             .field("reach_window", &self.reach_window)
             .field("is_in_window", &self.is_in_window)
+            .field("is_window_being_fetched", &self.is_window_being_fetched)
+            .field("insert_background_pixel", &self.insert_background_pixel)
             .field("sprite_at_0_penalty", &self.sprite_at_0_penalty)
+            .field("wx_just_changed", &self.wx_just_changed)
             .field("screen_x", &self.screen_x)
             .field("scanline_x", &self.scanline_x)
             .finish()
     }
 }
+
 crate::save_state!(Ppu, self, ctx, data {
     self.vram;
     self.oam;

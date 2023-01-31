@@ -1,7 +1,12 @@
 /// The number of cycles the gameboy runs per second.
 pub const CLOCK_SPEED: u64 = 4_194_304;
+
+/// The number of scanline per frames, including vblank.
+pub const SCANLINE_PER_FRAME: u8 = 154;
+/// The number of cycles in a single scanline.
+pub const SCANLINE_CYCLES: u64 = 456;
 /// The number of cycles that a frame have.
-pub const FRAME_CYCLES: u64 = 154 * 456;
+pub const FRAME_CYCLES: u64 = SCANLINE_PER_FRAME as u64 * SCANLINE_CYCLES;
 
 pub const IF: usize = 0xff0f;
 pub const IE: usize = 0xffff;

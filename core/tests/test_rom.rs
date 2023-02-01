@@ -214,7 +214,7 @@ mod blargg {
         let string = Arc::new(Mutex::new(String::new()));
         let string_clone = string.clone();
         let stop = Arc::new(AtomicBool::new(false));
-        game_boy.serial_transfer_callback = Some(Box::new({
+        game_boy.serial.get_mut().serial_transfer_callback = Some(Box::new({
             let stop = stop.clone();
             move |byte| {
                 let mut string = string.lock().unwrap();

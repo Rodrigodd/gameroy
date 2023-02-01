@@ -8,16 +8,14 @@ use crate::{
 pub mod cartridge;
 pub mod cpu;
 pub mod ppu;
+pub mod serial_transfer;
 pub mod sound_controller;
 pub mod timer;
 
 use self::{
-    cartridge::Cartridge, cpu::Cpu, ppu::Ppu, sound_controller::SoundController, timer::Timer,
+    cartridge::Cartridge, cpu::Cpu, ppu::Ppu, serial_transfer::Serial,
+    sound_controller::SoundController, timer::Timer,
 };
-
-/// The offset between `clock_count` and the serial transfer clock, in cycles. This is choose
-/// arbitrarily, in a way that pass the serial_boot_sclk_align_dmg_abc_mgb test.
-const SERIAL_OFFSET: u64 = 8;
 
 #[cfg(not(target_arch = "wasm32"))]
 type VBlankCallback = Box<dyn FnMut(&mut GameBoy) + Send>;
@@ -43,17 +41,7 @@ pub struct GameBoy {
     /// JoyPad state. 0 bit means pressed.
     /// From bit 7 to 0, the order is: Start, Select, B, A, Down, Up, Left, Right
     pub joypad: u8,
-    /// FF01: SB
-    pub serial_data: u8,
-    /// FF02: SC
-    pub serial_control: Cell<u8>,
-    /// The instant, in 2^13 Hz clock count (T-clock count >> 9), in which the first bit of current
-    /// serial transfer was send. It is 0 if there is no transfer happening.
-    pub serial_transfer_started: Cell<u64>,
-    #[cfg(not(target_arch = "wasm32"))]
-    pub serial_transfer_callback: Option<Box<dyn FnMut(u8) + Send>>,
-    #[cfg(target_arch = "wasm32")]
-    pub serial_transfer_callback: Option<Box<dyn FnMut(u8)>>,
+    pub serial: RefCell<Serial>,
     /// FF0F: Interrupt Flag (IF)
     /// - bit 0: VBlank
     /// - bit 1: STAT
@@ -112,9 +100,7 @@ impl PartialEq for GameBoy {
             && self.ppu == other.ppu
             && self.joypad_io == other.joypad_io
             && self.joypad == other.joypad
-            && self.serial_data == other.serial_data
-            && self.serial_control == other.serial_control
-            // && self.serial_transfer == other.serial_transfer
+            && self.serial == other.serial
             && self.interrupt_flag == other.interrupt_flag
             && self.interrupt_enabled == other.interrupt_enabled
         // && self.v_blank == other.v_blank
@@ -137,10 +123,7 @@ crate::save_state!(GameBoy, self, ctx, data {
 
     self.joypad_io;
     self.joypad;
-    self.serial_data;
-    self.serial_control;
-    self.serial_transfer_started;
-    // self.serial_transfer;
+    self.serial.borrow_mut();
     self.interrupt_flag;
     self.dma;
     self.interrupt_enabled;
@@ -165,12 +148,7 @@ impl GameBoy {
 
             joypad: 0xFF,
             joypad_io: 0x00,
-            serial_data: 0,
-            serial_control: 0x7E.into(),
-            serial_transfer_started: 0.into(),
-            serial_transfer_callback: Some(Box::new(|c| {
-                eprint!("{}", c as char);
-            })),
+            serial: Serial::new().into(),
             interrupt_flag: 0.into(),
             dma: 0xff,
             interrupt_enabled: 0,
@@ -262,8 +240,7 @@ impl GameBoy {
         self.joypad = 0xFF;
 
         self.joypad_io = 0xCF;
-        self.serial_data = 0x00;
-        self.serial_control = 0x7E.into();
+        self.serial.get_mut().reset();
         self.timer = Timer::after_boot(self.clock_count).into();
         self.interrupt_flag = 0xE1.into();
         self.sound
@@ -360,15 +337,10 @@ impl GameBoy {
         }
 
         // serial
-        if self.serial_transfer_started.get() != 0
-            && self.serial_transfer_started.get() + 7 < (self.clock_count + SERIAL_OFFSET) >> 9
-        {
+        if self.serial.borrow_mut().update(self.clock_count) {
             // interrupt
             self.interrupt_flag
                 .set(self.interrupt_flag.get() | (1 << 3));
-            // clear transfer flag bit
-            self.serial_control.set(self.serial_control.get() & !0x80);
-            self.serial_transfer_started.set(0);
         }
     }
 
@@ -385,20 +357,7 @@ impl GameBoy {
     fn write_io(&mut self, address: u8, value: u8) {
         match address {
             0x00 => self.joypad_io = 0b1100_1111 | (value & 0x30), // JOYPAD
-            0x01 => self.serial_data = value,
-            0x02 => {
-                self.update();
-                *self.serial_control.get_mut() = value | 0x7E;
-                if value & 0x81 == 0x81 {
-                    // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
-                    *self.serial_transfer_started.get_mut() =
-                        (self.clock_count + SERIAL_OFFSET) >> 9;
-                    let data = self.serial_data;
-                    if let Some(x) = self.serial_transfer_callback.as_mut() {
-                        x(data)
-                    }
-                }
-            }
+            0x01..=0x02 => Serial::write(self, address, value),
             0x03 => {}
             0x04..=0x07 => {
                 self.update();
@@ -456,11 +415,7 @@ impl GameBoy {
                 }
                 r
             }
-            0x01 => self.serial_data,
-            0x02 => {
-                self.update();
-                self.serial_control.get()
-            }
+            0x01..=0x02 => Serial::read(self, address),
             0x03 => 0xff,
             0x04..=0x07 => {
                 self.update();

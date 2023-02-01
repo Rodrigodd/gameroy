@@ -1,7 +1,4 @@
-use std::{
-    cell::{Cell, RefCell},
-    time::SystemTime,
-};
+use std::cell::{Cell, RefCell};
 
 use crate::{
     disassembler::Trace,

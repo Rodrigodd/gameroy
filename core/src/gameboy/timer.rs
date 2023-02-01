@@ -9,6 +9,13 @@ pub struct Timer {
     /// FF06: TMA register
     pub tma: u8,
     /// FF07: TAC register
+    ///
+    /// Bit  2   - Timer Enable
+    /// Bits 1-0 - Input Clock Select
+    ///     00: CPU Clock / 1024 (DMG:   4096 Hz)
+    ///     01: CPU Clock / 16   (DMG: 262144 Hz)
+    ///     10: CPU Clock / 64   (DMG:  65536 Hz)
+    ///     11: CPU Clock / 256  (DMG:  16384 Hz)
     pub tac: u8,
 
     /// The value of the counter bit in the last cycle, for edge detection.

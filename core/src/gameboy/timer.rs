@@ -46,6 +46,20 @@ impl Timer {
             loading: 0,
         }
     }
+
+    /// Return the state of timer just after the boot finished.
+    pub fn after_boot(clock_count: u64) -> Self {
+        Timer {
+            div: 0xabcc,
+            tima: 0x00,
+            tma: 0x00,
+            tac: 0xf8,
+            last_counter_bit: false,
+            last_clock_count: clock_count,
+            loading: 0,
+        }
+    }
+
     /// Advance the timer by one cycle
     /// Return true if there is a interrupt
     pub(crate) fn update(&mut self, clock_count: u64) -> bool {

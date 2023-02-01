@@ -267,16 +267,7 @@ impl GameBoy {
         self.joypad_io = 0xCF;
         self.serial_data = 0x00;
         self.serial_control = 0x7E.into();
-        self.timer = Timer {
-            div: 0xabcc,
-            tima: 0x00,
-            tma: 0x00,
-            tac: 0xf8,
-            last_counter_bit: false,
-            last_clock_count: self.clock_count,
-            loading: 0,
-        }
-        .into();
+        self.timer = Timer::after_boot(self.clock_count).into();
         self.interrupt_flag = 0xE1.into();
         self.sound
             .borrow_mut()

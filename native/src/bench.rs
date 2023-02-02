@@ -23,11 +23,19 @@ fn mean(samples: &[Duration]) -> (Duration, Duration) {
 
     let error = (sample_varience_sq / samples.len() as f64).sqrt();
 
+    // HACKY: handle this better
+    if error.is_nan() {
+        return (mean, Duration::ZERO);
+    }
     (mean, Duration::from_secs_f64(error))
 }
 
 fn print_val(val: f64, err: f64) -> String {
-    let p = (-err.log10()).ceil() as usize + 1;
+    let p = if err.is_nan() || err == 0.0 {
+        (-val.log10()).ceil() as usize + 1
+    } else {
+        (-err.log10()).ceil() as usize + 1
+    };
     format!("{:.p$} +/- {:.p$}", val, err, p = p)
 }
 

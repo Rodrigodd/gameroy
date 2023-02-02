@@ -44,7 +44,7 @@ pub fn benchmark(path: &str, timeout: u64, len: usize) {
     let mut game_boy = GameBoy::new(None, cartridge);
 
     // remove serial transfer console output
-    game_boy.serial_transfer_callback = None;
+    game_boy.serial.get_mut().serial_transfer_callback = None;
 
     let mut times = Vec::with_capacity(len);
     for _ in 0..len {

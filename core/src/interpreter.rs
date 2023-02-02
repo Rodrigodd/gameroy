@@ -864,7 +864,7 @@ impl Interpreter<'_> {
     }
 
     pub fn interpret_op(&mut self) {
-        self.0.update();
+        self.0.update_interrupt();
 
         if self.0.v_blank_trigger.get() {
             self.0.v_blank_trigger.set(false);
@@ -875,7 +875,7 @@ impl Interpreter<'_> {
             self.0.tick(2);
         }
 
-        self.0.update();
+        self.0.update_interrupt();
         let interrupts: u8 = self.0.interrupt_flag.get() & self.0.interrupt_enabled;
 
         if self.0.cpu.state == CpuState::Halt {
@@ -903,7 +903,7 @@ impl Interpreter<'_> {
                     self.0.tick(4); // 1 M-cycle with SP in address buss
                     self.0.write(sub16(self.0.cpu.sp, 1), msb);
 
-                    self.0.update();
+                    self.0.update_interrupt();
                     if self.0.interrupt_flag.get() & self.0.interrupt_enabled != 0 {
                         interrupt = (self.0.interrupt_flag.get() & self.0.interrupt_enabled)
                             .trailing_zeros() as usize;
@@ -922,7 +922,7 @@ impl Interpreter<'_> {
                 };
 
                 if interrupt != 8 {
-                    self.0.update();
+                    self.0.update_interrupt();
                     self.0
                         .interrupt_flag
                         .set(self.0.interrupt_flag.get() & !(1 << interrupt));

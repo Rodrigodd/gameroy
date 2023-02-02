@@ -566,7 +566,7 @@ impl Ppu {
                     gb.ppu.borrow().last_clock_count
                 );
                 gb.clock_count -= 2;
-                gb.update();
+                gb.update_ppu();
 
                 let mut old_value = gb.ppu.borrow().lcdc;
 
@@ -591,7 +591,7 @@ impl Ppu {
                 }
 
                 gb.clock_count += 1;
-                gb.update();
+                gb.update_ppu();
                 {
                     let this = &mut *gb.ppu.borrow_mut();
                     this.lcdc = value;
@@ -600,26 +600,26 @@ impl Ppu {
 
                 gb.clock_count += 1;
 
-                gb.update();
+                gb.update_ppu();
             }
             0x41 => {
-                gb.update();
+                gb.update_ppu();
                 let this = &mut *gb.ppu.borrow_mut();
                 this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111)
             }
             0x42 => {
-                gb.update();
+                gb.update_ppu();
                 let this = &mut *gb.ppu.borrow_mut();
                 this.scy = value
             }
             0x43 => {
-                gb.update();
+                gb.update_ppu();
                 let this = &mut *gb.ppu.borrow_mut();
                 this.scx = value
             }
             0x44 => {} // ly is read only
             0x45 => {
-                gb.update();
+                gb.update_ppu();
                 let this = &mut *gb.ppu.borrow_mut();
                 this.lyc = value
             }
@@ -627,19 +627,19 @@ impl Ppu {
             0x48 => write_pallete_conflict(gb, value, |x| &mut x.obp0),
             0x49 => write_pallete_conflict(gb, value, |x| &mut x.obp1),
             0x4A => {
-                gb.update();
+                gb.update_ppu();
                 let this = &mut *gb.ppu.borrow_mut();
                 this.wy = value
             }
             0x4B => {
-                gb.update();
+                gb.update_ppu();
                 {
                     let this = &mut *gb.ppu.borrow_mut();
                     this.wx = value;
                     this.wx_just_changed = true;
                 }
                 gb.clock_count += 1;
-                gb.update();
+                gb.update_ppu();
 
                 {
                     let this = &mut *gb.ppu.borrow_mut();
@@ -658,14 +658,14 @@ impl Ppu {
             0x40 => this.lcdc,
             0x41 => {
                 drop(this);
-                gb.update();
+                gb.update_ppu();
                 gb.ppu.borrow().stat | 0x80
             }
             0x42 => this.scy,
             0x43 => this.scx,
             0x44 => {
                 drop(this);
-                gb.update();
+                gb.update_ppu();
                 gb.ppu.borrow().ly
             }
             0x45 => this.lyc,
@@ -739,7 +739,7 @@ impl Ppu {
     }
 
     pub fn start_dma(gb: &mut GameBoy, value: u8) {
-        gb.update();
+        gb.update_ppu();
         gb.dma = value;
         let ppu = &mut *gb.ppu.borrow_mut();
         ppu.dma_started = gb.clock_count;
@@ -754,7 +754,7 @@ impl Ppu {
     }
 
     pub fn read_oam(gb: &GameBoy, address: u16) -> u8 {
-        gb.update();
+        gb.update_ppu();
         let ppu = &mut *gb.ppu.borrow_mut();
         if ppu.dma_block_oam || ppu.oam_read_block {
             0xff
@@ -764,7 +764,7 @@ impl Ppu {
     }
 
     pub fn write_oam(gb: &mut GameBoy, address: u16, value: u8) {
-        gb.update();
+        gb.update_ppu();
         let ppu = &mut *gb.ppu.borrow_mut();
         if !ppu.dma_block_oam && !ppu.oam_write_block {
             ppu.oam[address as usize - 0xFE00] = value;
@@ -772,7 +772,7 @@ impl Ppu {
     }
 
     pub fn read_vram(gb: &GameBoy, address: u16) -> u8 {
-        gb.update();
+        gb.update_ppu();
         let ppu = &mut *gb.ppu.borrow_mut();
         if ppu.vram_read_block {
             0xff
@@ -782,7 +782,7 @@ impl Ppu {
     }
 
     pub fn write_vram(gb: &mut GameBoy, address: u16, value: u8) {
-        gb.update();
+        gb.update_ppu();
         let ppu = &mut *gb.ppu.borrow_mut();
         if !ppu.vram_write_block {
             ppu.vram[address as usize - 0x8000] = value;
@@ -799,8 +799,6 @@ impl Ppu {
         debug_assert!(ppu.last_clock_count <= gb.clock_count);
 
         ppu.last_clock_count = gb.clock_count;
-
-        ppu.next_interrupt = ppu.estimate_next_interrupt();
 
         if ppu.lcdc & 0x80 == 0 {
             // ppu is disabled
@@ -1330,6 +1328,7 @@ impl Ppu {
             println!("{}: {}", ppu.last_clock_count, ppu.next_interrupt);
             panic!();
         }
+        ppu.next_interrupt = ppu.estimate_next_interrupt();
 
         (vblank_interrupt, stat_interrupt)
     }
@@ -1375,6 +1374,7 @@ impl Ppu {
     }
     pub fn estimate_next_interrupt(&self) -> u64 {
         let mut next_interrupt = u64::MAX;
+        return self.last_clock_count;
 
         let lines_until_vblank = if self.ly <= 144 {
             144 - self.ly
@@ -1477,13 +1477,13 @@ fn write_pallete_conflict<F: Fn(&mut Ppu) -> &mut u8>(gb: &mut GameBoy, value: u
         gb.ppu.borrow().last_clock_count
     );
     gb.clock_count -= 2;
-    gb.update();
+    gb.update_ppu();
     {
         let this = &mut *gb.ppu.borrow_mut();
         *field(this) |= value;
     }
     gb.clock_count += 1;
-    gb.update();
+    gb.update_ppu();
     {
         let this = &mut *gb.ppu.borrow_mut();
         *field(this) = value

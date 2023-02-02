@@ -71,6 +71,7 @@ impl Timer {
     /// Return true if there is a interrupt
     pub(crate) fn update(&mut self, clock_count: u64) -> bool {
         let mut interrupt = false;
+
         for _clock in self.last_clock_count..clock_count {
             self.div = self.div.wrapping_add(1);
 
@@ -168,7 +169,7 @@ impl Timer {
             self.tima as u64 + 1
         };
 
-        let mut remaining_time = if tima == 256 {
+        let remaining_time = if tima == 256 {
             until_falling_edge + 2
         } else if tima == 257 {
             3

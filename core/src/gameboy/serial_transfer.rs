@@ -75,7 +75,7 @@ impl Serial {
         match address {
             0x01 => gb.serial.borrow_mut().serial_data = value,
             0x02 => {
-                gb.update();
+                gb.update_serial();
                 let this = &mut *gb.serial.borrow_mut();
                 this.serial_control = value | 0x7E;
                 if value & 0x81 == 0x81 {
@@ -95,10 +95,22 @@ impl Serial {
         match address {
             0x01 => gb.serial.borrow().serial_data,
             0x02 => {
-                gb.update();
+                gb.update_serial();
                 gb.serial.borrow().serial_control
             }
             _ => unreachable!(),
+        }
+    }
+
+    pub fn estimate_next_interrupt(&self) -> u64 {
+        if self.serial_transfer_started == 0 {
+            // will never happen
+            u64::MAX
+        } else {
+            // from update:
+            // serial_transfer_started + 7 < (clock_count + SERIAL_OFFSET) >> 9
+            // => ((serial_transfer_started + 7) << 9) - SERIAL_OFFSET < clock_count
+            ((self.serial_transfer_started + 7) << 9) - SERIAL_OFFSET
         }
     }
 }

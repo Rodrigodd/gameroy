@@ -180,14 +180,14 @@ impl GameBoy {
         timestamp: Option<u64>,
         data: &mut W,
     ) -> Result<(), std::io::Error> {
-        self.update();
+        self.update_all();
         let ctx = &mut SaveStateContext::new(timestamp, self.clock_count);
         SaveState::save_state(self, ctx, data)
     }
 
     pub fn load_state<R: std::io::Read>(&mut self, data: &mut R) -> Result<(), LoadStateError> {
         let ctx = &mut SaveStateContext::default();
-        self.update();
+        self.update_all();
         SaveState::load_state(self, ctx, data)
     }
 
@@ -317,8 +317,25 @@ impl GameBoy {
         self.clock_count += count as u64;
     }
 
-    pub fn update(&self) {
-        // ppu
+    pub fn update_interrupt(&self) {
+        if self.ppu.borrow().estimate_next_interrupt() < self.clock_count + 4 {
+            self.update_ppu();
+        }
+        if self.timer.borrow().estimate_next_interrupt() < self.clock_count + 4 {
+            self.update_timer();
+        }
+        if self.serial.borrow().estimate_next_interrupt() < self.clock_count + 4 {
+            self.update_serial();
+        }
+    }
+
+    pub fn update_all(&self) {
+        self.update_ppu();
+        self.update_timer();
+        self.update_serial();
+    }
+
+    fn update_ppu(&self) {
         let (v_blank_interrupt, stat_interrupt) = Ppu::update(self);
         if stat_interrupt {
             self.interrupt_flag
@@ -329,14 +346,16 @@ impl GameBoy {
                 .set(self.interrupt_flag.get() | (1 << 0));
             self.v_blank_trigger.set(true);
         }
+    }
 
-        // timer
+    fn update_timer(&self) {
         if self.timer.borrow_mut().update(self.clock_count) {
             self.interrupt_flag
                 .set(self.interrupt_flag.get() | (1 << 2));
         }
+    }
 
-        // serial
+    fn update_serial(&self) {
         if self.serial.borrow_mut().update(self.clock_count) {
             // interrupt
             self.interrupt_flag
@@ -360,12 +379,12 @@ impl GameBoy {
             0x01..=0x02 => Serial::write(self, address, value),
             0x03 => {}
             0x04..=0x07 => {
-                self.update();
+                self.update_timer();
                 self.timer.get_mut().write(address, value);
             }
             0x08..=0x0e => {}
             0x0f => {
-                self.update();
+                self.update_interrupt();
                 *self.interrupt_flag.get_mut() = value
             }
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
@@ -392,7 +411,7 @@ impl GameBoy {
             0x51..=0x7f => {}
             0x80..=0xfe => self.hram[address as usize - 0x80] = value,
             0xff => {
-                self.update();
+                self.update_interrupt();
                 self.interrupt_enabled = value
             }
         }
@@ -418,12 +437,12 @@ impl GameBoy {
             0x01..=0x02 => Serial::read(self, address),
             0x03 => 0xff,
             0x04..=0x07 => {
-                self.update();
+                self.update_timer();
                 self.timer.borrow().read(address)
             }
             0x08..=0x0e => 0xff,
             0x0f => {
-                self.update();
+                self.update_interrupt();
                 self.interrupt_flag.get() | 0xE0
             }
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {

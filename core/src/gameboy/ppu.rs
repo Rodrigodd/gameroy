@@ -236,6 +236,7 @@ pub struct Ppu {
     /// timing. This is 0xFF if this will not update the stat.
     ly_for_compare: u8,
 
+    /// A rising edge on this signal causes a STAT interrupt.
     stat_signal: bool,
     ly_compare_signal: bool,
     /// use this value instead of the current stat mode when controlling the stat interrupt signal,
@@ -811,6 +812,7 @@ impl Ppu {
         let mut stat_interrupt = false;
         let mut vblank_interrupt = false;
 
+        // stat must be updated, because a write could have happened since the last update.
         ppu.update_stat(&mut stat_interrupt);
 
         if ppu.next_clock_count >= gb.clock_count {

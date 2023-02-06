@@ -22,3 +22,4 @@ harness = false
 image = { version = "0.24", default-features = false, features = ["png"] }
 rand = "0.8.4"
 criterion = "0.4"
+rayon = "1.6.1"

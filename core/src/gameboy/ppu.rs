@@ -1316,6 +1316,8 @@ impl Ppu {
         }
         ppu.state = state;
 
+        Self::update_dma(gb, ppu, gb.clock_count);
+
         if cfg!(debug_assertions)
             && (vblank_interrupt || stat_interrupt)
             && ppu.last_clock_count < ppu.next_interrupt

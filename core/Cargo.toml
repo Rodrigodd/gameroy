@@ -12,8 +12,13 @@ license = "MIT OR Apache-2.0"
 name = "gameroy"
 path = "src/lib.rs"
 
+[[bench]]
+name = "bench_emulator"
+harness = false
+
 [dependencies]
 
 [dev-dependencies]
 image = { version = "0.24", default-features = false, features = ["png"] }
 rand = "0.8.4"
+criterion = "0.4"

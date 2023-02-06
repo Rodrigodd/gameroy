@@ -1982,6 +1982,7 @@ mod test {
     #[test]
     fn fuzz() {
         let mut gb = GameBoy::new(None, Cartridge::halt_filled());
+        gb.predict_interrupt = true;
         let mut rng = rand::thread_rng();
         for _ in 0..50 {
             for x in [LCDC, STAT, SCY, SCX, LY, LYC, BGP, OBP0, OBP1, WY, WX] {

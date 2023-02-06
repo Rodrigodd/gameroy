@@ -1973,3 +1973,74 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::gameboy::cartridge::Cartridge;
+
+    use super::*;
+    use rand::Rng;
+
+    const LCDC: u16 = 0xff40;
+    const STAT: u16 = 0xff41;
+    const SCY: u16 = 0xff42;
+    const SCX: u16 = 0xff43;
+    const LY: u16 = 0xff44;
+    const LYC: u16 = 0xff45;
+    const BGP: u16 = 0xff47;
+    const OBP0: u16 = 0xff48;
+    const OBP1: u16 = 0xff49;
+    const WY: u16 = 0xff4a;
+    const WX: u16 = 0xff4b;
+
+    #[test]
+    fn fuzz() {
+        let mut gb = GameBoy::new(None, Cartridge::halt_filled());
+        let mut rng = rand::thread_rng();
+        for _ in 0..50 {
+            for x in [LCDC, STAT, SCY, SCX, LY, LYC, BGP, OBP0, OBP1, WY, WX] {
+                if rng.gen_bool(0.2) {
+                    gb.clock_count += 4;
+                    gb.write(x, rng.gen());
+                }
+            }
+
+            let r: f64 = rng.gen();
+            let cycles = (2.0f64.powf(r * r * 10.0)) as u64;
+
+            'test: for _ in 0..cycles {
+                let error_ppu = gb.ppu.borrow().clone();
+                gb.interrupt_flag.set(0);
+                let next_interrupt = gb.ppu.borrow().estimate_next_interrupt();
+
+                let target_clock = if next_interrupt == u64::MAX {
+                    let r: f64 = rng.gen();
+                    let cycles = (2.0f64.powf(2.0 + r * 21.0)) as u64;
+                    println!("random target: {}", cycles);
+                    gb.clock_count + cycles
+                } else if next_interrupt <= gb.clock_count + 1 {
+                    for _ in 0..10_000_000 {
+                        gb.clock_count += 4;
+                        gb.update_ppu();
+                        let interrupt = gb.interrupt_flag.get() & 0b11 != 0;
+                        gb.interrupt_flag.set(0);
+                        if interrupt {
+                            continue 'test;
+                        }
+                    }
+                    panic!("interrupt never happens!?: {:?}", error_ppu)
+                } else {
+                    next_interrupt - 1
+                };
+
+                gb.clock_count = target_clock;
+                gb.update_ppu();
+                let interrupt = gb.interrupt_flag.get() & 0b11 != 0;
+                gb.interrupt_flag.set(0);
+                if interrupt {
+                    panic!("interrupt is on early? {:?}", error_ppu);
+                }
+            }
+        }
+    }
+}

@@ -278,6 +278,21 @@ impl Cartridge {
         })
     }
 
+    /// A Cartridge filled with HALT instructions. Used as a test cartridge, when the CPU does not
+    /// need to be tested.
+    pub fn halt_filled() -> Self {
+        let mut rom = vec![0x76; 2 * 0x4000];
+
+        // fill header with zeros
+        rom[0x100..0x150].iter_mut().for_each(|x| *x = 0);
+
+        let this = Self::new(rom).unwrap();
+
+        assert!(this.ram.is_empty());
+
+        this
+    }
+
     /// The number of banks in this cartridge. A cartridge without bank switching have 2 banks.
     pub fn num_banks(&self) -> u8 {
         (self.rom.len() / 0x4000) as u8

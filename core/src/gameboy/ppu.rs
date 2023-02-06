@@ -1462,6 +1462,8 @@ fn update_lcdc(ppu: &mut Ppu, old_value: u8, clock_count: u64) {
             ppu.ly_for_compare = 0;
             debug_assert_eq!(ppu.stat & 0b11, 0b00);
             ppu.next_clock_count = clock_count;
+
+            ppu.line_start_clock_count = clock_count - 7;
         }
     }
 }

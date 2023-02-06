@@ -827,6 +827,7 @@ impl Ppu {
 
                     ppu.set_stat_mode(0);
                     ppu.stat_mode_for_interrupt = 0;
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.reach_window = false;
                     ppu.screen_x = 0;
@@ -861,6 +862,7 @@ impl Ppu {
 
                     ppu.set_stat_mode(3);
                     ppu.stat_mode_for_interrupt = 3;
+                    ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
                     state = 4;

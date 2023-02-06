@@ -1318,20 +1318,6 @@ impl Ppu {
 
         Self::update_dma(gb, ppu, gb.clock_count);
 
-        if cfg!(debug_assertions)
-            && (vblank_interrupt || stat_interrupt)
-            && ppu.last_clock_count < ppu.next_interrupt
-        {
-            println!("lyc = {}", ppu.lyc);
-            println!("ly = {} ({})", ppu.ly, ppu.ly_for_compare);
-            println!(
-                "mode = {} ({})",
-                ppu.stat & 0b11,
-                ppu.stat_mode_for_interrupt
-            );
-            println!("{}: {}", ppu.last_clock_count, ppu.next_interrupt);
-            panic!();
-        }
         ppu.next_interrupt = ppu.estimate_next_interrupt();
 
         (vblank_interrupt, stat_interrupt)

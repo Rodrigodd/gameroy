@@ -1342,9 +1342,24 @@ impl Ppu {
     }
 
     fn update_stat(&mut self, stat_interrupt: &mut bool) {
+        let mut stat = self.stat;
+        let mut ly_compare_signal = self.ly_compare_signal;
+
+        let stat_line = self.compute_stat(&mut stat, &mut ly_compare_signal, stat_interrupt);
+
+        self.stat_signal = stat_line;
+        self.ly_compare_signal = ly_compare_signal;
+        self.stat = stat;
+    }
+
+    fn compute_stat(
+        &self,
+        stat: &mut u8,
+        ly_compare_signal: &mut bool,
+        stat_interrupt: &mut bool,
+    ) -> bool {
         let stat_mode = self.stat_mode_for_interrupt;
         let mut stat_line = false;
-
         match stat_mode {
             0 => stat_line |= self.stat & 0x08 != 0,
             1 => {
@@ -1356,29 +1371,47 @@ impl Ppu {
             255 => {}
             4..=254 => unreachable!(),
         }
-
         // LY==LYC
-        self.stat &= !0x04;
+        *stat &= !0x04;
         if self.ly_for_compare != 0xff && self.ly_for_compare == self.lyc {
-            self.ly_compare_signal = true;
+            *ly_compare_signal = true;
             // STAT Coincident Flag
-            self.stat |= 0x04;
+            *stat |= 0x04;
         } else if self.ly_for_compare != 0xff {
-            self.ly_compare_signal = false;
+            *ly_compare_signal = false;
         }
         // LY == LYC STAT Interrupt
-        stat_line |= (self.stat & (1 << 6) != 0) && self.ly_compare_signal;
-
+        stat_line |= (*stat & (1 << 6) != 0) && *ly_compare_signal;
         // on rising edge
         if !self.stat_signal && stat_line {
             *stat_interrupt = true;
+            println!(
+                "stat interrupt: {} (stat_mode: {}, state: {}, ly: {}, lyc: {})",
+                self.next_clock_count, stat_mode, self.state, self.ly_for_compare, self.lyc
+            );
+        }
+        stat_line
+    }
+
+    pub fn estimate_next_interrupt(&self) -> u64 {
+        // if it is off, a interrupt will never happen
+        if self.lcdc & 0x80 == 0 {
+            return u64::MAX;
         }
 
-        self.stat_signal = stat_line;
-    }
-    pub fn estimate_next_interrupt(&self) -> u64 {
+        if self.line_start_clock_count == 0 {
+            // wait a little, until self.start_clock_count is not 0.
+            return self.last_clock_count + 4;
+        }
+
+        {
+            let mut stat_interrupt = false;
+            self.compute_stat(&mut self.stat.clone(), &mut false, &mut stat_interrupt);
+            if stat_interrupt {
+                return self.last_clock_count;
+            }
+        }
         let mut next_interrupt = u64::MAX;
-        return self.last_clock_count;
 
         let lines_until_vblank = if self.ly <= 144 {
             144 - self.ly
@@ -1423,6 +1456,7 @@ impl Ppu {
         //     }
         // };
 
+        // TODO: if stat_signal is true, the interrupt may not happen in the next trigger.
         if self.stat & 0x08 != 0 {
             next_interrupt = next_interrupt.min(next_mode0);
         }

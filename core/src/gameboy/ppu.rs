@@ -1000,8 +1000,8 @@ impl Ppu {
                             }
                             state = 28;
                             continue;
-                        } else if ppu.wx == 166 && ppu.wx == ppu.scanline_x + 7 {
-                            ppu.wyc += 1;
+                        } else if ppu.wx == 166 && ppu.wx == ppu.scanline_x.wrapping_add(7) {
+                            ppu.wyc = ppu.wyc.wrapping_add(1);
                         }
                     }
                     state = 29;

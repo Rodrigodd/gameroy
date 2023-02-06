@@ -605,32 +605,47 @@ impl Ppu {
             }
             0x41 => {
                 gb.update_ppu();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111)
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111);
+                }
+                Ppu::update_interrupt_prediction(gb);
             }
             0x42 => {
                 gb.update_ppu();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.scy = value
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.scy = value;
+                }
+                Ppu::update_interrupt_prediction(gb);
             }
             0x43 => {
                 gb.update_ppu();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.scx = value
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.scx = value;
+                }
+                Ppu::update_interrupt_prediction(gb);
             }
             0x44 => {} // ly is read only
             0x45 => {
                 gb.update_ppu();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.lyc = value
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.lyc = value;
+                }
+                Ppu::update_interrupt_prediction(gb);
             }
             0x47 => write_pallete_conflict(gb, value, |x| &mut x.bgp),
             0x48 => write_pallete_conflict(gb, value, |x| &mut x.obp0),
             0x49 => write_pallete_conflict(gb, value, |x| &mut x.obp1),
             0x4A => {
                 gb.update_ppu();
-                let this = &mut *gb.ppu.borrow_mut();
-                this.wy = value
+                {
+                    let this = &mut *gb.ppu.borrow_mut();
+                    this.wy = value;
+                }
+                Ppu::update_interrupt_prediction(gb);
             }
             0x4B => {
                 gb.update_ppu();
@@ -646,6 +661,7 @@ impl Ppu {
                     let this = &mut *gb.ppu.borrow_mut();
                     this.wx_just_changed = false;
                 }
+                Ppu::update_interrupt_prediction(gb);
 
                 gb.clock_count -= 1;
             }
@@ -1379,6 +1395,12 @@ impl Ppu {
             );
         }
         stat_line
+    }
+
+    /// Update the value of Ppu::next_prediction. Must be called ever time the ppu is mutated.
+    fn update_interrupt_prediction(gb: &GameBoy) {
+        let mut ppu = gb.ppu.borrow_mut();
+        ppu.next_interrupt = ppu.estimate_next_interrupt();
     }
 
     pub fn estimate_next_interrupt(&self) -> u64 {

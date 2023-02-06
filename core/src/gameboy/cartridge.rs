@@ -36,7 +36,7 @@ fn mbc_type_name(code: u8) -> &'static str {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct CartridgeHeader {
     /// 0104-0133: Logo
     pub logo: [u8; 48],
@@ -145,7 +145,7 @@ impl CartridgeHeader {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 enum Mbc {
     None(Mbc0),
     Mbc1(Mbc1),
@@ -155,7 +155,7 @@ enum Mbc {
     Mbc5(Mbc5),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Cartridge {
     pub header: CartridgeHeader,
     pub rom: Vec<u8>,
@@ -346,7 +346,7 @@ impl Cartridge {
 }
 
 /// Cartridge without a MBC chip
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct Mbc0 {}
 crate::save_state!(Mbc0, self, data {});
 impl Mbc0 {
@@ -374,7 +374,7 @@ impl Mbc0 {
 }
 
 /// Cartridge with a MBC1 chip
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct Mbc1 {
     // the banking register. Includes the 5-bit register 1, and the 2-bit register 2.
     selected_bank: u8,
@@ -509,7 +509,7 @@ impl Mbc1 {
 }
 
 /// Cartridge with a MBC1 multicart chip
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct Mbc1M {
     // the banking register. Includes the 4-bit register 1 (the bit 4 of the 5-bit register is
     // skipped in the multicard), and the 2-bit register 2. A total of 6-bit.
@@ -643,7 +643,7 @@ impl Mbc1M {
 }
 
 /// Cartridge with a MBC2 chip
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct Mbc2 {
     // the banking register
     selected_bank: u8,
@@ -723,7 +723,7 @@ impl Mbc2 {
 }
 
 /// Cartridge with a MBC3 chip
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct Mbc3 {
     // the banking register, including second 2-bit
     selected_bank: u8,
@@ -895,7 +895,7 @@ impl Mbc3 {
 }
 
 /// Cartridge with a MBC5 chip
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 struct Mbc5 {
     selected_bank: u16,
     selected_ram_bank: u8,

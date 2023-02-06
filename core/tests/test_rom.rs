@@ -7,15 +7,11 @@ use std::{
 };
 
 use gameroy::{
+    consts::{CLOCK_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH},
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
 };
 use rand::{Rng, SeedableRng};
-
-const SCREEN_HEIGHT: usize = 144;
-const SCREEN_WIDTH: usize = 160;
-
-const CLOCK_SPEED: u64 = 2u64.pow(22);
 
 const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-test-roms/");
 

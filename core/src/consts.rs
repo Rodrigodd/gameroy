@@ -1,6 +1,11 @@
 /// The number of cycles the gameboy runs per second.
 pub const CLOCK_SPEED: u64 = 4_194_304;
 
+/// The height of the LCD screen in pixels.
+pub const SCREEN_HEIGHT: usize = 144;
+/// The width of the LCD screen in pixels.
+pub const SCREEN_WIDTH: usize = 160;
+
 /// The number of scanline per frames, including vblank.
 pub const SCANLINE_PER_FRAME: u8 = 154;
 /// The number of cycles in a single scanline.

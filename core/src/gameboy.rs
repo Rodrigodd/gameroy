@@ -59,6 +59,9 @@ pub struct GameBoy {
     /// A callback that is called after a VBlank. This is called when a vblank interrupt is
     /// triggered.
     pub v_blank: Option<VBlankCallback>,
+
+    /// Used to toggle the next interrupt prediction, to be able to test its correctness.
+    pub predict_interrupt: bool,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -154,6 +157,7 @@ impl GameBoy {
             interrupt_enabled: 0,
             v_blank_trigger: false.into(),
             v_blank: None,
+            predict_interrupt: false,
         };
 
         if this.boot_rom.is_none() {
@@ -318,6 +322,11 @@ impl GameBoy {
     }
 
     pub fn update_interrupt(&self) {
+        if !self.predict_interrupt {
+            self.update_all();
+            return;
+        }
+
         if self.ppu.borrow().estimate_next_interrupt() < self.clock_count + 4 {
             self.update_ppu();
         }

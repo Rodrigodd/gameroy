@@ -218,7 +218,10 @@ impl Debugger {
                     std::fs::File::create(path).unwrap()
                 };
 
+                gb.update_all();
+
                 let ctx = &mut SaveStateContext::default();
+                ctx.clock_count = Some(gb.clock_count);
 
                 // gb.trace.save_state(ctx, output)?;
                 gb.cpu

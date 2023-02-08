@@ -1409,6 +1409,16 @@ impl Ppu {
             return u64::MAX;
         }
 
+        // The ly becomes 0, 6 cycles after becoming 153
+        let ly = if self.ly == 0 {
+            match self.state {
+                19 | 20 | 21 | 22 | 23 => 153,
+                _ => 0,
+            }
+        } else {
+            self.ly
+        };
+
         if self.line_start_clock_count == 0 {
             // wait a little, until self.start_clock_count is not 0.
             return self.last_clock_count + 4;
@@ -1416,45 +1426,111 @@ impl Ppu {
 
         {
             let mut stat_interrupt = false;
-            self.compute_stat(&mut self.stat.clone(), &mut false, &mut stat_interrupt);
+            self.compute_stat(
+                &mut self.stat.clone(),
+                &mut self.ly_compare_signal.clone(),
+                &mut stat_interrupt,
+            );
             if stat_interrupt {
                 return self.last_clock_count;
             }
         }
         let mut next_interrupt = u64::MAX;
 
-        let lines_until_vblank = if self.ly <= 144 {
-            144 - self.ly
-        } else {
-            SCANLINE_PER_FRAME - self.ly + 144
+        let next_vblank = {
+            let lines_until_vblank = if ly <= 143 {
+                144 - ly
+            } else if ly == 144 {
+                1
+            } else {
+                // the value of line_start_clock_count is not updated while in vblank.
+                SCANLINE_PER_FRAME - 1
+            };
+            self.line_start_clock_count + SCANLINE_CYCLES * lines_until_vblank as u64 + 4
         };
-        let next_vblank =
-            self.line_start_clock_count + SCANLINE_CYCLES * lines_until_vblank as u64 + 4;
+
+        let next_frame = {
+            let lines_until_next_frame = if ly <= 143 {
+                SCANLINE_PER_FRAME - ly
+            } else {
+                // the value of line_start_clock_count is not updated while in vblank.
+                SCANLINE_PER_FRAME - 143
+            };
+            self.line_start_clock_count + SCANLINE_CYCLES * lines_until_next_frame as u64
+        };
 
         next_interrupt = next_interrupt.min(next_vblank);
 
-        if self.lyc < SCANLINE_PER_FRAME {
-            // TODO: This predict a immediate interrupt for a entire scanline. Measure how much
-            // impact this causes, and fix this.
-            let lines_until_lyc = if self.lyc >= self.ly {
-                self.lyc - self.ly
+        let next_lyc = if self.lyc < SCANLINE_PER_FRAME {
+            let ly = if ly < 144 { ly } else { 144 };
+
+            let lines_until_lyc = if self.lyc >= ly {
+                self.lyc - ly
             } else {
-                SCANLINE_PER_FRAME - self.ly + self.lyc
+                SCANLINE_PER_FRAME - ly + self.lyc
             };
-            let next_lyc = self.line_start_clock_count + SCANLINE_CYCLES * lines_until_lyc as u64;
-            next_interrupt = next_interrupt.min(next_lyc);
-        }
+
+            let start = self.line_start_clock_count + SCANLINE_CYCLES * lines_until_lyc as u64 + 4;
+            let end = start + SCANLINE_CYCLES;
+
+            if self.last_clock_count < start {
+                start
+            } else if self.last_clock_count < end && !self.stat_signal {
+                self.last_clock_count + 1
+            } else {
+                start + FRAME_CYCLES
+            }
+        } else {
+            u64::MAX
+        };
 
         // assumes the shortest time for mode3
-        let next_mode0 = self.line_start_clock_count + 252;
-        let next_mode1 = next_vblank;
+        let next_mode0 = {
+            let start = self.line_start_clock_count + 252;
+            let end = self.line_start_clock_count + SCANLINE_CYCLES;
+            if self.last_clock_count < start {
+                start
+            } else if self.last_clock_count < end
+                && !(self.stat_signal && self.stat_mode_for_interrupt == 0)
+            {
+                self.last_clock_count + 1
+            } else if ly < 143 {
+                start + SCANLINE_CYCLES
+            } else {
+                next_frame + 252
+            }
+        };
+        let next_mode1 = {
+            let start = next_vblank;
+            let end = next_vblank + (SCANLINE_PER_FRAME - 144) as u64 * SCANLINE_CYCLES;
+            if self.last_clock_count < start {
+                start
+            } else if self.last_clock_count < end
+                && !(self.stat_signal && self.stat_mode_for_interrupt == 1)
+            {
+                self.last_clock_count + 1
+            } else {
+                start + FRAME_CYCLES
+            }
+        };
         let next_mode2 = {
             // a mode2 interrupt happens 3 or 4 cycles after start_clock_count
-            let next = self.line_start_clock_count + 3;
-            if next + 1 < self.next_clock_count {
-                next + SCANLINE_CYCLES
+            let start = self.line_start_clock_count + 3;
+            let end = start + 80;
+
+            if self.last_clock_count < start {
+                start
+            } else if self.last_clock_count < end
+                && !(self.stat_signal && self.stat_mode_for_interrupt == 2)
+            {
+                self.last_clock_count + 1
+            } else if ly < 143 {
+                start + SCANLINE_CYCLES
+            } else if ly == 143 {
+                // on ly==144 this interrupt is triggered early.
+                start + SCANLINE_CYCLES - 2
             } else {
-                next
+                next_frame + 3
             }
         };
         // let next_mode3 = {
@@ -1475,6 +1551,9 @@ impl Ppu {
         }
         if self.stat & 0x20 != 0 {
             next_interrupt = next_interrupt.min(next_mode2);
+        }
+        if self.stat & 0x40 != 0 {
+            next_interrupt = next_interrupt.min(next_lyc);
         }
 
         next_interrupt
@@ -2008,21 +2087,30 @@ mod test {
         let mut gb = GameBoy::new(None, Cartridge::halt_filled());
         gb.predict_interrupt = true;
         let mut rng = rand::thread_rng();
-        for _ in 0..50 {
+        for _ in 0..10 {
             for x in [LCDC, STAT, SCY, SCX, LY, LYC, BGP, OBP0, OBP1, WY, WX] {
                 if rng.gen_bool(0.2) {
                     gb.clock_count += 4;
                     gb.write(x, rng.gen());
                 }
             }
+            if rng.gen_bool(0.6) {
+                let address = rng.gen_range(0xFE00..=0xFE9F);
+                gb.clock_count += 4;
+                gb.write(address, rng.gen());
+            };
 
             let r: f64 = rng.gen();
-            let cycles = (2.0f64.powf(r * r * 10.0)) as u64;
+            let cycles = (2.0f64.powf(r * r * 5.0)) as u64;
 
             'test: for _ in 0..cycles {
                 let error_ppu = gb.ppu.borrow().clone();
                 gb.interrupt_flag.set(0);
                 let next_interrupt = gb.ppu.borrow().estimate_next_interrupt();
+
+                if next_interrupt < gb.clock_count - 200 {
+                    panic!("next_interrupt is too negative! {:?}", error_ppu);
+                }
 
                 let target_clock = if next_interrupt == u64::MAX {
                     let r: f64 = rng.gen();

@@ -1,5 +1,5 @@
 use crate::{
-    consts::{SCANLINE_CYCLES, SCANLINE_PER_FRAME},
+    consts::{FRAME_CYCLES, SCANLINE_CYCLES, SCANLINE_PER_FRAME},
     gameboy::GameBoy,
     save_state::{LoadStateError, SaveState, SaveStateContext},
 };

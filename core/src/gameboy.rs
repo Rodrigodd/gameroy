@@ -330,10 +330,10 @@ impl GameBoy {
         if self.ppu.borrow().next_interrupt < self.clock_count + 4 {
             self.update_ppu();
         }
-        if self.timer.borrow().estimate_next_interrupt() < self.clock_count + 4 {
+        if self.timer.borrow().next_interrupt < self.clock_count + 4 {
             self.update_timer();
         }
-        if self.serial.borrow().estimate_next_interrupt() < self.clock_count + 4 {
+        if self.serial.borrow().next_interrupt < self.clock_count + 4 {
             self.update_serial();
         }
     }

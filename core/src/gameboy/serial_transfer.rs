@@ -20,6 +20,9 @@ pub struct Serial {
     pub serial_transfer_callback: Option<Box<dyn FnMut(u8) + Send>>,
     #[cfg(target_arch = "wasm32")]
     pub serial_transfer_callback: Option<Box<dyn FnMut(u8)>>,
+
+    /// The estimated time where the next interrupt may happen.
+    pub next_interrupt: u64,
 }
 
 impl Eq for Serial {}
@@ -29,6 +32,7 @@ impl PartialEq for Serial {
             && self.serial_control == other.serial_control
             && self.serial_transfer_started == other.serial_transfer_started
         // && self.serial_transfer_callback == other.serial_transfer_callback
+        // && self.next_interrupt == other.next_interrupt
     }
 }
 
@@ -36,6 +40,8 @@ crate::save_state!(Serial, self, data {
     self.serial_data;
     self.serial_control;
     self.serial_transfer_started;
+
+    on_load self.next_interrupt = 0;
 });
 
 impl Serial {
@@ -48,6 +54,7 @@ impl Serial {
             serial_transfer_callback: Some(Box::new(|c| {
                 eprint!("{}", c as char);
             })),
+            next_interrupt: 0,
         }
     }
 
@@ -65,6 +72,9 @@ impl Serial {
             // clear transfer flag bit
             self.serial_control &= !0x80;
             self.serial_transfer_started = 0;
+
+            self.next_interrupt = self.estimate_next_interrupt();
+
             // interrupt
             return true;
         }
@@ -89,6 +99,9 @@ impl Serial {
             }
             _ => unreachable!(),
         }
+
+        let this = &mut *gb.serial.borrow_mut();
+        this.next_interrupt = this.estimate_next_interrupt();
     }
 
     pub fn read(gb: &GameBoy, address: u8) -> u8 {

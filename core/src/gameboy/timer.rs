@@ -1,6 +1,6 @@
 use crate::save_state::{LoadStateError, SaveState};
 
-#[derive(Default, Debug, PartialEq, Eq, Clone)]
+#[derive(Default, Debug, Eq, Clone)]
 pub struct Timer {
     /// FF04: DIV register
     pub div: u16,
@@ -25,9 +25,26 @@ pub struct Timer {
     /// Keep track of TIMA reloading. TIMA is reloading if < 4, reloading is scheduled if >= 4, and
     /// there is no reload if = 0.
     pub loading: u8,
+
+    /// The estimated time where the next interrupt may happen.
+    pub next_interrupt: u64,
+}
+
+impl PartialEq for Timer {
+    fn eq(&self, other: &Self) -> bool {
+        self.div == other.div
+            && self.tima == other.tima
+            && self.tma == other.tma
+            && self.tac == other.tac
+            && self.last_counter_bit == other.last_counter_bit
+            && self.last_clock_count == other.last_clock_count
+            && self.loading == other.loading
+        // && self.next_interrupt == other.next_interrupt
+    }
 }
 crate::save_state!(Timer, self, ctx, data {
     on_save debug_assert_eq!(self.last_clock_count, ctx.clock_count.unwrap());
+    on_load self.next_interrupt = 0;
 
     self.div;
     self.tima;
@@ -51,6 +68,7 @@ impl Timer {
             last_counter_bit: false,
             last_clock_count: 0,
             loading: 0,
+            next_interrupt: 0,
         }
     }
 
@@ -64,6 +82,7 @@ impl Timer {
             last_counter_bit: false,
             last_clock_count: clock_count,
             loading: 0,
+            next_interrupt: 0,
         }
     }
 
@@ -101,7 +120,9 @@ impl Timer {
 
             self.last_counter_bit = counter_bit;
         }
+
         self.last_clock_count = clock_count;
+        self.next_interrupt = self.estimate_next_interrupt();
 
         interrupt
     }
@@ -135,6 +156,7 @@ impl Timer {
             0x07 => self.tac = value,
             _ => unreachable!("out of Timer memory map"),
         }
+        self.next_interrupt = self.estimate_next_interrupt();
     }
 
     pub fn estimate_next_interrupt(&self) -> u64 {
@@ -251,6 +273,7 @@ mod tests {
             last_counter_bit: true,
             last_clock_count: 0,
             loading: 0,
+            next_interrupt: 0,
         };
 
         let next_interrupt = timer.estimate_next_interrupt();
@@ -285,6 +308,7 @@ mod tests {
             last_counter_bit: true,
             last_clock_count: 0,
             loading: 0,
+            next_interrupt: 0,
         };
 
         let next_interrupt = timer.estimate_next_interrupt();
@@ -319,6 +343,7 @@ mod tests {
             last_counter_bit: false,
             last_clock_count: 0,
             loading: 6,
+            next_interrupt: 0,
         };
 
         let next_interrupt = timer.estimate_next_interrupt();

@@ -1,10 +1,7 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::path::PathBuf;
 
 use gameroy::{
-    consts::{CLOCK_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH},
+    consts::CLOCK_SPEED,
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
 };

@@ -1389,10 +1389,6 @@ impl Ppu {
         // on rising edge
         if !self.stat_signal && stat_line {
             *stat_interrupt = true;
-            println!(
-                "stat interrupt: {} (stat_mode: {}, state: {}, ly: {}, lyc: {})",
-                self.next_clock_count, stat_mode, self.state, self.ly_for_compare, self.lyc
-            );
         }
         stat_line
     }

@@ -900,8 +900,26 @@ impl Ppu {
                 6 => {
                     ppu.line_start_clock_count = ppu.next_clock_count;
                     ppu.screen_x = 0;
-                    ppu.next_clock_count += 3;
-                    state = 7;
+                    if gb.clock_count > ppu.next_clock_count + 456 {
+                        if ppu.wy == ppu.ly {
+                            ppu.reach_window = true;
+                        }
+
+                        let window_enabled = ppu.lcdc & 0x20 != 0;
+                        if ppu.reach_window && window_enabled && ppu.wx < 166 {
+                            ppu.wyc = ppu.wyc.wrapping_add(1);
+                        }
+
+                        ppu.search_objects();
+                        draw_scan_line(ppu);
+
+                        ppu.next_clock_count += 456;
+                        // goto end_line
+                        state = 14;
+                    } else {
+                        ppu.next_clock_count += 3;
+                        state = 7;
+                    }
                 }
                 // 3
                 7 => {
@@ -1223,6 +1241,7 @@ impl Ppu {
                     ppu.next_clock_count += 2;
                     state = 14;
                 }
+                // end_line
                 14 => {
                     ppu.ly += 1;
                     if ppu.ly == 144 {

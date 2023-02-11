@@ -9,7 +9,7 @@ use rayon::prelude::*;
 
 const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-test-roms/");
 
-/// The last time I run this, this took 40 min. But there were many println's at ppu interrupts.
+/// The last time I run this, this took 11min15s.
 #[test]
 #[ignore]
 fn test_all_files() {

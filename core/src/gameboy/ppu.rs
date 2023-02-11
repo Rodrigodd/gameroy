@@ -1458,7 +1458,7 @@ impl Ppu {
         next_interrupt = next_interrupt.min(next_vblank);
 
         let next_lyc = if self.lyc < SCANLINE_PER_FRAME {
-            let ly = if ly < 144 { ly } else { 144 };
+            let ly = if ly < 143 { ly } else { 143 };
 
             let lines_until_lyc = if self.lyc >= ly {
                 self.lyc - ly
@@ -1466,8 +1466,14 @@ impl Ppu {
                 SCANLINE_PER_FRAME - ly + self.lyc
             };
 
-            let start = self.line_start_clock_count + SCANLINE_CYCLES * lines_until_lyc as u64 + 4;
+            let mut start =
+                self.line_start_clock_count + SCANLINE_CYCLES * lines_until_lyc as u64 + 4;
             let end = start + SCANLINE_CYCLES;
+
+            // ly = 0 start early, 12 cycles into scanline 153.
+            if self.lyc == 0 {
+                start -= SCANLINE_CYCLES + 8;
+            }
 
             if self.last_clock_count < start {
                 start

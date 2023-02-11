@@ -1048,7 +1048,7 @@ impl Ppu {
                     // Handle sprites
 
                     // discart already handled sprites
-                    // TODO: discovery why this is necessary (blinded copied from SameBoy)
+                    // TODO: discover why this is necessary (blinded copied from SameBoy)
                     while ppu.sprite_buffer_len > 0
                         && (ppu.scanline_x < 160 || ppu.scanline_x >= (-8i8) as u8)
                         && ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1].sx

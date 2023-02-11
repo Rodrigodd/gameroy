@@ -143,7 +143,7 @@ Pressing `Enter` with the text field empty will run a step.
 ## Test suite
 
 All test roms used were obtained from [https://github.com/c-sp/gameboy-test-roms/releases/tag/v3.2],
-but the emulator was only run against the following tests. Only 
+but the emulator was only run against the following tests.
 
 To run the tests, follow the instructions in [core/tests](core/tests/).
 

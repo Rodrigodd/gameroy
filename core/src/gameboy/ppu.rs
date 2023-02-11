@@ -1185,13 +1185,14 @@ impl Ppu {
 
                     debug_assert!(ppu.screen_x <= 160);
                     if ppu.screen_x == 160 {
-                        // exit mode 3
+                        // goto exit_mode_3
                         state = 11;
                     } else {
                         ppu.next_clock_count += 1;
                         state = 27;
                     }
                 }
+                // exit_mode_3
                 11 => {
                     ppu.oam_read_block = false;
                     ppu.oam_write_block = false;

@@ -2146,4 +2146,90 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn case1() {
+        let mut gb = GameBoy::new(None, Cartridge::halt_filled());
+        gb.predict_interrupt = true;
+        *gb.ppu.get_mut() = Ppu {
+            dma_started: 0x7FFFFFFFFFFFFFFF,
+            dma_running: false,
+            dma_block_oam: false,
+            oam_read_block: false,
+            oam_write_block: false,
+            vram_read_block: false,
+            vram_write_block: false,
+            sprite_buffer_len: 0,
+            wyc: 255,
+            lcdc: 145,
+            stat: 193,
+            scy: 0,
+            scx: 0,
+            ly: 145,
+            lyc: 0,
+            bgp: 0,
+            obp0: 0,
+            obp1: 0,
+            wy: 0,
+            wx: 0,
+            state: 16,
+            ly_for_compare: 255,
+            stat_signal: false,
+            ly_compare_signal: false,
+            stat_mode_for_interrupt: 1,
+            last_clock_count: 23506498,
+            next_clock_count: 23506499,
+            line_start_clock_count: 23505585,
+            next_interrupt: 23510605,
+            fetcher_step: 0,
+            fetcher_x: 0,
+            fetch_tile_number: 0,
+            fetch_tile_data_low: 0,
+            fetch_tile_data_hight: 0,
+            sprite_tile_address: 0,
+            sprite_tile_data_low: 0,
+            sprite_tile_data_hight: 0,
+            reach_window: true,
+            is_in_window: false,
+            is_window_being_fetched: false,
+            insert_background_pixel: false,
+            sprite_at_0_penalty: 0,
+            wx_just_changed: false,
+            screen_x: 160,
+            scanline_x: 160,
+            ..Ppu::default()
+        };
+        gb.interrupt_flag.set(0);
+        let next_interrupt = gb.ppu.borrow().estimate_next_interrupt();
+        dbg!(next_interrupt);
+
+        if next_interrupt < gb.clock_count - 200 {
+            panic!("next_interrupt is too negative!");
+        }
+
+        let target_clock = if next_interrupt == u64::MAX {
+            unimplemented!()
+        } else if next_interrupt <= gb.clock_count + 1 {
+            for _ in 0..10_000_000 {
+                gb.clock_count += 4;
+                gb.update_ppu();
+                let interrupt = gb.interrupt_flag.get() & 0b11 != 0;
+                gb.interrupt_flag.set(0);
+                if interrupt {
+                    return;
+                }
+            }
+            panic!("interrupt never happens!?")
+        } else {
+            next_interrupt - 1
+        };
+
+        gb.clock_count = target_clock;
+        gb.update_ppu();
+        let interrupt = gb.interrupt_flag.get() & 0b11 != 0;
+        gb.interrupt_flag.set(0);
+        if interrupt {
+            panic!("interrupt is on early?");
+        }
+    }
 }

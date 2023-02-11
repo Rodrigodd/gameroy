@@ -1620,6 +1620,7 @@ fn write_pallete_conflict<F: Fn(&mut Ppu) -> &mut u8>(gb: &mut GameBoy, value: u
         let this = &mut *gb.ppu.borrow_mut();
         *field(this) = value
     }
+    Ppu::update_interrupt_prediction(gb);
     gb.clock_count += 1;
 }
 

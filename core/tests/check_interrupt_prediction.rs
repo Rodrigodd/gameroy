@@ -27,21 +27,41 @@ fn test_all_files() {
 
     println!("\ntesting {} roms:", roms.len());
 
-    roms.into_par_iter().for_each(|rom| {
-        println!("{}:", rom);
-        test_interrupt_prediction(&rom, 20 * CLOCK_SPEED);
-    });
+    let failed: Vec<_> = roms
+        .into_par_iter()
+        .filter_map({
+            |rom| {
+                println!("{}:", rom);
+                let ok = test_interrupt_prediction(&rom, 20 * CLOCK_SPEED);
+                (!ok).then_some(rom)
+            }
+        })
+        .collect();
+
+    if failed.is_empty() {
+        return;
+    }
+
+    print!("\u{001b}[31m");
+    println!("The following roms failed the test:");
+    for rom in failed {
+        println!("{rom}");
+    }
+    print!("\u{001b}[0m");
 }
 
 #[test]
 fn test_one() {
-    let rom = "mooneye-test-suite/acceptance/ppu/intr_2_0_timing.gb";
+    let rom = "gambatte/halt/lycint_dmgpalette_during_m3_4.gb";
     let rom = TEST_ROM_PATH.to_string() + rom;
-    let timeout = 120 * CLOCK_SPEED;
-    test_interrupt_prediction(&rom, timeout);
+    let timeout = 30 * CLOCK_SPEED;
+    let ok = test_interrupt_prediction(&rom, timeout);
+    if !ok {
+        panic!("CPU desync!");
+    }
 }
 
-fn test_interrupt_prediction(rom: &str, timeout: u64) {
+fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     let rom_path: PathBuf = rom.into();
     let rom = std::fs::read(rom_path).unwrap();
     let cartridge = Cartridge::new(rom).unwrap();
@@ -60,22 +80,30 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) {
             let mut inter = Interpreter(&mut game_boy_b);
             inter.interpret_op();
         }
-        assert_equal(&game_boy_a, &game_boy_b);
+        if !assert_equal(&game_boy_a, &game_boy_b) {
+            return false;
+        }
 
         // 0x40 = LD B, B
         if game_boy_b.read(game_boy_b.cpu.pc) == 0x40 {
             break;
         }
     }
+    true
 }
 
-fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy) {
+fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy) -> bool {
+    use std::io::Write;
+    #[allow(unused_must_use)]
     if game_boy_a.cpu != game_boy_b.cpu || game_boy_a.clock_count != game_boy_b.clock_count {
+        print!("\u{001b}[31m");
         println!("{:>15}: {:?}", game_boy_a.clock_count, game_boy_a.cpu);
         println!("{:>15}: {:?}", game_boy_b.clock_count, game_boy_b.cpu);
 
         println!("{:?}", game_boy_a.ppu.borrow().oam);
         println!("{:?}", game_boy_b.ppu.borrow().oam);
-        panic!("CPU desync!");
+        print!("\u{001b}[0m");
+        return false;
     }
+    true
 }

@@ -157,7 +157,7 @@ impl GameBoy {
             interrupt_enabled: 0,
             v_blank_trigger: false.into(),
             v_blank: None,
-            predict_interrupt: false,
+            predict_interrupt: true,
         };
 
         if this.boot_rom.is_none() {

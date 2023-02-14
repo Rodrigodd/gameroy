@@ -105,7 +105,6 @@ impl Timer {
 
             // faling edge
             if self.last_counter_bit && !counter_bit {
-                // dbg!(self.tima);
                 let (v, overflow) = self.tima.overflowing_add(1);
                 self.tima = v;
                 // TIMA, on overflow, keep the value 00 for 4 cycles before the overflow is
@@ -184,13 +183,15 @@ impl Timer {
             return u64::MAX;
         }
 
+        let div = self.div.wrapping_add(1);
+
         let freq = [9, 3, 5, 7][(self.tac & 0b11) as usize];
         let period = 1 << (freq as u64 + 1);
 
-        let until_falling_edge = period - (self.div as u64 & (period - 1));
-        debug_assert!((self.div as u64 + until_falling_edge) & (period - 1) == 0);
+        let until_falling_edge = period - (div as u64 & (period - 1));
+        debug_assert!((div as u64 + until_falling_edge) & (period - 1) == 0);
 
-        let counter_bit = (self.div >> freq) as u8 & 0b1 != 0;
+        let counter_bit = (div >> freq) as u8 & 0b1 != 0;
         let tima = if self.last_counter_bit && !counter_bit {
             self.tima as u64 + 2
         } else {
@@ -198,11 +199,11 @@ impl Timer {
         };
 
         let remaining_time = if tima == 256 {
-            until_falling_edge + 2
+            until_falling_edge + 4
         } else if tima == 257 {
-            3
+            4
         } else {
-            (256 - (tima + 1)) * period + until_falling_edge + 2
+            (256 - tima) * period + until_falling_edge + 4
         };
 
         self.last_clock_count + remaining_time
@@ -244,11 +245,15 @@ mod tests {
                 let error_timer = timer.clone();
                 let next_interrupt = timer.estimate_next_interrupt();
 
-                let target_clock = if next_interrupt == u64::MAX {
+                if next_interrupt == u64::MAX {
                     let r: f64 = rng.gen();
                     let cycles = (2.0f64.powf(2.0 + r * 21.0)) as u64;
                     println!("random target: {}", cycles);
-                    timer.last_clock_count + cycles
+
+                    let interrupt = timer.update(timer.last_clock_count + cycles);
+                    if interrupt {
+                        panic!("interrupt is on? {:?}", error_timer);
+                    }
                 } else if next_interrupt <= timer.last_clock_count + 1 {
                     for _ in 0..10_000_000 {
                         let interrupt = timer.update(timer.last_clock_count + 4);
@@ -258,20 +263,59 @@ mod tests {
                     }
                     panic!("interrupt never happens!?: {:?}", error_timer)
                 } else {
-                    next_interrupt - 1
+                    let interrupt = timer.update(next_interrupt - 1);
+                    if interrupt {
+                        panic!("interrupt is on early? {:?}", error_timer);
+                    }
+                    let interrupt = timer.update(next_interrupt);
+                    if !interrupt {
+                        panic!("interrupt is not on? {:?}", error_timer);
+                    }
                 };
-
-                let interrupt = timer.update(target_clock);
-                if interrupt {
-                    panic!("interrupt is on early? {:?}", error_timer);
-                }
             }
         }
     }
 
-    #[test]
-    fn case1() {
-        let mut timer = Timer {
+    fn test_case(mut timer: Timer) {
+        timer.last_clock_count = 0;
+        dbg!(&timer);
+        let next_interrupt = timer.estimate_next_interrupt();
+        if next_interrupt == u64::MAX {
+            let interrupt = timer.update(100_000);
+            if interrupt {
+                panic!("interrupt should never happen!");
+            }
+        } else if next_interrupt <= timer.last_clock_count + 1 {
+            for _ in 0..10_000_000 {
+                let interrupt = timer.update(timer.last_clock_count + 4);
+                if interrupt {
+                    return;
+                }
+            }
+            panic!("interrupt never happens!?")
+        } else {
+            let interrupt = timer.update(next_interrupt - 1);
+            if interrupt {
+                panic!("interrupt is on early?");
+            }
+            let interrupt = timer.update(next_interrupt);
+            if !interrupt {
+                panic!("interrupt is not on?");
+            }
+        };
+    }
+
+    macro_rules! test_cases {
+        { $( $(#[$($attrib:meta)*])* $test:ident: $timer:expr; )* } => {
+            $(#[test] $(#[$($attrib)*])*
+            fn $test() {
+                test_case($timer);
+            })*
+        };
+    }
+
+    test_cases!(
+        case1: Timer {
             div: 0b11001,
             tima: 228,
             tma: 92,
@@ -281,32 +325,7 @@ mod tests {
             loading: 0,
             next_interrupt: 0,
         };
-
-        let next_interrupt = timer.estimate_next_interrupt();
-
-        let target_clock = if next_interrupt == u64::MAX {
-            unimplemented!()
-        } else if next_interrupt == timer.last_clock_count {
-            println!("running until interrupt: tac = {:03b}", timer.tac & 0b111);
-            for _ in 0..10_000_000 {
-                let interrupt = timer.update(timer.last_clock_count + 4);
-                if interrupt {
-                    return;
-                }
-            }
-            panic!("interrupt never happens!?")
-        } else {
-            println!("next_interrupt: {}", next_interrupt);
-            next_interrupt - 1
-        };
-
-        let interrupt = timer.update(target_clock);
-        assert!(!interrupt);
-    }
-
-    #[test]
-    fn case2() {
-        let mut timer = Timer {
+        case2: Timer {
             div: 0,
             tima: 255,
             tma: 94,
@@ -316,32 +335,7 @@ mod tests {
             loading: 0,
             next_interrupt: 0,
         };
-
-        let next_interrupt = timer.estimate_next_interrupt();
-
-        let target_clock = if next_interrupt == u64::MAX {
-            unimplemented!()
-        } else if next_interrupt == timer.last_clock_count {
-            println!("running until interrupt: tac = {:03b}", timer.tac & 0b111);
-            for _ in 0..10_000_000 {
-                let interrupt = timer.update(timer.last_clock_count + 4);
-                if interrupt {
-                    return;
-                }
-            }
-            panic!("interrupt never happens!?")
-        } else {
-            println!("next_interrupt: {}", next_interrupt);
-            next_interrupt - 1
-        };
-
-        let interrupt = timer.update(target_clock);
-        assert!(!interrupt);
-    }
-
-    #[test]
-    fn case3() {
-        let mut timer = Timer {
+        case3: Timer {
             div: 59393,
             tima: 0,
             tma: 20,
@@ -351,26 +345,30 @@ mod tests {
             loading: 6,
             next_interrupt: 0,
         };
-
-        let next_interrupt = timer.estimate_next_interrupt();
-
-        let target_clock = if next_interrupt == u64::MAX {
-            timer.last_clock_count + 7984
-        } else if next_interrupt == timer.last_clock_count {
-            println!("running until interrupt: tac = {:03b}", timer.tac & 0b111);
-            for _ in 0..10_000_000 {
-                let interrupt = timer.update(timer.last_clock_count + 4);
-                if interrupt {
-                    return;
-                }
-            }
-            panic!("interrupt never happens!?")
-        } else {
-            println!("next_interrupt: {}", next_interrupt);
-            next_interrupt - 1
+        case4: Timer {
+            div: 0x3D4F,
+            tima: 0,
+            tma: 0xC1,
+            tac: 0b1001100,
+            last_counter_bit: false,
+            last_clock_count: 0,
+            loading: 0,
+            next_interrupt: 260787,
         };
-
-        let interrupt = timer.update(target_clock);
-        assert!(!interrupt);
-    }
+        case5: Timer {
+            div: 0b11000001001111,
+            // div: 12367,
+            tima: 60,
+            tma: 0,
+            tac: 0b1101101,
+            last_counter_bit: false,
+            last_clock_count: 17510503,
+            loading: 0,
+            next_interrupt: 17513627,
+        };
+        case6: Timer { div: 17351, tima: 255, tma: 255, tac: 205, last_counter_bit: false, last_clock_count: 691228312, loading: 0, next_interrupt: 691228323 };
+        case7: Timer { div: 11463, tima: 255, tma: 77, tac: 103, last_counter_bit: false, last_clock_count: 1261064037, loading: 0, next_interrupt: 1261064096 };
+        case8: Timer { div: 36591, tima: 0, tma: 0, tac: 133, last_counter_bit: false, last_clock_count: 320704263, loading: 0, next_interrupt: 320708347 };
+        case9: Timer { div: 12367, tima: 60, tma: 0, tac: 109, last_counter_bit: false, last_clock_count: 17510503, loading: 0, next_interrupt: 17513627 };
+    );
 }

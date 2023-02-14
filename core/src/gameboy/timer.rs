@@ -3,10 +3,16 @@ use crate::save_state::{LoadStateError, SaveState};
 #[derive(Default, Debug, Eq, Clone)]
 pub struct Timer {
     /// FF04: DIV register
+    ///
+    /// The intern counter of the Timer. Increases every cycle. Only the upper byte is readible.
     pub div: u16,
     /// FF05: TIMA register
+    ///
+    /// Count upwards. Generates a interrupt on overflow.
     pub tima: u8,
     /// FF06: TMA register
+    ///
+    /// TIMA is reset to this value when it overflows.
     pub tma: u8,
     /// FF07: TAC register
     ///

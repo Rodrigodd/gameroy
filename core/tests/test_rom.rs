@@ -473,7 +473,8 @@ fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
             println!("clock_count don't match")
         }
         if a.timer != b.timer {
-            println!("timer don't match")
+            println!("timer don't match: {:?}", a.timer);
+            println!("                   {:?}", b.timer);
         }
         if a.sound != b.sound {
             println!("sound don't match")

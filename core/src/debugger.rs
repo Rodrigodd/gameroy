@@ -410,7 +410,7 @@ impl Debugger {
 
         // clear the audio output
         let clock_count = inter.0.clock_count;
-        let _ = inter.0.sound.borrow_mut().get_output(clock_count);
+        let _ = inter.0.sound.get_mut().get_output(clock_count);
 
         result
     }

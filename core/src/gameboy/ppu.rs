@@ -572,7 +572,7 @@ impl Ppu {
                 let mut old_value = gb.ppu.borrow().lcdc;
 
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
 
                     const BG_EN: u8 = 0b01;
                     const OBJ_EN: u8 = 0b10;
@@ -594,7 +594,7 @@ impl Ppu {
                 gb.clock_count += 1;
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.lcdc = value;
                     update_lcdc(this, old_value, gb.clock_count);
                 }
@@ -606,7 +606,7 @@ impl Ppu {
             0x41 => {
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.stat = 0x80 | (value & !0b111) | (this.stat & 0b111);
                 }
                 Ppu::update_interrupt_prediction(gb);
@@ -614,7 +614,7 @@ impl Ppu {
             0x42 => {
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.scy = value;
                 }
                 Ppu::update_interrupt_prediction(gb);
@@ -622,7 +622,7 @@ impl Ppu {
             0x43 => {
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.scx = value;
                 }
                 Ppu::update_interrupt_prediction(gb);
@@ -631,7 +631,7 @@ impl Ppu {
             0x45 => {
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.lyc = value;
                 }
                 Ppu::update_interrupt_prediction(gb);
@@ -642,7 +642,7 @@ impl Ppu {
             0x4A => {
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.wy = value;
                 }
                 Ppu::update_interrupt_prediction(gb);
@@ -650,7 +650,7 @@ impl Ppu {
             0x4B => {
                 gb.update_ppu();
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.wx = value;
                     this.wx_just_changed = true;
                 }
@@ -658,7 +658,7 @@ impl Ppu {
                 gb.update_ppu();
 
                 {
-                    let this = &mut *gb.ppu.borrow_mut();
+                    let this = &mut *gb.ppu.get_mut();
                     this.wx_just_changed = false;
                 }
                 Ppu::update_interrupt_prediction(gb);
@@ -758,7 +758,7 @@ impl Ppu {
     pub fn start_dma(gb: &mut GameBoy, value: u8) {
         gb.update_ppu();
         gb.dma = value;
-        let ppu = &mut *gb.ppu.borrow_mut();
+        let ppu = &mut *gb.ppu.get_mut();
         ppu.dma_started = gb.clock_count;
         if ppu.dma_running {
             // HACK: if a DMA requested was make right before this one, this dma_started
@@ -782,7 +782,7 @@ impl Ppu {
 
     pub fn write_oam(gb: &mut GameBoy, address: u16, value: u8) {
         gb.update_ppu();
-        let ppu = &mut *gb.ppu.borrow_mut();
+        let ppu = &mut *gb.ppu.get_mut();
         if !ppu.dma_block_oam && !ppu.oam_write_block {
             ppu.oam[address as usize - 0xFE00] = value;
         }
@@ -800,7 +800,7 @@ impl Ppu {
 
     pub fn write_vram(gb: &mut GameBoy, address: u16, value: u8) {
         gb.update_ppu();
-        let ppu = &mut *gb.ppu.borrow_mut();
+        let ppu = &mut *gb.ppu.get_mut();
         if !ppu.vram_write_block {
             ppu.vram[address as usize - 0x8000] = value;
         }
@@ -1630,13 +1630,13 @@ fn write_pallete_conflict<F: Fn(&mut Ppu) -> &mut u8>(gb: &mut GameBoy, value: u
     gb.clock_count -= 2;
     gb.update_ppu();
     {
-        let this = &mut *gb.ppu.borrow_mut();
+        let this = &mut *gb.ppu.get_mut();
         *field(this) |= value;
     }
     gb.clock_count += 1;
     gb.update_ppu();
     {
-        let this = &mut *gb.ppu.borrow_mut();
+        let this = &mut *gb.ppu.get_mut();
         *field(this) = value
     }
     Ppu::update_interrupt_prediction(gb);

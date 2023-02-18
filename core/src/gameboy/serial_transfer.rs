@@ -83,10 +83,10 @@ impl Serial {
 
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {
         match address {
-            0x01 => gb.serial.borrow_mut().serial_data = value,
+            0x01 => gb.serial.get_mut().serial_data = value,
             0x02 => {
                 gb.update_serial();
-                let this = &mut *gb.serial.borrow_mut();
+                let this = &mut *gb.serial.get_mut();
                 this.serial_control = value | 0x7E;
                 if value & 0x81 == 0x81 {
                     // serial transfer is aligned to a 8192Hz (2^13 Hz) clock.
@@ -100,7 +100,7 @@ impl Serial {
             _ => unreachable!(),
         }
 
-        let this = &mut *gb.serial.borrow_mut();
+        let this = &mut *gb.serial.get_mut();
         this.next_interrupt = this.estimate_next_interrupt();
     }
 

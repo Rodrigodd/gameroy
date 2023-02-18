@@ -239,7 +239,7 @@ impl GameBoy {
 
         self.boot_rom_active = false;
         self.clock_count = 23_440_324;
-        self.ppu.borrow_mut().reset_after_boot();
+        self.ppu.get_mut().reset_after_boot();
 
         self.joypad = 0xFF;
 
@@ -248,7 +248,7 @@ impl GameBoy {
         self.timer = Timer::after_boot(self.clock_count).into();
         self.interrupt_flag = 0xE1.into();
         self.sound
-            .borrow_mut()
+            .get_mut()
             .load_state(ctx, &mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
     }
@@ -397,9 +397,7 @@ impl GameBoy {
                 *self.interrupt_flag.get_mut() = value
             }
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
-                self.sound
-                    .borrow_mut()
-                    .write(self.clock_count, address, value)
+                self.sound.get_mut().write(self.clock_count, address, value)
             }
             0x15 => {}
             0x1f => {}

@@ -399,8 +399,8 @@ impl Emulator {
                 sound.play();
                 std::mem::forget(sound);
 
-                let gb = gb.lock();
-                gb.sound.borrow_mut().sample_frequency = audio_engine.sample_rate() as u64;
+                let mut gb = gb.lock();
+                gb.sound.get_mut().sample_frequency = audio_engine.sample_rate() as u64;
 
                 Some(SoundBackend {
                     _audio_engine: audio_engine,
@@ -740,7 +740,7 @@ impl Emulator {
                     }
                     // clear the audio output
                     let clock_count = inter.0.clock_count;
-                    let _ = inter.0.sound.borrow_mut().get_output(clock_count);
+                    let _ = inter.0.sound.get_mut().get_output(clock_count);
 
                     return Control::Poll;
                 }
@@ -751,9 +751,9 @@ impl Emulator {
     }
 
     fn update_audio(&mut self) {
-        let gb = self.gb.lock();
+        let mut gb = self.gb.lock();
         let clock_count = gb.clock_count;
-        let buffer = gb.sound.borrow_mut().get_output(clock_count);
+        let buffer = gb.sound.get_mut().get_output(clock_count);
         #[cfg(feature = "audio-engine")]
         if let Some(SoundBackend {
             audio_buffer,

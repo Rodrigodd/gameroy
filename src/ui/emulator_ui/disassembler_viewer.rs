@@ -364,11 +364,10 @@ impl ListBuilder for DissasemblerList {
                 );
             };
         } else if let Some(JumpToAddress { from_address }) = event.downcast_ref::<JumpToAddress>() {
-            let gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
-            let trace = gb.trace.borrow_mut();
+            let mut gb = ctx.get::<Arc<Mutex<GameBoy>>>().lock();
+            let trace = gb.trace.get_mut();
             let jump_to = trace.jumps.get(from_address).unwrap();
             let pos = self.directives.binary_search_by(|x| x.address.cmp(jump_to));
-            drop(trace);
             drop(gb);
             if let Ok(pos) = pos {
                 ctx.send_event_to(

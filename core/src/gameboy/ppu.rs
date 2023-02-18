@@ -824,7 +824,6 @@ impl Ppu {
             return (false, false);
         }
 
-        let mut state = ppu.state;
         let mut stat_interrupt = false;
         let mut vblank_interrupt = false;
 
@@ -838,7 +837,7 @@ impl Ppu {
         while ppu.next_clock_count < gb.clock_count {
             Self::update_dma(gb, ppu, ppu.next_clock_count);
             // println!("state: {}", state);
-            match state {
+            match ppu.state {
                 // turn on
                 0 => {
                     ppu.ly = 0;
@@ -856,20 +855,20 @@ impl Ppu {
                     ppu.vram_write_block = false;
 
                     ppu.next_clock_count += 1;
-                    state = 1;
+                    ppu.state = 1;
                 }
                 // 1
                 1 => {
                     ppu.line_start_clock_count = ppu.next_clock_count - 8;
                     ppu.wyc = 0xff;
                     ppu.next_clock_count += 76;
-                    state = 2;
+                    ppu.state = 2;
                 }
                 // 77
                 2 => {
                     ppu.oam_write_block = true;
                     ppu.next_clock_count += 2;
-                    state = 3;
+                    ppu.state = 3;
                 }
                 // 79
                 3 => {
@@ -883,17 +882,17 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
-                    state = 4;
+                    ppu.state = 4;
                 }
                 // 81
                 4 => {
                     ppu.next_clock_count += 3;
-                    state = 5;
+                    ppu.state = 5;
                 }
                 // 84
                 5 => {
                     // goto mode_3_start
-                    state = 10;
+                    ppu.state = 10;
                 }
 
                 // start_line
@@ -915,10 +914,10 @@ impl Ppu {
 
                         ppu.next_clock_count += 456;
                         // goto end_line
-                        state = 14;
+                        ppu.state = 14;
                     } else {
                         ppu.next_clock_count += 3;
-                        state = 7;
+                        ppu.state = 7;
                     }
                 }
                 // 3
@@ -938,7 +937,7 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 1;
-                    state = 8;
+                    ppu.state = 8;
                 }
                 // 4
                 8 => {
@@ -955,7 +954,7 @@ impl Ppu {
                     ppu.search_objects();
 
                     ppu.next_clock_count += 76;
-                    state = 39;
+                    ppu.state = 39;
                 }
                 // 80
                 39 => {
@@ -965,7 +964,7 @@ impl Ppu {
                     ppu.vram_write_block = false;
 
                     ppu.next_clock_count += 4;
-                    state = 9;
+                    ppu.state = 9;
                 }
                 // 84
                 9 => {
@@ -980,7 +979,7 @@ impl Ppu {
                     ppu.vram_write_block = true;
 
                     ppu.next_clock_count += 5;
-                    state = 10;
+                    ppu.state = 10;
                 }
                 // mode_3_start
                 10 => {
@@ -1000,7 +999,7 @@ impl Ppu {
                     ppu.sprite_at_0_penalty = (ppu.scx % 8).min(5);
                     // ppu.sprite_at_0_penalty = 4;
 
-                    state = 27;
+                    ppu.state = 27;
                 }
                 // Loop for every line from 0 to 144
                 27 => {
@@ -1034,13 +1033,13 @@ impl Ppu {
                                 // wait 1
                                 ppu.next_clock_count += 1;
                             }
-                            state = 28;
+                            ppu.state = 28;
                             continue;
                         } else if ppu.wx == 166 && ppu.wx == ppu.scanline_x.wrapping_add(7) {
                             ppu.wyc = ppu.wyc.wrapping_add(1);
                         }
                     }
-                    state = 29;
+                    ppu.state = 29;
                 }
                 // active window
                 28 => {
@@ -1050,7 +1049,7 @@ impl Ppu {
                     ppu.background_fifo.clear();
                     ppu.is_window_being_fetched = true;
 
-                    state = 29;
+                    ppu.state = 29;
                 }
                 29 => {
                     if ppu.is_in_window
@@ -1077,7 +1076,7 @@ impl Ppu {
 
                     // fetch sprites
                     // ppu.sprite_fetching = true;
-                    state = 30;
+                    ppu.state = 30;
                 }
                 // while there are sprites to be fetch...
                 30 => {
@@ -1088,10 +1087,10 @@ impl Ppu {
                             == ppu.scanline_x.wrapping_add(8)
                     {
                         // continue loop
-                        state = 31;
+                        ppu.state = 31;
                     } else {
                         // exit loop
-                        state = 24;
+                        ppu.state = 24;
                     }
                 }
                 // while there are background pixels or don't reach a fetcher step...
@@ -1102,7 +1101,7 @@ impl Ppu {
                         ppu.next_clock_count += 1;
                         // if abort_sprite_feching { goto aborted }
                     } else {
-                        state = 32;
+                        ppu.state = 32;
                     }
                 }
                 32 => {
@@ -1113,22 +1112,22 @@ impl Ppu {
                         // wait sprite_at_0_penalty
                         ppu.next_clock_count += ppu.sprite_at_0_penalty as u64;
                         ppu.sprite_at_0_penalty = 0;
-                        state = 37;
+                        ppu.state = 37;
                         continue;
                     }
 
-                    state = 38;
+                    ppu.state = 38;
                 }
                 37 => {
                     // if abort_sprite_feching { goto aborted }
 
-                    state = 38;
+                    ppu.state = 38;
                 }
                 38 => {
                     // wait 1
                     tick_pixel_fetcher(ppu, ppu.ly);
                     ppu.next_clock_count += 1;
-                    state = 36;
+                    ppu.state = 36;
                 }
                 36 => {
                     // if abort_sprite_feching { goto aborted }
@@ -1151,7 +1150,7 @@ impl Ppu {
 
                     // wait 2
                     ppu.next_clock_count += 2;
-                    state = 33;
+                    ppu.state = 33;
                 }
                 33 => {
                     // if abort_sprite_feching { goto aborted }
@@ -1160,7 +1159,7 @@ impl Ppu {
 
                     // wait 2
                     ppu.next_clock_count += 2;
-                    state = 34;
+                    ppu.state = 34;
                 }
                 34 => {
                     // if abort_sprite_feching { goto aborted }
@@ -1171,7 +1170,7 @@ impl Ppu {
 
                     // wait 1
                     ppu.next_clock_count += 1;
-                    state = 35;
+                    ppu.state = 35;
                 }
                 35 => {
                     let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
@@ -1195,7 +1194,7 @@ impl Ppu {
                     ppu.sprite_buffer_len -= 1;
 
                     // loop again
-                    state = 30;
+                    ppu.state = 30;
                 }
                 24 => {
                     output_pixel(ppu);
@@ -1204,10 +1203,10 @@ impl Ppu {
                     debug_assert!(ppu.screen_x <= 160);
                     if ppu.screen_x == 160 {
                         // goto exit_mode_3
-                        state = 11;
+                        ppu.state = 11;
                     } else {
                         ppu.next_clock_count += 1;
-                        state = 27;
+                        ppu.state = 27;
                     }
                 }
                 // exit_mode_3
@@ -1222,16 +1221,16 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 1;
-                    state = 12;
+                    ppu.state = 12;
                 }
                 12 => {
                     ppu.next_clock_count += 2;
-                    state = 13;
+                    ppu.state = 13;
                 }
                 13 => {
                     let elapsed = ppu.next_clock_count - ppu.line_start_clock_count;
                     ppu.next_clock_count += 456 - elapsed - 2;
-                    state = 26;
+                    ppu.state = 26;
                 }
                 26 => {
                     if ppu.lcdc & 0x20 != 0 && ppu.wy == ppu.ly {
@@ -1239,31 +1238,31 @@ impl Ppu {
                     }
 
                     ppu.next_clock_count += 2;
-                    state = 14;
+                    ppu.state = 14;
                 }
                 // end_line
                 14 => {
                     ppu.ly += 1;
                     if ppu.ly == 144 {
                         // goto vblank
-                        state = 15;
+                        ppu.state = 15;
                     } else {
                         // goto start_line
-                        state = 6;
+                        ppu.state = 6;
                     }
                 }
                 // start_vblank_line
                 15 => {
                     if ppu.ly == 153 {
                         // goto last_vblank_line
-                        state = 18;
+                        ppu.state = 18;
                         continue;
                     }
                     ppu.ly_for_compare = 0xFF;
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 2;
-                    state = 16;
+                    ppu.state = 16;
                 }
                 // 2
                 16 => {
@@ -1272,7 +1271,7 @@ impl Ppu {
                     }
 
                     ppu.next_clock_count += 2;
-                    state = 17;
+                    ppu.state = 17;
                 }
                 // 4
                 17 => {
@@ -1280,7 +1279,7 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 0;
-                    state = 40;
+                    ppu.state = 40;
                 }
                 40 => {
                     if ppu.ly == 144 {
@@ -1294,12 +1293,12 @@ impl Ppu {
                     }
 
                     ppu.next_clock_count += 456 - 4;
-                    state = 25;
+                    ppu.state = 25;
                 }
                 25 => {
                     ppu.ly += 1;
                     // goto start_vblank_line
-                    state = 15;
+                    ppu.state = 15;
                 }
                 // last_vblank_line
                 18 => {
@@ -1308,7 +1307,7 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 6;
-                    state = 19;
+                    ppu.state = 19;
                 }
                 // 6
                 19 => {
@@ -1316,7 +1315,7 @@ impl Ppu {
                     ppu.ly_for_compare = 153;
                     ppu.update_stat(&mut stat_interrupt);
                     ppu.next_clock_count += 2;
-                    state = 20;
+                    ppu.state = 20;
                 }
                 // 8
                 20 => {
@@ -1324,7 +1323,7 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 4;
-                    state = 21;
+                    ppu.state = 21;
                 }
                 // 12
                 21 => {
@@ -1332,12 +1331,12 @@ impl Ppu {
                     ppu.update_stat(&mut stat_interrupt);
 
                     ppu.next_clock_count += 12;
-                    state = 22;
+                    ppu.state = 22;
                 }
                 // 24
                 22 => {
                     ppu.next_clock_count += 456 - 24;
-                    state = 23;
+                    ppu.state = 23;
                 }
                 // 0
                 23 => {
@@ -1347,12 +1346,11 @@ impl Ppu {
                     ppu.wyc = 0xff;
 
                     // goto start_line
-                    state = 6;
+                    ppu.state = 6;
                 }
                 _ => unreachable!(),
             }
         }
-        ppu.state = state;
 
         Self::update_dma(gb, ppu, gb.clock_count);
 

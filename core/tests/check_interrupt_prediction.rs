@@ -93,7 +93,6 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
 }
 
 fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy) -> bool {
-    use std::io::Write;
     #[allow(unused_must_use)]
     if game_boy_a.cpu != game_boy_b.cpu || game_boy_a.clock_count != game_boy_b.clock_count {
         print!("\u{001b}[31m");

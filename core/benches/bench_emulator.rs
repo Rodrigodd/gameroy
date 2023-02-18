@@ -12,8 +12,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let save_state = {
         let mut save_state = Vec::new();
 
-        // will run 2s of emulated time.
-        let target_clock = gb.clock_count + CLOCK_SPEED * 3;
+        let target_clock = gb.clock_count + CLOCK_SPEED * 10;
 
         while gb.clock_count < target_clock {
             Interpreter(&mut gb).interpret_op();
@@ -23,12 +22,29 @@ fn criterion_benchmark(c: &mut Criterion) {
         save_state
     };
 
-    // will run 2s of emulated time.
-    let target_clock = gb.clock_count + CLOCK_SPEED * 3;
-
-    c.bench_function("kirby 2s", move |b| {
+    gb.predict_interrupt = true;
+    c.bench_function("kirby 2s", |b| {
         let gb = &mut gb;
         gb.load_state(&mut save_state.as_slice()).unwrap();
+
+        // will run some seconds of emulated time.
+        let target_clock = gb.clock_count + CLOCK_SPEED * 2;
+
+        b.iter(move || {
+            while gb.clock_count < target_clock {
+                Interpreter(gb).interpret_op()
+            }
+        })
+    });
+
+    gb.predict_interrupt = false;
+    c.bench_function("kirby 2s - no interrupt prediction", |b| {
+        let gb = &mut gb;
+        gb.load_state(&mut save_state.as_slice()).unwrap();
+
+        // will run some seconds of emulated time.
+        let target_clock = gb.clock_count + CLOCK_SPEED * 2;
+
         b.iter(move || {
             while gb.clock_count < target_clock {
                 Interpreter(gb).interpret_op()

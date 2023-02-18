@@ -59,6 +59,9 @@ pub fn main() {
                  .default_value("10")
                  .validator(|x| x.parse::<u64>())
             )
+            .arg(arg!(--no_prediction "disables interrupt prediction optimization")
+                 .required(false)
+            )
             .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
         .get_matches();
 
@@ -72,7 +75,13 @@ pub fn main() {
             .value_of("times")
             .and_then(|x| x.parse().ok())
             .unwrap();
-        return bench::benchmark(rom_path, frames * gameroy::consts::FRAME_CYCLES, len);
+        let predict_interrupt = !matches.is_present("no_prediction");
+        return bench::benchmark(
+            rom_path,
+            frames * gameroy::consts::FRAME_CYCLES,
+            len,
+            predict_interrupt,
+        );
     }
 
     let debug = matches.is_present("debug");

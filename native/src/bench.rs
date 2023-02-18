@@ -39,7 +39,7 @@ fn print_val(val: f64, err: f64) -> String {
     format!("{:.p$} +/- {:.p$}", val, err, p = p)
 }
 
-pub fn benchmark(path: &str, timeout: u64, len: usize) {
+pub fn benchmark(path: &str, timeout: u64, len: usize, predict_interrupt: bool) {
     let rom_path = PathBuf::from(path);
     let rom = std::fs::read(rom_path);
 
@@ -50,6 +50,7 @@ pub fn benchmark(path: &str, timeout: u64, len: usize) {
 
     let cartridge = Cartridge::new(rom).unwrap();
     let mut game_boy = GameBoy::new(None, cartridge);
+    game_boy.predict_interrupt = predict_interrupt;
 
     // remove serial transfer console output
     game_boy.serial.get_mut().serial_transfer_callback = None;

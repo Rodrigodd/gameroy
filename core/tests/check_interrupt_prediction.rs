@@ -16,7 +16,7 @@ const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-
 /// The last time I run this, this took 11min15s.
 #[test]
 #[ignore]
-fn test_all_files() {
+fn test_all_files() -> Result<(), ()> {
     let mut tree: Vec<_> = std::fs::read_dir(TEST_ROM_PATH).unwrap().collect();
     let mut roms = Vec::new();
     while let Some(entry) = tree.pop() {
@@ -56,7 +56,7 @@ fn test_all_files() {
         .collect();
 
     if failed.is_empty() {
-        return;
+        return Ok(());
     }
 
     print!("\u{001b}[31m");
@@ -65,6 +65,8 @@ fn test_all_files() {
         println!("{rom}");
     }
     print!("\u{001b}[0m");
+
+    Err(())
 }
 
 #[test]

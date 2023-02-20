@@ -1935,11 +1935,13 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
 }
 
 pub fn draw_scan_line(ppu: &mut Ppu) {
+    let scanline_start = ppu.ly as usize * 160;
     // Draw background
-    if ppu.lcdc & 0x01 != 0 {
+    if ppu.lcdc & 0x01 == 0 {
+        ppu.screen[scanline_start..][..160].copy_from_slice(&[0; 160]);
+    } else {
         // (py, px) is a pixel in the background map
         // (lx, ly) is a pixel in the lcd screen
-        let ly = ppu.ly;
         let py = ((ppu.scy as u16 + ppu.ly as u16) % 256) as u8;
         for lx in 0..160 {
             let px = ((lx as u16 + ppu.scx as u16) % 256) as u8;
@@ -1973,19 +1975,15 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 let color = (palette >> (color * 2)) & 0b11;
                 // draw_pixel(lx as i32, ly as i32, color);
                 debug_assert!(color < 4);
-                ppu.screen[ly as usize * 160 + lx as usize] = color;
+                ppu.screen[scanline_start + lx as usize] = color;
             };
         }
-    } else {
-        let ly = ppu.ly;
-        ppu.screen[ly as usize * 160..(ly as usize + 1) * 160].copy_from_slice(&[0; 160]);
     }
 
     // Draw window
     if ppu.lcdc & 0x21 == 0x21 && ppu.ly >= ppu.wy && ppu.wx <= 166 {
         // (py, px) is a pixel in the window map
         // (lx, ly) is a pixel in the lcd screen
-        let ly = ppu.ly;
         let py = ppu.wyc;
         for lx in ppu.wx.saturating_sub(7)..160 {
             let px = lx + 7 - ppu.wx;
@@ -2017,38 +2015,46 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                     continue;
                 }
                 let color = (palette >> (color * 2)) & 0b11;
-                // draw_pixel(lx as i32, ly as i32, color);
-                debug_assert!(color < 4);
-                ppu.screen[ly as usize * 160 + lx as usize] = color;
+
+                ppu.screen[scanline_start + lx as usize] = color;
             };
         }
     }
 
     // Draw Sprites, if enabled
     if ppu.lcdc & 0x02 != 0 {
+        let sprites = &&ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize];
         for &Sprite {
             sy,
             sx,
-            tile: t,
+            tile,
             flags,
-        } in &ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize]
+        } in sprites.iter()
         {
-            let sy = sy as i32 - 16;
-            let sx = sx as i32 - 8;
+            // Sprite is outside the screen
+            if sx >= 168 {
+                continue;
+            }
+
+            // It is know by search_objects that:
+            //    ly + 16 >= scy,     ly + 16 > scy + heigh
+            // => ly + 16 - scy >= 0, ly + 16 - scy > height
+            // =>                     ly + 16 - scy >= height - 1
+            // also, ly < 144, so ly + 16 < 256
 
             // Y-Flip
             let py = if flags & 0x40 != 0 {
                 let height = if ppu.lcdc & 0x04 != 0 { 16 } else { 8 };
-                height - 1 - (ppu.ly as i32 - sy)
+                height - 1 - (ppu.ly + 16 - sy)
             } else {
-                ppu.ly as i32 - sy
+                ppu.ly + 16 - sy
             };
 
             let tile = if ppu.lcdc & 0x04 != 0 {
                 // sprite with 2 tiles of height
-                ((t & !1) + py as u8 / 8) as usize
+                (tile & !1) + py / 8
             } else {
-                t as usize
+                tile
             };
 
             let palette = if flags & 0x10 != 0 {
@@ -2058,13 +2064,16 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             };
 
             {
-                let y = py % 8;
-                let i = tile * 0x10;
-                let a = ppu.vram[i + y as usize * 2];
-                let b = ppu.vram[i + y as usize * 2 + 1];
-                let ly = ppu.ly;
-                for x in 0.max(-sx)..8.min(160 - sx) {
-                    let lx = sx + x;
+                let y = py as usize % 8;
+                let i = tile as usize * 0x10;
+                let a = ppu.vram[i + y * 2];
+                let b = ppu.vram[i + y * 2 + 1];
+
+                // draw only visble part of the sprite
+                let s = if sx < 8 { 8 - sx } else { 0 };
+                let e = 8.min(168 - sx);
+                for x in s..e {
+                    let lx = sx + x - 8;
                     // X-Flip
                     let x = if flags & 0x20 != 0 { x } else { 7 - x };
                     let color = (((b >> x) << 1) & 0b10) | ((a >> x) & 0b1);
@@ -2072,12 +2081,12 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                         continue;
                     }
                     // Object to Background Priority
-                    if flags & 0x80 != 0 && ppu.screen[ly as usize * 160 + lx as usize] != 0 {
+                    if flags & 0x80 != 0 && ppu.screen[scanline_start + lx as usize] != 0 {
                         continue;
                     }
                     let color = (palette >> (color * 2)) & 0b11;
                     debug_assert!(color < 4);
-                    ppu.screen[ly as usize * 160 + lx as usize] = color;
+                    ppu.screen[scanline_start + lx as usize] = color;
                 }
             };
         }

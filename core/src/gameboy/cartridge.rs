@@ -355,7 +355,12 @@ impl Mbc0 {
             // ROM
             0x0000..=0x7FFF => rom[address as usize],
             // RAM
-            0xA000..=0xBFFF => ram[address as usize - 0xA000],
+            0xA000..=0xBFFF => {
+                if address as usize > ram.len() {
+                    return 0xff;
+                }
+                ram[address as usize - 0xA000]
+            }
             _ => unreachable!("read cartridge out of bounds"),
         }
     }
@@ -366,6 +371,9 @@ impl Mbc0 {
             0x0000..=0x7FFF => {}
             // RAM
             0xA000..=0xBFFF => {
+                if address as usize > ram.len() {
+                    return;
+                }
                 ram[address as usize - 0xA000] = value;
             }
             _ => unreachable!("write cartridge out of bounds"),

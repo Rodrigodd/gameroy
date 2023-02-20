@@ -1,7 +1,11 @@
-use std::path::PathBuf;
+use std::{
+    panic::catch_unwind,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use gameroy::{
-    consts::CLOCK_SPEED,
+    consts::{CLOCK_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH},
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
 };
@@ -31,8 +35,21 @@ fn test_all_files() {
         .into_par_iter()
         .filter_map({
             |rom| {
-                println!("{}:", rom);
-                let ok = test_interrupt_prediction(&rom, 20 * CLOCK_SPEED);
+                let catch_unwind = catch_unwind(|| {
+                    println!("{}:", rom);
+                    test_interrupt_prediction(&rom, 20 * CLOCK_SPEED)
+                });
+                let ok = match catch_unwind {
+                    Ok(ok) => ok,
+                    Err(err) => {
+                        println!(
+                            "test_panicked!: {}",
+                            err.downcast::<String>()
+                                .map_or_else(|_| "Any".to_string(), |x| *x),
+                        );
+                        false
+                    }
+                };
                 (!ok).then_some(rom)
             }
         })

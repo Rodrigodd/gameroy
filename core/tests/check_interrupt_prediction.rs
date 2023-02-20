@@ -78,14 +78,60 @@ fn test_one() {
     }
 }
 
+#[derive(Default)]
+struct VBlank {
+    screen_a: Option<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
+    screen_b: Option<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
+    clock_count: Option<u64>,
+}
+
 fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     let rom_path: PathBuf = rom.into();
     let rom = std::fs::read(rom_path).unwrap();
-    let cartridge = Cartridge::new(rom).unwrap();
+    let cartridge = match Cartridge::new(rom) {
+        Ok(x) => x,
+        Err(x) => {
+            eprintln!("Error reading rom: {}", x);
+            return true;
+        }
+    };
+
+    let vblank = Arc::new(Mutex::new(VBlank::default()));
+
     let mut game_boy_a = GameBoy::new(None, cartridge.clone());
     game_boy_a.predict_interrupt = false;
+    game_boy_a.v_blank = Some(Box::new({
+        let vblank = vblank.clone();
+        move |gb| {
+            let mut vblank = vblank.lock().unwrap();
+            vblank.screen_a = Some(gb.ppu.borrow().screen.clone());
+            vblank.clock_count = Some(gb.clock_count);
+            if gb.clock_count == 81230904 {
+                println!("{:?}", *gb.ppu.borrow());
+            }
+        }
+    }));
+
     let mut game_boy_b = GameBoy::new(None, cartridge);
     game_boy_b.predict_interrupt = true;
+    game_boy_b.v_blank = Some(Box::new({
+        let vblank = vblank.clone();
+        move |gb| {
+            let mut vblank = vblank.lock().unwrap();
+
+            // The vblank shoud have been set by `gameboy_a`.
+            match vblank.clock_count {
+                Some(clock) if clock == gb.clock_count => {}
+                _ => panic!("Clock count don't match?!"),
+            }
+
+            vblank.screen_b = Some(gb.ppu.borrow().screen.clone());
+            if gb.clock_count == 81230904 {
+                println!("{:?}", *gb.ppu.borrow());
+            }
+        }
+    }));
+
     while game_boy_b.clock_count < timeout {
         // print!("\u{001b}[37m");
         {
@@ -97,7 +143,8 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             let mut inter = Interpreter(&mut game_boy_b);
             inter.interpret_op();
         }
-        if !assert_equal(&game_boy_a, &game_boy_b) {
+
+        if !assert_equal(&game_boy_a, &game_boy_b, &vblank.lock().unwrap()) {
             return false;
         }
 
@@ -109,15 +156,44 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     true
 }
 
-fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy) -> bool {
+fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> bool {
+    let screen_unsync = vblank.screen_a != vblank.screen_b;
     #[allow(unused_must_use)]
-    if game_boy_a.cpu != game_boy_b.cpu || game_boy_a.clock_count != game_boy_b.clock_count {
+    if game_boy_a.cpu != game_boy_b.cpu
+        || game_boy_a.clock_count != game_boy_b.clock_count
+        || screen_unsync
+    {
         print!("\u{001b}[31m");
         println!("{:>15}: {:?}", game_boy_a.clock_count, game_boy_a.cpu);
         println!("{:>15}: {:?}", game_boy_b.clock_count, game_boy_b.cpu);
 
         println!("{:?}", game_boy_a.ppu.borrow().oam);
         println!("{:?}", game_boy_b.ppu.borrow().oam);
+
+        if screen_unsync {
+            let print_screen = |screen: &[u8; SCREEN_WIDTH * SCREEN_HEIGHT]| {
+                println!("/{}\\", "-".repeat(SCREEN_WIDTH));
+                for y in 0..SCREEN_HEIGHT {
+                    print!("|");
+                    for x in 0..SCREEN_WIDTH {
+                        let c = screen[y * SCREEN_WIDTH + x];
+                        print!("{}", [' ', '.', '+', '@'][c as usize]);
+                    }
+                    println!("|");
+                }
+            };
+            if let Some(x) = vblank.screen_a {
+                print_screen(&x);
+            } else {
+                println!("None!!");
+            }
+            if let Some(x) = vblank.screen_b {
+                print_screen(&x);
+            } else {
+                println!("None!!");
+            }
+        }
+
         print!("\u{001b}[0m");
         return false;
     }

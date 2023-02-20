@@ -173,7 +173,7 @@ pub struct Ppu {
     /// The cycle in which the last DMA transfer was requested.
     dma_started: u64,
     /// If the DMA is running, including the initial delay.
-    dma_running: bool,
+    pub dma_running: bool,
     /// Oam read is blocked
     dma_block_oam: bool,
 

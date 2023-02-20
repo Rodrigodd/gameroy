@@ -292,6 +292,10 @@ impl GameBoy {
             address -= 0x2000;
         }
 
+        if self.ppu.get_mut().dma_running && self.dma as u16 == address >> 8 {
+            self.update_ppu();
+        }
+
         match address {
             // Cartridge ROM
             0x0000..=0x7FFF => self.cartridge.write(address, value),

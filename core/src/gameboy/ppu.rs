@@ -413,7 +413,8 @@ crate::save_state!(Ppu, self, ctx, data {
         self.stat_signal,
         self.ly_compare_signal,
         self.reach_window,
-        self.is_in_window
+        self.is_in_window,
+        self.insert_background_pixel
     ];
 
     on_load self.next_interrupt = self.estimate_next_interrupt();

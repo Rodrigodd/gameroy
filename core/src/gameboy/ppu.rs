@@ -909,6 +909,7 @@ impl Ppu {
                             ppu.wyc = ppu.wyc.wrapping_add(1);
                         }
 
+                        Self::update_dma(gb, ppu, ppu.next_clock_count + 4);
                         ppu.search_objects();
                         draw_scan_line(ppu);
 

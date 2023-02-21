@@ -72,7 +72,13 @@ impl PpuViewer {
     #[allow(clippy::needless_range_loop)]
     fn update(&mut self, ctx: &mut Context, emulator_updated: bool) {
         let textures = ctx.get::<Textures>();
-        const COLOR: [[u8; 3]; 4] = [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+        const COLOR: [[u8; 3]; 5] = [
+            [255, 255, 255],
+            [170, 170, 170],
+            [85, 85, 85],
+            [0, 0, 0],
+            [255, 0, 255], // invalid color
+        ];
         let gb = ctx.get::<Arc<Mutex<GameBoy>>>();
         let proxy = &ctx.get::<EventLoopProxy<UserEvent>>();
 
@@ -89,14 +95,20 @@ impl PpuViewer {
             let curr_i = (ppu.ly as usize * 160 + ppu.screen_x.min(160) as usize).min(160 * 144);
 
             for i in 0..curr_i {
-                let c = screen[i];
+                let c = screen[i].min(4);
                 let i = i * 4;
                 debug_screen[i..i + 3].copy_from_slice(&COLOR[c as usize]);
             }
 
-            const OLD_COLOR: [[u8; 3]; 4] = [[0, 0, 200], [0, 0, 110], [0, 0, 85], [0, 0, 60]];
+            const OLD_COLOR: [[u8; 3]; 5] = [
+                [0, 0, 200],
+                [0, 0, 110],
+                [0, 0, 85],
+                [0, 0, 60],
+                [255, 0, 255], // invalid color
+            ];
             for i in curr_i..screen.len() {
-                let c = screen[i];
+                let c = screen[i].min(4);
                 let i = i * 4;
                 debug_screen[i..i + 3].copy_from_slice(&OLD_COLOR[c as usize]);
             }

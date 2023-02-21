@@ -1962,20 +1962,13 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             }
 
             {
-                let palette = ppu.bgp;
-                let alpha = false;
                 let i = tile * 0x10;
                 let y = py % 8;
                 let a = ppu.vram[i + y as usize * 2];
                 let b = ppu.vram[i + y as usize * 2 + 1];
                 let x = px % 8;
                 let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
-                if alpha && color == 0 {
-                    continue;
-                }
-                let color = (palette >> (color * 2)) & 0b11;
-                // draw_pixel(lx as i32, ly as i32, color);
-                debug_assert!(color < 4);
+
                 ppu.screen[scanline_start + lx as usize] = color;
             };
         }
@@ -2004,18 +1997,12 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             }
 
             {
-                let palette = ppu.bgp;
-                let alpha = false;
                 let i = tile * 0x10;
                 let y = py % 8;
                 let a = ppu.vram[i + y as usize * 2];
                 let b = ppu.vram[i + y as usize * 2 + 1];
                 let x = px % 8;
                 let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
-                if alpha && color == 0 {
-                    continue;
-                }
-                let color = (palette >> (color * 2)) & 0b11;
 
                 ppu.screen[scanline_start + lx as usize] = color;
             };
@@ -2051,7 +2038,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 ppu.ly + 16 - sy
             };
 
-            let tile = if ppu.lcdc & 0x04 != 0 {
+            let t = if ppu.lcdc & 0x04 != 0 {
                 // sprite with 2 tiles of height
                 (tile & !1) + py / 8
             } else {
@@ -2066,7 +2053,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
 
             {
                 let y = py as usize % 8;
-                let i = tile as usize * 0x10;
+                let i = t as usize * 0x10;
                 let a = ppu.vram[i + y * 2];
                 let b = ppu.vram[i + y * 2 + 1];
 
@@ -2075,21 +2062,42 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 let e = 8.min(168 - sx);
                 for x in s..e {
                     let lx = sx + x - 8;
+                    let p = &mut ppu.screen[scanline_start + lx as usize];
+
                     // X-Flip
                     let x = if flags & 0x20 != 0 { x } else { 7 - x };
                     let color = (((b >> x) << 1) & 0b10) | ((a >> x) & 0b1);
+                    let c = (palette >> (color * 2)) & 0b11;
+
+                    let background_color = *p & 0b11;
+
                     if color == 0 {
                         continue;
                     }
                     // Object to Background Priority
-                    if flags & 0x80 != 0 && ppu.screen[scanline_start + lx as usize] != 0 {
+                    if flags & 0x80 != 0 && background_color != 0 {
                         continue;
                     }
-                    let color = (palette >> (color * 2)) & 0b11;
-                    debug_assert!(color < 4);
-                    ppu.screen[scanline_start + lx as usize] = color;
+
+                    // The sprite cannot be directly draw to the screen, because it would overwritte
+                    // the value of the background, that still could be used for next overlapping
+                    // sprites with background_priority on.
+                    //
+                    // So instead I am writing to unused bits of the byte, and later writing them
+                    // back to the screen.
+                    // TODO: This workaround is janky. Find a better way, maybe analogues to the
+                    // sprite_fifo.
+                    *p = (*p & 0b11) | (c << 2) | 0b10000;
                 }
-            };
+            }
+        }
+    }
+    // write sprite pixels to the screen, or apply the background pallete.
+    for x in ppu.screen[scanline_start..scanline_start + 160].iter_mut() {
+        if *x & 0b10000 != 0 {
+            *x = (*x >> 2) & 0b11;
+        } else {
+            *x = (ppu.bgp >> ((*x & 0b11) * 2)) & 0b11;
         }
     }
 }

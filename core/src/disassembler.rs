@@ -114,7 +114,7 @@ impl Cursor {
 
         let rom = &rom.cartridge.rom;
 
-        let i = bank as usize * 0x4000 + offset;
+        let i = (bank as usize * 0x4000 + offset) % rom.len();
 
         let op = rom[i];
         let len = consts::LEN[op as usize];

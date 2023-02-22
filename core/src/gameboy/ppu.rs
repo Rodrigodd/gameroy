@@ -914,6 +914,43 @@ impl Ppu {
                         ppu.search_objects();
                         draw_scan_line(ppu);
 
+                        // TODO: I think only LY=LYC flag is observable here? So don't need all this
+                        // code.
+                        {
+                            // 3
+                            if ppu.ly != 0 {
+                                ppu.ly_for_compare = 0xFF;
+                                ppu.stat_mode_for_interrupt = 2;
+                            } else {
+                                ppu.ly_for_compare = 0;
+                                ppu.stat_mode_for_interrupt = 0xff;
+                            }
+                            ppu.update_stat(&mut stat_interrupt);
+
+                            // 4
+                            ppu.ly_for_compare = ppu.ly;
+
+                            ppu.stat_mode_for_interrupt = 2;
+                            ppu.update_stat(&mut stat_interrupt);
+                            ppu.stat_mode_for_interrupt = 0xff;
+                            ppu.update_stat(&mut stat_interrupt);
+
+                            // 84
+                            ppu.stat_mode_for_interrupt = 3;
+                            ppu.update_stat(&mut stat_interrupt);
+
+                            // exit_mode_3
+                            ppu.stat_mode_for_interrupt = 0;
+                            ppu.update_stat(&mut stat_interrupt);
+
+                            // update_stat don't relie directly on stat mode, so only the last
+                            // set_stat_mode need to be preserved.
+                            ppu.set_stat_mode(0);
+
+                            // the draw_scan_line optimizations relies that interrupts don't happen
+                            debug_assert!(!stat_interrupt);
+                        }
+
                         ppu.next_clock_count += 456;
                         // goto end_line
                         ppu.state = 14;
@@ -1246,7 +1283,7 @@ impl Ppu {
                 14 => {
                     ppu.ly += 1;
                     if ppu.ly == 144 {
-                        // goto vblank
+                        // goto start_vblank_line
                         ppu.state = 15;
                     } else {
                         // goto start_line

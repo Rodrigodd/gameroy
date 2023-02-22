@@ -2050,6 +2050,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         }
     }
 
+    const BACKGROUND_PRIORITY_FLAG: u8 = 0b01_0000;
+    const SPRITE_DRAW_FLAG: u8 = 0b10_0000;
+
     // Draw Sprites, if enabled
     if ppu.lcdc & 0x02 != 0 {
         let sprites = &&ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize];
@@ -2110,13 +2113,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                     let color = (((b >> x) << 1) & 0b10) | ((a >> x) & 0b1);
                     let c = (palette >> (color * 2)) & 0b11;
 
-                    let background_color = *p & 0b11;
-
                     if color == 0 {
-                        continue;
-                    }
-                    // Object to Background Priority
-                    if flags & 0x80 != 0 && background_color != 0 {
                         continue;
                     }
 
@@ -2126,19 +2123,32 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                     //
                     // So instead I am writing to unused bits of the byte, and later writing them
                     // back to the screen.
+                    //
+                    // When a sprite writes over another one, it overwritten the sprite pixels
+                    // before they are draw to the screen. This includes the background_priority,
+                    // so the a sprite could overwritte one, and later not be draw. So we need to
+                    // save the background_priority here, and only later check for background
+                    // priority.
+                    //
                     // TODO: This workaround is janky. Find a better way, maybe analogues to the
                     // sprite_fifo.
-                    *p = (*p & 0b11) | (c << 2) | 0b10000;
+                    *p = (*p & 0b11)
+                        | (c << 2)
+                        | ((flags & 0x80 != 0) as u8 * BACKGROUND_PRIORITY_FLAG)
+                        | SPRITE_DRAW_FLAG;
                 }
             }
         }
     }
     // write sprite pixels to the screen, or apply the background pallete.
     for x in ppu.screen[scanline_start..scanline_start + 160].iter_mut() {
-        if *x & 0b10000 != 0 {
+        let background_color = *x & 0b11;
+        if *x & SPRITE_DRAW_FLAG != 0
+            && !(*x & BACKGROUND_PRIORITY_FLAG != 0 && background_color != 0)
+        {
             *x = (*x >> 2) & 0b11;
         } else {
-            *x = (ppu.bgp >> ((*x & 0b11) * 2)) & 0b11;
+            *x = (ppu.bgp >> ((background_color) * 2)) & 0b11;
         }
     }
 }

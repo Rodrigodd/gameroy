@@ -2020,8 +2020,15 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         // (py, px) is a pixel in the window map
         // (lx, ly) is a pixel in the lcd screen
         let py = ppu.wyc;
-        for lx in ppu.wx.saturating_sub(7)..160 {
-            let px = lx + 7 - ppu.wx;
+        let dx = if ppu.wx != 0 {
+            7
+        } else {
+            // Similar array is show in state 27 of the PPU.
+            let cmp = [7u8, 9, 10, 11, 12, 13, 14, 14];
+            cmp[(ppu.scx % 8) as usize]
+        };
+        for lx in ppu.wx.saturating_sub(dx)..160 {
+            let px = lx + dx - ppu.wx;
 
             let i = (px as usize / 8) + (py as usize / 8) * 32;
 

@@ -905,8 +905,11 @@ impl Ppu {
                             ppu.reach_window = true;
                         }
 
+                        ppu.is_in_window = false;
+
                         let window_enabled = ppu.lcdc & 0x20 != 0;
                         if ppu.reach_window && window_enabled && ppu.wx < 166 {
+                            ppu.is_in_window = true;
                             ppu.wyc = ppu.wyc.wrapping_add(1);
                         }
 
@@ -2013,7 +2016,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
     }
 
     // Draw window
-    if ppu.lcdc & 0x21 == 0x21 && ppu.ly >= ppu.wy && ppu.wx <= 166 {
+    if ppu.is_in_window {
         // (py, px) is a pixel in the window map
         // (lx, ly) is a pixel in the lcd screen
         let py = ppu.wyc;

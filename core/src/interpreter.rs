@@ -123,11 +123,11 @@ impl Interpreter<'_> {
         let mut trace = self.0.trace.borrow_mut();
 
         // check early if this address is already traced, and return if it is
-        if address <= 0x3FFF && trace.is_already_traced(bank, address) {
+        if address <= 0x7FFF && trace.is_already_traced(bank, address) {
             return;
         }
 
-        if pc <= 0x3FFF && address > 0x3FFF {
+        if pc <= 0x7FFF && address > 0x7FFF {
             // if it is entring the ram, clear its trace, because the ram could have changed
             trace.clear_ram_trace();
         }

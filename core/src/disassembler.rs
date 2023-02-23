@@ -246,7 +246,7 @@ impl Trace {
     }
 
     pub fn is_already_traced(&self, bank: u16, start: u16) -> bool {
-        start > 0x3FFF || self.get_curr_code_range(bank, start).is_some()
+        start > 0x7FFF || self.get_curr_code_range(bank, start).is_some()
     }
 
     pub fn trace_starting_at(
@@ -426,7 +426,7 @@ impl Trace {
 
                 let jump = move |dest| {
                     // jumps from rom to ram are ignored
-                    if dest > 0x3FFF {
+                    if dest > 0x7FFF {
                         return;
                     }
                     self.add_jump(address, bank, dest);

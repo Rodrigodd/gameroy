@@ -119,6 +119,12 @@ impl Interpreter<'_> {
     fn jump_to(&mut self, address: u16) {
         let pc = self.0.cpu.pc;
         self.0.cpu.pc = address;
+
+        // don't trace RAM
+        if address > 0x7FFF {
+            return;
+        }
+
         let bank = self.0.cartridge.curr_bank();
         let mut trace = self.0.trace.borrow_mut();
 
@@ -127,6 +133,7 @@ impl Interpreter<'_> {
             return;
         }
 
+        // NOTE: this block is dead code, but I am keeping it in case I want to trace RAM again.
         if pc <= 0x7FFF && address > 0x7FFF {
             // if it is entring the ram, clear its trace, because the ram could have changed
             trace.clear_ram_trace();

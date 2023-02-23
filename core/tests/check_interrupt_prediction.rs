@@ -17,7 +17,15 @@ const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-
 #[test]
 #[ignore]
 fn test_all_files() -> Result<(), ()> {
-    let mut tree: Vec<_> = std::fs::read_dir(TEST_ROM_PATH).unwrap().collect();
+    let search_paths = [
+        TEST_ROM_PATH,
+        // and any other folder with roms you migh want to test
+    ];
+
+    let mut tree: Vec<_> = search_paths
+        .into_iter()
+        .flat_map(|x| std::fs::read_dir(x).unwrap())
+        .collect();
     let mut roms = Vec::new();
     while let Some(entry) = tree.pop() {
         let entry = entry.unwrap();

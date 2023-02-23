@@ -2016,7 +2016,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
     }
 
     // Draw window
-    if ppu.is_in_window {
+    if ppu.is_in_window && ppu.lcdc & 0x01 != 0 {
         // (py, px) is a pixel in the window map
         // (lx, ly) is a pixel in the lcd screen
         let py = ppu.wyc;

@@ -1137,2060 +1137,1036 @@ impl Interpreter<'_> {
             );
         }
         match op {
-            0x00 => {
-                // NOP 1:4 - - - -
-                self.nop();
-            }
-            0x01 => {
-                // LD BC,d16 3:12 - - - -
-                self.load16(Reg16::BC, Reg16::Im16)
-            }
-            0x02 => {
-                // LD (BC),A 1:8 - - - -
-                self.load(Reg::BC, Reg::A)
-            }
-            0x03 => {
-                // INC BC 1:8 - - - -
-                self.inc(Reg::BC)
-            }
-            0x04 => {
-                // INC B 1:4 Z 0 H -
-                self.inc(Reg::B)
-            }
-            0x05 => {
-                // DEC B 1:4 Z 1 H -
-                self.dec(Reg::B)
-            }
-            0x06 => {
-                // LD B,d8 2:8 - - - -
-                self.load(Reg::B, Reg::Im8)
-            }
-            0x07 => {
-                // RLCA 1:4 0 0 0 C
-                self.rlca();
-            }
-            0x08 => {
-                // LD (a16),SP 3:20 - - - -
-                self.load16(Reg16::Im16, Reg16::SP)
-            }
-            0x09 => {
-                // ADD HL,BC 1:8 - 0 H C
-                self.add16(Reg16::BC)
-            }
-            0x0a => {
-                // LD A,(BC) 1:8 - - - -
-                self.load(Reg::A, Reg::BC)
-            }
-            0x0b => {
-                // DEC BC 1:8 - - - -
-                self.dec(Reg::BC)
-            }
-            0x0c => {
-                // INC C 1:4 Z 0 H -
-                self.inc(Reg::C)
-            }
-            0x0d => {
-                // DEC C 1:4 Z 1 H -
-                self.dec(Reg::C)
-            }
-            0x0e => {
-                // LD C,d8 2:8 - - - -
-                self.load(Reg::C, Reg::Im8)
-            }
-            0x0f => {
-                // RRCA 1:4 0 0 0 C
-                self.rrca();
-            }
-            0x10 => {
-                // STOP 0 2:4 - - - -
-                self.stop();
-            }
-            0x11 => {
-                // LD DE,d16 3:12 - - - -
-                self.load16(Reg16::DE, Reg16::Im16)
-            }
-            0x12 => {
-                // LD (DE),A 1:8 - - - -
-                self.load(Reg::DE, Reg::A)
-            }
-            0x13 => {
-                // INC DE 1:8 - - - -
-                self.inc(Reg::DE)
-            }
-            0x14 => {
-                // INC D 1:4 Z 0 H -
-                self.inc(Reg::D)
-            }
-            0x15 => {
-                // DEC D 1:4 Z 1 H -
-                self.dec(Reg::D)
-            }
-            0x16 => {
-                // LD D,d8 2:8 - - - -
-                self.load(Reg::D, Reg::Im8)
-            }
-            0x17 => {
-                // RLA 1:4 0 0 0 C
-                self.rla();
-            }
-            0x18 => {
-                // JR r8 2:12 - - - -
-                self.jump_rel(None)
-            }
-            0x19 => {
-                // ADD HL,DE 1:8 - 0 H C
-                self.add16(Reg16::DE)
-            }
-            0x1a => {
-                // LD A,(DE) 1:8 - - - -
-                self.load(Reg::A, Reg::DE)
-            }
-            0x1b => {
-                // DEC DE 1:8 - - - -
-                self.dec(Reg::DE)
-            }
-            0x1c => {
-                // INC E 1:4 Z 0 H -
-                self.inc(Reg::E)
-            }
-            0x1d => {
-                // DEC E 1:4 Z 1 H -
-                self.dec(Reg::E)
-            }
-            0x1e => {
-                // LD E,d8 2:8 - - - -
-                self.load(Reg::E, Reg::Im8)
-            }
-            0x1f => {
-                // RRA 1:4 0 0 0 C
-                self.rra();
-            }
-            0x20 => {
-                // JR NZ,r8 2:12/8 - - - -
-                self.jump_rel(NZ)
-            }
-            0x21 => {
-                // LD HL,d16 3:12 - - - -
-                self.load16(Reg16::HL, Reg16::Im16)
-            }
-            0x22 => {
-                // LD (HL+),A 1:8 - - - -
-                self.load(Reg::HLI, Reg::A)
-            }
-            0x23 => {
-                // INC HL 1:8 - - - -
-                self.inc(Reg::HL)
-            }
-            0x24 => {
-                // INC H 1:4 Z 0 H -
-                self.inc(Reg::H)
-            }
-            0x25 => {
-                // DEC H 1:4 Z 1 H -
-                self.dec(Reg::H)
-            }
-            0x26 => {
-                // LD H,d8 2:8 - - - -
-                self.load(Reg::H, Reg::Im8)
-            }
-            0x27 => {
-                // DAA 1:4 Z - 0 C
-                self.daa();
-            }
-            0x28 => {
-                // JR Z,r8 2:12/8 - - - -
-                self.jump_rel(Z)
-            }
-            0x29 => {
-                // ADD HL,HL 1:8 - 0 H C
-                self.add16(Reg16::HL)
-            }
-            0x2a => {
-                // LD A,(HL+) 1:8 - - - -
-                self.load(Reg::A, Reg::HLI)
-            }
-            0x2b => {
-                // DEC HL 1:8 - - - -
-                self.dec(Reg::HL)
-            }
-            0x2c => {
-                // INC L 1:4 Z 0 H -
-                self.inc(Reg::L)
-            }
-            0x2d => {
-                // DEC L 1:4 Z 1 H -
-                self.dec(Reg::L)
-            }
-            0x2e => {
-                // LD L,d8 2:8 - - - -
-                self.load(Reg::L, Reg::Im8)
-            }
-            0x2f => {
-                // CPL 1:4 - 1 1 -
-                self.cpl();
-            }
-            0x30 => {
-                // JR NC,r8 2:12/8 - - - -
-                self.jump_rel(NC)
-            }
-            0x31 => {
-                // LD SP,d16 3:12 - - - -
-                self.load16(Reg16::SP, Reg16::Im16)
-            }
-            0x32 => {
-                // LD (HL-),A 1:8 - - - -
-                self.load(Reg::HLD, Reg::A)
-            }
-            0x33 => {
-                // INC SP 1:8 - - - -
-                self.inc(Reg::SP)
-            }
-            0x34 => {
-                // INC (HL) 1:12 Z 0 H -
-                self.inc16(Reg::HL);
-            }
-            0x35 => {
-                // DEC (HL) 1:12 Z 1 H -
-                self.dec16(Reg::HL);
-            }
-            0x36 => {
-                // LD (HL),d8 2:12 - - - -
-                self.load(Reg::HL, Reg::Im8)
-            }
-            0x37 => {
-                // SCF 1:4 - 0 0 1
-                self.scf();
-            }
-            0x38 => {
-                // JR C,r8 2:12/8 - - - -
-                self.jump_rel(C)
-            }
-            0x39 => {
-                // ADD HL,SP 1:8 - 0 H C
-                self.add16(Reg16::SP)
-            }
-            0x3a => {
-                // LD A,(HL-) 1:8 - - - -
-                self.load(Reg::A, Reg::HLD)
-            }
-            0x3b => {
-                // DEC SP 1:8 - - - -
-                self.dec(Reg::SP)
-            }
-            0x3c => {
-                // INC A 1:4 Z 0 H -
-                self.inc(Reg::A)
-            }
-            0x3d => {
-                // DEC A 1:4 Z 1 H -
-                self.dec(Reg::A)
-            }
-            0x3e => {
-                // LD A,d8 2:8 - - - -
-                self.load(Reg::A, Reg::Im8)
-            }
-            0x3f => {
-                // CCF 1:4 - 0 0 C
-                self.ccf();
-            }
-            0x40 => {
-                // LD B,B 1:4 - - - -
-                self.load(Reg::B, Reg::B)
-            }
-            0x41 => {
-                // LD B,C 1:4 - - - -
-                self.load(Reg::B, Reg::C)
-            }
-            0x42 => {
-                // LD B,D 1:4 - - - -
-                self.load(Reg::B, Reg::D)
-            }
-            0x43 => {
-                // LD B,E 1:4 - - - -
-                self.load(Reg::B, Reg::E)
-            }
-            0x44 => {
-                // LD B,H 1:4 - - - -
-                self.load(Reg::B, Reg::H)
-            }
-            0x45 => {
-                // LD B,L 1:4 - - - -
-                self.load(Reg::B, Reg::L)
-            }
-            0x46 => {
-                // LD B,(HL) 1:8 - - - -
-                self.load(Reg::B, Reg::HL)
-            }
-            0x47 => {
-                // LD B,A 1:4 - - - -
-                self.load(Reg::B, Reg::A)
-            }
-            0x48 => {
-                // LD C,B 1:4 - - - -
-                self.load(Reg::C, Reg::B)
-            }
-            0x49 => {
-                // LD C,C 1:4 - - - -
-                self.load(Reg::C, Reg::C)
-            }
-            0x4a => {
-                // LD C,D 1:4 - - - -
-                self.load(Reg::C, Reg::D)
-            }
-            0x4b => {
-                // LD C,E 1:4 - - - -
-                self.load(Reg::C, Reg::E)
-            }
-            0x4c => {
-                // LD C,H 1:4 - - - -
-                self.load(Reg::C, Reg::H)
-            }
-            0x4d => {
-                // LD C,L 1:4 - - - -
-                self.load(Reg::C, Reg::L)
-            }
-            0x4e => {
-                // LD C,(HL) 1:8 - - - -
-                self.load(Reg::C, Reg::HL)
-            }
-            0x4f => {
-                // LD C,A 1:4 - - - -
-                self.load(Reg::C, Reg::A)
-            }
-            0x50 => {
-                // LD D,B 1:4 - - - -
-                self.load(Reg::D, Reg::B)
-            }
-            0x51 => {
-                // LD D,C 1:4 - - - -
-                self.load(Reg::D, Reg::C)
-            }
-            0x52 => {
-                // LD D,D 1:4 - - - -
-                self.load(Reg::D, Reg::D)
-            }
-            0x53 => {
-                // LD D,E 1:4 - - - -
-                self.load(Reg::D, Reg::E)
-            }
-            0x54 => {
-                // LD D,H 1:4 - - - -
-                self.load(Reg::D, Reg::H)
-            }
-            0x55 => {
-                // LD D,L 1:4 - - - -
-                self.load(Reg::D, Reg::L)
-            }
-            0x56 => {
-                // LD D,(HL) 1:8 - - - -
-                self.load(Reg::D, Reg::HL)
-            }
-            0x57 => {
-                // LD D,A 1:4 - - - -
-                self.load(Reg::D, Reg::A)
-            }
-            0x58 => {
-                // LD E,B 1:4 - - - -
-                self.load(Reg::E, Reg::B)
-            }
-            0x59 => {
-                // LD E,C 1:4 - - - -
-                self.load(Reg::E, Reg::C)
-            }
-            0x5a => {
-                // LD E,D 1:4 - - - -
-                self.load(Reg::E, Reg::D)
-            }
-            0x5b => {
-                // LD E,E 1:4 - - - -
-                self.load(Reg::E, Reg::E)
-            }
-            0x5c => {
-                // LD E,H 1:4 - - - -
-                self.load(Reg::E, Reg::H)
-            }
-            0x5d => {
-                // LD E,L 1:4 - - - -
-                self.load(Reg::E, Reg::L)
-            }
-            0x5e => {
-                // LD E,(HL) 1:8 - - - -
-                self.load(Reg::E, Reg::HL)
-            }
-            0x5f => {
-                // LD E,A 1:4 - - - -
-                self.load(Reg::E, Reg::A)
-            }
-            0x60 => {
-                // LD H,B 1:4 - - - -
-                self.load(Reg::H, Reg::B)
-            }
-            0x61 => {
-                // LD H,C 1:4 - - - -
-                self.load(Reg::H, Reg::C)
-            }
-            0x62 => {
-                // LD H,D 1:4 - - - -
-                self.load(Reg::H, Reg::D)
-            }
-            0x63 => {
-                // LD H,E 1:4 - - - -
-                self.load(Reg::H, Reg::E)
-            }
-            0x64 => {
-                // LD H,H 1:4 - - - -
-                self.load(Reg::H, Reg::H)
-            }
-            0x65 => {
-                // LD H,L 1:4 - - - -
-                self.load(Reg::H, Reg::L)
-            }
-            0x66 => {
-                // LD H,(HL) 1:8 - - - -
-                self.load(Reg::H, Reg::HL)
-            }
-            0x67 => {
-                // LD H,A 1:4 - - - -
-                self.load(Reg::H, Reg::A)
-            }
-            0x68 => {
-                // LD L,B 1:4 - - - -
-                self.load(Reg::L, Reg::B)
-            }
-            0x69 => {
-                // LD L,C 1:4 - - - -
-                self.load(Reg::L, Reg::C)
-            }
-            0x6a => {
-                // LD L,D 1:4 - - - -
-                self.load(Reg::L, Reg::D)
-            }
-            0x6b => {
-                // LD L,E 1:4 - - - -
-                self.load(Reg::L, Reg::E)
-            }
-            0x6c => {
-                // LD L,H 1:4 - - - -
-                self.load(Reg::L, Reg::H)
-            }
-            0x6d => {
-                // LD L,L 1:4 - - - -
-                self.load(Reg::L, Reg::L)
-            }
-            0x6e => {
-                // LD L,(HL) 1:8 - - - -
-                self.load(Reg::L, Reg::HL)
-            }
-            0x6f => {
-                // LD L,A 1:4 - - - -
-                self.load(Reg::L, Reg::A)
-            }
-            0x70 => {
-                // LD (HL),B 1:8 - - - -
-                self.load(Reg::HL, Reg::B)
-            }
-            0x71 => {
-                // LD (HL),C 1:8 - - - -
-                self.load(Reg::HL, Reg::C)
-            }
-            0x72 => {
-                // LD (HL),D 1:8 - - - -
-                self.load(Reg::HL, Reg::D)
-            }
-            0x73 => {
-                // LD (HL),E 1:8 - - - -
-                self.load(Reg::HL, Reg::E)
-            }
-            0x74 => {
-                // LD (HL),H 1:8 - - - -
-                self.load(Reg::HL, Reg::H)
-            }
-            0x75 => {
-                // LD (HL),L 1:8 - - - -
-                self.load(Reg::HL, Reg::L)
-            }
-            0x76 => {
-                // HALT 1:4 - - - -
-                self.halt();
-            }
-            0x77 => {
-                // LD (HL),A 1:8 - - - -
-                self.load(Reg::HL, Reg::A)
-            }
-            0x78 => {
-                // LD A,B 1:4 - - - -
-                self.load(Reg::A, Reg::B)
-            }
-            0x79 => {
-                // LD A,C 1:4 - - - -
-                self.load(Reg::A, Reg::C)
-            }
-            0x7a => {
-                // LD A,D 1:4 - - - -
-                self.load(Reg::A, Reg::D)
-            }
-            0x7b => {
-                // LD A,E 1:4 - - - -
-                self.load(Reg::A, Reg::E)
-            }
-            0x7c => {
-                // LD A,H 1:4 - - - -
-                self.load(Reg::A, Reg::H)
-            }
-            0x7d => {
-                // LD A,L 1:4 - - - -
-                self.load(Reg::A, Reg::L)
-            }
-            0x7e => {
-                // LD A,(HL) 1:8 - - - -
-                self.load(Reg::A, Reg::HL)
-            }
-            0x7f => {
-                // LD A,A 1:4 - - - -
-                self.load(Reg::A, Reg::A)
-            }
-            0x80 => {
-                // ADD A,B 1:4 Z 0 H C
-                self.add(Reg::B)
-            }
-            0x81 => {
-                // ADD A,C 1:4 Z 0 H C
-                self.add(Reg::C)
-            }
-            0x82 => {
-                // ADD A,D 1:4 Z 0 H C
-                self.add(Reg::D)
-            }
-            0x83 => {
-                // ADD A,E 1:4 Z 0 H C
-                self.add(Reg::E)
-            }
-            0x84 => {
-                // ADD A,H 1:4 Z 0 H C
-                self.add(Reg::H)
-            }
-            0x85 => {
-                // ADD A,L 1:4 Z 0 H C
-                self.add(Reg::L)
-            }
-            0x86 => {
-                // ADD A,(HL) 1:8 Z 0 H C
-                self.add(Reg::HL)
-            }
-            0x87 => {
-                // ADD A,A 1:4 Z 0 H C
-                self.add(Reg::A)
-            }
-            0x88 => {
-                // ADC A,B 1:4 Z 0 H C
-                self.adc(Reg::B)
-            }
-            0x89 => {
-                // ADC A,C 1:4 Z 0 H C
-                self.adc(Reg::C)
-            }
-            0x8a => {
-                // ADC A,D 1:4 Z 0 H C
-                self.adc(Reg::D)
-            }
-            0x8b => {
-                // ADC A,E 1:4 Z 0 H C
-                self.adc(Reg::E)
-            }
-            0x8c => {
-                // ADC A,H 1:4 Z 0 H C
-                self.adc(Reg::H)
-            }
-            0x8d => {
-                // ADC A,L 1:4 Z 0 H C
-                self.adc(Reg::L)
-            }
-            0x8e => {
-                // ADC A,(HL) 1:8 Z 0 H C
-                self.adc(Reg::HL)
-            }
-            0x8f => {
-                // ADC A,A 1:4 Z 0 H C
-                self.adc(Reg::A)
-            }
-            0x90 => {
-                // SUB B 1:4 Z 1 H C
-                self.sub(Reg::B)
-            }
-            0x91 => {
-                // SUB C 1:4 Z 1 H C
-                self.sub(Reg::C)
-            }
-            0x92 => {
-                // SUB D 1:4 Z 1 H C
-                self.sub(Reg::D)
-            }
-            0x93 => {
-                // SUB E 1:4 Z 1 H C
-                self.sub(Reg::E)
-            }
-            0x94 => {
-                // SUB H 1:4 Z 1 H C
-                self.sub(Reg::H)
-            }
-            0x95 => {
-                // SUB L 1:4 Z 1 H C
-                self.sub(Reg::L)
-            }
-            0x96 => {
-                // SUB (HL) 1:8 Z 1 H C
-                self.sub(Reg::HL)
-            }
-            0x97 => {
-                // SUB A 1:4 Z 1 H C
-                self.sub(Reg::A)
-            }
-            0x98 => {
-                // SBC A,B 1:4 Z 1 H C
-                self.sbc(Reg::B)
-            }
-            0x99 => {
-                // SBC A,C 1:4 Z 1 H C
-                self.sbc(Reg::C)
-            }
-            0x9a => {
-                // SBC A,D 1:4 Z 1 H C
-                self.sbc(Reg::D)
-            }
-            0x9b => {
-                // SBC A,E 1:4 Z 1 H C
-                self.sbc(Reg::E)
-            }
-            0x9c => {
-                // SBC A,H 1:4 Z 1 H C
-                self.sbc(Reg::H)
-            }
-            0x9d => {
-                // SBC A,L 1:4 Z 1 H C
-                self.sbc(Reg::L)
-            }
-            0x9e => {
-                // SBC A,(HL) 1:8 Z 1 H C
-                self.sbc(Reg::HL)
-            }
-            0x9f => {
-                // SBC A,A 1:4 Z 1 H C
-                self.sbc(Reg::A)
-            }
-            0xa0 => {
-                // AND B 1:4 Z 0 1 0
-                self.and(Reg::B)
-            }
-            0xa1 => {
-                // AND C 1:4 Z 0 1 0
-                self.and(Reg::C)
-            }
-            0xa2 => {
-                // AND D 1:4 Z 0 1 0
-                self.and(Reg::D)
-            }
-            0xa3 => {
-                // AND E 1:4 Z 0 1 0
-                self.and(Reg::E)
-            }
-            0xa4 => {
-                // AND H 1:4 Z 0 1 0
-                self.and(Reg::H)
-            }
-            0xa5 => {
-                // AND L 1:4 Z 0 1 0
-                self.and(Reg::L)
-            }
-            0xa6 => {
-                // AND (HL) 1:8 Z 0 1 0
-                self.and(Reg::HL)
-            }
-            0xa7 => {
-                // AND A 1:4 Z 0 1 0
-                self.and(Reg::A)
-            }
-            0xa8 => {
-                // XOR B 1:4 Z 0 0 0
-                self.xor(Reg::B)
-            }
-            0xa9 => {
-                // XOR C 1:4 Z 0 0 0
-                self.xor(Reg::C)
-            }
-            0xaa => {
-                // XOR D 1:4 Z 0 0 0
-                self.xor(Reg::D)
-            }
-            0xab => {
-                // XOR E 1:4 Z 0 0 0
-                self.xor(Reg::E)
-            }
-            0xac => {
-                // XOR H 1:4 Z 0 0 0
-                self.xor(Reg::H)
-            }
-            0xad => {
-                // XOR L 1:4 Z 0 0 0
-                self.xor(Reg::L)
-            }
-            0xae => {
-                // XOR (HL) 1:8 Z 0 0 0
-                self.xor(Reg::HL)
-            }
-            0xaf => {
-                // XOR A 1:4 Z 0 0 0
-                self.xor(Reg::A)
-            }
-            0xb0 => {
-                // OR B 1:4 Z 0 0 0
-                self.or(Reg::B)
-            }
-            0xb1 => {
-                // OR C 1:4 Z 0 0 0
-                self.or(Reg::C)
-            }
-            0xb2 => {
-                // OR D 1:4 Z 0 0 0
-                self.or(Reg::D)
-            }
-            0xb3 => {
-                // OR E 1:4 Z 0 0 0
-                self.or(Reg::E)
-            }
-            0xb4 => {
-                // OR H 1:4 Z 0 0 0
-                self.or(Reg::H)
-            }
-            0xb5 => {
-                // OR L 1:4 Z 0 0 0
-                self.or(Reg::L)
-            }
-            0xb6 => {
-                // OR (HL) 1:8 Z 0 0 0
-                self.or(Reg::HL)
-            }
-            0xb7 => {
-                // OR A 1:4 Z 0 0 0
-                self.or(Reg::A)
-            }
-            0xb8 => {
-                // CP B 1:4 Z 1 H C
-                self.cp(Reg::B)
-            }
-            0xb9 => {
-                // CP C 1:4 Z 1 H C
-                self.cp(Reg::C)
-            }
-            0xba => {
-                // CP D 1:4 Z 1 H C
-                self.cp(Reg::D)
-            }
-            0xbb => {
-                // CP E 1:4 Z 1 H C
-                self.cp(Reg::E)
-            }
-            0xbc => {
-                // CP H 1:4 Z 1 H C
-                self.cp(Reg::H)
-            }
-            0xbd => {
-                // CP L 1:4 Z 1 H C
-                self.cp(Reg::L)
-            }
-            0xbe => {
-                // CP (HL) 1:8 Z 1 H C
-                self.cp(Reg::HL)
-            }
-            0xbf => {
-                // CP A 1:4 Z 1 H C
-                self.cp(Reg::A)
-            }
-            0xc0 => {
-                // RET NZ 1:20/8 - - - -
-                self.ret(NZ)
-            }
-            0xc1 => {
-                // POP BC 1:12 - - - -
-                self.pop(Reg16::BC)
-            }
-            0xc2 => {
-                // JP NZ,a16 3:16/12 - - - -
-                self.jump(NZ)
-            }
-            0xc3 => {
-                // JP a16 3:16 - - - -
-                self.jump(None)
-            }
-            0xc4 => {
-                // CALL NZ,a16 3:24/12 - - - -
-                self.call(NZ)
-            }
-            0xc5 => {
-                // PUSH BC 1:16 - - - -
-                self.push(Reg16::BC)
-            }
-            0xc6 => {
-                // ADD A,d8 2:8 Z 0 H C
-                self.add(Reg::Im8)
-            }
-            0xc7 => {
-                // RST 00H 1:16 - - - -
-                self.rst(0x00)
-            }
-            0xc8 => {
-                // RET Z 1:20/8 - - - -
-                self.ret(Z)
-            }
-            0xc9 => {
-                // RET 1:16 - - - -
-                self.ret(None)
-            }
-            0xca => {
-                // JP Z,a16 3:16/12 - - - -
-                self.jump(Z)
-            }
-            0xcb => {
-                // PREFIX CB 1:4 - - - -
-                self.interpret_op_cb()
-            }
-            0xcc => {
-                // CALL Z,a16 3:24/12 - - - -
-                self.call(Z)
-            }
-            0xcd => {
-                // CALL a16 3:24 - - - -
-                self.call(None)
-            }
-            0xce => {
-                // ADC A,d8 2:8 Z 0 H C
-                self.adc(Reg::Im8)
-            }
-            0xcf => {
-                // RST 08H 1:16 - - - -
-                self.rst(0x08)
-            }
-            0xd0 => {
-                // RET NC 1:20/8 - - - -
-                self.ret(NC)
-            }
-            0xd1 => {
-                // POP DE 1:12 - - - -
-                self.pop(Reg16::DE)
-            }
-            0xd2 => {
-                // JP NC,a16 3:16/12 - - - -
-                self.jump(NC)
-            }
-            0xd3 => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xd4 => {
-                // CALL NC,a16 3:24/12 - - - -
-                self.call(NC)
-            }
-            0xd5 => {
-                // PUSH DE 1:16 - - - -
-                self.push(Reg16::DE)
-            }
-            0xd6 => {
-                // SUB d8 2:8 Z 1 H C
-                self.sub(Reg::Im8)
-            }
-            0xd7 => {
-                // RST 10H 1:16 - - - -
-                self.rst(0x10)
-            }
-            0xd8 => {
-                // RET C 1:20/8 - - - -
-                self.ret(C)
-            }
-            0xd9 => {
-                // RETI 1:16 - - - -
-                self.reti();
-            }
-            0xda => {
-                // JP C,a16 3:16/12 - - - -
-                self.jump(C)
-            }
-            0xdb => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xdc => {
-                // CALL C,a16 3:24/12 - - - -
-                self.call(C)
-            }
-            0xdd => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xde => {
-                // SBC A,d8 2:8 Z 1 H C
-                self.sbc(Reg::Im8)
-            }
-            0xdf => {
-                // RST 18H 1:16 - - - -
-                self.rst(0x18)
-            }
-            0xe0 => {
-                // LDH (a8),A 2:12 - - - -
-                self.loadh(Reg::Im8, Reg::A)
-            }
-            0xe1 => {
-                // POP HL 1:12 - - - -
-                self.pop(Reg16::HL)
-            }
-            0xe2 => {
-                // LD (C),A 2:8 - - - -
-                self.loadh(Reg::C, Reg::A)
-            }
-            0xe3 => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xe4 => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xe5 => {
-                // PUSH HL 1:16 - - - -
-                self.push(Reg16::HL)
-            }
-            0xe6 => {
-                // AND d8 2:8 Z 0 1 0
-                self.and(Reg::Im8)
-            }
-            0xe7 => {
-                // RST 20H 1:16 - - - -
-                self.rst(0x20)
-            }
-            0xe8 => {
-                // ADD SP,r8 2:16 0 0 H C
-                self.add_sp();
-            }
-            0xe9 => {
-                // JP HL 1:4 - - - -
-                self.jump_to(self.0.cpu.hl());
-            }
-            0xea => {
-                // LD (a16),A 3:16 - - - -
-                self.load(Reg::Im16, Reg::A)
-            }
-            0xeb => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xec => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xed => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xee => {
-                // XOR d8 2:8 Z 0 0 0
-                self.xor(Reg::Im8)
-            }
-            0xef => {
-                // RST 28H 1:16 - - - -
-                self.rst(0x28)
-            }
-            0xf0 => {
-                // LDH A,(a8) 2:12 - - - -
-                self.loadh(Reg::A, Reg::Im8)
-            }
-            0xf1 => {
-                // POP AF 1:12 Z N H C
-                self.pop(Reg16::AF)
-            }
-            0xf2 => {
-                // LD A,(C) 2:8 - - - -
-                self.loadh(Reg::A, Reg::C)
-            }
-            0xf3 => {
-                // DI 1:4 - - - -
-                self.0.cpu.ime = ImeState::Disabled;
-            }
-            0xf4 => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xf5 => {
-                // PUSH AF 1:16 - - - -
-                self.push(Reg16::AF)
-            }
-            0xf6 => {
-                // OR d8 2:8 Z 0 0 0
-                self.or(Reg::Im8)
-            }
-            0xf7 => {
-                // RST 30H 1:16 - - - -
-                self.rst(0x30)
-            }
-            0xf8 => {
-                // LD HL,SP+r8 2:12 0 0 H C
-                self.ldhl_sp();
-            }
-            0xf9 => {
-                // LD SP,HL 1:8 - - - -
-                self.load16(Reg16::SP, Reg16::HL)
-            }
-            0xfa => {
-                // LD A,(a16) 3:16 - - - -
-                self.load(Reg::A, Reg::Im16)
-            }
-            0xfb => {
-                // EI 1:4 - - - -
-                self.ei();
-            }
-            0xfc => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xfd => {
-                //
-                self.invalid_opcode(op);
-            }
-            0xfe => {
-                // CP d8 2:8 Z 1 H C
-                self.cp(Reg::Im8)
-            }
-            0xff => {
-                // RST 38H 1:16 - - - -
-                self.rst(0x38)
-            }
+            // NOP 1:4 - - - -
+            0x00 => self.nop(),
+            // LD BC,d16 3:12 - - - -
+            0x01 => self.load16(Reg16::BC, Reg16::Im16),
+            // LD (BC),A 1:8 - - - -
+            0x02 => self.load(Reg::BC, Reg::A),
+            // INC BC 1:8 - - - -
+            0x03 => self.inc(Reg::BC),
+            // INC B 1:4 Z 0 H -
+            0x04 => self.inc(Reg::B),
+            // DEC B 1:4 Z 1 H -
+            0x05 => self.dec(Reg::B),
+            // LD B,d8 2:8 - - - -
+            0x06 => self.load(Reg::B, Reg::Im8),
+            // RLCA 1:4 0 0 0 C
+            0x07 => self.rlca(),
+            // LD (a16),SP 3:20 - - - -
+            0x08 => self.load16(Reg16::Im16, Reg16::SP),
+            // ADD HL,BC 1:8 - 0 H C
+            0x09 => self.add16(Reg16::BC),
+            // LD A,(BC) 1:8 - - - -
+            0x0a => self.load(Reg::A, Reg::BC),
+            // DEC BC 1:8 - - - -
+            0x0b => self.dec(Reg::BC),
+            // INC C 1:4 Z 0 H -
+            0x0c => self.inc(Reg::C),
+            // DEC C 1:4 Z 1 H -
+            0x0d => self.dec(Reg::C),
+            // LD C,d8 2:8 - - - -
+            0x0e => self.load(Reg::C, Reg::Im8),
+            // RRCA 1:4 0 0 0 C
+            0x0f => self.rrca(),
+            // STOP 0 2:4 - - - -
+            0x10 => self.stop(),
+            // LD DE,d16 3:12 - - - -
+            0x11 => self.load16(Reg16::DE, Reg16::Im16),
+            // LD (DE),A 1:8 - - - -
+            0x12 => self.load(Reg::DE, Reg::A),
+            // INC DE 1:8 - - - -
+            0x13 => self.inc(Reg::DE),
+            // INC D 1:4 Z 0 H -
+            0x14 => self.inc(Reg::D),
+            // DEC D 1:4 Z 1 H -
+            0x15 => self.dec(Reg::D),
+            // LD D,d8 2:8 - - - -
+            0x16 => self.load(Reg::D, Reg::Im8),
+            // RLA 1:4 0 0 0 C
+            0x17 => self.rla(),
+            // JR r8 2:12 - - - -
+            0x18 => self.jump_rel(None),
+            // ADD HL,DE 1:8 - 0 H C
+            0x19 => self.add16(Reg16::DE),
+            // LD A,(DE) 1:8 - - - -
+            0x1a => self.load(Reg::A, Reg::DE),
+            // DEC DE 1:8 - - - -
+            0x1b => self.dec(Reg::DE),
+            // INC E 1:4 Z 0 H -
+            0x1c => self.inc(Reg::E),
+            // DEC E 1:4 Z 1 H -
+            0x1d => self.dec(Reg::E),
+            // LD E,d8 2:8 - - - -
+            0x1e => self.load(Reg::E, Reg::Im8),
+            // RRA 1:4 0 0 0 C
+            0x1f => self.rra(),
+            // JR NZ,r8 2:12/8 - - - -
+            0x20 => self.jump_rel(NZ),
+            // LD HL,d16 3:12 - - - -
+            0x21 => self.load16(Reg16::HL, Reg16::Im16),
+            // LD (HL+),A 1:8 - - - -
+            0x22 => self.load(Reg::HLI, Reg::A),
+            // INC HL 1:8 - - - -
+            0x23 => self.inc(Reg::HL),
+            // INC H 1:4 Z 0 H -
+            0x24 => self.inc(Reg::H),
+            // DEC H 1:4 Z 1 H -
+            0x25 => self.dec(Reg::H),
+            // LD H,d8 2:8 - - - -
+            0x26 => self.load(Reg::H, Reg::Im8),
+            // DAA 1:4 Z - 0 C
+            0x27 => self.daa(),
+            // JR Z,r8 2:12/8 - - - -
+            0x28 => self.jump_rel(Z),
+            // ADD HL,HL 1:8 - 0 H C
+            0x29 => self.add16(Reg16::HL),
+            // LD A,(HL+) 1:8 - - - -
+            0x2a => self.load(Reg::A, Reg::HLI),
+            // DEC HL 1:8 - - - -
+            0x2b => self.dec(Reg::HL),
+            // INC L 1:4 Z 0 H -
+            0x2c => self.inc(Reg::L),
+            // DEC L 1:4 Z 1 H -
+            0x2d => self.dec(Reg::L),
+            // LD L,d8 2:8 - - - -
+            0x2e => self.load(Reg::L, Reg::Im8),
+            // CPL 1:4 - 1 1 -
+            0x2f => self.cpl(),
+            // JR NC,r8 2:12/8 - - - -
+            0x30 => self.jump_rel(NC),
+            // LD SP,d16 3:12 - - - -
+            0x31 => self.load16(Reg16::SP, Reg16::Im16),
+            // LD (HL-),A 1:8 - - - -
+            0x32 => self.load(Reg::HLD, Reg::A),
+            // INC SP 1:8 - - - -
+            0x33 => self.inc(Reg::SP),
+            // INC (HL) 1:12 Z 0 H -
+            0x34 => self.inc16(Reg::HL),
+            // DEC (HL) 1:12 Z 1 H -
+            0x35 => self.dec16(Reg::HL),
+            // LD (HL),d8 2:12 - - - -
+            0x36 => self.load(Reg::HL, Reg::Im8),
+            // SCF 1:4 - 0 0 1
+            0x37 => self.scf(),
+            // JR C,r8 2:12/8 - - - -
+            0x38 => self.jump_rel(C),
+            // ADD HL,SP 1:8 - 0 H C
+            0x39 => self.add16(Reg16::SP),
+            // LD A,(HL-) 1:8 - - - -
+            0x3a => self.load(Reg::A, Reg::HLD),
+            // DEC SP 1:8 - - - -
+            0x3b => self.dec(Reg::SP),
+            // INC A 1:4 Z 0 H -
+            0x3c => self.inc(Reg::A),
+            // DEC A 1:4 Z 1 H -
+            0x3d => self.dec(Reg::A),
+            // LD A,d8 2:8 - - - -
+            0x3e => self.load(Reg::A, Reg::Im8),
+            // CCF 1:4 - 0 0 C
+            0x3f => self.ccf(),
+            // LD B,B 1:4 - - - -
+            0x40 => self.load(Reg::B, Reg::B),
+            // LD B,C 1:4 - - - -
+            0x41 => self.load(Reg::B, Reg::C),
+            // LD B,D 1:4 - - - -
+            0x42 => self.load(Reg::B, Reg::D),
+            // LD B,E 1:4 - - - -
+            0x43 => self.load(Reg::B, Reg::E),
+            // LD B,H 1:4 - - - -
+            0x44 => self.load(Reg::B, Reg::H),
+            // LD B,L 1:4 - - - -
+            0x45 => self.load(Reg::B, Reg::L),
+            // LD B,(HL) 1:8 - - - -
+            0x46 => self.load(Reg::B, Reg::HL),
+            // LD B,A 1:4 - - - -
+            0x47 => self.load(Reg::B, Reg::A),
+            // LD C,B 1:4 - - - -
+            0x48 => self.load(Reg::C, Reg::B),
+            // LD C,C 1:4 - - - -
+            0x49 => self.load(Reg::C, Reg::C),
+            // LD C,D 1:4 - - - -
+            0x4a => self.load(Reg::C, Reg::D),
+            // LD C,E 1:4 - - - -
+            0x4b => self.load(Reg::C, Reg::E),
+            // LD C,H 1:4 - - - -
+            0x4c => self.load(Reg::C, Reg::H),
+            // LD C,L 1:4 - - - -
+            0x4d => self.load(Reg::C, Reg::L),
+            // LD C,(HL) 1:8 - - - -
+            0x4e => self.load(Reg::C, Reg::HL),
+            // LD C,A 1:4 - - - -
+            0x4f => self.load(Reg::C, Reg::A),
+            // LD D,B 1:4 - - - -
+            0x50 => self.load(Reg::D, Reg::B),
+            // LD D,C 1:4 - - - -
+            0x51 => self.load(Reg::D, Reg::C),
+            // LD D,D 1:4 - - - -
+            0x52 => self.load(Reg::D, Reg::D),
+            // LD D,E 1:4 - - - -
+            0x53 => self.load(Reg::D, Reg::E),
+            // LD D,H 1:4 - - - -
+            0x54 => self.load(Reg::D, Reg::H),
+            // LD D,L 1:4 - - - -
+            0x55 => self.load(Reg::D, Reg::L),
+            // LD D,(HL) 1:8 - - - -
+            0x56 => self.load(Reg::D, Reg::HL),
+            // LD D,A 1:4 - - - -
+            0x57 => self.load(Reg::D, Reg::A),
+            // LD E,B 1:4 - - - -
+            0x58 => self.load(Reg::E, Reg::B),
+            // LD E,C 1:4 - - - -
+            0x59 => self.load(Reg::E, Reg::C),
+            // LD E,D 1:4 - - - -
+            0x5a => self.load(Reg::E, Reg::D),
+            // LD E,E 1:4 - - - -
+            0x5b => self.load(Reg::E, Reg::E),
+            // LD E,H 1:4 - - - -
+            0x5c => self.load(Reg::E, Reg::H),
+            // LD E,L 1:4 - - - -
+            0x5d => self.load(Reg::E, Reg::L),
+            // LD E,(HL) 1:8 - - - -
+            0x5e => self.load(Reg::E, Reg::HL),
+            // LD E,A 1:4 - - - -
+            0x5f => self.load(Reg::E, Reg::A),
+            // LD H,B 1:4 - - - -
+            0x60 => self.load(Reg::H, Reg::B),
+            // LD H,C 1:4 - - - -
+            0x61 => self.load(Reg::H, Reg::C),
+            // LD H,D 1:4 - - - -
+            0x62 => self.load(Reg::H, Reg::D),
+            // LD H,E 1:4 - - - -
+            0x63 => self.load(Reg::H, Reg::E),
+            // LD H,H 1:4 - - - -
+            0x64 => self.load(Reg::H, Reg::H),
+            // LD H,L 1:4 - - - -
+            0x65 => self.load(Reg::H, Reg::L),
+            // LD H,(HL) 1:8 - - - -
+            0x66 => self.load(Reg::H, Reg::HL),
+            // LD H,A 1:4 - - - -
+            0x67 => self.load(Reg::H, Reg::A),
+            // LD L,B 1:4 - - - -
+            0x68 => self.load(Reg::L, Reg::B),
+            // LD L,C 1:4 - - - -
+            0x69 => self.load(Reg::L, Reg::C),
+            // LD L,D 1:4 - - - -
+            0x6a => self.load(Reg::L, Reg::D),
+            // LD L,E 1:4 - - - -
+            0x6b => self.load(Reg::L, Reg::E),
+            // LD L,H 1:4 - - - -
+            0x6c => self.load(Reg::L, Reg::H),
+            // LD L,L 1:4 - - - -
+            0x6d => self.load(Reg::L, Reg::L),
+            // LD L,(HL) 1:8 - - - -
+            0x6e => self.load(Reg::L, Reg::HL),
+            // LD L,A 1:4 - - - -
+            0x6f => self.load(Reg::L, Reg::A),
+            // LD (HL),B 1:8 - - - -
+            0x70 => self.load(Reg::HL, Reg::B),
+            // LD (HL),C 1:8 - - - -
+            0x71 => self.load(Reg::HL, Reg::C),
+            // LD (HL),D 1:8 - - - -
+            0x72 => self.load(Reg::HL, Reg::D),
+            // LD (HL),E 1:8 - - - -
+            0x73 => self.load(Reg::HL, Reg::E),
+            // LD (HL),H 1:8 - - - -
+            0x74 => self.load(Reg::HL, Reg::H),
+            // LD (HL),L 1:8 - - - -
+            0x75 => self.load(Reg::HL, Reg::L),
+            // HALT 1:4 - - - -
+            0x76 => self.halt(),
+            // LD (HL),A 1:8 - - - -
+            0x77 => self.load(Reg::HL, Reg::A),
+            // LD A,B 1:4 - - - -
+            0x78 => self.load(Reg::A, Reg::B),
+            // LD A,C 1:4 - - - -
+            0x79 => self.load(Reg::A, Reg::C),
+            // LD A,D 1:4 - - - -
+            0x7a => self.load(Reg::A, Reg::D),
+            // LD A,E 1:4 - - - -
+            0x7b => self.load(Reg::A, Reg::E),
+            // LD A,H 1:4 - - - -
+            0x7c => self.load(Reg::A, Reg::H),
+            // LD A,L 1:4 - - - -
+            0x7d => self.load(Reg::A, Reg::L),
+            // LD A,(HL) 1:8 - - - -
+            0x7e => self.load(Reg::A, Reg::HL),
+            // LD A,A 1:4 - - - -
+            0x7f => self.load(Reg::A, Reg::A),
+            // ADD A,B 1:4 Z 0 H C
+            0x80 => self.add(Reg::B),
+            // ADD A,C 1:4 Z 0 H C
+            0x81 => self.add(Reg::C),
+            // ADD A,D 1:4 Z 0 H C
+            0x82 => self.add(Reg::D),
+            // ADD A,E 1:4 Z 0 H C
+            0x83 => self.add(Reg::E),
+            // ADD A,H 1:4 Z 0 H C
+            0x84 => self.add(Reg::H),
+            // ADD A,L 1:4 Z 0 H C
+            0x85 => self.add(Reg::L),
+            // ADD A,(HL) 1:8 Z 0 H C
+            0x86 => self.add(Reg::HL),
+            // ADD A,A 1:4 Z 0 H C
+            0x87 => self.add(Reg::A),
+            // ADC A,B 1:4 Z 0 H C
+            0x88 => self.adc(Reg::B),
+            // ADC A,C 1:4 Z 0 H C
+            0x89 => self.adc(Reg::C),
+            // ADC A,D 1:4 Z 0 H C
+            0x8a => self.adc(Reg::D),
+            // ADC A,E 1:4 Z 0 H C
+            0x8b => self.adc(Reg::E),
+            // ADC A,H 1:4 Z 0 H C
+            0x8c => self.adc(Reg::H),
+            // ADC A,L 1:4 Z 0 H C
+            0x8d => self.adc(Reg::L),
+            // ADC A,(HL) 1:8 Z 0 H C
+            0x8e => self.adc(Reg::HL),
+            // ADC A,A 1:4 Z 0 H C
+            0x8f => self.adc(Reg::A),
+            // SUB B 1:4 Z 1 H C
+            0x90 => self.sub(Reg::B),
+            // SUB C 1:4 Z 1 H C
+            0x91 => self.sub(Reg::C),
+            // SUB D 1:4 Z 1 H C
+            0x92 => self.sub(Reg::D),
+            // SUB E 1:4 Z 1 H C
+            0x93 => self.sub(Reg::E),
+            // SUB H 1:4 Z 1 H C
+            0x94 => self.sub(Reg::H),
+            // SUB L 1:4 Z 1 H C
+            0x95 => self.sub(Reg::L),
+            // SUB (HL) 1:8 Z 1 H C
+            0x96 => self.sub(Reg::HL),
+            // SUB A 1:4 Z 1 H C
+            0x97 => self.sub(Reg::A),
+            // SBC A,B 1:4 Z 1 H C
+            0x98 => self.sbc(Reg::B),
+            // SBC A,C 1:4 Z 1 H C
+            0x99 => self.sbc(Reg::C),
+            // SBC A,D 1:4 Z 1 H C
+            0x9a => self.sbc(Reg::D),
+            // SBC A,E 1:4 Z 1 H C
+            0x9b => self.sbc(Reg::E),
+            // SBC A,H 1:4 Z 1 H C
+            0x9c => self.sbc(Reg::H),
+            // SBC A,L 1:4 Z 1 H C
+            0x9d => self.sbc(Reg::L),
+            // SBC A,(HL) 1:8 Z 1 H C
+            0x9e => self.sbc(Reg::HL),
+            // SBC A,A 1:4 Z 1 H C
+            0x9f => self.sbc(Reg::A),
+            // AND B 1:4 Z 0 1 0
+            0xa0 => self.and(Reg::B),
+            // AND C 1:4 Z 0 1 0
+            0xa1 => self.and(Reg::C),
+            // AND D 1:4 Z 0 1 0
+            0xa2 => self.and(Reg::D),
+            // AND E 1:4 Z 0 1 0
+            0xa3 => self.and(Reg::E),
+            // AND H 1:4 Z 0 1 0
+            0xa4 => self.and(Reg::H),
+            // AND L 1:4 Z 0 1 0
+            0xa5 => self.and(Reg::L),
+            // AND (HL) 1:8 Z 0 1 0
+            0xa6 => self.and(Reg::HL),
+            // AND A 1:4 Z 0 1 0
+            0xa7 => self.and(Reg::A),
+            // XOR B 1:4 Z 0 0 0
+            0xa8 => self.xor(Reg::B),
+            // XOR C 1:4 Z 0 0 0
+            0xa9 => self.xor(Reg::C),
+            // XOR D 1:4 Z 0 0 0
+            0xaa => self.xor(Reg::D),
+            // XOR E 1:4 Z 0 0 0
+            0xab => self.xor(Reg::E),
+            // XOR H 1:4 Z 0 0 0
+            0xac => self.xor(Reg::H),
+            // XOR L 1:4 Z 0 0 0
+            0xad => self.xor(Reg::L),
+            // XOR (HL) 1:8 Z 0 0 0
+            0xae => self.xor(Reg::HL),
+            // XOR A 1:4 Z 0 0 0
+            0xaf => self.xor(Reg::A),
+            // OR B 1:4 Z 0 0 0
+            0xb0 => self.or(Reg::B),
+            // OR C 1:4 Z 0 0 0
+            0xb1 => self.or(Reg::C),
+            // OR D 1:4 Z 0 0 0
+            0xb2 => self.or(Reg::D),
+            // OR E 1:4 Z 0 0 0
+            0xb3 => self.or(Reg::E),
+            // OR H 1:4 Z 0 0 0
+            0xb4 => self.or(Reg::H),
+            // OR L 1:4 Z 0 0 0
+            0xb5 => self.or(Reg::L),
+            // OR (HL) 1:8 Z 0 0 0
+            0xb6 => self.or(Reg::HL),
+            // OR A 1:4 Z 0 0 0
+            0xb7 => self.or(Reg::A),
+            // CP B 1:4 Z 1 H C
+            0xb8 => self.cp(Reg::B),
+            // CP C 1:4 Z 1 H C
+            0xb9 => self.cp(Reg::C),
+            // CP D 1:4 Z 1 H C
+            0xba => self.cp(Reg::D),
+            // CP E 1:4 Z 1 H C
+            0xbb => self.cp(Reg::E),
+            // CP H 1:4 Z 1 H C
+            0xbc => self.cp(Reg::H),
+            // CP L 1:4 Z 1 H C
+            0xbd => self.cp(Reg::L),
+            // CP (HL) 1:8 Z 1 H C
+            0xbe => self.cp(Reg::HL),
+            // CP A 1:4 Z 1 H C
+            0xbf => self.cp(Reg::A),
+            // RET NZ 1:20/8 - - - -
+            0xc0 => self.ret(NZ),
+            // POP BC 1:12 - - - -
+            0xc1 => self.pop(Reg16::BC),
+            // JP NZ,a16 3:16/12 - - - -
+            0xc2 => self.jump(NZ),
+            // JP a16 3:16 - - - -
+            0xc3 => self.jump(None),
+            // CALL NZ,a16 3:24/12 - - - -
+            0xc4 => self.call(NZ),
+            // PUSH BC 1:16 - - - -
+            0xc5 => self.push(Reg16::BC),
+            // ADD A,d8 2:8 Z 0 H C
+            0xc6 => self.add(Reg::Im8),
+            // RST 00H 1:16 - - - -
+            0xc7 => self.rst(0x00),
+            // RET Z 1:20/8 - - - -
+            0xc8 => self.ret(Z),
+            // RET 1:16 - - - -
+            0xc9 => self.ret(None),
+            // JP Z,a16 3:16/12 - - - -
+            0xca => self.jump(Z),
+            // PREFIX CB 1:4 - - - -
+            0xcb => self.interpret_op_cb(),
+            // CALL Z,a16 3:24/12 - - - -
+            0xcc => self.call(Z),
+            // CALL a16 3:24 - - - -
+            0xcd => self.call(None),
+            // ADC A,d8 2:8 Z 0 H C
+            0xce => self.adc(Reg::Im8),
+            // RST 08H 1:16 - - - -
+            0xcf => self.rst(0x08),
+            // RET NC 1:20/8 - - - -
+            0xd0 => self.ret(NC),
+            // POP DE 1:12 - - - -
+            0xd1 => self.pop(Reg16::DE),
+            // JP NC,a16 3:16/12 - - - -
+            0xd2 => self.jump(NC),
+            //
+            0xd3 => self.invalid_opcode(op),
+            // CALL NC,a16 3:24/12 - - - -
+            0xd4 => self.call(NC),
+            // PUSH DE 1:16 - - - -
+            0xd5 => self.push(Reg16::DE),
+            // SUB d8 2:8 Z 1 H C
+            0xd6 => self.sub(Reg::Im8),
+            // RST 10H 1:16 - - - -
+            0xd7 => self.rst(0x10),
+            // RET C 1:20/8 - - - -
+            0xd8 => self.ret(C),
+            // RETI 1:16 - - - -
+            0xd9 => self.reti(),
+            // JP C,a16 3:16/12 - - - -
+            0xda => self.jump(C),
+            //
+            0xdb => self.invalid_opcode(op),
+            // CALL C,a16 3:24/12 - - - -
+            0xdc => self.call(C),
+            //
+            0xdd => self.invalid_opcode(op),
+            // SBC A,d8 2:8 Z 1 H C
+            0xde => self.sbc(Reg::Im8),
+            // RST 18H 1:16 - - - -
+            0xdf => self.rst(0x18),
+            // LDH (a8),A 2:12 - - - -
+            0xe0 => self.loadh(Reg::Im8, Reg::A),
+            // POP HL 1:12 - - - -
+            0xe1 => self.pop(Reg16::HL),
+            // LD (C),A 2:8 - - - -
+            0xe2 => self.loadh(Reg::C, Reg::A),
+            //
+            0xe3 => self.invalid_opcode(op),
+            //
+            0xe4 => self.invalid_opcode(op),
+            // PUSH HL 1:16 - - - -
+            0xe5 => self.push(Reg16::HL),
+            // AND d8 2:8 Z 0 1 0
+            0xe6 => self.and(Reg::Im8),
+            // RST 20H 1:16 - - - -
+            0xe7 => self.rst(0x20),
+            // ADD SP,r8 2:16 0 0 H C
+            0xe8 => self.add_sp(),
+            // JP HL 1:4 - - - -
+            0xe9 => self.jump_to(self.0.cpu.hl()),
+            // LD (a16),A 3:16 - - - -
+            0xea => self.load(Reg::Im16, Reg::A),
+            //
+            0xeb => self.invalid_opcode(op),
+            //
+            0xec => self.invalid_opcode(op),
+            //
+            0xed => self.invalid_opcode(op),
+            // XOR d8 2:8 Z 0 0 0
+            0xee => self.xor(Reg::Im8),
+            // RST 28H 1:16 - - - -
+            0xef => self.rst(0x28),
+            // LDH A,(a8) 2:12 - - - -
+            0xf0 => self.loadh(Reg::A, Reg::Im8),
+            // POP AF 1:12 Z N H C
+            0xf1 => self.pop(Reg16::AF),
+            // LD A,(C) 2:8 - - - -
+            0xf2 => self.loadh(Reg::A, Reg::C),
+            // DI 1:4 - - - -
+            0xf3 => self.0.cpu.ime = ImeState::Disabled,
+            //
+            0xf4 => self.invalid_opcode(op),
+            // PUSH AF 1:16 - - - -
+            0xf5 => self.push(Reg16::AF),
+            // OR d8 2:8 Z 0 0 0
+            0xf6 => self.or(Reg::Im8),
+            // RST 30H 1:16 - - - -
+            0xf7 => self.rst(0x30),
+            // LD HL,SP+r8 2:12 0 0 H C
+            0xf8 => self.ldhl_sp(),
+            // LD SP,HL 1:8 - - - -
+            0xf9 => self.load16(Reg16::SP, Reg16::HL),
+            // LD A,(a16) 3:16 - - - -
+            0xfa => self.load(Reg::A, Reg::Im16),
+            // EI 1:4 - - - -
+            0xfb => self.ei(),
+            //
+            0xfc => self.invalid_opcode(op),
+            //
+            0xfd => self.invalid_opcode(op),
+            // CP d8 2:8 Z 1 H C
+            0xfe => self.cp(Reg::Im8),
+            // RST 38H 1:16 - - - -
+            0xff => self.rst(0x38),
         }
     }
 
     fn interpret_op_cb(&mut self) {
         let op = self.read_next_pc();
         match op {
-            0x00 => {
-                // RLC B 2:8 Z 0 0 C
-                self.rlc(Reg::B)
-            }
-            0x01 => {
-                // RLC C 2:8 Z 0 0 C
-                self.rlc(Reg::C)
-            }
-            0x02 => {
-                // RLC D 2:8 Z 0 0 C
-                self.rlc(Reg::D)
-            }
-            0x03 => {
-                // RLC E 2:8 Z 0 0 C
-                self.rlc(Reg::E)
-            }
-            0x04 => {
-                // RLC H 2:8 Z 0 0 C
-                self.rlc(Reg::H)
-            }
-            0x05 => {
-                // RLC L 2:8 Z 0 0 C
-                self.rlc(Reg::L)
-            }
-            0x06 => {
-                // RLC (HL) 2:16 Z 0 0 C
-                self.rlc(Reg::HL)
-            }
-            0x07 => {
-                // RLC A 2:8 Z 0 0 C
-                self.rlc(Reg::A)
-            }
-            0x08 => {
-                // RRC B 2:8 Z 0 0 C
-                self.rrc(Reg::B)
-            }
-            0x09 => {
-                // RRC C 2:8 Z 0 0 C
-                self.rrc(Reg::C)
-            }
-            0x0a => {
-                // RRC D 2:8 Z 0 0 C
-                self.rrc(Reg::D)
-            }
-            0x0b => {
-                // RRC E 2:8 Z 0 0 C
-                self.rrc(Reg::E)
-            }
-            0x0c => {
-                // RRC H 2:8 Z 0 0 C
-                self.rrc(Reg::H)
-            }
-            0x0d => {
-                // RRC L 2:8 Z 0 0 C
-                self.rrc(Reg::L)
-            }
-            0x0e => {
-                // RRC (HL) 2:16 Z 0 0 C
-                self.rrc(Reg::HL)
-            }
-            0x0f => {
-                // RRC A 2:8 Z 0 0 C
-                self.rrc(Reg::A)
-            }
-            0x10 => {
-                // RL B 2:8 Z 0 0 C
-                self.rl(Reg::B)
-            }
-            0x11 => {
-                // RL C 2:8 Z 0 0 C
-                self.rl(Reg::C)
-            }
-            0x12 => {
-                // RL D 2:8 Z 0 0 C
-                self.rl(Reg::D)
-            }
-            0x13 => {
-                // RL E 2:8 Z 0 0 C
-                self.rl(Reg::E)
-            }
-            0x14 => {
-                // RL H 2:8 Z 0 0 C
-                self.rl(Reg::H)
-            }
-            0x15 => {
-                // RL L 2:8 Z 0 0 C
-                self.rl(Reg::L)
-            }
-            0x16 => {
-                // RL (HL) 2:16 Z 0 0 C
-                self.rl(Reg::HL)
-            }
-            0x17 => {
-                // RL A 2:8 Z 0 0 C
-                self.rl(Reg::A)
-            }
-            0x18 => {
-                // RR B 2:8 Z 0 0 C
-                self.rr(Reg::B)
-            }
-            0x19 => {
-                // RR C 2:8 Z 0 0 C
-                self.rr(Reg::C)
-            }
-            0x1a => {
-                // RR D 2:8 Z 0 0 C
-                self.rr(Reg::D)
-            }
-            0x1b => {
-                // RR E 2:8 Z 0 0 C
-                self.rr(Reg::E)
-            }
-            0x1c => {
-                // RR H 2:8 Z 0 0 C
-                self.rr(Reg::H)
-            }
-            0x1d => {
-                // RR L 2:8 Z 0 0 C
-                self.rr(Reg::L)
-            }
-            0x1e => {
-                // RR (HL) 2:16 Z 0 0 C
-                self.rr(Reg::HL)
-            }
-            0x1f => {
-                // RR A 2:8 Z 0 0 C
-                self.rr(Reg::A)
-            }
-            0x20 => {
-                // SLA B 2:8 Z 0 0 C
-                self.sla(Reg::B)
-            }
-            0x21 => {
-                // SLA C 2:8 Z 0 0 C
-                self.sla(Reg::C)
-            }
-            0x22 => {
-                // SLA D 2:8 Z 0 0 C
-                self.sla(Reg::D)
-            }
-            0x23 => {
-                // SLA E 2:8 Z 0 0 C
-                self.sla(Reg::E)
-            }
-            0x24 => {
-                // SLA H 2:8 Z 0 0 C
-                self.sla(Reg::H)
-            }
-            0x25 => {
-                // SLA L 2:8 Z 0 0 C
-                self.sla(Reg::L)
-            }
-            0x26 => {
-                // SLA (HL) 2:16 Z 0 0 C
-                self.sla(Reg::HL)
-            }
-            0x27 => {
-                // SLA A 2:8 Z 0 0 C
-                self.sla(Reg::A)
-            }
-            0x28 => {
-                // SRA B 2:8 Z 0 0 0
-                self.sra(Reg::B)
-            }
-            0x29 => {
-                // SRA C 2:8 Z 0 0 0
-                self.sra(Reg::C)
-            }
-            0x2a => {
-                // SRA D 2:8 Z 0 0 0
-                self.sra(Reg::D)
-            }
-            0x2b => {
-                // SRA E 2:8 Z 0 0 0
-                self.sra(Reg::E)
-            }
-            0x2c => {
-                // SRA H 2:8 Z 0 0 0
-                self.sra(Reg::H)
-            }
-            0x2d => {
-                // SRA L 2:8 Z 0 0 0
-                self.sra(Reg::L)
-            }
-            0x2e => {
-                // SRA (HL) 2:16 Z 0 0 0
-                self.sra(Reg::HL)
-            }
-            0x2f => {
-                // SRA A 2:8 Z 0 0 0
-                self.sra(Reg::A)
-            }
-            0x30 => {
-                // SWAP B 2:8 Z 0 0 0
-                self.swap(Reg::B)
-            }
-            0x31 => {
-                // SWAP C 2:8 Z 0 0 0
-                self.swap(Reg::C)
-            }
-            0x32 => {
-                // SWAP D 2:8 Z 0 0 0
-                self.swap(Reg::D)
-            }
-            0x33 => {
-                // SWAP E 2:8 Z 0 0 0
-                self.swap(Reg::E)
-            }
-            0x34 => {
-                // SWAP H 2:8 Z 0 0 0
-                self.swap(Reg::H)
-            }
-            0x35 => {
-                // SWAP L 2:8 Z 0 0 0
-                self.swap(Reg::L)
-            }
-            0x36 => {
-                // SWAP (HL) 2:16 Z 0 0 0
-                self.swap(Reg::HL)
-            }
-            0x37 => {
-                // SWAP A 2:8 Z 0 0 0
-                self.swap(Reg::A)
-            }
-            0x38 => {
-                // SRL B 2:8 Z 0 0 C
-                self.srl(Reg::B)
-            }
-            0x39 => {
-                // SRL C 2:8 Z 0 0 C
-                self.srl(Reg::C)
-            }
-            0x3a => {
-                // SRL D 2:8 Z 0 0 C
-                self.srl(Reg::D)
-            }
-            0x3b => {
-                // SRL E 2:8 Z 0 0 C
-                self.srl(Reg::E)
-            }
-            0x3c => {
-                // SRL H 2:8 Z 0 0 C
-                self.srl(Reg::H)
-            }
-            0x3d => {
-                // SRL L 2:8 Z 0 0 C
-                self.srl(Reg::L)
-            }
-            0x3e => {
-                // SRL (HL) 2:16 Z 0 0 C
-                self.srl(Reg::HL)
-            }
-            0x3f => {
-                // SRL A 2:8 Z 0 0 C
-                self.srl(Reg::A)
-            }
-            0x40 => {
-                // BIT 0,B 2:8 Z 0 1 -
-                self.bit(0, Reg::B)
-            }
-            0x41 => {
-                // BIT 0,C 2:8 Z 0 1 -
-                self.bit(0, Reg::C)
-            }
-            0x42 => {
-                // BIT 0,D 2:8 Z 0 1 -
-                self.bit(0, Reg::D)
-            }
-            0x43 => {
-                // BIT 0,E 2:8 Z 0 1 -
-                self.bit(0, Reg::E)
-            }
-            0x44 => {
-                // BIT 0,H 2:8 Z 0 1 -
-                self.bit(0, Reg::H)
-            }
-            0x45 => {
-                // BIT 0,L 2:8 Z 0 1 -
-                self.bit(0, Reg::L)
-            }
-            0x46 => {
-                // BIT 0,(HL) 2:16 Z 0 1 -
-                self.bit(0, Reg::HL)
-            }
-            0x47 => {
-                // BIT 0,A 2:8 Z 0 1 -
-                self.bit(0, Reg::A)
-            }
-            0x48 => {
-                // BIT 1,B 2:8 Z 0 1 -
-                self.bit(1, Reg::B)
-            }
-            0x49 => {
-                // BIT 1,C 2:8 Z 0 1 -
-                self.bit(1, Reg::C)
-            }
-            0x4a => {
-                // BIT 1,D 2:8 Z 0 1 -
-                self.bit(1, Reg::D)
-            }
-            0x4b => {
-                // BIT 1,E 2:8 Z 0 1 -
-                self.bit(1, Reg::E)
-            }
-            0x4c => {
-                // BIT 1,H 2:8 Z 0 1 -
-                self.bit(1, Reg::H)
-            }
-            0x4d => {
-                // BIT 1,L 2:8 Z 0 1 -
-                self.bit(1, Reg::L)
-            }
-            0x4e => {
-                // BIT 1,(HL) 2:16 Z 0 1 -
-                self.bit(1, Reg::HL)
-            }
-            0x4f => {
-                // BIT 1,A 2:8 Z 0 1 -
-                self.bit(1, Reg::A)
-            }
-            0x50 => {
-                // BIT 2,B 2:8 Z 0 1 -
-                self.bit(2, Reg::B)
-            }
-            0x51 => {
-                // BIT 2,C 2:8 Z 0 1 -
-                self.bit(2, Reg::C)
-            }
-            0x52 => {
-                // BIT 2,D 2:8 Z 0 1 -
-                self.bit(2, Reg::D)
-            }
-            0x53 => {
-                // BIT 2,E 2:8 Z 0 1 -
-                self.bit(2, Reg::E)
-            }
-            0x54 => {
-                // BIT 2,H 2:8 Z 0 1 -
-                self.bit(2, Reg::H)
-            }
-            0x55 => {
-                // BIT 2,L 2:8 Z 0 1 -
-                self.bit(2, Reg::L)
-            }
-            0x56 => {
-                // BIT 2,(HL) 2:16 Z 0 1 -
-                self.bit(2, Reg::HL)
-            }
-            0x57 => {
-                // BIT 2,A 2:8 Z 0 1 -
-                self.bit(2, Reg::A)
-            }
-            0x58 => {
-                // BIT 3,B 2:8 Z 0 1 -
-                self.bit(3, Reg::B)
-            }
-            0x59 => {
-                // BIT 3,C 2:8 Z 0 1 -
-                self.bit(3, Reg::C)
-            }
-            0x5a => {
-                // BIT 3,D 2:8 Z 0 1 -
-                self.bit(3, Reg::D)
-            }
-            0x5b => {
-                // BIT 3,E 2:8 Z 0 1 -
-                self.bit(3, Reg::E)
-            }
-            0x5c => {
-                // BIT 3,H 2:8 Z 0 1 -
-                self.bit(3, Reg::H)
-            }
-            0x5d => {
-                // BIT 3,L 2:8 Z 0 1 -
-                self.bit(3, Reg::L)
-            }
-            0x5e => {
-                // BIT 3,(HL) 2:16 Z 0 1 -
-                self.bit(3, Reg::HL)
-            }
-            0x5f => {
-                // BIT 3,A 2:8 Z 0 1 -
-                self.bit(3, Reg::A)
-            }
-            0x60 => {
-                // BIT 4,B 2:8 Z 0 1 -
-                self.bit(4, Reg::B)
-            }
-            0x61 => {
-                // BIT 4,C 2:8 Z 0 1 -
-                self.bit(4, Reg::C)
-            }
-            0x62 => {
-                // BIT 4,D 2:8 Z 0 1 -
-                self.bit(4, Reg::D)
-            }
-            0x63 => {
-                // BIT 4,E 2:8 Z 0 1 -
-                self.bit(4, Reg::E)
-            }
-            0x64 => {
-                // BIT 4,H 2:8 Z 0 1 -
-                self.bit(4, Reg::H)
-            }
-            0x65 => {
-                // BIT 4,L 2:8 Z 0 1 -
-                self.bit(4, Reg::L)
-            }
-            0x66 => {
-                // BIT 4,(HL) 2:16 Z 0 1 -
-                self.bit(4, Reg::HL)
-            }
-            0x67 => {
-                // BIT 4,A 2:8 Z 0 1 -
-                self.bit(4, Reg::A)
-            }
-            0x68 => {
-                // BIT 5,B 2:8 Z 0 1 -
-                self.bit(5, Reg::B)
-            }
-            0x69 => {
-                // BIT 5,C 2:8 Z 0 1 -
-                self.bit(5, Reg::C)
-            }
-            0x6a => {
-                // BIT 5,D 2:8 Z 0 1 -
-                self.bit(5, Reg::D)
-            }
-            0x6b => {
-                // BIT 5,E 2:8 Z 0 1 -
-                self.bit(5, Reg::E)
-            }
-            0x6c => {
-                // BIT 5,H 2:8 Z 0 1 -
-                self.bit(5, Reg::H)
-            }
-            0x6d => {
-                // BIT 5,L 2:8 Z 0 1 -
-                self.bit(5, Reg::L)
-            }
-            0x6e => {
-                // BIT 5,(HL) 2:16 Z 0 1 -
-                self.bit(5, Reg::HL)
-            }
-            0x6f => {
-                // BIT 5,A 2:8 Z 0 1 -
-                self.bit(5, Reg::A)
-            }
-            0x70 => {
-                // BIT 6,B 2:8 Z 0 1 -
-                self.bit(6, Reg::B)
-            }
-            0x71 => {
-                // BIT 6,C 2:8 Z 0 1 -
-                self.bit(6, Reg::C)
-            }
-            0x72 => {
-                // BIT 6,D 2:8 Z 0 1 -
-                self.bit(6, Reg::D)
-            }
-            0x73 => {
-                // BIT 6,E 2:8 Z 0 1 -
-                self.bit(6, Reg::E)
-            }
-            0x74 => {
-                // BIT 6,H 2:8 Z 0 1 -
-                self.bit(6, Reg::H)
-            }
-            0x75 => {
-                // BIT 6,L 2:8 Z 0 1 -
-                self.bit(6, Reg::L)
-            }
-            0x76 => {
-                // BIT 6,(HL) 2:16 Z 0 1 -
-                self.bit(6, Reg::HL)
-            }
-            0x77 => {
-                // BIT 6,A 2:8 Z 0 1 -
-                self.bit(6, Reg::A)
-            }
-            0x78 => {
-                // BIT 7,B 2:8 Z 0 1 -
-                self.bit(7, Reg::B)
-            }
-            0x79 => {
-                // BIT 7,C 2:8 Z 0 1 -
-                self.bit(7, Reg::C)
-            }
-            0x7a => {
-                // BIT 7,D 2:8 Z 0 1 -
-                self.bit(7, Reg::D)
-            }
-            0x7b => {
-                // BIT 7,E 2:8 Z 0 1 -
-                self.bit(7, Reg::E)
-            }
-            0x7c => {
-                // BIT 7,H 2:8 Z 0 1 -
-                self.bit(7, Reg::H)
-            }
-            0x7d => {
-                // BIT 7,L 2:8 Z 0 1 -
-                self.bit(7, Reg::L)
-            }
-            0x7e => {
-                // BIT 7,(HL) 2:16 Z 0 1 -
-                self.bit(7, Reg::HL)
-            }
-            0x7f => {
-                // BIT 7,A 2:8 Z 0 1 -
-                self.bit(7, Reg::A)
-            }
-            0x80 => {
-                // RES 0,B 2:8 - - - -
-                self.res(0, Reg::B)
-            }
-            0x81 => {
-                // RES 0,C 2:8 - - - -
-                self.res(0, Reg::C)
-            }
-            0x82 => {
-                // RES 0,D 2:8 - - - -
-                self.res(0, Reg::D)
-            }
-            0x83 => {
-                // RES 0,E 2:8 - - - -
-                self.res(0, Reg::E)
-            }
-            0x84 => {
-                // RES 0,H 2:8 - - - -
-                self.res(0, Reg::H)
-            }
-            0x85 => {
-                // RES 0,L 2:8 - - - -
-                self.res(0, Reg::L)
-            }
-            0x86 => {
-                // RES 0,(HL) 2:16 - - - -
-                self.res(0, Reg::HL)
-            }
-            0x87 => {
-                // RES 0,A 2:8 - - - -
-                self.res(0, Reg::A)
-            }
-            0x88 => {
-                // RES 1,B 2:8 - - - -
-                self.res(1, Reg::B)
-            }
-            0x89 => {
-                // RES 1,C 2:8 - - - -
-                self.res(1, Reg::C)
-            }
-            0x8a => {
-                // RES 1,D 2:8 - - - -
-                self.res(1, Reg::D)
-            }
-            0x8b => {
-                // RES 1,E 2:8 - - - -
-                self.res(1, Reg::E)
-            }
-            0x8c => {
-                // RES 1,H 2:8 - - - -
-                self.res(1, Reg::H)
-            }
-            0x8d => {
-                // RES 1,L 2:8 - - - -
-                self.res(1, Reg::L)
-            }
-            0x8e => {
-                // RES 1,(HL) 2:16 - - - -
-                self.res(1, Reg::HL)
-            }
-            0x8f => {
-                // RES 1,A 2:8 - - - -
-                self.res(1, Reg::A)
-            }
-            0x90 => {
-                // RES 2,B 2:8 - - - -
-                self.res(2, Reg::B)
-            }
-            0x91 => {
-                // RES 2,C 2:8 - - - -
-                self.res(2, Reg::C)
-            }
-            0x92 => {
-                // RES 2,D 2:8 - - - -
-                self.res(2, Reg::D)
-            }
-            0x93 => {
-                // RES 2,E 2:8 - - - -
-                self.res(2, Reg::E)
-            }
-            0x94 => {
-                // RES 2,H 2:8 - - - -
-                self.res(2, Reg::H)
-            }
-            0x95 => {
-                // RES 2,L 2:8 - - - -
-                self.res(2, Reg::L)
-            }
-            0x96 => {
-                // RES 2,(HL) 2:16 - - - -
-                self.res(2, Reg::HL)
-            }
-            0x97 => {
-                // RES 2,A 2:8 - - - -
-                self.res(2, Reg::A)
-            }
-            0x98 => {
-                // RES 3,B 2:8 - - - -
-                self.res(3, Reg::B)
-            }
-            0x99 => {
-                // RES 3,C 2:8 - - - -
-                self.res(3, Reg::C)
-            }
-            0x9a => {
-                // RES 3,D 2:8 - - - -
-                self.res(3, Reg::D)
-            }
-            0x9b => {
-                // RES 3,E 2:8 - - - -
-                self.res(3, Reg::E)
-            }
-            0x9c => {
-                // RES 3,H 2:8 - - - -
-                self.res(3, Reg::H)
-            }
-            0x9d => {
-                // RES 3,L 2:8 - - - -
-                self.res(3, Reg::L)
-            }
-            0x9e => {
-                // RES 3,(HL) 2:16 - - - -
-                self.res(3, Reg::HL)
-            }
-            0x9f => {
-                // RES 3,A 2:8 - - - - Ax
-                self.res(3, Reg::A)
-            }
-            0xa0 => {
-                // RES 4,B 2:8 - - - -
-                self.res(4, Reg::B)
-            }
-            0xa1 => {
-                // RES 4,C 2:8 - - - -
-                self.res(4, Reg::C)
-            }
-            0xa2 => {
-                // RES 4,D 2:8 - - - -
-                self.res(4, Reg::D)
-            }
-            0xa3 => {
-                // RES 4,E 2:8 - - - -
-                self.res(4, Reg::E)
-            }
-            0xa4 => {
-                // RES 4,H 2:8 - - - -
-                self.res(4, Reg::H)
-            }
-            0xa5 => {
-                // RES 4,L 2:8 - - - -
-                self.res(4, Reg::L)
-            }
-            0xa6 => {
-                // RES 4,(HL) 2:16 - - - -
-                self.res(4, Reg::HL)
-            }
-            0xa7 => {
-                // RES 4,A 2:8 - - - -
-                self.res(4, Reg::A)
-            }
-            0xa8 => {
-                // RES 5,B 2:8 - - - -
-                self.res(5, Reg::B)
-            }
-            0xa9 => {
-                // RES 5,C 2:8 - - - -
-                self.res(5, Reg::C)
-            }
-            0xaa => {
-                // RES 5,D 2:8 - - - -
-                self.res(5, Reg::D)
-            }
-            0xab => {
-                // RES 5,E 2:8 - - - -
-                self.res(5, Reg::E)
-            }
-            0xac => {
-                // RES 5,H 2:8 - - - -
-                self.res(5, Reg::H)
-            }
-            0xad => {
-                // RES 5,L 2:8 - - - -
-                self.res(5, Reg::L)
-            }
-            0xae => {
-                // RES 5,(HL) 2:16 - - - -
-                self.res(5, Reg::HL)
-            }
-            0xaf => {
-                // RES 5,A 2:8 - - - - Bx
-                self.res(5, Reg::A)
-            }
-            0xb0 => {
-                // RES 6,B 2:8 - - - -
-                self.res(6, Reg::B)
-            }
-            0xb1 => {
-                // RES 6,C 2:8 - - - -
-                self.res(6, Reg::C)
-            }
-            0xb2 => {
-                // RES 6,D 2:8 - - - -
-                self.res(6, Reg::D)
-            }
-            0xb3 => {
-                // RES 6,E 2:8 - - - -
-                self.res(6, Reg::E)
-            }
-            0xb4 => {
-                // RES 6,H 2:8 - - - -
-                self.res(6, Reg::H)
-            }
-            0xb5 => {
-                // RES 6,L 2:8 - - - -
-                self.res(6, Reg::L)
-            }
-            0xb6 => {
-                // RES 6,(HL) 2:16 - - - -
-                self.res(6, Reg::HL)
-            }
-            0xb7 => {
-                // RES 6,A 2:8 - - - -
-                self.res(6, Reg::A)
-            }
-            0xb8 => {
-                // RES 7,B 2:8 - - - -
-                self.res(7, Reg::B)
-            }
-            0xb9 => {
-                // RES 7,C 2:8 - - - -
-                self.res(7, Reg::C)
-            }
-            0xba => {
-                // RES 7,D 2:8 - - - -
-                self.res(7, Reg::D)
-            }
-            0xbb => {
-                // RES 7,E 2:8 - - - -
-                self.res(7, Reg::E)
-            }
-            0xbc => {
-                // RES 7,H 2:8 - - - -
-                self.res(7, Reg::H)
-            }
-            0xbd => {
-                // RES 7,L 2:8 - - - -
-                self.res(7, Reg::L)
-            }
-            0xbe => {
-                // RES 7,(HL) 2:16 - - - -
-                self.res(7, Reg::HL)
-            }
-            0xbf => {
-                // RES 7,A 2:8 - - - - Cx
-                self.res(7, Reg::A)
-            }
-            0xc0 => {
-                // SET 0,B 2:8 - - - -
-                self.set(0, Reg::B)
-            }
-            0xc1 => {
-                // SET 0,C 2:8 - - - -
-                self.set(0, Reg::C)
-            }
-            0xc2 => {
-                // SET 0,D 2:8 - - - -
-                self.set(0, Reg::D)
-            }
-            0xc3 => {
-                // SET 0,E 2:8 - - - -
-                self.set(0, Reg::E)
-            }
-            0xc4 => {
-                // SET 0,H 2:8 - - - -
-                self.set(0, Reg::H)
-            }
-            0xc5 => {
-                // SET 0,L 2:8 - - - -
-                self.set(0, Reg::L)
-            }
-            0xc6 => {
-                // SET 0,(HL) 2:16 - - - -
-                self.set(0, Reg::HL)
-            }
-            0xc7 => {
-                // SET 0,A 2:8 - - - -
-                self.set(0, Reg::A)
-            }
-            0xc8 => {
-                // SET 1,B 2:8 - - - -
-                self.set(1, Reg::B)
-            }
-            0xc9 => {
-                // SET 1,C 2:8 - - - -
-                self.set(1, Reg::C)
-            }
-            0xca => {
-                // SET 1,D 2:8 - - - -
-                self.set(1, Reg::D)
-            }
-            0xcb => {
-                // SET 1,E 2:8 - - - -
-                self.set(1, Reg::E)
-            }
-            0xcc => {
-                // SET 1,H 2:8 - - - -
-                self.set(1, Reg::H)
-            }
-            0xcd => {
-                // SET 1,L 2:8 - - - -
-                self.set(1, Reg::L)
-            }
-            0xce => {
-                // SET 1,(HL) 2:16 - - - -
-                self.set(1, Reg::HL)
-            }
-            0xcf => {
-                // SET 1,A 2:8 - - - - Dx
-                self.set(1, Reg::A)
-            }
-            0xd0 => {
-                // SET 2,B 2:8 - - - -
-                self.set(2, Reg::B)
-            }
-            0xd1 => {
-                // SET 2,C 2:8 - - - -
-                self.set(2, Reg::C)
-            }
-            0xd2 => {
-                // SET 2,D 2:8 - - - -
-                self.set(2, Reg::D)
-            }
-            0xd3 => {
-                // SET 2,E 2:8 - - - -
-                self.set(2, Reg::E)
-            }
-            0xd4 => {
-                // SET 2,H 2:8 - - - -
-                self.set(2, Reg::H)
-            }
-            0xd5 => {
-                // SET 2,L 2:8 - - - -
-                self.set(2, Reg::L)
-            }
-            0xd6 => {
-                // SET 2,(HL) 2:16 - - - -
-                self.set(2, Reg::HL)
-            }
-            0xd7 => {
-                // SET 2,A 2:8 - - - -
-                self.set(2, Reg::A)
-            }
-            0xd8 => {
-                // SET 3,B 2:8 - - - -
-                self.set(3, Reg::B)
-            }
-            0xd9 => {
-                // SET 3,C 2:8 - - - -
-                self.set(3, Reg::C)
-            }
-            0xda => {
-                // SET 3,D 2:8 - - - -
-                self.set(3, Reg::D)
-            }
-            0xdb => {
-                // SET 3,E 2:8 - - - -
-                self.set(3, Reg::E)
-            }
-            0xdc => {
-                // SET 3,H 2:8 - - - -
-                self.set(3, Reg::H)
-            }
-            0xdd => {
-                // SET 3,L 2:8 - - - -
-                self.set(3, Reg::L)
-            }
-            0xde => {
-                // SET 3,(HL) 2:16 - - - -
-                self.set(3, Reg::HL)
-            }
-            0xdf => {
-                // SET 3,A 2:8 - - - - Ex
-                self.set(3, Reg::A)
-            }
-            0xe0 => {
-                // SET 4,B 2:8 - - - -
-                self.set(4, Reg::B)
-            }
-            0xe1 => {
-                // SET 4,C 2:8 - - - -
-                self.set(4, Reg::C)
-            }
-            0xe2 => {
-                // SET 4,D 2:8 - - - -
-                self.set(4, Reg::D)
-            }
-            0xe3 => {
-                // SET 4,E 2:8 - - - -
-                self.set(4, Reg::E)
-            }
-            0xe4 => {
-                // SET 4,H 2:8 - - - -
-                self.set(4, Reg::H)
-            }
-            0xe5 => {
-                // SET 4,L 2:8 - - - -
-                self.set(4, Reg::L)
-            }
-            0xe6 => {
-                // SET 4,(HL) 2:16 - - - -
-                self.set(4, Reg::HL)
-            }
-            0xe7 => {
-                // SET 4,A 2:8 - - - -
-                self.set(4, Reg::A)
-            }
-            0xe8 => {
-                // SET 5,B 2:8 - - - -
-                self.set(5, Reg::B)
-            }
-            0xe9 => {
-                // SET 5,C 2:8 - - - -
-                self.set(5, Reg::C)
-            }
-            0xea => {
-                // SET 5,D 2:8 - - - -
-                self.set(5, Reg::D)
-            }
-            0xeb => {
-                // SET 5,E 2:8 - - - -
-                self.set(5, Reg::E)
-            }
-            0xec => {
-                // SET 5,H 2:8 - - - -
-                self.set(5, Reg::H)
-            }
-            0xed => {
-                // SET 5,L 2:8 - - - -
-                self.set(5, Reg::L)
-            }
-            0xee => {
-                // SET 5,(HL) 2:16 - - - -
-                self.set(5, Reg::HL)
-            }
-            0xef => {
-                // SET 5,A 2:8 - - - - Fx
-                self.set(5, Reg::A)
-            }
-            0xf0 => {
-                // SET 6,B 2:8 - - - -
-                self.set(6, Reg::B)
-            }
-            0xf1 => {
-                // SET 6,C 2:8 - - - -
-                self.set(6, Reg::C)
-            }
-            0xf2 => {
-                // SET 6,D 2:8 - - - -
-                self.set(6, Reg::D)
-            }
-            0xf3 => {
-                // SET 6,E 2:8 - - - -
-                self.set(6, Reg::E)
-            }
-            0xf4 => {
-                // SET 6,H 2:8 - - - -
-                self.set(6, Reg::H)
-            }
-            0xf5 => {
-                // SET 6,L 2:8 - - - -
-                self.set(6, Reg::L)
-            }
-            0xf6 => {
-                // SET 6,(HL) 2:16 - - - -
-                self.set(6, Reg::HL)
-            }
-            0xf7 => {
-                // SET 6,A 2:8 - - - -
-                self.set(6, Reg::A)
-            }
-            0xf8 => {
-                // SET 7,B 2:8 - - - -
-                self.set(7, Reg::B)
-            }
-            0xf9 => {
-                // SET 7,C 2:8 - - - -
-                self.set(7, Reg::C)
-            }
-            0xfa => {
-                // SET 7,D 2:8 - - - -
-                self.set(7, Reg::D)
-            }
-            0xfb => {
-                // SET 7,E 2:8 - - - -
-                self.set(7, Reg::E)
-            }
-            0xfc => {
-                // SET 7,H 2:8 - - - -
-                self.set(7, Reg::H)
-            }
-            0xfd => {
-                // SET 7,L 2:8 - - - -
-                self.set(7, Reg::L)
-            }
-            0xfe => {
-                // SET 7,(HL) 2:16 - - - -
-                self.set(7, Reg::HL)
-            }
-            0xff => {
-                // SET 7,A 2:8 - - - -
-                self.set(7, Reg::A)
-            }
+            // RLC B 2:8 Z 0 0 C
+            0x00 => self.rlc(Reg::B),
+            // RLC C 2:8 Z 0 0 C
+            0x01 => self.rlc(Reg::C),
+            // RLC D 2:8 Z 0 0 C
+            0x02 => self.rlc(Reg::D),
+            // RLC E 2:8 Z 0 0 C
+            0x03 => self.rlc(Reg::E),
+            // RLC H 2:8 Z 0 0 C
+            0x04 => self.rlc(Reg::H),
+            // RLC L 2:8 Z 0 0 C
+            0x05 => self.rlc(Reg::L),
+            // RLC (HL) 2:16 Z 0 0 C
+            0x06 => self.rlc(Reg::HL),
+            // RLC A 2:8 Z 0 0 C
+            0x07 => self.rlc(Reg::A),
+            // RRC B 2:8 Z 0 0 C
+            0x08 => self.rrc(Reg::B),
+            // RRC C 2:8 Z 0 0 C
+            0x09 => self.rrc(Reg::C),
+            // RRC D 2:8 Z 0 0 C
+            0x0a => self.rrc(Reg::D),
+            // RRC E 2:8 Z 0 0 C
+            0x0b => self.rrc(Reg::E),
+            // RRC H 2:8 Z 0 0 C
+            0x0c => self.rrc(Reg::H),
+            // RRC L 2:8 Z 0 0 C
+            0x0d => self.rrc(Reg::L),
+            // RRC (HL) 2:16 Z 0 0 C
+            0x0e => self.rrc(Reg::HL),
+            // RRC A 2:8 Z 0 0 C
+            0x0f => self.rrc(Reg::A),
+            // RL B 2:8 Z 0 0 C
+            0x10 => self.rl(Reg::B),
+            // RL C 2:8 Z 0 0 C
+            0x11 => self.rl(Reg::C),
+            // RL D 2:8 Z 0 0 C
+            0x12 => self.rl(Reg::D),
+            // RL E 2:8 Z 0 0 C
+            0x13 => self.rl(Reg::E),
+            // RL H 2:8 Z 0 0 C
+            0x14 => self.rl(Reg::H),
+            // RL L 2:8 Z 0 0 C
+            0x15 => self.rl(Reg::L),
+            // RL (HL) 2:16 Z 0 0 C
+            0x16 => self.rl(Reg::HL),
+            // RL A 2:8 Z 0 0 C
+            0x17 => self.rl(Reg::A),
+            // RR B 2:8 Z 0 0 C
+            0x18 => self.rr(Reg::B),
+            // RR C 2:8 Z 0 0 C
+            0x19 => self.rr(Reg::C),
+            // RR D 2:8 Z 0 0 C
+            0x1a => self.rr(Reg::D),
+            // RR E 2:8 Z 0 0 C
+            0x1b => self.rr(Reg::E),
+            // RR H 2:8 Z 0 0 C
+            0x1c => self.rr(Reg::H),
+            // RR L 2:8 Z 0 0 C
+            0x1d => self.rr(Reg::L),
+            // RR (HL) 2:16 Z 0 0 C
+            0x1e => self.rr(Reg::HL),
+            // RR A 2:8 Z 0 0 C
+            0x1f => self.rr(Reg::A),
+            // SLA B 2:8 Z 0 0 C
+            0x20 => self.sla(Reg::B),
+            // SLA C 2:8 Z 0 0 C
+            0x21 => self.sla(Reg::C),
+            // SLA D 2:8 Z 0 0 C
+            0x22 => self.sla(Reg::D),
+            // SLA E 2:8 Z 0 0 C
+            0x23 => self.sla(Reg::E),
+            // SLA H 2:8 Z 0 0 C
+            0x24 => self.sla(Reg::H),
+            // SLA L 2:8 Z 0 0 C
+            0x25 => self.sla(Reg::L),
+            // SLA (HL) 2:16 Z 0 0 C
+            0x26 => self.sla(Reg::HL),
+            // SLA A 2:8 Z 0 0 C
+            0x27 => self.sla(Reg::A),
+            // SRA B 2:8 Z 0 0 0
+            0x28 => self.sra(Reg::B),
+            // SRA C 2:8 Z 0 0 0
+            0x29 => self.sra(Reg::C),
+            // SRA D 2:8 Z 0 0 0
+            0x2a => self.sra(Reg::D),
+            // SRA E 2:8 Z 0 0 0
+            0x2b => self.sra(Reg::E),
+            // SRA H 2:8 Z 0 0 0
+            0x2c => self.sra(Reg::H),
+            // SRA L 2:8 Z 0 0 0
+            0x2d => self.sra(Reg::L),
+            // SRA (HL) 2:16 Z 0 0 0
+            0x2e => self.sra(Reg::HL),
+            // SRA A 2:8 Z 0 0 0
+            0x2f => self.sra(Reg::A),
+            // SWAP B 2:8 Z 0 0 0
+            0x30 => self.swap(Reg::B),
+            // SWAP C 2:8 Z 0 0 0
+            0x31 => self.swap(Reg::C),
+            // SWAP D 2:8 Z 0 0 0
+            0x32 => self.swap(Reg::D),
+            // SWAP E 2:8 Z 0 0 0
+            0x33 => self.swap(Reg::E),
+            // SWAP H 2:8 Z 0 0 0
+            0x34 => self.swap(Reg::H),
+            // SWAP L 2:8 Z 0 0 0
+            0x35 => self.swap(Reg::L),
+            // SWAP (HL) 2:16 Z 0 0 0
+            0x36 => self.swap(Reg::HL),
+            // SWAP A 2:8 Z 0 0 0
+            0x37 => self.swap(Reg::A),
+            // SRL B 2:8 Z 0 0 C
+            0x38 => self.srl(Reg::B),
+            // SRL C 2:8 Z 0 0 C
+            0x39 => self.srl(Reg::C),
+            // SRL D 2:8 Z 0 0 C
+            0x3a => self.srl(Reg::D),
+            // SRL E 2:8 Z 0 0 C
+            0x3b => self.srl(Reg::E),
+            // SRL H 2:8 Z 0 0 C
+            0x3c => self.srl(Reg::H),
+            // SRL L 2:8 Z 0 0 C
+            0x3d => self.srl(Reg::L),
+            // SRL (HL) 2:16 Z 0 0 C
+            0x3e => self.srl(Reg::HL),
+            // SRL A 2:8 Z 0 0 C
+            0x3f => self.srl(Reg::A),
+            // BIT 0,B 2:8 Z 0 1 -
+            0x40 => self.bit(0, Reg::B),
+            // BIT 0,C 2:8 Z 0 1 -
+            0x41 => self.bit(0, Reg::C),
+            // BIT 0,D 2:8 Z 0 1 -
+            0x42 => self.bit(0, Reg::D),
+            // BIT 0,E 2:8 Z 0 1 -
+            0x43 => self.bit(0, Reg::E),
+            // BIT 0,H 2:8 Z 0 1 -
+            0x44 => self.bit(0, Reg::H),
+            // BIT 0,L 2:8 Z 0 1 -
+            0x45 => self.bit(0, Reg::L),
+            // BIT 0,(HL) 2:16 Z 0 1 -
+            0x46 => self.bit(0, Reg::HL),
+            // BIT 0,A 2:8 Z 0 1 -
+            0x47 => self.bit(0, Reg::A),
+            // BIT 1,B 2:8 Z 0 1 -
+            0x48 => self.bit(1, Reg::B),
+            // BIT 1,C 2:8 Z 0 1 -
+            0x49 => self.bit(1, Reg::C),
+            // BIT 1,D 2:8 Z 0 1 -
+            0x4a => self.bit(1, Reg::D),
+            // BIT 1,E 2:8 Z 0 1 -
+            0x4b => self.bit(1, Reg::E),
+            // BIT 1,H 2:8 Z 0 1 -
+            0x4c => self.bit(1, Reg::H),
+            // BIT 1,L 2:8 Z 0 1 -
+            0x4d => self.bit(1, Reg::L),
+            // BIT 1,(HL) 2:16 Z 0 1 -
+            0x4e => self.bit(1, Reg::HL),
+            // BIT 1,A 2:8 Z 0 1 -
+            0x4f => self.bit(1, Reg::A),
+            // BIT 2,B 2:8 Z 0 1 -
+            0x50 => self.bit(2, Reg::B),
+            // BIT 2,C 2:8 Z 0 1 -
+            0x51 => self.bit(2, Reg::C),
+            // BIT 2,D 2:8 Z 0 1 -
+            0x52 => self.bit(2, Reg::D),
+            // BIT 2,E 2:8 Z 0 1 -
+            0x53 => self.bit(2, Reg::E),
+            // BIT 2,H 2:8 Z 0 1 -
+            0x54 => self.bit(2, Reg::H),
+            // BIT 2,L 2:8 Z 0 1 -
+            0x55 => self.bit(2, Reg::L),
+            // BIT 2,(HL) 2:16 Z 0 1 -
+            0x56 => self.bit(2, Reg::HL),
+            // BIT 2,A 2:8 Z 0 1 -
+            0x57 => self.bit(2, Reg::A),
+            // BIT 3,B 2:8 Z 0 1 -
+            0x58 => self.bit(3, Reg::B),
+            // BIT 3,C 2:8 Z 0 1 -
+            0x59 => self.bit(3, Reg::C),
+            // BIT 3,D 2:8 Z 0 1 -
+            0x5a => self.bit(3, Reg::D),
+            // BIT 3,E 2:8 Z 0 1 -
+            0x5b => self.bit(3, Reg::E),
+            // BIT 3,H 2:8 Z 0 1 -
+            0x5c => self.bit(3, Reg::H),
+            // BIT 3,L 2:8 Z 0 1 -
+            0x5d => self.bit(3, Reg::L),
+            // BIT 3,(HL) 2:16 Z 0 1 -
+            0x5e => self.bit(3, Reg::HL),
+            // BIT 3,A 2:8 Z 0 1 -
+            0x5f => self.bit(3, Reg::A),
+            // BIT 4,B 2:8 Z 0 1 -
+            0x60 => self.bit(4, Reg::B),
+            // BIT 4,C 2:8 Z 0 1 -
+            0x61 => self.bit(4, Reg::C),
+            // BIT 4,D 2:8 Z 0 1 -
+            0x62 => self.bit(4, Reg::D),
+            // BIT 4,E 2:8 Z 0 1 -
+            0x63 => self.bit(4, Reg::E),
+            // BIT 4,H 2:8 Z 0 1 -
+            0x64 => self.bit(4, Reg::H),
+            // BIT 4,L 2:8 Z 0 1 -
+            0x65 => self.bit(4, Reg::L),
+            // BIT 4,(HL) 2:16 Z 0 1 -
+            0x66 => self.bit(4, Reg::HL),
+            // BIT 4,A 2:8 Z 0 1 -
+            0x67 => self.bit(4, Reg::A),
+            // BIT 5,B 2:8 Z 0 1 -
+            0x68 => self.bit(5, Reg::B),
+            // BIT 5,C 2:8 Z 0 1 -
+            0x69 => self.bit(5, Reg::C),
+            // BIT 5,D 2:8 Z 0 1 -
+            0x6a => self.bit(5, Reg::D),
+            // BIT 5,E 2:8 Z 0 1 -
+            0x6b => self.bit(5, Reg::E),
+            // BIT 5,H 2:8 Z 0 1 -
+            0x6c => self.bit(5, Reg::H),
+            // BIT 5,L 2:8 Z 0 1 -
+            0x6d => self.bit(5, Reg::L),
+            // BIT 5,(HL) 2:16 Z 0 1 -
+            0x6e => self.bit(5, Reg::HL),
+            // BIT 5,A 2:8 Z 0 1 -
+            0x6f => self.bit(5, Reg::A),
+            // BIT 6,B 2:8 Z 0 1 -
+            0x70 => self.bit(6, Reg::B),
+            // BIT 6,C 2:8 Z 0 1 -
+            0x71 => self.bit(6, Reg::C),
+            // BIT 6,D 2:8 Z 0 1 -
+            0x72 => self.bit(6, Reg::D),
+            // BIT 6,E 2:8 Z 0 1 -
+            0x73 => self.bit(6, Reg::E),
+            // BIT 6,H 2:8 Z 0 1 -
+            0x74 => self.bit(6, Reg::H),
+            // BIT 6,L 2:8 Z 0 1 -
+            0x75 => self.bit(6, Reg::L),
+            // BIT 6,(HL) 2:16 Z 0 1 -
+            0x76 => self.bit(6, Reg::HL),
+            // BIT 6,A 2:8 Z 0 1 -
+            0x77 => self.bit(6, Reg::A),
+            // BIT 7,B 2:8 Z 0 1 -
+            0x78 => self.bit(7, Reg::B),
+            // BIT 7,C 2:8 Z 0 1 -
+            0x79 => self.bit(7, Reg::C),
+            // BIT 7,D 2:8 Z 0 1 -
+            0x7a => self.bit(7, Reg::D),
+            // BIT 7,E 2:8 Z 0 1 -
+            0x7b => self.bit(7, Reg::E),
+            // BIT 7,H 2:8 Z 0 1 -
+            0x7c => self.bit(7, Reg::H),
+            // BIT 7,L 2:8 Z 0 1 -
+            0x7d => self.bit(7, Reg::L),
+            // BIT 7,(HL) 2:16 Z 0 1 -
+            0x7e => self.bit(7, Reg::HL),
+            // BIT 7,A 2:8 Z 0 1 -
+            0x7f => self.bit(7, Reg::A),
+            // RES 0,B 2:8 - - - -
+            0x80 => self.res(0, Reg::B),
+            // RES 0,C 2:8 - - - -
+            0x81 => self.res(0, Reg::C),
+            // RES 0,D 2:8 - - - -
+            0x82 => self.res(0, Reg::D),
+            // RES 0,E 2:8 - - - -
+            0x83 => self.res(0, Reg::E),
+            // RES 0,H 2:8 - - - -
+            0x84 => self.res(0, Reg::H),
+            // RES 0,L 2:8 - - - -
+            0x85 => self.res(0, Reg::L),
+            // RES 0,(HL) 2:16 - - - -
+            0x86 => self.res(0, Reg::HL),
+            // RES 0,A 2:8 - - - -
+            0x87 => self.res(0, Reg::A),
+            // RES 1,B 2:8 - - - -
+            0x88 => self.res(1, Reg::B),
+            // RES 1,C 2:8 - - - -
+            0x89 => self.res(1, Reg::C),
+            // RES 1,D 2:8 - - - -
+            0x8a => self.res(1, Reg::D),
+            // RES 1,E 2:8 - - - -
+            0x8b => self.res(1, Reg::E),
+            // RES 1,H 2:8 - - - -
+            0x8c => self.res(1, Reg::H),
+            // RES 1,L 2:8 - - - -
+            0x8d => self.res(1, Reg::L),
+            // RES 1,(HL) 2:16 - - - -
+            0x8e => self.res(1, Reg::HL),
+            // RES 1,A 2:8 - - - -
+            0x8f => self.res(1, Reg::A),
+            // RES 2,B 2:8 - - - -
+            0x90 => self.res(2, Reg::B),
+            // RES 2,C 2:8 - - - -
+            0x91 => self.res(2, Reg::C),
+            // RES 2,D 2:8 - - - -
+            0x92 => self.res(2, Reg::D),
+            // RES 2,E 2:8 - - - -
+            0x93 => self.res(2, Reg::E),
+            // RES 2,H 2:8 - - - -
+            0x94 => self.res(2, Reg::H),
+            // RES 2,L 2:8 - - - -
+            0x95 => self.res(2, Reg::L),
+            // RES 2,(HL) 2:16 - - - -
+            0x96 => self.res(2, Reg::HL),
+            // RES 2,A 2:8 - - - -
+            0x97 => self.res(2, Reg::A),
+            // RES 3,B 2:8 - - - -
+            0x98 => self.res(3, Reg::B),
+            // RES 3,C 2:8 - - - -
+            0x99 => self.res(3, Reg::C),
+            // RES 3,D 2:8 - - - -
+            0x9a => self.res(3, Reg::D),
+            // RES 3,E 2:8 - - - -
+            0x9b => self.res(3, Reg::E),
+            // RES 3,H 2:8 - - - -
+            0x9c => self.res(3, Reg::H),
+            // RES 3,L 2:8 - - - -
+            0x9d => self.res(3, Reg::L),
+            // RES 3,(HL) 2:16 - - - -
+            0x9e => self.res(3, Reg::HL),
+            // RES 3,A 2:8 - - - - Ax
+            0x9f => self.res(3, Reg::A),
+            // RES 4,B 2:8 - - - -
+            0xa0 => self.res(4, Reg::B),
+            // RES 4,C 2:8 - - - -
+            0xa1 => self.res(4, Reg::C),
+            // RES 4,D 2:8 - - - -
+            0xa2 => self.res(4, Reg::D),
+            // RES 4,E 2:8 - - - -
+            0xa3 => self.res(4, Reg::E),
+            // RES 4,H 2:8 - - - -
+            0xa4 => self.res(4, Reg::H),
+            // RES 4,L 2:8 - - - -
+            0xa5 => self.res(4, Reg::L),
+            // RES 4,(HL) 2:16 - - - -
+            0xa6 => self.res(4, Reg::HL),
+            // RES 4,A 2:8 - - - -
+            0xa7 => self.res(4, Reg::A),
+            // RES 5,B 2:8 - - - -
+            0xa8 => self.res(5, Reg::B),
+            // RES 5,C 2:8 - - - -
+            0xa9 => self.res(5, Reg::C),
+            // RES 5,D 2:8 - - - -
+            0xaa => self.res(5, Reg::D),
+            // RES 5,E 2:8 - - - -
+            0xab => self.res(5, Reg::E),
+            // RES 5,H 2:8 - - - -
+            0xac => self.res(5, Reg::H),
+            // RES 5,L 2:8 - - - -
+            0xad => self.res(5, Reg::L),
+            // RES 5,(HL) 2:16 - - - -
+            0xae => self.res(5, Reg::HL),
+            // RES 5,A 2:8 - - - - Bx
+            0xaf => self.res(5, Reg::A),
+            // RES 6,B 2:8 - - - -
+            0xb0 => self.res(6, Reg::B),
+            // RES 6,C 2:8 - - - -
+            0xb1 => self.res(6, Reg::C),
+            // RES 6,D 2:8 - - - -
+            0xb2 => self.res(6, Reg::D),
+            // RES 6,E 2:8 - - - -
+            0xb3 => self.res(6, Reg::E),
+            // RES 6,H 2:8 - - - -
+            0xb4 => self.res(6, Reg::H),
+            // RES 6,L 2:8 - - - -
+            0xb5 => self.res(6, Reg::L),
+            // RES 6,(HL) 2:16 - - - -
+            0xb6 => self.res(6, Reg::HL),
+            // RES 6,A 2:8 - - - -
+            0xb7 => self.res(6, Reg::A),
+            // RES 7,B 2:8 - - - -
+            0xb8 => self.res(7, Reg::B),
+            // RES 7,C 2:8 - - - -
+            0xb9 => self.res(7, Reg::C),
+            // RES 7,D 2:8 - - - -
+            0xba => self.res(7, Reg::D),
+            // RES 7,E 2:8 - - - -
+            0xbb => self.res(7, Reg::E),
+            // RES 7,H 2:8 - - - -
+            0xbc => self.res(7, Reg::H),
+            // RES 7,L 2:8 - - - -
+            0xbd => self.res(7, Reg::L),
+            // RES 7,(HL) 2:16 - - - -
+            0xbe => self.res(7, Reg::HL),
+            // RES 7,A 2:8 - - - - Cx
+            0xbf => self.res(7, Reg::A),
+            // SET 0,B 2:8 - - - -
+            0xc0 => self.set(0, Reg::B),
+            // SET 0,C 2:8 - - - -
+            0xc1 => self.set(0, Reg::C),
+            // SET 0,D 2:8 - - - -
+            0xc2 => self.set(0, Reg::D),
+            // SET 0,E 2:8 - - - -
+            0xc3 => self.set(0, Reg::E),
+            // SET 0,H 2:8 - - - -
+            0xc4 => self.set(0, Reg::H),
+            // SET 0,L 2:8 - - - -
+            0xc5 => self.set(0, Reg::L),
+            // SET 0,(HL) 2:16 - - - -
+            0xc6 => self.set(0, Reg::HL),
+            // SET 0,A 2:8 - - - -
+            0xc7 => self.set(0, Reg::A),
+            // SET 1,B 2:8 - - - -
+            0xc8 => self.set(1, Reg::B),
+            // SET 1,C 2:8 - - - -
+            0xc9 => self.set(1, Reg::C),
+            // SET 1,D 2:8 - - - -
+            0xca => self.set(1, Reg::D),
+            // SET 1,E 2:8 - - - -
+            0xcb => self.set(1, Reg::E),
+            // SET 1,H 2:8 - - - -
+            0xcc => self.set(1, Reg::H),
+            // SET 1,L 2:8 - - - -
+            0xcd => self.set(1, Reg::L),
+            // SET 1,(HL) 2:16 - - - -
+            0xce => self.set(1, Reg::HL),
+            // SET 1,A 2:8 - - - - Dx
+            0xcf => self.set(1, Reg::A),
+            // SET 2,B 2:8 - - - -
+            0xd0 => self.set(2, Reg::B),
+            // SET 2,C 2:8 - - - -
+            0xd1 => self.set(2, Reg::C),
+            // SET 2,D 2:8 - - - -
+            0xd2 => self.set(2, Reg::D),
+            // SET 2,E 2:8 - - - -
+            0xd3 => self.set(2, Reg::E),
+            // SET 2,H 2:8 - - - -
+            0xd4 => self.set(2, Reg::H),
+            // SET 2,L 2:8 - - - -
+            0xd5 => self.set(2, Reg::L),
+            // SET 2,(HL) 2:16 - - - -
+            0xd6 => self.set(2, Reg::HL),
+            // SET 2,A 2:8 - - - -
+            0xd7 => self.set(2, Reg::A),
+            // SET 3,B 2:8 - - - -
+            0xd8 => self.set(3, Reg::B),
+            // SET 3,C 2:8 - - - -
+            0xd9 => self.set(3, Reg::C),
+            // SET 3,D 2:8 - - - -
+            0xda => self.set(3, Reg::D),
+            // SET 3,E 2:8 - - - -
+            0xdb => self.set(3, Reg::E),
+            // SET 3,H 2:8 - - - -
+            0xdc => self.set(3, Reg::H),
+            // SET 3,L 2:8 - - - -
+            0xdd => self.set(3, Reg::L),
+            // SET 3,(HL) 2:16 - - - -
+            0xde => self.set(3, Reg::HL),
+            // SET 3,A 2:8 - - - - Ex
+            0xdf => self.set(3, Reg::A),
+            // SET 4,B 2:8 - - - -
+            0xe0 => self.set(4, Reg::B),
+            // SET 4,C 2:8 - - - -
+            0xe1 => self.set(4, Reg::C),
+            // SET 4,D 2:8 - - - -
+            0xe2 => self.set(4, Reg::D),
+            // SET 4,E 2:8 - - - -
+            0xe3 => self.set(4, Reg::E),
+            // SET 4,H 2:8 - - - -
+            0xe4 => self.set(4, Reg::H),
+            // SET 4,L 2:8 - - - -
+            0xe5 => self.set(4, Reg::L),
+            // SET 4,(HL) 2:16 - - - -
+            0xe6 => self.set(4, Reg::HL),
+            // SET 4,A 2:8 - - - -
+            0xe7 => self.set(4, Reg::A),
+            // SET 5,B 2:8 - - - -
+            0xe8 => self.set(5, Reg::B),
+            // SET 5,C 2:8 - - - -
+            0xe9 => self.set(5, Reg::C),
+            // SET 5,D 2:8 - - - -
+            0xea => self.set(5, Reg::D),
+            // SET 5,E 2:8 - - - -
+            0xeb => self.set(5, Reg::E),
+            // SET 5,H 2:8 - - - -
+            0xec => self.set(5, Reg::H),
+            // SET 5,L 2:8 - - - -
+            0xed => self.set(5, Reg::L),
+            // SET 5,(HL) 2:16 - - - -
+            0xee => self.set(5, Reg::HL),
+            // SET 5,A 2:8 - - - - Fx
+            0xef => self.set(5, Reg::A),
+            // SET 6,B 2:8 - - - -
+            0xf0 => self.set(6, Reg::B),
+            // SET 6,C 2:8 - - - -
+            0xf1 => self.set(6, Reg::C),
+            // SET 6,D 2:8 - - - -
+            0xf2 => self.set(6, Reg::D),
+            // SET 6,E 2:8 - - - -
+            0xf3 => self.set(6, Reg::E),
+            // SET 6,H 2:8 - - - -
+            0xf4 => self.set(6, Reg::H),
+            // SET 6,L 2:8 - - - -
+            0xf5 => self.set(6, Reg::L),
+            // SET 6,(HL) 2:16 - - - -
+            0xf6 => self.set(6, Reg::HL),
+            // SET 6,A 2:8 - - - -
+            0xf7 => self.set(6, Reg::A),
+            // SET 7,B 2:8 - - - -
+            0xf8 => self.set(7, Reg::B),
+            // SET 7,C 2:8 - - - -
+            0xf9 => self.set(7, Reg::C),
+            // SET 7,D 2:8 - - - -
+            0xfa => self.set(7, Reg::D),
+            // SET 7,E 2:8 - - - -
+            0xfb => self.set(7, Reg::E),
+            // SET 7,H 2:8 - - - -
+            0xfc => self.set(7, Reg::H),
+            // SET 7,L 2:8 - - - -
+            0xfd => self.set(7, Reg::L),
+            // SET 7,(HL) 2:16 - - - -
+            0xfe => self.set(7, Reg::HL),
+            // SET 7,A 2:8 - - - -
+            0xff => self.set(7, Reg::A),
         }
     }
 }

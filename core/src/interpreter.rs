@@ -158,18 +158,20 @@ impl Interpreter<'_> {
         }
     }
 
-    fn jump(&mut self, c: Condition, address: u16) {
+    fn jump(&mut self, c: Condition) {
         // JP cc, nn
         let c = self.check_condition(c);
+        let address = self.read_next_pc16();
         if c {
             self.jump_to(address);
             self.0.tick(4); // Extra 1 M-cycle for jump
         }
     }
 
-    fn jump_rel(&mut self, c: Condition, r8: i8) {
-        // JP cc, nn
+    fn jump_rel(&mut self, c: Condition) {
+        // JR cc, nn
         let c = self.check_condition(c);
+        let r8 = self.read_next_pc() as i8;
         if c {
             let pc = (self.0.cpu.pc as i16 + r8 as i16) as u16;
             self.jump_to(pc);
@@ -218,9 +220,10 @@ impl Interpreter<'_> {
         }
     }
 
-    fn call(&mut self, c: Condition, address: u16) {
-        // JP cc, nn
+    fn call(&mut self, c: Condition) {
+        // CALL cc, nn
         let c = self.check_condition(c);
+        let address = self.read_next_pc16();
         if c {
             self.pushr(self.0.cpu.pc);
             self.jump_to(address);
@@ -228,7 +231,7 @@ impl Interpreter<'_> {
     }
 
     fn ret(&mut self, cond: Condition) {
-        // JP cc, nn
+        // RET nn
         let c = self.check_condition(cond);
         if cond != Condition::None {
             self.0.tick(4); // 1 M-cycle for condition check (I think?)
@@ -344,6 +347,10 @@ impl Interpreter<'_> {
             }
             Reg::SP => unreachable!(),
         }
+    }
+
+    fn nop(&self) {
+        // do nothing
     }
 
     fn load(&mut self, dst: Reg, src: Reg) {
@@ -672,6 +679,165 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(c);
     }
 
+    fn add_sp(&mut self) {
+        let r;
+        let c;
+        let h;
+        let r8 = self.read_next_pc() as i8;
+        if (r8) >= 0 {
+            c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
+            h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
+            r = add16(self.0.cpu.sp, r8 as u16);
+        } else {
+            r = sub16(self.0.cpu.sp, -r8 as u16);
+            c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
+            h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
+        }
+        self.0.cpu.sp = r;
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_c(c);
+        self.0.cpu.f.def_h(h);
+        self.0.tick(8);
+    }
+
+    fn reti(&mut self) {
+        self.ret(Condition::None);
+        self.0.cpu.ime = ImeState::Enabled;
+    }
+
+    fn halt(&mut self) {
+        self.0.cpu.state = CpuState::Halt;
+    }
+
+    fn ccf(&mut self) {
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(!self.0.cpu.f.c());
+    }
+
+    fn scf(&mut self) {
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.set_c();
+    }
+
+    fn dec16(&mut self, reg: Reg) {
+        let mut reg = self.read(reg);
+        reg = sub(reg, 1);
+        self.write(Reg::HL, reg);
+        self.0.cpu.f.def_z(reg == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h(reg & 0x0f == 0xf);
+    }
+
+    fn inc16(&mut self, reg: Reg) {
+        let mut reg = self.read(reg);
+        reg = add(reg, 1);
+        self.write(Reg::HL, reg);
+        self.0.cpu.f.def_z(reg == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h(reg & 0x0f == 0);
+    }
+
+    fn cpl(&mut self) {
+        self.0.cpu.a = !self.0.cpu.a;
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.set_h();
+    }
+
+    fn daa(&mut self) {
+        if !self.0.cpu.f.n() {
+            if self.0.cpu.f.c() || self.0.cpu.a > 0x99 {
+                self.0.cpu.a = add(self.0.cpu.a, 0x60);
+                self.0.cpu.f.set_c();
+            }
+            if self.0.cpu.f.h() || (self.0.cpu.a & 0x0F) > 0x09 {
+                self.0.cpu.a = add(self.0.cpu.a, 0x6);
+            }
+        } else {
+            if self.0.cpu.f.c() {
+                self.0.cpu.a = sub(self.0.cpu.a, 0x60);
+            }
+            if self.0.cpu.f.h() {
+                self.0.cpu.a = sub(self.0.cpu.a, 0x6);
+            }
+        }
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_h();
+    }
+
+    fn rra(&mut self) {
+        let c = self.0.cpu.f.c() as u8;
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
+        self.0.cpu.a = self.0.cpu.a >> 1 | c << 7;
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn rla(&mut self) {
+        let c = self.0.cpu.f.c() as u8;
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+        self.0.cpu.a = self.0.cpu.a << 1 | c;
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn stop(&mut self) {
+        self.0.cpu.state = CpuState::Stopped;
+        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+    }
+
+    fn rrca(&mut self) {
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
+        self.0.cpu.a = self.0.cpu.a.rotate_right(1);
+    }
+
+    fn rlca(&mut self) {
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+        self.0.cpu.a = self.0.cpu.a.rotate_left(1);
+    }
+
+    fn invalid_opcode(&self, opcode: u8) {
+        println!("executed invalid instructions: {opcode:02x}");
+    }
+
+    fn ei(&mut self) {
+        if self.0.cpu.ime == ImeState::Disabled {
+            self.0.cpu.ime = ImeState::ToBeEnable;
+        }
+    }
+
+    fn ldhl_sp(&mut self) {
+        let r;
+        let c;
+        let h;
+        let r8 = self.read_next_pc() as i8;
+        if (r8) >= 0 {
+            c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
+            h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
+            r = add16(self.0.cpu.sp, r8 as u16);
+        } else {
+            r = sub16(self.0.cpu.sp, -r8 as u16);
+            c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
+            h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
+        }
+        self.0.cpu.set_hl(r);
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h(h);
+        self.0.cpu.f.def_c(c);
+        self.0.tick(4);
+    }
+
     fn bit(&mut self, bit: u8, reg: Reg) {
         let r = self.read(reg);
         self.0.cpu.f.def_z((r & (1 << bit)) == 0);
@@ -973,6 +1139,7 @@ impl Interpreter<'_> {
         match op {
             0x00 => {
                 // NOP 1:4 - - - -
+                self.nop();
             }
             0x01 => {
                 // LD BC,d16 3:12 - - - -
@@ -1000,11 +1167,7 @@ impl Interpreter<'_> {
             }
             0x07 => {
                 // RLCA 1:4 0 0 0 C
-                self.0.cpu.f.clr_z();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.clr_h();
-                self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
-                self.0.cpu.a = self.0.cpu.a.rotate_left(1);
+                self.rlca();
             }
             0x08 => {
                 // LD (a16),SP 3:20 - - - -
@@ -1036,16 +1199,11 @@ impl Interpreter<'_> {
             }
             0x0f => {
                 // RRCA 1:4 0 0 0 C
-                self.0.cpu.f.clr_z();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.clr_h();
-                self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
-                self.0.cpu.a = self.0.cpu.a.rotate_right(1);
+                self.rrca();
             }
             0x10 => {
                 // STOP 0 2:4 - - - -
-                self.0.cpu.state = CpuState::Stopped;
-                self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+                self.stop();
             }
             0x11 => {
                 // LD DE,d16 3:12 - - - -
@@ -1073,17 +1231,11 @@ impl Interpreter<'_> {
             }
             0x17 => {
                 // RLA 1:4 0 0 0 C
-                let c = self.0.cpu.f.c() as u8;
-                self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
-                self.0.cpu.a = self.0.cpu.a << 1 | c;
-                self.0.cpu.f.clr_z();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.clr_h();
+                self.rla();
             }
             0x18 => {
                 // JR r8 2:12 - - - -
-                let r8 = self.read_next_pc() as i8;
-                self.jump_rel(None, r8)
+                self.jump_rel(None)
             }
             0x19 => {
                 // ADD HL,DE 1:8 - 0 H C
@@ -1111,17 +1263,11 @@ impl Interpreter<'_> {
             }
             0x1f => {
                 // RRA 1:4 0 0 0 C
-                let c = self.0.cpu.f.c() as u8;
-                self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
-                self.0.cpu.a = self.0.cpu.a >> 1 | c << 7;
-                self.0.cpu.f.clr_z();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.clr_h();
+                self.rra();
             }
             0x20 => {
                 // JR NZ,r8 2:12/8 - - - -
-                let r8 = self.read_next_pc() as i8;
-                self.jump_rel(NZ, r8)
+                self.jump_rel(NZ)
             }
             0x21 => {
                 // LD HL,d16 3:12 - - - -
@@ -1149,29 +1295,11 @@ impl Interpreter<'_> {
             }
             0x27 => {
                 // DAA 1:4 Z - 0 C
-                if !self.0.cpu.f.n() {
-                    if self.0.cpu.f.c() || self.0.cpu.a > 0x99 {
-                        self.0.cpu.a = add(self.0.cpu.a, 0x60);
-                        self.0.cpu.f.set_c();
-                    }
-                    if self.0.cpu.f.h() || (self.0.cpu.a & 0x0F) > 0x09 {
-                        self.0.cpu.a = add(self.0.cpu.a, 0x6);
-                    }
-                } else {
-                    if self.0.cpu.f.c() {
-                        self.0.cpu.a = sub(self.0.cpu.a, 0x60);
-                    }
-                    if self.0.cpu.f.h() {
-                        self.0.cpu.a = sub(self.0.cpu.a, 0x6);
-                    }
-                }
-                self.0.cpu.f.def_z(self.0.cpu.a == 0);
-                self.0.cpu.f.clr_h();
+                self.daa();
             }
             0x28 => {
                 // JR Z,r8 2:12/8 - - - -
-                let r8 = self.read_next_pc() as i8;
-                self.jump_rel(Z, r8)
+                self.jump_rel(Z)
             }
             0x29 => {
                 // ADD HL,HL 1:8 - 0 H C
@@ -1199,14 +1327,11 @@ impl Interpreter<'_> {
             }
             0x2f => {
                 // CPL 1:4 - 1 1 -
-                self.0.cpu.a = !self.0.cpu.a;
-                self.0.cpu.f.set_n();
-                self.0.cpu.f.set_h();
+                self.cpl();
             }
             0x30 => {
                 // JR NC,r8 2:12/8 - - - -
-                let r8 = self.read_next_pc() as i8;
-                self.jump_rel(NC, r8)
+                self.jump_rel(NC)
             }
             0x31 => {
                 // LD SP,d16 3:12 - - - -
@@ -1222,21 +1347,11 @@ impl Interpreter<'_> {
             }
             0x34 => {
                 // INC (HL) 1:12 Z 0 H -
-                let mut reg = self.read(Reg::HL);
-                reg = add(reg, 1);
-                self.write(Reg::HL, reg);
-                self.0.cpu.f.def_z(reg == 0);
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.def_h(reg & 0x0f == 0);
+                self.inc16(Reg::HL);
             }
             0x35 => {
                 // DEC (HL) 1:12 Z 1 H -
-                let mut reg = self.read(Reg::HL);
-                reg = sub(reg, 1);
-                self.write(Reg::HL, reg);
-                self.0.cpu.f.def_z(reg == 0);
-                self.0.cpu.f.set_n();
-                self.0.cpu.f.def_h(reg & 0x0f == 0xf);
+                self.dec16(Reg::HL);
             }
             0x36 => {
                 // LD (HL),d8 2:12 - - - -
@@ -1244,14 +1359,11 @@ impl Interpreter<'_> {
             }
             0x37 => {
                 // SCF 1:4 - 0 0 1
-                self.0.cpu.f.clr_h();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.set_c();
+                self.scf();
             }
             0x38 => {
                 // JR C,r8 2:12/8 - - - -
-                let r8 = self.read_next_pc() as i8;
-                self.jump_rel(C, r8)
+                self.jump_rel(C)
             }
             0x39 => {
                 // ADD HL,SP 1:8 - 0 H C
@@ -1279,9 +1391,7 @@ impl Interpreter<'_> {
             }
             0x3f => {
                 // CCF 1:4 - 0 0 C
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.clr_h();
-                self.0.cpu.f.def_c(!self.0.cpu.f.c());
+                self.ccf();
             }
             0x40 => {
                 // LD B,B 1:4 - - - -
@@ -1501,7 +1611,7 @@ impl Interpreter<'_> {
             }
             0x76 => {
                 // HALT 1:4 - - - -
-                self.0.cpu.state = CpuState::Halt;
+                self.halt();
             }
             0x77 => {
                 // LD (HL),A 1:8 - - - -
@@ -1805,18 +1915,15 @@ impl Interpreter<'_> {
             }
             0xc2 => {
                 // JP NZ,a16 3:16/12 - - - -
-                let address = self.read_next_pc16();
-                self.jump(NZ, address)
+                self.jump(NZ)
             }
             0xc3 => {
                 // JP a16 3:16 - - - -
-                let address = self.read_next_pc16();
-                self.jump(None, address)
+                self.jump(None)
             }
             0xc4 => {
                 // CALL NZ,a16 3:24/12 - - - -
-                let address = self.read_next_pc16();
-                self.call(NZ, address)
+                self.call(NZ)
             }
             0xc5 => {
                 // PUSH BC 1:16 - - - -
@@ -1840,8 +1947,7 @@ impl Interpreter<'_> {
             }
             0xca => {
                 // JP Z,a16 3:16/12 - - - -
-                let address = self.read_next_pc16();
-                self.jump(Z, address)
+                self.jump(Z)
             }
             0xcb => {
                 // PREFIX CB 1:4 - - - -
@@ -1849,13 +1955,11 @@ impl Interpreter<'_> {
             }
             0xcc => {
                 // CALL Z,a16 3:24/12 - - - -
-                let address = self.read_next_pc16();
-                self.call(Z, address)
+                self.call(Z)
             }
             0xcd => {
                 // CALL a16 3:24 - - - -
-                let address = self.read_next_pc16();
-                self.call(None, address)
+                self.call(None)
             }
             0xce => {
                 // ADC A,d8 2:8 Z 0 H C
@@ -1875,16 +1979,15 @@ impl Interpreter<'_> {
             }
             0xd2 => {
                 // JP NC,a16 3:16/12 - - - -
-                let address = self.read_next_pc16();
-                self.jump(NC, address)
+                self.jump(NC)
             }
             0xd3 => {
                 //
+                self.invalid_opcode(op);
             }
             0xd4 => {
                 // CALL NC,a16 3:24/12 - - - -
-                let address = self.read_next_pc16();
-                self.call(NC, address)
+                self.call(NC)
             }
             0xd5 => {
                 // PUSH DE 1:16 - - - -
@@ -1904,24 +2007,23 @@ impl Interpreter<'_> {
             }
             0xd9 => {
                 // RETI 1:16 - - - -
-                self.ret(None);
-                self.0.cpu.ime = ImeState::Enabled;
+                self.reti();
             }
             0xda => {
                 // JP C,a16 3:16/12 - - - -
-                let address = self.read_next_pc16();
-                self.jump(C, address)
+                self.jump(C)
             }
             0xdb => {
                 //
+                self.invalid_opcode(op);
             }
             0xdc => {
                 // CALL C,a16 3:24/12 - - - -
-                let address = self.read_next_pc16();
-                self.call(C, address)
+                self.call(C)
             }
             0xdd => {
                 //
+                self.invalid_opcode(op);
             }
             0xde => {
                 // SBC A,d8 2:8 Z 1 H C
@@ -1945,9 +2047,11 @@ impl Interpreter<'_> {
             }
             0xe3 => {
                 //
+                self.invalid_opcode(op);
             }
             0xe4 => {
                 //
+                self.invalid_opcode(op);
             }
             0xe5 => {
                 // PUSH HL 1:16 - - - -
@@ -1963,25 +2067,7 @@ impl Interpreter<'_> {
             }
             0xe8 => {
                 // ADD SP,r8 2:16 0 0 H C
-                let r;
-                let c;
-                let h;
-                let r8 = self.read_next_pc() as i8;
-                if (r8) >= 0 {
-                    c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
-                    h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
-                    r = add16(self.0.cpu.sp, r8 as u16);
-                } else {
-                    r = sub16(self.0.cpu.sp, -r8 as u16);
-                    c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
-                    h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
-                }
-                self.0.cpu.sp = r;
-                self.0.cpu.f.clr_z();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.def_c(c);
-                self.0.cpu.f.def_h(h);
-                self.0.tick(8);
+                self.add_sp();
             }
             0xe9 => {
                 // JP HL 1:4 - - - -
@@ -1993,12 +2079,15 @@ impl Interpreter<'_> {
             }
             0xeb => {
                 //
+                self.invalid_opcode(op);
             }
             0xec => {
                 //
+                self.invalid_opcode(op);
             }
             0xed => {
                 //
+                self.invalid_opcode(op);
             }
             0xee => {
                 // XOR d8 2:8 Z 0 0 0
@@ -2026,6 +2115,7 @@ impl Interpreter<'_> {
             }
             0xf4 => {
                 //
+                self.invalid_opcode(op);
             }
             0xf5 => {
                 // PUSH AF 1:16 - - - -
@@ -2041,25 +2131,7 @@ impl Interpreter<'_> {
             }
             0xf8 => {
                 // LD HL,SP+r8 2:12 0 0 H C
-                let r;
-                let c;
-                let h;
-                let r8 = self.read_next_pc() as i8;
-                if (r8) >= 0 {
-                    c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
-                    h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
-                    r = add16(self.0.cpu.sp, r8 as u16);
-                } else {
-                    r = sub16(self.0.cpu.sp, -r8 as u16);
-                    c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
-                    h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
-                }
-                self.0.cpu.set_hl(r);
-                self.0.cpu.f.clr_z();
-                self.0.cpu.f.clr_n();
-                self.0.cpu.f.def_h(h);
-                self.0.cpu.f.def_c(c);
-                self.0.tick(4);
+                self.ldhl_sp();
             }
             0xf9 => {
                 // LD SP,HL 1:8 - - - -
@@ -2071,15 +2143,15 @@ impl Interpreter<'_> {
             }
             0xfb => {
                 // EI 1:4 - - - -
-                if self.0.cpu.ime == ImeState::Disabled {
-                    self.0.cpu.ime = ImeState::ToBeEnable;
-                }
+                self.ei();
             }
             0xfc => {
                 //
+                self.invalid_opcode(op);
             }
             0xfd => {
                 //
+                self.invalid_opcode(op);
             }
             0xfe => {
                 // CP d8 2:8 Z 1 H C

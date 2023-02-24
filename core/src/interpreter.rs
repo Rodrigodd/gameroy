@@ -64,978 +64,6 @@ fn add(a: u8, b: u8) -> u8 {
 /// A interpreter
 pub struct Interpreter<'a>(pub &'a mut GameBoy);
 impl Interpreter<'_> {
-    /// Interactive debug.
-    /// Print the instruction around the current running instruction
-    /// and the current state of the CPU.
-    /// Wait for command in the stdin.
-    pub fn debug(&mut self) {
-        let mut input = String::new();
-        input.clear();
-        use std::io::Write;
-        let pc = self.0.cpu.pc;
-        let mut string = String::new();
-        let std = std::io::stdout();
-        let mut std = std.lock();
-        self.0
-            .trace
-            .borrow_mut()
-            .print_around(self.0.cartridge.curr_bank(), pc, self.0, &mut string)
-            .unwrap();
-        writeln!(std, "{}", string).unwrap();
-        writeln!(std, "{}", self.0.cpu).unwrap();
-        writeln!(std, "clock: {}", self.0.clock_count).unwrap();
-        std::io::stdin().read_line(&mut input).unwrap();
-        let input = input.split_ascii_whitespace().collect::<Vec<_>>();
-        dbg!(&input);
-        if input.is_empty() {
-            self.interpret_op();
-            return;
-        }
-        match input[0] {
-            "runto" => {
-                let pc = match u16::from_str_radix(input[1], 16) {
-                    Ok(x) => x,
-                    Err(_) => return,
-                };
-                while self.0.cpu.pc != pc {
-                    self.interpret_op();
-                }
-            }
-            "run" => {
-                let clocks = match input[1].parse::<u64>() {
-                    Ok(x) => x,
-                    Err(_) => return,
-                };
-                let target = self.0.clock_count + clocks;
-                while self.0.clock_count < target {
-                    self.interpret_op();
-                }
-            }
-            _ => writeln!(std, "unkown command").unwrap(),
-        }
-    }
-
-    /// Set the value of the cpu PC, but also update the disassembly tracing
-    fn jump_to(&mut self, address: u16) {
-        let pc = self.0.cpu.pc;
-        self.0.cpu.pc = address;
-
-        // don't trace RAM
-        if address > 0x7FFF {
-            return;
-        }
-
-        let bank = self.0.cartridge.curr_bank();
-        let mut trace = self.0.trace.borrow_mut();
-
-        // check early if this address is already traced, and return if it is
-        if address <= 0x7FFF && trace.is_already_traced(bank, address) {
-            return;
-        }
-
-        // NOTE: this block is dead code, but I am keeping it in case I want to trace RAM again.
-        if pc <= 0x7FFF && address > 0x7FFF {
-            // if it is entring the ram, clear its trace, because the ram could have changed
-            trace.clear_ram_trace();
-        }
-
-        trace.trace_starting_at(
-            self.0,
-            bank,
-            address,
-            Some(format!("L{:02x}_{:04x}", bank, address)),
-        );
-    }
-
-    fn check_condition(&self, c: Condition) -> bool {
-        use Condition::*;
-        match c {
-            None => true,
-            Z => self.0.cpu.f.z(),
-            NZ => !self.0.cpu.f.z(),
-            C => self.0.cpu.f.c(),
-            NC => !self.0.cpu.f.c(),
-        }
-    }
-
-    fn jump(&mut self, c: Condition) {
-        // JP cc, nn
-        let c = self.check_condition(c);
-        let address = self.read_next_pc16();
-        if c {
-            self.jump_to(address);
-            self.0.tick(4); // Extra 1 M-cycle for jump
-        }
-    }
-
-    fn jump_rel(&mut self, c: Condition) {
-        // JR cc, nn
-        let c = self.check_condition(c);
-        let r8 = self.read_next_pc() as i8;
-        if c {
-            let pc = (self.0.cpu.pc as i16 + r8 as i16) as u16;
-            self.jump_to(pc);
-            self.0.tick(4); // Extra 1 M-cycle for jump
-        }
-    }
-
-    fn pushr(&mut self, value: u16) {
-        let [lsb, msb] = value.to_le_bytes();
-        self.0.tick(4); // 1 M-cycle with SP in address buss
-        self.0.write(sub16(self.0.cpu.sp, 1), msb);
-        self.0.tick(4); // 1 M-cycle with SP-1 in address buss
-        self.0.write(sub16(self.0.cpu.sp, 2), lsb);
-        self.0.tick(4); // 1 M-cycle with SP-2 in address buss
-        self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
-    }
-
-    fn popr(&mut self) -> u16 {
-        let lsp = self.0.read(self.0.cpu.sp);
-        self.0.tick(4); // 1 M-cycle with SP in address buss
-        let msp = self.0.read(add16(self.0.cpu.sp, 1));
-        self.0.tick(4); // 1 M-cycle with SP+1 in address buss
-        self.0.cpu.sp = add16(self.0.cpu.sp, 2);
-        u16::from_be_bytes([msp, lsp])
-    }
-
-    fn push(&mut self, reg: Reg16) {
-        let r = match reg {
-            Reg16::AF => self.0.cpu.af(),
-            Reg16::BC => self.0.cpu.bc(),
-            Reg16::DE => self.0.cpu.de(),
-            Reg16::HL => self.0.cpu.hl(),
-            _ => unreachable!(),
-        };
-        self.pushr(r);
-    }
-
-    fn pop(&mut self, reg: Reg16) {
-        let r = self.popr();
-        match reg {
-            Reg16::AF => self.0.cpu.set_af(r),
-            Reg16::BC => self.0.cpu.set_bc(r),
-            Reg16::DE => self.0.cpu.set_de(r),
-            Reg16::HL => self.0.cpu.set_hl(r),
-            _ => unreachable!(),
-        }
-    }
-
-    fn call(&mut self, c: Condition) {
-        // CALL cc, nn
-        let c = self.check_condition(c);
-        let address = self.read_next_pc16();
-        if c {
-            self.pushr(self.0.cpu.pc);
-            self.jump_to(address);
-        }
-    }
-
-    fn ret(&mut self, cond: Condition) {
-        // RET nn
-        let c = self.check_condition(cond);
-        if cond != Condition::None {
-            self.0.tick(4); // 1 M-cycle for condition check (I think?)
-        }
-        if c {
-            let address = self.popr();
-            self.jump_to(address);
-            self.0.tick(4); // more 1 M-cycle
-        }
-    }
-
-    /// Read from PC, tick 4 cycles, and increase it by 1
-    fn read_next_pc(&mut self) -> u8 {
-        let v = self.0.read(self.0.cpu.pc);
-        self.0.tick(4);
-        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
-        v
-    }
-
-    /// Read from next PC, two times, and form a u16
-    fn read_next_pc16(&mut self) -> u16 {
-        let lsb = self.read_next_pc();
-        let msb = self.read_next_pc();
-        u16::from_le_bytes([lsb, msb])
-    }
-
-    fn read(&mut self, reg: Reg) -> u8 {
-        match reg {
-            Reg::A => self.0.cpu.a,
-            Reg::B => self.0.cpu.b,
-            Reg::C => self.0.cpu.c,
-            Reg::D => self.0.cpu.d,
-            Reg::E => self.0.cpu.e,
-            Reg::H => self.0.cpu.h,
-            Reg::L => self.0.cpu.l,
-            Reg::Im8 => self.read_next_pc(),
-            Reg::Im16 => {
-                let address = self.read_next_pc16();
-                let v = self.0.read(address);
-                self.0.tick(4);
-                v
-            }
-            Reg::BC => {
-                let v = self.0.read(self.0.cpu.bc());
-                self.0.tick(4);
-                v
-            }
-            Reg::DE => {
-                let v = self.0.read(self.0.cpu.de());
-                self.0.tick(4);
-                v
-            }
-            Reg::HL => {
-                let v = self.0.read(self.0.cpu.hl());
-                self.0.tick(4);
-                v
-            }
-            Reg::HLI => {
-                let v = self.0.read(self.0.cpu.hl());
-                self.0.tick(4);
-                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
-                v
-            }
-            Reg::HLD => {
-                let v = self.0.read(self.0.cpu.hl());
-                self.0.tick(4);
-                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
-                v
-            }
-            Reg::SP => unreachable!(),
-        }
-    }
-
-    fn write(&mut self, reg: Reg, value: u8) {
-        match reg {
-            Reg::A => self.0.cpu.a = value,
-            Reg::B => self.0.cpu.b = value,
-            Reg::C => self.0.cpu.c = value,
-            Reg::D => self.0.cpu.d = value,
-            Reg::E => self.0.cpu.e = value,
-            Reg::H => self.0.cpu.h = value,
-            Reg::L => self.0.cpu.l = value,
-            Reg::Im8 => {
-                self.0.write(add16(self.0.cpu.pc, 1), value);
-                self.0.tick(4);
-            }
-            Reg::Im16 => {
-                let adress = self.read_next_pc16();
-                self.0.write(adress, value);
-                self.0.tick(4);
-            }
-            Reg::BC => {
-                self.0.write(self.0.cpu.bc(), value);
-                self.0.tick(4);
-            }
-            Reg::DE => {
-                self.0.write(self.0.cpu.de(), value);
-                self.0.tick(4);
-            }
-            Reg::HL => {
-                self.0.write(self.0.cpu.hl(), value);
-                self.0.tick(4);
-            }
-            Reg::HLI => {
-                self.0.write(self.0.cpu.hl(), value);
-                self.0.tick(4);
-                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
-            }
-            Reg::HLD => {
-                self.0.write(self.0.cpu.hl(), value);
-                self.0.tick(4);
-                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
-            }
-            Reg::SP => unreachable!(),
-        }
-    }
-
-    fn nop(&self) {
-        // do nothing
-    }
-
-    fn load(&mut self, dst: Reg, src: Reg) {
-        let v = self.read(src);
-        self.write(dst, v);
-    }
-
-    fn loadh(&mut self, dst: Reg, src: Reg) {
-        let src = match src {
-            Reg::A => self.0.cpu.a,
-            Reg::C => {
-                let v = self.0.read(0xFF00 | self.0.cpu.c as u16);
-                self.0.tick(4);
-                v
-            }
-            Reg::Im8 => {
-                let r8 = self.read_next_pc();
-                let v = self.0.read(0xFF00 | r8 as u16);
-                self.0.tick(4);
-                v
-            }
-            _ => unreachable!(),
-        };
-
-        match dst {
-            Reg::A => self.0.cpu.a = src,
-            Reg::C => {
-                self.0.write(0xFF00 | self.0.cpu.c as u16, src);
-                self.0.tick(4);
-            }
-            Reg::Im8 => {
-                let r8 = self.read_next_pc();
-                self.0.write(0xFF00 | r8 as u16, src);
-                self.0.tick(4);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    fn load16(&mut self, dst: Reg16, src: Reg16) {
-        let v = match src {
-            Reg16::BC => self.0.cpu.bc(),
-            Reg16::DE => self.0.cpu.de(),
-            Reg16::HL => self.0.cpu.hl(),
-            Reg16::SP => {
-                self.0.tick(8);
-                self.0.cpu.sp
-            }
-            Reg16::Im16 => self.read_next_pc16(),
-            _ => unreachable!(),
-        };
-        if dst == Reg16::SP && src == Reg16::HL {
-            self.0.tick(4);
-        }
-        match dst {
-            Reg16::BC => self.0.cpu.set_bc(v),
-            Reg16::DE => self.0.cpu.set_de(v),
-            Reg16::HL => self.0.cpu.set_hl(v),
-            Reg16::SP => self.0.cpu.sp = v,
-            Reg16::Im16 => {
-                let adress = self.read_next_pc16();
-                self.0.write16(adress, v)
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    fn inc(&mut self, reg: Reg) {
-        let reg = match reg {
-            Reg::A => &mut self.0.cpu.a,
-            Reg::B => &mut self.0.cpu.b,
-            Reg::C => &mut self.0.cpu.c,
-            Reg::D => &mut self.0.cpu.d,
-            Reg::E => &mut self.0.cpu.e,
-            Reg::H => &mut self.0.cpu.h,
-            Reg::L => &mut self.0.cpu.l,
-            Reg::BC => {
-                self.0.cpu.set_bc(add16(self.0.cpu.bc(), 1));
-                self.0.tick(4);
-                return;
-            }
-            Reg::DE => {
-                self.0.cpu.set_de(add16(self.0.cpu.de(), 1));
-                self.0.tick(4);
-                return;
-            }
-            Reg::HL => {
-                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
-                self.0.tick(4);
-                return;
-            }
-            Reg::SP => {
-                self.0.cpu.sp = add16(self.0.cpu.sp, 1);
-                self.0.tick(4);
-                return;
-            }
-            _ => unreachable!(),
-        };
-        *reg = add(*reg, 1);
-        self.0.cpu.f.def_z(*reg == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_h(*reg & 0x0f == 0x0);
-    }
-
-    fn dec(&mut self, reg: Reg) {
-        let reg = match reg {
-            Reg::A => &mut self.0.cpu.a,
-            Reg::B => &mut self.0.cpu.b,
-            Reg::C => &mut self.0.cpu.c,
-            Reg::D => &mut self.0.cpu.d,
-            Reg::E => &mut self.0.cpu.e,
-            Reg::H => &mut self.0.cpu.h,
-            Reg::L => &mut self.0.cpu.l,
-            Reg::BC => {
-                self.0.cpu.set_bc(sub16(self.0.cpu.bc(), 1));
-                self.0.tick(4);
-                return;
-            }
-            Reg::DE => {
-                self.0.cpu.set_de(sub16(self.0.cpu.de(), 1));
-                self.0.tick(4);
-                return;
-            }
-            Reg::HL => {
-                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
-                self.0.tick(4);
-                return;
-            }
-            Reg::SP => {
-                self.0.cpu.sp = sub16(self.0.cpu.sp, 1);
-                self.0.tick(4);
-                return;
-            }
-            _ => unreachable!(),
-        };
-        *reg = sub(*reg, 1);
-        self.0.cpu.f.def_z(*reg == 0);
-        self.0.cpu.f.set_n();
-        self.0.cpu.f.def_h(*reg & 0x0f == 0xf);
-    }
-
-    fn add(&mut self, reg: Reg) {
-        let v = self.read(reg);
-        let (r, o) = self.0.cpu.a.overflowing_add(v);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_c(o);
-        self.0.cpu.f.def_h((self.0.cpu.a & 0xF) + (v & 0xF) > 0xF);
-        self.0.cpu.a = r;
-    }
-
-    fn adc(&mut self, reg: Reg) {
-        let a = self.0.cpu.a as u16;
-        let c = self.0.cpu.f.c() as u16;
-        let v = self.read(reg) as u16;
-        let r = a + v + c;
-        self.0.cpu.f.def_z(r & 0xFF == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_h((a & 0xF) + (v & 0xF) + c > 0xF);
-        self.0.cpu.f.def_c(r > 0xff);
-        self.0.cpu.a = (r & 0xff) as u8;
-    }
-
-    fn sub(&mut self, reg: Reg) {
-        let v = self.read(reg);
-        let (r, o) = self.0.cpu.a.overflowing_sub(v);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.set_n();
-        self.0.cpu.f.def_h((self.0.cpu.a & 0xF) < (v & 0xF));
-        self.0.cpu.f.def_c(o);
-        self.0.cpu.a = r;
-    }
-
-    fn sbc(&mut self, reg: Reg) {
-        let a = self.0.cpu.a as i16;
-        let c = self.0.cpu.f.c() as i16;
-        let v = self.read(reg) as i16;
-        let r = a - v - c;
-        self.0.cpu.f.def_z(r & 0xFF == 0);
-        self.0.cpu.f.set_n();
-        self.0.cpu.f.def_h((a & 0xF) < (v & 0xF) + c);
-        self.0.cpu.f.def_c(r < 0x0);
-        self.0.cpu.a = (r & 0xff) as u8;
-    }
-
-    fn and(&mut self, reg: Reg) {
-        let v = self.read(reg);
-        self.0.cpu.a &= v;
-        self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_c();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.set_h();
-    }
-
-    fn or(&mut self, reg: Reg) {
-        let v = self.read(reg);
-        self.0.cpu.a |= v;
-        self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_c();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn xor(&mut self, reg: Reg) {
-        let v = self.read(reg);
-        self.0.cpu.a ^= v;
-        self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_c();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn cp(&mut self, reg: Reg) {
-        let v = self.read(reg);
-        self.0.cpu.f.def_z(self.0.cpu.a == v);
-        self.0.cpu.f.def_c(self.0.cpu.a < v);
-        self.0.cpu.f.set_n();
-        self.0.cpu.f.def_h(self.0.cpu.a & 0xF < v & 0xF);
-    }
-
-    fn add16(&mut self, b: Reg16) {
-        let b = match b {
-            Reg16::BC => self.0.cpu.bc(),
-            Reg16::DE => self.0.cpu.de(),
-            Reg16::HL => self.0.cpu.hl(),
-            Reg16::SP => self.0.cpu.sp,
-            Reg16::Im16 | Reg16::AF => unreachable!(),
-        };
-        let (r, o) = self.0.cpu.hl().overflowing_add(b);
-        self.0.cpu.f.clr_n();
-        self.0
-            .cpu
-            .f
-            .def_h((self.0.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF);
-        self.0.cpu.f.def_c(o);
-        self.0.cpu.set_hl(r);
-        self.0.tick(4);
-    }
-
-    fn rst(&mut self, address: u8) {
-        self.pushr(self.0.cpu.pc);
-        self.jump_to(address as u16);
-    }
-
-    fn rlc(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        r = r.rotate_left(1);
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(r & 0x1 != 0);
-    }
-
-    fn rrc(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        r = r.rotate_right(1);
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(r & 0x80 != 0);
-    }
-
-    fn rl(&mut self, reg: Reg) {
-        let c = self.0.cpu.f.c() as u8;
-        let mut r = self.read(reg);
-        self.0.cpu.f.def_c(r & 0x80 != 0);
-        r = r << 1 | c;
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn rr(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        let c = self.0.cpu.f.c() as u8;
-        self.0.cpu.f.def_c(r & 0x01 != 0);
-        r = r >> 1 | c << 7;
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn sla(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        let c = r & 0x80 != 0;
-        r <<= 1;
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(c);
-    }
-
-    fn sra(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        self.0.cpu.f.def_c(r & 0x01 != 0);
-        r = (r & 0x80) | (r >> 1);
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn swap(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        r = ((r & 0x0F) << 4) | ((r & 0xF0) >> 4);
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.clr_c();
-    }
-
-    fn srl(&mut self, reg: Reg) {
-        let mut r = self.read(reg);
-        let c = r & 0x01 != 0;
-        r >>= 1;
-        self.write(reg, r);
-        self.0.cpu.f.def_z(r == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(c);
-    }
-
-    fn add_sp(&mut self) {
-        let r;
-        let c;
-        let h;
-        let r8 = self.read_next_pc() as i8;
-        if (r8) >= 0 {
-            c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
-            h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
-            r = add16(self.0.cpu.sp, r8 as u16);
-        } else {
-            r = sub16(self.0.cpu.sp, -r8 as u16);
-            c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
-            h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
-        }
-        self.0.cpu.sp = r;
-        self.0.cpu.f.clr_z();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_c(c);
-        self.0.cpu.f.def_h(h);
-        self.0.tick(8);
-    }
-
-    fn reti(&mut self) {
-        self.ret(Condition::None);
-        self.0.cpu.ime = ImeState::Enabled;
-    }
-
-    fn halt(&mut self) {
-        self.0.cpu.state = CpuState::Halt;
-    }
-
-    fn ccf(&mut self) {
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(!self.0.cpu.f.c());
-    }
-
-    fn scf(&mut self) {
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.set_c();
-    }
-
-    fn dec16(&mut self, reg: Reg) {
-        let mut reg = self.read(reg);
-        reg = sub(reg, 1);
-        self.write(Reg::HL, reg);
-        self.0.cpu.f.def_z(reg == 0);
-        self.0.cpu.f.set_n();
-        self.0.cpu.f.def_h(reg & 0x0f == 0xf);
-    }
-
-    fn inc16(&mut self, reg: Reg) {
-        let mut reg = self.read(reg);
-        reg = add(reg, 1);
-        self.write(Reg::HL, reg);
-        self.0.cpu.f.def_z(reg == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_h(reg & 0x0f == 0);
-    }
-
-    fn cpl(&mut self) {
-        self.0.cpu.a = !self.0.cpu.a;
-        self.0.cpu.f.set_n();
-        self.0.cpu.f.set_h();
-    }
-
-    fn daa(&mut self) {
-        if !self.0.cpu.f.n() {
-            if self.0.cpu.f.c() || self.0.cpu.a > 0x99 {
-                self.0.cpu.a = add(self.0.cpu.a, 0x60);
-                self.0.cpu.f.set_c();
-            }
-            if self.0.cpu.f.h() || (self.0.cpu.a & 0x0F) > 0x09 {
-                self.0.cpu.a = add(self.0.cpu.a, 0x6);
-            }
-        } else {
-            if self.0.cpu.f.c() {
-                self.0.cpu.a = sub(self.0.cpu.a, 0x60);
-            }
-            if self.0.cpu.f.h() {
-                self.0.cpu.a = sub(self.0.cpu.a, 0x6);
-            }
-        }
-        self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_h();
-    }
-
-    fn rra(&mut self) {
-        let c = self.0.cpu.f.c() as u8;
-        self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
-        self.0.cpu.a = self.0.cpu.a >> 1 | c << 7;
-        self.0.cpu.f.clr_z();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn rla(&mut self) {
-        let c = self.0.cpu.f.c() as u8;
-        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
-        self.0.cpu.a = self.0.cpu.a << 1 | c;
-        self.0.cpu.f.clr_z();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-    }
-
-    fn stop(&mut self) {
-        self.0.cpu.state = CpuState::Stopped;
-        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
-    }
-
-    fn rrca(&mut self) {
-        self.0.cpu.f.clr_z();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
-        self.0.cpu.a = self.0.cpu.a.rotate_right(1);
-    }
-
-    fn rlca(&mut self) {
-        self.0.cpu.f.clr_z();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.clr_h();
-        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
-        self.0.cpu.a = self.0.cpu.a.rotate_left(1);
-    }
-
-    fn invalid_opcode(&self, opcode: u8) {
-        println!("executed invalid instructions: {opcode:02x}");
-    }
-
-    fn ei(&mut self) {
-        if self.0.cpu.ime == ImeState::Disabled {
-            self.0.cpu.ime = ImeState::ToBeEnable;
-        }
-    }
-
-    fn ldhl_sp(&mut self) {
-        let r;
-        let c;
-        let h;
-        let r8 = self.read_next_pc() as i8;
-        if (r8) >= 0 {
-            c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
-            h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
-            r = add16(self.0.cpu.sp, r8 as u16);
-        } else {
-            r = sub16(self.0.cpu.sp, -r8 as u16);
-            c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
-            h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
-        }
-        self.0.cpu.set_hl(r);
-        self.0.cpu.f.clr_z();
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_h(h);
-        self.0.cpu.f.def_c(c);
-        self.0.tick(4);
-    }
-
-    fn bit(&mut self, bit: u8, reg: Reg) {
-        let r = self.read(reg);
-        self.0.cpu.f.def_z((r & (1 << bit)) == 0);
-        self.0.cpu.f.clr_n();
-        self.0.cpu.f.set_h();
-    }
-
-    fn res(&mut self, bit: u8, reg: Reg) {
-        let mut r = self.read(reg);
-        r &= !(1 << bit);
-        self.write(reg, r);
-    }
-
-    fn set(&mut self, bit: u8, reg: Reg) {
-        let mut r = self.read(reg);
-        r |= 1 << bit;
-        self.write(reg, r);
-    }
-
-    pub fn will_read_from(&self) -> (u8, [u16; 2]) {
-        let op = self.0.read(self.0.cpu.pc);
-        let none = (0, [0, 0]);
-        let some = |x| (1, [x, 0]);
-        match op {
-            0x0a => some(self.0.cpu.bc()),
-            0x1a => some(self.0.cpu.de()),
-            0x2a | 0x3a | 0x46 | 0x4e | 0x56 | 0x5e | 0x66 | 0x6e | 0x7e | 0x86 | 0x8e | 0x96
-            | 0x9e | 0xa6 | 0xae | 0xb6 | 0xbe => some(self.0.cpu.hl()),
-            0xcb => match self.0.read(add16(self.0.cpu.pc, 1)) {
-                0x06 | 0x0e | 0x16 | 0x1e | 0x26 | 0x2e | 0x36 | 0x3e | 0x46 | 0x4e | 0x56
-                | 0x5e | 0x66 | 0x6e | 0x76 | 0x7e | 0x86 | 0x8e | 0x96 | 0x9e | 0xa6 | 0xae
-                | 0xb6 | 0xbe | 0xc6 | 0xce | 0xd6 | 0xde | 0xe6 | 0xee | 0xf6 | 0xfe => {
-                    some(self.0.cpu.hl())
-                }
-                _ => none,
-            },
-            0xf0 => {
-                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
-                some(0xff00 | r8 as u16)
-            }
-            0xf2 => some(0xff00 | self.0.cpu.c as u16),
-            0xfa => some(self.0.read16(add16(self.0.cpu.pc, 1))),
-            0xc0 | 0xc1 | 0xc8 | 0xc9 | 0xd0 | 0xd1 | 0xd8 | 0xd9 | 0xe1 | 0xf1 => {
-                // POP or RET
-                (2, [add16(self.0.cpu.sp, 1), self.0.cpu.sp])
-            }
-            _ => none,
-        }
-    }
-
-    pub fn will_write_to(&self) -> (u8, [u16; 2]) {
-        let op = self.0.read(self.0.cpu.pc);
-        let none = (0, [0, 0]);
-        let some = |x| (1, [x, 0]);
-        match op {
-            0x02 => some(self.0.cpu.bc()),
-            0x08 => {
-                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
-                (2, [adress, add16(adress, 1)])
-            }
-            0x12 => some(self.0.cpu.de()),
-            0x22 | 0x32 | 0x34 | 0x35 | 0x36 | 0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x77 => {
-                // LD (HL), .. or INC (HL) or etc.
-                some(self.0.cpu.hl())
-            }
-            0xc4 | 0xc5 | 0xcd | 0xcf | 0xd4 | 0xd5 | 0xd7 | 0xd8 | 0xd9 | 0xe5 | 0xe7 | 0xef
-            | 0xf5 | 0xf7 | 0xff | 0xdc => {
-                // PUSH .. or CALL .. or RST
-                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
-            }
-            0xcb => match self.0.read(self.0.cpu.pc + 1) {
-                0x06 | 0x0e | 0x16 | 0x1e | 0x26 | 0x2e | 0x36 | 0x3e | 0x86 | 0x8e | 0x96
-                | 0x9e | 0xa6 | 0xae | 0xb6 | 0xbe | 0xc6 | 0xce | 0xd6 | 0xde | 0xe6 | 0xee
-                | 0xf6 | 0xfe => some(self.0.cpu.hl()),
-                _ => none,
-            },
-            0xe0 => {
-                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
-                some(0xFF00 | r8 as u16)
-            }
-            0xe2 => some(0xFF00 | self.0.cpu.c as u16),
-            0xea => some(self.0.read16(add16(self.0.cpu.pc, 1))),
-            _ => none,
-        }
-    }
-
-    pub fn will_jump_to(&self) -> Option<u16> {
-        let pc = self.0.cpu.pc;
-        let op = &[
-            self.0.read(pc),
-            self.0.read(add16(pc, 1)),
-            self.0.read(add16(pc, 2)),
-        ];
-        let len = consts::LEN[op[0] as usize];
-        match op[0] {
-            0xC3 => {
-                // JP $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                Some(dest)
-            }
-            0xE9 => {
-                // JP (HL)
-                Some(self.0.cpu.hl())
-            }
-            x if x & 0b11100111 == 0b11000010 => {
-                // JP cc, $aaaa
-                let cond = match (x >> 3) & 0b11 {
-                    0 => Condition::NZ,
-                    1 => Condition::Z,
-                    2 => Condition::NC,
-                    3 => Condition::C,
-                    _ => unreachable!(),
-                };
-                if self.check_condition(cond) {
-                    let dest = u16::from_le_bytes([op[1], op[2]]);
-                    Some(dest)
-                } else {
-                    None
-                }
-            }
-            0x18 => {
-                // JR $rr
-                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-                Some(dest)
-            }
-            x if x & 0b1110_0111 == 0b0010_0000 => {
-                // JR cc, $rr
-                let cond = match (x >> 3) & 0b11 {
-                    0 => Condition::NZ,
-                    1 => Condition::Z,
-                    2 => Condition::NC,
-                    3 => Condition::C,
-                    _ => unreachable!(),
-                };
-                if self.check_condition(cond) {
-                    let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-                    Some(dest)
-                } else {
-                    None
-                }
-            }
-            0xCD => {
-                // CALL $aaaa
-                let dest = u16::from_le_bytes([op[1], op[2]]);
-                Some(dest)
-            }
-            x if x & 0b11100111 == 0b11000100 => {
-                // CALL cc, $aaaa
-                let cond = match (x >> 3) & 0b11 {
-                    0 => Condition::NZ,
-                    1 => Condition::Z,
-                    2 => Condition::NC,
-                    3 => Condition::C,
-                    _ => unreachable!(),
-                };
-                if self.check_condition(cond) {
-                    let dest = u16::from_le_bytes([op[1], op[2]]);
-                    Some(dest)
-                } else {
-                    None
-                }
-            }
-            x @ (0xC0 | 0xC8 | 0xD0 | 0xD8) => {
-                // RET cc
-                let cond = match (x >> 3) & 0b11 {
-                    0 => Condition::NZ,
-                    1 => Condition::Z,
-                    2 => Condition::NC,
-                    3 => Condition::C,
-                    _ => unreachable!(),
-                };
-                if self.check_condition(cond) {
-                    let dest = u16::from_le_bytes([
-                        self.0.read(sub16(self.0.cpu.sp, 1)),
-                        self.0.read(sub16(self.0.cpu.sp, 2)),
-                    ]);
-                    Some(dest)
-                } else {
-                    None
-                }
-            }
-            0xC9 | 0xD9 => {
-                // RET or RETI
-                let dest = u16::from_le_bytes([
-                    self.0.read(sub16(self.0.cpu.sp, 1)),
-                    self.0.read(sub16(self.0.cpu.sp, 2)),
-                ]);
-                Some(dest)
-            }
-            x if x & 0b11000111 == 0b11000111 => {
-                // RST n
-                let dest = (x & 0b00111000) as u16;
-                Some(dest)
-            }
-            _ => None,
-        }
-    }
-
     pub fn interpret_op(&mut self) {
         self.0.update_interrupt();
 
@@ -2167,6 +1195,978 @@ impl Interpreter<'_> {
             0xfe => self.set(7, Reg::HL),
             // SET 7,A 2:8 - - - -
             0xff => self.set(7, Reg::A),
+        }
+    }
+
+    /// Interactive debug.
+    /// Print the instruction around the current running instruction
+    /// and the current state of the CPU.
+    /// Wait for command in the stdin.
+    pub fn debug(&mut self) {
+        let mut input = String::new();
+        input.clear();
+        use std::io::Write;
+        let pc = self.0.cpu.pc;
+        let mut string = String::new();
+        let std = std::io::stdout();
+        let mut std = std.lock();
+        self.0
+            .trace
+            .borrow_mut()
+            .print_around(self.0.cartridge.curr_bank(), pc, self.0, &mut string)
+            .unwrap();
+        writeln!(std, "{}", string).unwrap();
+        writeln!(std, "{}", self.0.cpu).unwrap();
+        writeln!(std, "clock: {}", self.0.clock_count).unwrap();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let input = input.split_ascii_whitespace().collect::<Vec<_>>();
+        dbg!(&input);
+        if input.is_empty() {
+            self.interpret_op();
+            return;
+        }
+        match input[0] {
+            "runto" => {
+                let pc = match u16::from_str_radix(input[1], 16) {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+                while self.0.cpu.pc != pc {
+                    self.interpret_op();
+                }
+            }
+            "run" => {
+                let clocks = match input[1].parse::<u64>() {
+                    Ok(x) => x,
+                    Err(_) => return,
+                };
+                let target = self.0.clock_count + clocks;
+                while self.0.clock_count < target {
+                    self.interpret_op();
+                }
+            }
+            _ => writeln!(std, "unkown command").unwrap(),
+        }
+    }
+
+    /// Read from PC, tick 4 cycles, and increase it by 1
+    fn read_next_pc(&mut self) -> u8 {
+        let v = self.0.read(self.0.cpu.pc);
+        self.0.tick(4);
+        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+        v
+    }
+
+    /// Read from next PC, two times, and form a u16
+    fn read_next_pc16(&mut self) -> u16 {
+        let lsb = self.read_next_pc();
+        let msb = self.read_next_pc();
+        u16::from_le_bytes([lsb, msb])
+    }
+
+    fn read(&mut self, reg: Reg) -> u8 {
+        match reg {
+            Reg::A => self.0.cpu.a,
+            Reg::B => self.0.cpu.b,
+            Reg::C => self.0.cpu.c,
+            Reg::D => self.0.cpu.d,
+            Reg::E => self.0.cpu.e,
+            Reg::H => self.0.cpu.h,
+            Reg::L => self.0.cpu.l,
+            Reg::Im8 => self.read_next_pc(),
+            Reg::Im16 => {
+                let address = self.read_next_pc16();
+                let v = self.0.read(address);
+                self.0.tick(4);
+                v
+            }
+            Reg::BC => {
+                let v = self.0.read(self.0.cpu.bc());
+                self.0.tick(4);
+                v
+            }
+            Reg::DE => {
+                let v = self.0.read(self.0.cpu.de());
+                self.0.tick(4);
+                v
+            }
+            Reg::HL => {
+                let v = self.0.read(self.0.cpu.hl());
+                self.0.tick(4);
+                v
+            }
+            Reg::HLI => {
+                let v = self.0.read(self.0.cpu.hl());
+                self.0.tick(4);
+                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
+                v
+            }
+            Reg::HLD => {
+                let v = self.0.read(self.0.cpu.hl());
+                self.0.tick(4);
+                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
+                v
+            }
+            Reg::SP => unreachable!(),
+        }
+    }
+
+    fn write(&mut self, reg: Reg, value: u8) {
+        match reg {
+            Reg::A => self.0.cpu.a = value,
+            Reg::B => self.0.cpu.b = value,
+            Reg::C => self.0.cpu.c = value,
+            Reg::D => self.0.cpu.d = value,
+            Reg::E => self.0.cpu.e = value,
+            Reg::H => self.0.cpu.h = value,
+            Reg::L => self.0.cpu.l = value,
+            Reg::Im8 => {
+                self.0.write(add16(self.0.cpu.pc, 1), value);
+                self.0.tick(4);
+            }
+            Reg::Im16 => {
+                let adress = self.read_next_pc16();
+                self.0.write(adress, value);
+                self.0.tick(4);
+            }
+            Reg::BC => {
+                self.0.write(self.0.cpu.bc(), value);
+                self.0.tick(4);
+            }
+            Reg::DE => {
+                self.0.write(self.0.cpu.de(), value);
+                self.0.tick(4);
+            }
+            Reg::HL => {
+                self.0.write(self.0.cpu.hl(), value);
+                self.0.tick(4);
+            }
+            Reg::HLI => {
+                self.0.write(self.0.cpu.hl(), value);
+                self.0.tick(4);
+                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
+            }
+            Reg::HLD => {
+                self.0.write(self.0.cpu.hl(), value);
+                self.0.tick(4);
+                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
+            }
+            Reg::SP => unreachable!(),
+        }
+    }
+
+    fn check_condition(&self, c: Condition) -> bool {
+        use Condition::*;
+        match c {
+            None => true,
+            Z => self.0.cpu.f.z(),
+            NZ => !self.0.cpu.f.z(),
+            C => self.0.cpu.f.c(),
+            NC => !self.0.cpu.f.c(),
+        }
+    }
+
+    /// Set the value of the cpu PC, but also update the disassembly tracing
+    fn jump_to(&mut self, address: u16) {
+        let pc = self.0.cpu.pc;
+        self.0.cpu.pc = address;
+
+        // don't trace RAM
+        if address > 0x7FFF {
+            return;
+        }
+
+        let bank = self.0.cartridge.curr_bank();
+        let mut trace = self.0.trace.borrow_mut();
+
+        // check early if this address is already traced, and return if it is
+        if address <= 0x7FFF && trace.is_already_traced(bank, address) {
+            return;
+        }
+
+        // NOTE: this block is dead code, but I am keeping it in case I want to trace RAM again.
+        if pc <= 0x7FFF && address > 0x7FFF {
+            // if it is entring the ram, clear its trace, because the ram could have changed
+            trace.clear_ram_trace();
+        }
+
+        trace.trace_starting_at(
+            self.0,
+            bank,
+            address,
+            Some(format!("L{:02x}_{:04x}", bank, address)),
+        );
+    }
+
+    fn jump(&mut self, c: Condition) {
+        // JP cc, nn
+        let c = self.check_condition(c);
+        let address = self.read_next_pc16();
+        if c {
+            self.jump_to(address);
+            self.0.tick(4); // Extra 1 M-cycle for jump
+        }
+    }
+
+    fn jump_rel(&mut self, c: Condition) {
+        // JR cc, nn
+        let c = self.check_condition(c);
+        let r8 = self.read_next_pc() as i8;
+        if c {
+            let pc = (self.0.cpu.pc as i16 + r8 as i16) as u16;
+            self.jump_to(pc);
+            self.0.tick(4); // Extra 1 M-cycle for jump
+        }
+    }
+
+    fn pushr(&mut self, value: u16) {
+        let [lsb, msb] = value.to_le_bytes();
+        self.0.tick(4); // 1 M-cycle with SP in address buss
+        self.0.write(sub16(self.0.cpu.sp, 1), msb);
+        self.0.tick(4); // 1 M-cycle with SP-1 in address buss
+        self.0.write(sub16(self.0.cpu.sp, 2), lsb);
+        self.0.tick(4); // 1 M-cycle with SP-2 in address buss
+        self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
+    }
+
+    fn popr(&mut self) -> u16 {
+        let lsp = self.0.read(self.0.cpu.sp);
+        self.0.tick(4); // 1 M-cycle with SP in address buss
+        let msp = self.0.read(add16(self.0.cpu.sp, 1));
+        self.0.tick(4); // 1 M-cycle with SP+1 in address buss
+        self.0.cpu.sp = add16(self.0.cpu.sp, 2);
+        u16::from_be_bytes([msp, lsp])
+    }
+
+    fn push(&mut self, reg: Reg16) {
+        let r = match reg {
+            Reg16::AF => self.0.cpu.af(),
+            Reg16::BC => self.0.cpu.bc(),
+            Reg16::DE => self.0.cpu.de(),
+            Reg16::HL => self.0.cpu.hl(),
+            _ => unreachable!(),
+        };
+        self.pushr(r);
+    }
+
+    fn pop(&mut self, reg: Reg16) {
+        let r = self.popr();
+        match reg {
+            Reg16::AF => self.0.cpu.set_af(r),
+            Reg16::BC => self.0.cpu.set_bc(r),
+            Reg16::DE => self.0.cpu.set_de(r),
+            Reg16::HL => self.0.cpu.set_hl(r),
+            _ => unreachable!(),
+        }
+    }
+
+    fn call(&mut self, c: Condition) {
+        // CALL cc, nn
+        let c = self.check_condition(c);
+        let address = self.read_next_pc16();
+        if c {
+            self.pushr(self.0.cpu.pc);
+            self.jump_to(address);
+        }
+    }
+
+    fn ret(&mut self, cond: Condition) {
+        // RET nn
+        let c = self.check_condition(cond);
+        if cond != Condition::None {
+            self.0.tick(4); // 1 M-cycle for condition check (I think?)
+        }
+        if c {
+            let address = self.popr();
+            self.jump_to(address);
+            self.0.tick(4); // more 1 M-cycle
+        }
+    }
+
+    fn nop(&self) {
+        // do nothing
+    }
+
+    fn load(&mut self, dst: Reg, src: Reg) {
+        let v = self.read(src);
+        self.write(dst, v);
+    }
+
+    fn loadh(&mut self, dst: Reg, src: Reg) {
+        let src = match src {
+            Reg::A => self.0.cpu.a,
+            Reg::C => {
+                let v = self.0.read(0xFF00 | self.0.cpu.c as u16);
+                self.0.tick(4);
+                v
+            }
+            Reg::Im8 => {
+                let r8 = self.read_next_pc();
+                let v = self.0.read(0xFF00 | r8 as u16);
+                self.0.tick(4);
+                v
+            }
+            _ => unreachable!(),
+        };
+
+        match dst {
+            Reg::A => self.0.cpu.a = src,
+            Reg::C => {
+                self.0.write(0xFF00 | self.0.cpu.c as u16, src);
+                self.0.tick(4);
+            }
+            Reg::Im8 => {
+                let r8 = self.read_next_pc();
+                self.0.write(0xFF00 | r8 as u16, src);
+                self.0.tick(4);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn load16(&mut self, dst: Reg16, src: Reg16) {
+        let v = match src {
+            Reg16::BC => self.0.cpu.bc(),
+            Reg16::DE => self.0.cpu.de(),
+            Reg16::HL => self.0.cpu.hl(),
+            Reg16::SP => {
+                self.0.tick(8);
+                self.0.cpu.sp
+            }
+            Reg16::Im16 => self.read_next_pc16(),
+            _ => unreachable!(),
+        };
+        if dst == Reg16::SP && src == Reg16::HL {
+            self.0.tick(4);
+        }
+        match dst {
+            Reg16::BC => self.0.cpu.set_bc(v),
+            Reg16::DE => self.0.cpu.set_de(v),
+            Reg16::HL => self.0.cpu.set_hl(v),
+            Reg16::SP => self.0.cpu.sp = v,
+            Reg16::Im16 => {
+                let adress = self.read_next_pc16();
+                self.0.write16(adress, v)
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn inc(&mut self, reg: Reg) {
+        let reg = match reg {
+            Reg::A => &mut self.0.cpu.a,
+            Reg::B => &mut self.0.cpu.b,
+            Reg::C => &mut self.0.cpu.c,
+            Reg::D => &mut self.0.cpu.d,
+            Reg::E => &mut self.0.cpu.e,
+            Reg::H => &mut self.0.cpu.h,
+            Reg::L => &mut self.0.cpu.l,
+            Reg::BC => {
+                self.0.cpu.set_bc(add16(self.0.cpu.bc(), 1));
+                self.0.tick(4);
+                return;
+            }
+            Reg::DE => {
+                self.0.cpu.set_de(add16(self.0.cpu.de(), 1));
+                self.0.tick(4);
+                return;
+            }
+            Reg::HL => {
+                self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
+                self.0.tick(4);
+                return;
+            }
+            Reg::SP => {
+                self.0.cpu.sp = add16(self.0.cpu.sp, 1);
+                self.0.tick(4);
+                return;
+            }
+            _ => unreachable!(),
+        };
+        *reg = add(*reg, 1);
+        self.0.cpu.f.def_z(*reg == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h(*reg & 0x0f == 0x0);
+    }
+
+    fn dec(&mut self, reg: Reg) {
+        let reg = match reg {
+            Reg::A => &mut self.0.cpu.a,
+            Reg::B => &mut self.0.cpu.b,
+            Reg::C => &mut self.0.cpu.c,
+            Reg::D => &mut self.0.cpu.d,
+            Reg::E => &mut self.0.cpu.e,
+            Reg::H => &mut self.0.cpu.h,
+            Reg::L => &mut self.0.cpu.l,
+            Reg::BC => {
+                self.0.cpu.set_bc(sub16(self.0.cpu.bc(), 1));
+                self.0.tick(4);
+                return;
+            }
+            Reg::DE => {
+                self.0.cpu.set_de(sub16(self.0.cpu.de(), 1));
+                self.0.tick(4);
+                return;
+            }
+            Reg::HL => {
+                self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
+                self.0.tick(4);
+                return;
+            }
+            Reg::SP => {
+                self.0.cpu.sp = sub16(self.0.cpu.sp, 1);
+                self.0.tick(4);
+                return;
+            }
+            _ => unreachable!(),
+        };
+        *reg = sub(*reg, 1);
+        self.0.cpu.f.def_z(*reg == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h(*reg & 0x0f == 0xf);
+    }
+
+    fn add(&mut self, reg: Reg) {
+        let v = self.read(reg);
+        let (r, o) = self.0.cpu.a.overflowing_add(v);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_c(o);
+        self.0.cpu.f.def_h((self.0.cpu.a & 0xF) + (v & 0xF) > 0xF);
+        self.0.cpu.a = r;
+    }
+
+    fn adc(&mut self, reg: Reg) {
+        let a = self.0.cpu.a as u16;
+        let c = self.0.cpu.f.c() as u16;
+        let v = self.read(reg) as u16;
+        let r = a + v + c;
+        self.0.cpu.f.def_z(r & 0xFF == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h((a & 0xF) + (v & 0xF) + c > 0xF);
+        self.0.cpu.f.def_c(r > 0xff);
+        self.0.cpu.a = (r & 0xff) as u8;
+    }
+
+    fn sub(&mut self, reg: Reg) {
+        let v = self.read(reg);
+        let (r, o) = self.0.cpu.a.overflowing_sub(v);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h((self.0.cpu.a & 0xF) < (v & 0xF));
+        self.0.cpu.f.def_c(o);
+        self.0.cpu.a = r;
+    }
+
+    fn sbc(&mut self, reg: Reg) {
+        let a = self.0.cpu.a as i16;
+        let c = self.0.cpu.f.c() as i16;
+        let v = self.read(reg) as i16;
+        let r = a - v - c;
+        self.0.cpu.f.def_z(r & 0xFF == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h((a & 0xF) < (v & 0xF) + c);
+        self.0.cpu.f.def_c(r < 0x0);
+        self.0.cpu.a = (r & 0xff) as u8;
+    }
+
+    fn and(&mut self, reg: Reg) {
+        let v = self.read(reg);
+        self.0.cpu.a &= v;
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_c();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.set_h();
+    }
+
+    fn or(&mut self, reg: Reg) {
+        let v = self.read(reg);
+        self.0.cpu.a |= v;
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_c();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn xor(&mut self, reg: Reg) {
+        let v = self.read(reg);
+        self.0.cpu.a ^= v;
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_c();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn cp(&mut self, reg: Reg) {
+        let v = self.read(reg);
+        self.0.cpu.f.def_z(self.0.cpu.a == v);
+        self.0.cpu.f.def_c(self.0.cpu.a < v);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h(self.0.cpu.a & 0xF < v & 0xF);
+    }
+
+    fn add16(&mut self, b: Reg16) {
+        let b = match b {
+            Reg16::BC => self.0.cpu.bc(),
+            Reg16::DE => self.0.cpu.de(),
+            Reg16::HL => self.0.cpu.hl(),
+            Reg16::SP => self.0.cpu.sp,
+            Reg16::Im16 | Reg16::AF => unreachable!(),
+        };
+        let (r, o) = self.0.cpu.hl().overflowing_add(b);
+        self.0.cpu.f.clr_n();
+        self.0
+            .cpu
+            .f
+            .def_h((self.0.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF);
+        self.0.cpu.f.def_c(o);
+        self.0.cpu.set_hl(r);
+        self.0.tick(4);
+    }
+
+    fn rst(&mut self, address: u8) {
+        self.pushr(self.0.cpu.pc);
+        self.jump_to(address as u16);
+    }
+
+    fn rlc(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        r = r.rotate_left(1);
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(r & 0x1 != 0);
+    }
+
+    fn rrc(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        r = r.rotate_right(1);
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(r & 0x80 != 0);
+    }
+
+    fn rl(&mut self, reg: Reg) {
+        let c = self.0.cpu.f.c() as u8;
+        let mut r = self.read(reg);
+        self.0.cpu.f.def_c(r & 0x80 != 0);
+        r = r << 1 | c;
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn rr(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        let c = self.0.cpu.f.c() as u8;
+        self.0.cpu.f.def_c(r & 0x01 != 0);
+        r = r >> 1 | c << 7;
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn sla(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        let c = r & 0x80 != 0;
+        r <<= 1;
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(c);
+    }
+
+    fn sra(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        self.0.cpu.f.def_c(r & 0x01 != 0);
+        r = (r & 0x80) | (r >> 1);
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn swap(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        r = ((r & 0x0F) << 4) | ((r & 0xF0) >> 4);
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.clr_c();
+    }
+
+    fn srl(&mut self, reg: Reg) {
+        let mut r = self.read(reg);
+        let c = r & 0x01 != 0;
+        r >>= 1;
+        self.write(reg, r);
+        self.0.cpu.f.def_z(r == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(c);
+    }
+
+    fn add_sp(&mut self) {
+        let r;
+        let c;
+        let h;
+        let r8 = self.read_next_pc() as i8;
+        if (r8) >= 0 {
+            c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
+            h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
+            r = add16(self.0.cpu.sp, r8 as u16);
+        } else {
+            r = sub16(self.0.cpu.sp, -r8 as u16);
+            c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
+            h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
+        }
+        self.0.cpu.sp = r;
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_c(c);
+        self.0.cpu.f.def_h(h);
+        self.0.tick(8);
+    }
+
+    fn reti(&mut self) {
+        self.ret(Condition::None);
+        self.0.cpu.ime = ImeState::Enabled;
+    }
+
+    fn halt(&mut self) {
+        self.0.cpu.state = CpuState::Halt;
+    }
+
+    fn ccf(&mut self) {
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(!self.0.cpu.f.c());
+    }
+
+    fn scf(&mut self) {
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.set_c();
+    }
+
+    fn dec16(&mut self, reg: Reg) {
+        let mut reg = self.read(reg);
+        reg = sub(reg, 1);
+        self.write(Reg::HL, reg);
+        self.0.cpu.f.def_z(reg == 0);
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.def_h(reg & 0x0f == 0xf);
+    }
+
+    fn inc16(&mut self, reg: Reg) {
+        let mut reg = self.read(reg);
+        reg = add(reg, 1);
+        self.write(Reg::HL, reg);
+        self.0.cpu.f.def_z(reg == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h(reg & 0x0f == 0);
+    }
+
+    fn cpl(&mut self) {
+        self.0.cpu.a = !self.0.cpu.a;
+        self.0.cpu.f.set_n();
+        self.0.cpu.f.set_h();
+    }
+
+    fn daa(&mut self) {
+        if !self.0.cpu.f.n() {
+            if self.0.cpu.f.c() || self.0.cpu.a > 0x99 {
+                self.0.cpu.a = add(self.0.cpu.a, 0x60);
+                self.0.cpu.f.set_c();
+            }
+            if self.0.cpu.f.h() || (self.0.cpu.a & 0x0F) > 0x09 {
+                self.0.cpu.a = add(self.0.cpu.a, 0x6);
+            }
+        } else {
+            if self.0.cpu.f.c() {
+                self.0.cpu.a = sub(self.0.cpu.a, 0x60);
+            }
+            if self.0.cpu.f.h() {
+                self.0.cpu.a = sub(self.0.cpu.a, 0x6);
+            }
+        }
+        self.0.cpu.f.def_z(self.0.cpu.a == 0);
+        self.0.cpu.f.clr_h();
+    }
+
+    fn rra(&mut self) {
+        let c = self.0.cpu.f.c() as u8;
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
+        self.0.cpu.a = self.0.cpu.a >> 1 | c << 7;
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn rla(&mut self) {
+        let c = self.0.cpu.f.c() as u8;
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+        self.0.cpu.a = self.0.cpu.a << 1 | c;
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+    }
+
+    fn stop(&mut self) {
+        self.0.cpu.state = CpuState::Stopped;
+        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+    }
+
+    fn rrca(&mut self) {
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
+        self.0.cpu.a = self.0.cpu.a.rotate_right(1);
+    }
+
+    fn rlca(&mut self) {
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+        self.0.cpu.a = self.0.cpu.a.rotate_left(1);
+    }
+
+    fn invalid_opcode(&self, opcode: u8) {
+        println!("executed invalid instructions: {opcode:02x}");
+    }
+
+    fn ei(&mut self) {
+        if self.0.cpu.ime == ImeState::Disabled {
+            self.0.cpu.ime = ImeState::ToBeEnable;
+        }
+    }
+
+    fn ldhl_sp(&mut self) {
+        let r;
+        let c;
+        let h;
+        let r8 = self.read_next_pc() as i8;
+        if (r8) >= 0 {
+            c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
+            h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
+            r = add16(self.0.cpu.sp, r8 as u16);
+        } else {
+            r = sub16(self.0.cpu.sp, -r8 as u16);
+            c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
+            h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
+        }
+        self.0.cpu.set_hl(r);
+        self.0.cpu.f.clr_z();
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.def_h(h);
+        self.0.cpu.f.def_c(c);
+        self.0.tick(4);
+    }
+
+    fn bit(&mut self, bit: u8, reg: Reg) {
+        let r = self.read(reg);
+        self.0.cpu.f.def_z((r & (1 << bit)) == 0);
+        self.0.cpu.f.clr_n();
+        self.0.cpu.f.set_h();
+    }
+
+    fn res(&mut self, bit: u8, reg: Reg) {
+        let mut r = self.read(reg);
+        r &= !(1 << bit);
+        self.write(reg, r);
+    }
+
+    fn set(&mut self, bit: u8, reg: Reg) {
+        let mut r = self.read(reg);
+        r |= 1 << bit;
+        self.write(reg, r);
+    }
+
+    pub fn will_read_from(&self) -> (u8, [u16; 2]) {
+        let op = self.0.read(self.0.cpu.pc);
+        let none = (0, [0, 0]);
+        let some = |x| (1, [x, 0]);
+        match op {
+            0x0a => some(self.0.cpu.bc()),
+            0x1a => some(self.0.cpu.de()),
+            0x2a | 0x3a | 0x46 | 0x4e | 0x56 | 0x5e | 0x66 | 0x6e | 0x7e | 0x86 | 0x8e | 0x96
+            | 0x9e | 0xa6 | 0xae | 0xb6 | 0xbe => some(self.0.cpu.hl()),
+            0xcb => match self.0.read(add16(self.0.cpu.pc, 1)) {
+                0x06 | 0x0e | 0x16 | 0x1e | 0x26 | 0x2e | 0x36 | 0x3e | 0x46 | 0x4e | 0x56
+                | 0x5e | 0x66 | 0x6e | 0x76 | 0x7e | 0x86 | 0x8e | 0x96 | 0x9e | 0xa6 | 0xae
+                | 0xb6 | 0xbe | 0xc6 | 0xce | 0xd6 | 0xde | 0xe6 | 0xee | 0xf6 | 0xfe => {
+                    some(self.0.cpu.hl())
+                }
+                _ => none,
+            },
+            0xf0 => {
+                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
+                some(0xff00 | r8 as u16)
+            }
+            0xf2 => some(0xff00 | self.0.cpu.c as u16),
+            0xfa => some(self.0.read16(add16(self.0.cpu.pc, 1))),
+            0xc0 | 0xc1 | 0xc8 | 0xc9 | 0xd0 | 0xd1 | 0xd8 | 0xd9 | 0xe1 | 0xf1 => {
+                // POP or RET
+                (2, [add16(self.0.cpu.sp, 1), self.0.cpu.sp])
+            }
+            _ => none,
+        }
+    }
+
+    pub fn will_write_to(&self) -> (u8, [u16; 2]) {
+        let op = self.0.read(self.0.cpu.pc);
+        let none = (0, [0, 0]);
+        let some = |x| (1, [x, 0]);
+        match op {
+            0x02 => some(self.0.cpu.bc()),
+            0x08 => {
+                let adress = self.0.read16(add16(self.0.cpu.pc, 1));
+                (2, [adress, add16(adress, 1)])
+            }
+            0x12 => some(self.0.cpu.de()),
+            0x22 | 0x32 | 0x34 | 0x35 | 0x36 | 0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x77 => {
+                // LD (HL), .. or INC (HL) or etc.
+                some(self.0.cpu.hl())
+            }
+            0xc4 | 0xc5 | 0xcd | 0xcf | 0xd4 | 0xd5 | 0xd7 | 0xd8 | 0xd9 | 0xe5 | 0xe7 | 0xef
+            | 0xf5 | 0xf7 | 0xff | 0xdc => {
+                // PUSH .. or CALL .. or RST
+                (2, [sub16(self.0.cpu.sp, 1), sub16(self.0.cpu.sp, 2)])
+            }
+            0xcb => match self.0.read(self.0.cpu.pc + 1) {
+                0x06 | 0x0e | 0x16 | 0x1e | 0x26 | 0x2e | 0x36 | 0x3e | 0x86 | 0x8e | 0x96
+                | 0x9e | 0xa6 | 0xae | 0xb6 | 0xbe | 0xc6 | 0xce | 0xd6 | 0xde | 0xe6 | 0xee
+                | 0xf6 | 0xfe => some(self.0.cpu.hl()),
+                _ => none,
+            },
+            0xe0 => {
+                let r8 = self.0.read(add16(self.0.cpu.pc, 1));
+                some(0xFF00 | r8 as u16)
+            }
+            0xe2 => some(0xFF00 | self.0.cpu.c as u16),
+            0xea => some(self.0.read16(add16(self.0.cpu.pc, 1))),
+            _ => none,
+        }
+    }
+
+    pub fn will_jump_to(&self) -> Option<u16> {
+        let pc = self.0.cpu.pc;
+        let op = &[
+            self.0.read(pc),
+            self.0.read(add16(pc, 1)),
+            self.0.read(add16(pc, 2)),
+        ];
+        let len = consts::LEN[op[0] as usize];
+        match op[0] {
+            0xC3 => {
+                // JP $aaaa
+                let dest = u16::from_le_bytes([op[1], op[2]]);
+                Some(dest)
+            }
+            0xE9 => {
+                // JP (HL)
+                Some(self.0.cpu.hl())
+            }
+            x if x & 0b11100111 == 0b11000010 => {
+                // JP cc, $aaaa
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = u16::from_le_bytes([op[1], op[2]]);
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
+            0x18 => {
+                // JR $rr
+                let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                Some(dest)
+            }
+            x if x & 0b1110_0111 == 0b0010_0000 => {
+                // JR cc, $rr
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
+            0xCD => {
+                // CALL $aaaa
+                let dest = u16::from_le_bytes([op[1], op[2]]);
+                Some(dest)
+            }
+            x if x & 0b11100111 == 0b11000100 => {
+                // CALL cc, $aaaa
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = u16::from_le_bytes([op[1], op[2]]);
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
+            x @ (0xC0 | 0xC8 | 0xD0 | 0xD8) => {
+                // RET cc
+                let cond = match (x >> 3) & 0b11 {
+                    0 => Condition::NZ,
+                    1 => Condition::Z,
+                    2 => Condition::NC,
+                    3 => Condition::C,
+                    _ => unreachable!(),
+                };
+                if self.check_condition(cond) {
+                    let dest = u16::from_le_bytes([
+                        self.0.read(sub16(self.0.cpu.sp, 1)),
+                        self.0.read(sub16(self.0.cpu.sp, 2)),
+                    ]);
+                    Some(dest)
+                } else {
+                    None
+                }
+            }
+            0xC9 | 0xD9 => {
+                // RET or RETI
+                let dest = u16::from_le_bytes([
+                    self.0.read(sub16(self.0.cpu.sp, 1)),
+                    self.0.read(sub16(self.0.cpu.sp, 2)),
+                ]);
+                Some(dest)
+            }
+            x if x & 0b11000111 == 0b11000111 => {
+                // RST n
+                let dest = (x & 0b00111000) as u16;
+                Some(dest)
+            }
+            _ => None,
         }
     }
 }

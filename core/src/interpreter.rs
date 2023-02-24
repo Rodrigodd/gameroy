@@ -632,7 +632,7 @@ impl Interpreter<'_> {
             // ADD SP,r8 2:16 0 0 H C
             0xe8 => self.add_sp(),
             // JP HL 1:4 - - - -
-            0xe9 => self.jump_to(self.0.cpu.hl()),
+            0xe9 => self.jump_hl(),
             // LD (a16),A 3:16 - - - -
             0xea => self.load(Reg::Im16, Reg::A),
             //
@@ -652,7 +652,7 @@ impl Interpreter<'_> {
             // LD A,(C) 2:8 - - - -
             0xf2 => self.loadh(Reg::A, Reg::C),
             // DI 1:4 - - - -
-            0xf3 => self.0.cpu.ime = ImeState::Disabled,
+            0xf3 => self.di(),
             //
             0xf4 => self.invalid_opcode(op),
             // PUSH AF 1:16 - - - -
@@ -1419,6 +1419,10 @@ impl Interpreter<'_> {
         }
     }
 
+    fn jump_hl(&mut self) {
+        self.jump_to(self.0.cpu.hl())
+    }
+
     fn pushr(&mut self, value: u16) {
         let [lsb, msb] = value.to_le_bytes();
         self.0.tick(4); // 1 M-cycle with SP in address buss
@@ -1948,6 +1952,10 @@ impl Interpreter<'_> {
         if self.0.cpu.ime == ImeState::Disabled {
             self.0.cpu.ime = ImeState::ToBeEnable;
         }
+    }
+
+    fn di(&mut self) {
+        self.0.cpu.ime = ImeState::Disabled
     }
 
     fn ldhl_sp(&mut self) {

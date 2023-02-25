@@ -84,17 +84,17 @@ impl Label {
     }
 }
 
-struct Cursor {
+pub struct Cursor {
     /// The currently active bank, if know
-    bank: Option<u16>,
+    pub bank: Option<u16>,
     /// The program counter, can have any value in the entire range
-    pc: u16,
+    pub pc: u16,
     /// The currently value of register A, if know
-    reg_a: Option<u8>,
+    pub reg_a: Option<u8>,
 }
 impl Cursor {
     /// Return the opcode, and the length
-    fn get_op(&self, rom: &GameBoy) -> ([u8; 3], u8) {
+    pub fn get_op(&self, rom: &GameBoy) -> ([u8; 3], u8) {
         let bank;
         let offset = if (0x4000..=0x7FFF).contains(&self.pc) {
             bank = self.bank.expect("I don't know what I am doing");
@@ -412,7 +412,7 @@ impl Trace {
     /// Pop a PC from '`cursors`, compute next possible PC values, and push to 'cursors'
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
-        let Cursor { pc, bank, reg_a } = cursor;
+        let Cursor { pc, bank, .. } = cursor;
         match Address::from_pc(bank, pc) {
             Some(address) => {
                 let (op, len) = cursor.get_op(rom);
@@ -446,7 +446,7 @@ impl Trace {
                         reg_a: None,
                     });
                 };
-                compute_step(cursors, bank, pc, len, reg_a, &op, jump);
+                compute_step(cursors, len, cursor, &op, jump);
             }
             None => {
                 if pc <= 0x7FFF {
@@ -485,7 +485,7 @@ impl Trace {
                         reg_a: None,
                     });
                 };
-                compute_step(cursors, bank, pc, len, reg_a, &op, jump);
+                compute_step(cursors, len, cursor, &op, jump);
             }
         }
     }
@@ -523,15 +523,14 @@ impl Trace {
     }
 }
 
-fn compute_step(
+pub fn compute_step(
     cursors: &std::cell::RefCell<&mut Vec<Cursor>>,
-    bank: Option<u16>,
-    pc: u16,
     len: u8,
-    reg_a: Option<u8>,
+    curr: Cursor,
     op: &[u8],
     mut jump: impl FnMut(u16),
 ) {
+    let Cursor { pc, bank, reg_a } = curr;
     let step = move || {
         cursors.borrow_mut().push(Cursor {
             bank,

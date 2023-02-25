@@ -325,6 +325,14 @@ impl GameBoy {
         self.clock_count += count as u64;
     }
 
+    pub fn next_interrupt(&self) -> u64 {
+        self.ppu
+            .borrow()
+            .next_interrupt
+            .min(self.timer.borrow().next_interrupt)
+            .min(self.serial.borrow().next_interrupt)
+    }
+
     pub fn update_interrupt(&self) {
         if !self.predict_interrupt {
             self.update_all();

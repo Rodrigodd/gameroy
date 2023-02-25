@@ -9,6 +9,7 @@ use gameroy::{
     interpreter::Interpreter,
     parser::Vbm,
 };
+use gameroy_jit::JitCompiler;
 use instant::{Instant, SystemTime};
 use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
@@ -350,6 +351,8 @@ pub struct Emulator {
     gb: Arc<ParkMutex<GameBoy>>,
     proxy: EventLoopProxy<UserEvent>,
 
+    jit_compiler: JitCompiler,
+
     joypad: Arc<ParkMutex<Timeline>>,
 
     rom: RomFile,
@@ -452,6 +455,7 @@ impl Emulator {
         Self {
             gb,
             proxy,
+            jit_compiler: JitCompiler::new(),
             joypad,
             rom,
             debug: false,
@@ -710,19 +714,18 @@ impl Emulator {
                     self.set_state(EmulatorState::WaitNextFrame);
                 } else if self.frame_limit {
                     let mut gb = self.gb.lock();
-                    let mut inter = Interpreter(&mut gb);
                     let elapsed = self.start_time.elapsed();
                     let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
                         + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
 
                     // make sure that the target_clock don't increase indefinitely if the program can't keep up.
-                    if target_clock > inter.0.clock_count + CLOCK_SPEED / 30 {
-                        target_clock = inter.0.clock_count + CLOCK_SPEED / 30;
-                        self.start_time = recompute_start_time(inter.0.clock_count);
+                    if target_clock > gb.clock_count + CLOCK_SPEED / 30 {
+                        target_clock = gb.clock_count + CLOCK_SPEED / 30;
+                        self.start_time = recompute_start_time(gb.clock_count);
                     }
 
-                    while inter.0.clock_count < target_clock {
-                        inter.interpret_op();
+                    while gb.clock_count < target_clock {
+                        self.jit_compiler.interpret_block(&mut gb);
                     }
 
                     drop(gb);

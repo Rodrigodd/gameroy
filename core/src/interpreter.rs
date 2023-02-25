@@ -7,7 +7,7 @@ use crate::{
 };
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-enum Condition {
+pub enum Condition {
     None,
     Z,
     NZ,
@@ -17,7 +17,7 @@ enum Condition {
 
 #[derive(Clone, Copy)]
 #[allow(clippy::upper_case_acronyms)]
-enum Reg {
+pub enum Reg {
     A,
     B,
     C,
@@ -36,7 +36,7 @@ enum Reg {
 }
 
 #[derive(PartialEq, Eq)]
-enum Reg16 {
+pub enum Reg16 {
     AF,
     BC,
     DE,
@@ -680,7 +680,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn interpret_op_cb(&mut self) {
+    pub fn interpret_op_cb(&mut self) {
         let op = self.read_next_pc();
         match op {
             // RLC B 2:8 Z 0 0 C
@@ -1250,7 +1250,7 @@ impl Interpreter<'_> {
     }
 
     /// Read from PC, tick 4 cycles, and increase it by 1
-    fn read_next_pc(&mut self) -> u8 {
+    pub fn read_next_pc(&mut self) -> u8 {
         let v = self.0.read(self.0.cpu.pc);
         self.0.tick(4);
         self.0.cpu.pc = add16(self.0.cpu.pc, 1);
@@ -1367,7 +1367,7 @@ impl Interpreter<'_> {
     }
 
     /// Set the value of the cpu PC, but also update the disassembly tracing
-    fn jump_to(&mut self, address: u16) {
+    pub fn jump_to(&mut self, address: u16) {
         let pc = self.0.cpu.pc;
         self.0.cpu.pc = address;
 
@@ -1398,7 +1398,7 @@ impl Interpreter<'_> {
         );
     }
 
-    fn jump(&mut self, c: Condition) {
+    pub fn jump(&mut self, c: Condition) {
         // JP cc, nn
         let c = self.check_condition(c);
         let address = self.read_next_pc16();
@@ -1408,7 +1408,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn jump_rel(&mut self, c: Condition) {
+    pub fn jump_rel(&mut self, c: Condition) {
         // JR cc, nn
         let c = self.check_condition(c);
         let r8 = self.read_next_pc() as i8;
@@ -1419,7 +1419,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn jump_hl(&mut self) {
+    pub fn jump_hl(&mut self) {
         self.jump_to(self.0.cpu.hl())
     }
 
@@ -1442,7 +1442,7 @@ impl Interpreter<'_> {
         u16::from_be_bytes([msp, lsp])
     }
 
-    fn push(&mut self, reg: Reg16) {
+    pub fn push(&mut self, reg: Reg16) {
         let r = match reg {
             Reg16::AF => self.0.cpu.af(),
             Reg16::BC => self.0.cpu.bc(),
@@ -1453,7 +1453,7 @@ impl Interpreter<'_> {
         self.pushr(r);
     }
 
-    fn pop(&mut self, reg: Reg16) {
+    pub fn pop(&mut self, reg: Reg16) {
         let r = self.popr();
         match reg {
             Reg16::AF => self.0.cpu.set_af(r),
@@ -1464,7 +1464,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn call(&mut self, c: Condition) {
+    pub fn call(&mut self, c: Condition) {
         // CALL cc, nn
         let c = self.check_condition(c);
         let address = self.read_next_pc16();
@@ -1474,7 +1474,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn ret(&mut self, cond: Condition) {
+    pub fn ret(&mut self, cond: Condition) {
         // RET nn
         let c = self.check_condition(cond);
         if cond != Condition::None {
@@ -1487,16 +1487,16 @@ impl Interpreter<'_> {
         }
     }
 
-    fn nop(&self) {
+    pub fn nop(&mut self) {
         // do nothing
     }
 
-    fn load(&mut self, dst: Reg, src: Reg) {
+    pub fn load(&mut self, dst: Reg, src: Reg) {
         let v = self.read(src);
         self.write(dst, v);
     }
 
-    fn loadh(&mut self, dst: Reg, src: Reg) {
+    pub fn loadh(&mut self, dst: Reg, src: Reg) {
         let src = match src {
             Reg::A => self.0.cpu.a,
             Reg::C => {
@@ -1528,7 +1528,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn load16(&mut self, dst: Reg16, src: Reg16) {
+    pub fn load16(&mut self, dst: Reg16, src: Reg16) {
         let v = match src {
             Reg16::BC => self.0.cpu.bc(),
             Reg16::DE => self.0.cpu.de(),
@@ -1556,7 +1556,7 @@ impl Interpreter<'_> {
         }
     }
 
-    fn inc(&mut self, reg: Reg) {
+    pub fn inc(&mut self, reg: Reg) {
         let reg = match reg {
             Reg::A => &mut self.0.cpu.a,
             Reg::B => &mut self.0.cpu.b,
@@ -1593,7 +1593,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h(*reg & 0x0f == 0x0);
     }
 
-    fn dec(&mut self, reg: Reg) {
+    pub fn dec(&mut self, reg: Reg) {
         let reg = match reg {
             Reg::A => &mut self.0.cpu.a,
             Reg::B => &mut self.0.cpu.b,
@@ -1630,7 +1630,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h(*reg & 0x0f == 0xf);
     }
 
-    fn add(&mut self, reg: Reg) {
+    pub fn add(&mut self, reg: Reg) {
         let v = self.read(reg);
         let (r, o) = self.0.cpu.a.overflowing_add(v);
         self.0.cpu.f.def_z(r == 0);
@@ -1640,7 +1640,7 @@ impl Interpreter<'_> {
         self.0.cpu.a = r;
     }
 
-    fn adc(&mut self, reg: Reg) {
+    pub fn adc(&mut self, reg: Reg) {
         let a = self.0.cpu.a as u16;
         let c = self.0.cpu.f.c() as u16;
         let v = self.read(reg) as u16;
@@ -1652,7 +1652,7 @@ impl Interpreter<'_> {
         self.0.cpu.a = (r & 0xff) as u8;
     }
 
-    fn sub(&mut self, reg: Reg) {
+    pub fn sub(&mut self, reg: Reg) {
         let v = self.read(reg);
         let (r, o) = self.0.cpu.a.overflowing_sub(v);
         self.0.cpu.f.def_z(r == 0);
@@ -1662,7 +1662,7 @@ impl Interpreter<'_> {
         self.0.cpu.a = r;
     }
 
-    fn sbc(&mut self, reg: Reg) {
+    pub fn sbc(&mut self, reg: Reg) {
         let a = self.0.cpu.a as i16;
         let c = self.0.cpu.f.c() as i16;
         let v = self.read(reg) as i16;
@@ -1674,7 +1674,7 @@ impl Interpreter<'_> {
         self.0.cpu.a = (r & 0xff) as u8;
     }
 
-    fn and(&mut self, reg: Reg) {
+    pub fn and(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.a &= v;
         self.0.cpu.f.def_z(self.0.cpu.a == 0);
@@ -1683,7 +1683,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.set_h();
     }
 
-    fn or(&mut self, reg: Reg) {
+    pub fn or(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.a |= v;
         self.0.cpu.f.def_z(self.0.cpu.a == 0);
@@ -1692,7 +1692,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn xor(&mut self, reg: Reg) {
+    pub fn xor(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.a ^= v;
         self.0.cpu.f.def_z(self.0.cpu.a == 0);
@@ -1701,7 +1701,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn cp(&mut self, reg: Reg) {
+    pub fn cp(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.f.def_z(self.0.cpu.a == v);
         self.0.cpu.f.def_c(self.0.cpu.a < v);
@@ -1709,7 +1709,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h(self.0.cpu.a & 0xF < v & 0xF);
     }
 
-    fn add16(&mut self, b: Reg16) {
+    pub fn add16(&mut self, b: Reg16) {
         let b = match b {
             Reg16::BC => self.0.cpu.bc(),
             Reg16::DE => self.0.cpu.de(),
@@ -1728,7 +1728,7 @@ impl Interpreter<'_> {
         self.0.tick(4);
     }
 
-    fn rst(&mut self, address: u8) {
+    pub fn rst(&mut self, address: u8) {
         self.pushr(self.0.cpu.pc);
         self.jump_to(address as u16);
     }
@@ -1817,7 +1817,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(c);
     }
 
-    fn add_sp(&mut self) {
+    pub fn add_sp(&mut self) {
         let r;
         let c;
         let h;
@@ -1839,28 +1839,28 @@ impl Interpreter<'_> {
         self.0.tick(8);
     }
 
-    fn reti(&mut self) {
+    pub fn reti(&mut self) {
         self.ret(Condition::None);
         self.0.cpu.ime = ImeState::Enabled;
     }
 
-    fn halt(&mut self) {
+    pub fn halt(&mut self) {
         self.0.cpu.state = CpuState::Halt;
     }
 
-    fn ccf(&mut self) {
+    pub fn ccf(&mut self) {
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
         self.0.cpu.f.def_c(!self.0.cpu.f.c());
     }
 
-    fn scf(&mut self) {
+    pub fn scf(&mut self) {
         self.0.cpu.f.clr_h();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.set_c();
     }
 
-    fn dec16(&mut self, reg: Reg) {
+    pub fn dec16(&mut self, reg: Reg) {
         let mut reg = self.read(reg);
         reg = sub(reg, 1);
         self.write(Reg::HL, reg);
@@ -1869,7 +1869,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h(reg & 0x0f == 0xf);
     }
 
-    fn inc16(&mut self, reg: Reg) {
+    pub fn inc16(&mut self, reg: Reg) {
         let mut reg = self.read(reg);
         reg = add(reg, 1);
         self.write(Reg::HL, reg);
@@ -1878,13 +1878,13 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_h(reg & 0x0f == 0);
     }
 
-    fn cpl(&mut self) {
+    pub fn cpl(&mut self) {
         self.0.cpu.a = !self.0.cpu.a;
         self.0.cpu.f.set_n();
         self.0.cpu.f.set_h();
     }
 
-    fn daa(&mut self) {
+    pub fn daa(&mut self) {
         if !self.0.cpu.f.n() {
             if self.0.cpu.f.c() || self.0.cpu.a > 0x99 {
                 self.0.cpu.a = add(self.0.cpu.a, 0x60);
@@ -1905,7 +1905,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn rra(&mut self) {
+    pub fn rra(&mut self) {
         let c = self.0.cpu.f.c() as u8;
         self.0.cpu.f.def_c(self.0.cpu.a & 0x01 != 0);
         self.0.cpu.a = self.0.cpu.a >> 1 | c << 7;
@@ -1914,7 +1914,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn rla(&mut self) {
+    pub fn rla(&mut self) {
         let c = self.0.cpu.f.c() as u8;
         self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
         self.0.cpu.a = self.0.cpu.a << 1 | c;
@@ -1923,12 +1923,12 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn stop(&mut self) {
+    pub fn stop(&mut self) {
         self.0.cpu.state = CpuState::Stopped;
         self.0.cpu.pc = add16(self.0.cpu.pc, 1);
     }
 
-    fn rrca(&mut self) {
+    pub fn rrca(&mut self) {
         self.0.cpu.f.clr_z();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
@@ -1936,7 +1936,7 @@ impl Interpreter<'_> {
         self.0.cpu.a = self.0.cpu.a.rotate_right(1);
     }
 
-    fn rlca(&mut self) {
+    pub fn rlca(&mut self) {
         self.0.cpu.f.clr_z();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
@@ -1944,21 +1944,22 @@ impl Interpreter<'_> {
         self.0.cpu.a = self.0.cpu.a.rotate_left(1);
     }
 
-    fn invalid_opcode(&self, opcode: u8) {
+    pub fn invalid_opcode(&mut self, opcode: u8) {
         println!("executed invalid instructions: {opcode:02x}");
+        std::process::exit(1);
     }
 
-    fn ei(&mut self) {
+    pub fn ei(&mut self) {
         if self.0.cpu.ime == ImeState::Disabled {
             self.0.cpu.ime = ImeState::ToBeEnable;
         }
     }
 
-    fn di(&mut self) {
+    pub fn di(&mut self) {
         self.0.cpu.ime = ImeState::Disabled
     }
 
-    fn ldhl_sp(&mut self) {
+    pub fn ldhl_sp(&mut self) {
         let r;
         let c;
         let h;

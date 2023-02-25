@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "android", "native", "wasm", "libretro"]
+members = ["core", "jit", "android", "native", "wasm", "libretro"]
 
 [package]
 name = "gameroy"
@@ -33,6 +33,7 @@ flexi_logger = "0.22.3"
 [dependencies]
 
 gameroy-core = { path = "core" }
+gameroy-jit = { path = "jit" }
 
 # giui = { path = "../giui" }
 giui = { git = "https://github.com/Rodrigodd/giui" }

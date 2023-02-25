@@ -16,6 +16,7 @@ pub const FRAME_CYCLES: u64 = SCANLINE_PER_FRAME as u64 * SCANLINE_CYCLES;
 pub const IF: usize = 0xff0f;
 pub const IE: usize = 0xffff;
 
+/// The length in bytes of each opcode.
 #[rustfmt::skip]
 pub const LEN: [u8; 256] = [
     1, 3, 1, 1, 1, 1, 2, 1, 3, 1, 1, 1, 1, 1, 2, 1, // 0x

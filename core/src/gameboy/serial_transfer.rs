@@ -73,11 +73,11 @@ impl Serial {
             self.serial_control &= !0x80;
             self.serial_transfer_started = 0;
 
-            self.next_interrupt = self.estimate_next_interrupt();
-
             // interrupt
             return true;
         }
+
+        self.next_interrupt = self.estimate_next_interrupt();
         false
     }
 

@@ -39,7 +39,8 @@ fn print_val(val: f64, err: f64) -> String {
     format!("{:.p$} +/- {:.p$}", val, err, p = p)
 }
 
-pub fn benchmark(path: &str, timeout: u64, len: usize, predict_interrupt: bool) {
+pub fn benchmark(path: &str, timeout: u64, number_of_times: usize, predict_interrupt: bool) {
+    let len = number_of_times + 1;
     let rom_path = PathBuf::from(path);
     let rom = std::fs::read(rom_path);
 
@@ -65,6 +66,9 @@ pub fn benchmark(path: &str, timeout: u64, len: usize, predict_interrupt: bool) 
         }
         times.push(start.elapsed());
     }
+
+    // Remove first run, because in that one the code is compiled and traced.
+    times.remove(0);
 
     let (mean_time, mean_error) = mean(&times);
     println!("mean time: {:?} +/- {:?}", mean_time, mean_error);

@@ -71,7 +71,7 @@ pub fn main() {
             .value_of("frames")
             .and_then(|x| x.parse().ok())
             .unwrap();
-        let len: usize = matches
+        let number_of_times: usize = matches
             .value_of("times")
             .and_then(|x| x.parse().ok())
             .unwrap();
@@ -79,7 +79,7 @@ pub fn main() {
         return bench::benchmark(
             rom_path,
             frames * gameroy::consts::FRAME_CYCLES,
-            len,
+            number_of_times,
             predict_interrupt,
         );
     }

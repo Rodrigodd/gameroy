@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use dynasmrt::mmap::MutableBuffer;
 use dynasmrt::x86::X86Relocation;
-use dynasmrt::{dynasm, DynasmApi};
+use dynasmrt::{dynasm, DynasmApi, ExecutableBuffer};
 use gameroy::consts::LEN;
 use gameroy::disassembler::{Address, Cursor};
 use gameroy::gameboy::GameBoy;
@@ -13,10 +13,10 @@ pub struct Block {
     start_address: u16,
     length: u16,
     max_clock_cycles: u16,
-    compiled_code: Vec<u8>,
+    compiled_code: ExecutableBuffer,
 }
 
-fn trace_a_block(gb: &GameBoy, start_address: u16) -> Block {
+fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u16) {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
@@ -52,17 +52,11 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> Block {
     // in case any of the instructions branches.
     max_clock_cycles += 12;
 
-    Block {
-        start_address,
-        length,
-        max_clock_cycles,
-        compiled_code: Vec::new(),
-    }
+    (start_address, length, max_clock_cycles)
 }
 
 pub struct JitCompiler {
     blocks: BTreeMap<Address, Block>,
-    buffer: Option<MutableBuffer>,
 }
 
 impl Default for JitCompiler {
@@ -75,7 +69,6 @@ impl JitCompiler {
     pub fn new() -> Self {
         Self {
             blocks: BTreeMap::new(),
-            buffer: Some(MutableBuffer::new(4096).unwrap()),
         }
     }
 
@@ -92,13 +85,14 @@ impl JitCompiler {
     }
 
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {
-        let mut buffer = self.buffer.take();
         let block = self.get_block(gb);
         let next_interrupt = gb.next_interrupt();
         match block {
             Some(block) if (gb.clock_count + block.max_clock_cycles as u64) < next_interrupt => {
                 // println!("running {:04x}", block.start_address);
-                run_code(block.compiled_code.as_slice(), gb, &mut buffer).unwrap();
+                unsafe {
+                    run_code(&block.compiled_code, gb).unwrap();
+                }
             }
             _ => {
                 let mut inter = Interpreter(gb);
@@ -113,37 +107,22 @@ impl JitCompiler {
                 }
             }
         }
-        self.buffer = buffer;
     }
 }
 
-fn run_code(
-    code: &[u8],
-    gb: &mut GameBoy,
-    buffer: &mut Option<MutableBuffer>,
-) -> std::io::Result<()> {
-    let mut buffer_mut = buffer.take().unwrap();
-
-    buffer_mut.set_len(code.len());
-    buffer_mut.copy_from_slice(code);
-
-    let buffer_ex = buffer_mut.make_exec().unwrap();
-
-    unsafe {
-        let code_fn: unsafe extern "sysv64" fn(&mut GameBoy) =
-            std::mem::transmute(buffer_ex.as_ptr());
-        code_fn(gb);
-    }
-
-    *buffer = Some(buffer_ex.make_mut().unwrap());
-
+/// SAFETY: the ExecutableBuffer should have valid x86 code in it.
+#[inline(never)]
+unsafe fn run_code(code: &ExecutableBuffer, gb: &mut GameBoy) -> std::io::Result<()> {
+    let code_fn: unsafe extern "sysv64" fn(&mut GameBoy) = std::mem::transmute(code.as_ptr());
+    code_fn(gb);
     Ok(())
 }
 
 struct BlockCompiler<'gb> {
-    block: Block,
     gb: &'gb GameBoy,
     pc: u16,
+    length: u16,
+    max_clock_cycles: u16,
 }
 
 macro_rules! call {
@@ -163,11 +142,12 @@ macro_rules! call {
 
 impl<'a> BlockCompiler<'a> {
     pub fn new(gb: &'a GameBoy) -> Self {
-        let block = trace_a_block(gb, gb.cpu.pc);
+        let (start, length, max_clock_cycles) = trace_a_block(gb, gb.cpu.pc);
         Self {
             gb,
-            block,
-            pc: gb.cpu.pc,
+            pc: start,
+            length,
+            max_clock_cycles,
         }
     }
 
@@ -182,8 +162,8 @@ impl<'a> BlockCompiler<'a> {
             "compiling {:02x}_{:04x} (len: {}, cycles: {})",
             self.gb.cartridge.curr_bank(),
             self.pc,
-            self.block.length,
-            self.block.max_clock_cycles,
+            self.length,
+            self.max_clock_cycles,
         );
         let mut ops: dynasmrt::VecAssembler<X86Relocation> = dynasmrt::VecAssembler::new(0);
 
@@ -196,7 +176,9 @@ impl<'a> BlockCompiler<'a> {
             ; push rax
         );
 
-        while self.pc < self.block.start_address + self.block.length {
+        let start = self.pc;
+        let end = start + self.length;
+        while self.pc < end {
             let op = self.read_next_op();
             let call = interpreter_call(op);
             dynasm!(ops
@@ -215,9 +197,20 @@ impl<'a> BlockCompiler<'a> {
             ; ret
         );
 
-        self.block.compiled_code = ops.finalize().unwrap();
+        let code = ops.finalize().unwrap();
 
-        self.block
+        let mut buffer = MutableBuffer::new(code.len()).unwrap();
+        buffer.set_len(code.len());
+        buffer.copy_from_slice(code.as_slice());
+
+        let compiled_code = buffer.make_exec().unwrap();
+
+        Block {
+            start_address: start,
+            length: self.length,
+            max_clock_cycles: self.max_clock_cycles,
+            compiled_code,
+        }
     }
 }
 

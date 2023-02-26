@@ -9,6 +9,8 @@ use gameroy_lib::gameroy::{
     interpreter::Interpreter,
 };
 
+use gameroy_jit::JitCompiler;
+
 // Return the mean and standart error of the samples
 fn mean(samples: &[Duration]) -> (Duration, Duration) {
     let sum: Duration = samples.iter().sum();
@@ -39,8 +41,15 @@ fn print_val(val: f64, err: f64) -> String {
     format!("{:.p$} +/- {:.p$}", val, err, p = p)
 }
 
-pub fn benchmark(path: &str, timeout: u64, number_of_times: usize, predict_interrupt: bool) {
+pub fn benchmark(
+    path: &str,
+    timeout: u64,
+    number_of_times: usize,
+    predict_interrupt: bool,
+    jit: bool,
+) {
     let len = number_of_times + 1;
+
     let rom_path = PathBuf::from(path);
     let rom = std::fs::read(rom_path);
 
@@ -56,16 +65,11 @@ pub fn benchmark(path: &str, timeout: u64, number_of_times: usize, predict_inter
     // remove serial transfer console output
     game_boy.serial.get_mut().serial_transfer_callback = None;
 
-    let mut times = Vec::with_capacity(len);
-    for _ in 0..len {
-        game_boy.reset();
-        let mut inter = Interpreter(&mut game_boy);
-        let start = Instant::now();
-        while inter.0.clock_count < timeout {
-            inter.interpret_op();
-        }
-        times.push(start.elapsed());
-    }
+    let mut times = if jit {
+        run_jitted(len, &mut game_boy, timeout)
+    } else {
+        run_interpreted(len, &mut game_boy, timeout)
+    };
 
     // Remove first run, because in that one the code is compiled and traced.
     times.remove(0);
@@ -81,4 +85,32 @@ pub fn benchmark(path: &str, timeout: u64, number_of_times: usize, predict_inter
         print_val(times, times_err),
     );
     log::info!("faster than real time: {} +/- {}", times, times_err);
+}
+
+fn run_interpreted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration> {
+    let mut times = Vec::with_capacity(len);
+    for _ in 0..len {
+        game_boy.reset();
+        let start = Instant::now();
+        while game_boy.clock_count < timeout {
+            Interpreter(game_boy).interpret_op();
+        }
+        times.push(start.elapsed());
+    }
+    times
+}
+
+fn run_jitted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration> {
+    let mut jit_compiler = JitCompiler::new();
+
+    let mut times = Vec::with_capacity(len);
+    for _ in 0..len {
+        game_boy.reset();
+        let start = Instant::now();
+        while game_boy.clock_count < timeout {
+            jit_compiler.interpret_block(game_boy);
+        }
+        times.push(start.elapsed());
+    }
+    times
 }

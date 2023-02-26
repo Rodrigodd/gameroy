@@ -62,6 +62,9 @@ pub fn main() {
             .arg(arg!(--"no-prediction" "disables interrupt prediction optimization")
                  .required(false)
             )
+            .arg(arg!(--jit "run bench with Just-In-Time compilation enabled")
+                 .required(false)
+            )
             .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
         .get_matches();
 
@@ -76,11 +79,13 @@ pub fn main() {
             .and_then(|x| x.parse().ok())
             .unwrap();
         let predict_interrupt = !matches.is_present("no-prediction");
+        let jit = matches.is_present("jit");
         return bench::benchmark(
             rom_path,
             frames * gameroy::consts::FRAME_CYCLES,
             number_of_times,
             predict_interrupt,
+            jit,
         );
     }
 

@@ -26,6 +26,7 @@ default = ["threads", "console", "audio-engine", "rfd"]
 [dependencies]
 
 gameroy = { path = "..", default-features = false }
+gameroy-jit = { path = "../jit" }
 winit = "0.26.1"
 flexi_logger = "0.22.3"
 clap = "3.1.5"

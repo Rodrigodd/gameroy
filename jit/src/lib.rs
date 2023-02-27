@@ -10,10 +10,20 @@ use gameroy::gameboy::GameBoy;
 use gameroy::interpreter::{Condition, Interpreter, Reg, Reg16};
 
 pub struct Block {
-    start_address: u16,
-    length: u16,
+    _start_address: u16,
+    _length: u16,
     max_clock_cycles: u16,
-    compiled_code: ExecutableBuffer,
+    fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
+    _compiled_code: ExecutableBuffer,
+}
+
+impl Block {
+    fn call(&self, gb: &mut GameBoy) {
+        // SAFETY: As long as `Block`s are only generated from BlockCompiler::compile, and
+        // Self::_compiled_code is not mutated, self.fn_ptr should be pointing to a valid x64
+        // function.
+        unsafe { (self.fn_ptr)(gb) }
+    }
 }
 
 fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u16) {
@@ -90,9 +100,7 @@ impl JitCompiler {
         match block {
             Some(block) if (gb.clock_count + block.max_clock_cycles as u64) < next_interrupt => {
                 // println!("running {:04x}", block.start_address);
-                unsafe {
-                    run_code(&block.compiled_code, gb).unwrap();
-                }
+                block.call(gb);
             }
             _ => {
                 let mut inter = Interpreter(gb);
@@ -108,14 +116,6 @@ impl JitCompiler {
             }
         }
     }
-}
-
-/// SAFETY: the ExecutableBuffer should have valid x86 code in it.
-#[inline(never)]
-unsafe fn run_code(code: &ExecutableBuffer, gb: &mut GameBoy) -> std::io::Result<()> {
-    let code_fn: unsafe extern "sysv64" fn(&mut GameBoy) = std::mem::transmute(code.as_ptr());
-    code_fn(gb);
-    Ok(())
 }
 
 struct BlockCompiler<'gb> {
@@ -206,10 +206,11 @@ impl<'a> BlockCompiler<'a> {
         let compiled_code = buffer.make_exec().unwrap();
 
         Block {
-            start_address: start,
-            length: self.length,
+            _start_address: start,
+            _length: self.length,
             max_clock_cycles: self.max_clock_cycles,
-            compiled_code,
+            fn_ptr: unsafe { std::mem::transmute(compiled_code.as_ptr()) },
+            _compiled_code: compiled_code,
         }
     }
 }

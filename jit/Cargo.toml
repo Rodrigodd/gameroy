@@ -6,6 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+gameroy-core = { path = "../core" }
+
 dynasmrt = "2.0.0"
 
-gameroy-core = { path = "../core" }
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.45.0", features = [
+    "Win32_System_Diagnostics_Debug",
+    "Win32_Foundation",
+] }

@@ -1,18 +1,15 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::mem::{align_of, size_of};
 
-use dynasmrt::mmap::MutableBuffer;
-use dynasmrt::x86::X86Relocation;
-use dynasmrt::{dynasm, DynasmApi, ExecutableBuffer};
-use gameroy::consts::LEN;
-use gameroy::disassembler::{Address, Cursor};
-use gameroy::gameboy::GameBoy;
-use gameroy::interpreter::{Condition, Interpreter, Reg, Reg16};
-use windows_sys::Win32::System::Diagnostics::Debug::{
-    RtlAddFunctionTable, RtlCaptureStackBackTrace, RtlLookupFunctionEntry,
-    IMAGE_RUNTIME_FUNCTION_ENTRY, IMAGE_RUNTIME_FUNCTION_ENTRY_0, UNW_FLAG_EHANDLER,
+use dynasmrt::{dynasm, x86::X86Relocation, DynasmApi, ExecutableBuffer};
+use gameroy::{
+    consts::LEN,
+    disassembler::{Address, Cursor},
+    gameboy::GameBoy,
+    interpreter::{Condition, Interpreter, Reg, Reg16},
 };
+
+mod windows;
 
 pub struct Block {
     _start_address: u16,
@@ -180,13 +177,13 @@ impl<'a> BlockCompiler<'a> {
 
         dynasm!(ops
             ; .arch x64
-            ;; push_rbp_offset = ops.offset()
+            ;; push_rbp_offset = ops.offset().0 as u8
             ; push rbp
-            ;; push_rbx_offset = ops.offset()
+            ;; push_rbx_offset = ops.offset().0 as u8
             ; push rbx
-            ;; push_rax_offset = ops.offset()
+            ;; push_rax_offset = ops.offset().0 as u8
             ; push rax
-            ;; prolog_len = ops.offset()
+            ;; prolog_len = ops.offset().0 as u8
             ; mov rbp, rsp
             ; mov rbx, rdi
         );
@@ -216,96 +213,13 @@ impl<'a> BlockCompiler<'a> {
 
         let code = ops.finalize().unwrap();
 
-        const UWOP_PUSH_NONVOL: u8 = 0;
-        const RAX: u8 = 0;
-        const RBX: u8 = 3;
-        const RPB: u8 = 5;
-
-        /// See: https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-170#struct-unwind_code
-        #[allow(dead_code)]
-        struct UnwindCode {
-            offset_in_prolog: u8,
-            code_info: u8,
-        }
-
-        /// See: https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-170#struct-unwind_info
-        #[repr(C, align(4))]
-        struct UnwindInfo {
-            version_flags: u8,
-            size_of_prolog: u8,
-            count_of_unwind_code: u8,
-            frame_register_frame_register_offset: u8,
-            unwind_codes_array: [UnwindCode; 3],
-        }
-
-        let align = |x: usize, alignment: usize| {
-            debug_assert!(alignment.is_power_of_two());
-            (x - 1 + alignment) & alignment.wrapping_neg()
-        };
-
-        let code_offset = 0;
-        let unwind_info_offset = align(
-            code_offset + code.len(),
-            align_of::<IMAGE_RUNTIME_FUNCTION_ENTRY>(),
+        let buffer = windows::to_mutable_buffer_with_unwin_info(
+            code,
+            prolog_len,
+            push_rax_offset,
+            push_rbx_offset,
+            push_rbp_offset,
         );
-        let function_table_offset = align(
-            unwind_info_offset + size_of::<IMAGE_RUNTIME_FUNCTION_ENTRY>(),
-            align_of::<IMAGE_RUNTIME_FUNCTION_ENTRY>(),
-        );
-        let len = function_table_offset + size_of::<IMAGE_RUNTIME_FUNCTION_ENTRY>();
-
-        let mut buffer = MutableBuffer::new(len).unwrap();
-        buffer.set_len(len);
-        buffer[..code.len()].copy_from_slice(code.as_slice());
-
-        let dyn_base = buffer.as_ptr() as u64;
-
-        let unwind_info = buffer[unwind_info_offset..].as_mut_ptr() as *mut UnwindInfo;
-        unsafe {
-            std::ptr::write(
-                unwind_info,
-                UnwindInfo {
-                    version_flags: 1 | (0 << 3) as u8,
-                    size_of_prolog: prolog_len.0 as u8,
-                    count_of_unwind_code: 3,
-                    frame_register_frame_register_offset: 0,
-                    // the unwind code must be in reverse order. Read 3.b) of Unwind Procedure.
-                    unwind_codes_array: [
-                        UnwindCode {
-                            offset_in_prolog: push_rax_offset.0 as u8,
-                            code_info: UWOP_PUSH_NONVOL | (RAX << 4),
-                        },
-                        UnwindCode {
-                            offset_in_prolog: push_rbx_offset.0 as u8,
-                            code_info: UWOP_PUSH_NONVOL | (RBX << 4),
-                        },
-                        UnwindCode {
-                            offset_in_prolog: push_rbp_offset.0 as u8,
-                            code_info: UWOP_PUSH_NONVOL | (RPB << 4),
-                        },
-                    ],
-                },
-            );
-        }
-
-        let function_table =
-            buffer[function_table_offset..].as_mut_ptr() as *mut IMAGE_RUNTIME_FUNCTION_ENTRY;
-        unsafe {
-            std::ptr::write(
-                function_table,
-                IMAGE_RUNTIME_FUNCTION_ENTRY {
-                    BeginAddress: 0,
-                    EndAddress: code.len() as u32,
-                    Anonymous: IMAGE_RUNTIME_FUNCTION_ENTRY_0 {
-                        UnwindInfoAddress: unwind_info_offset as u32,
-                    },
-                },
-            );
-        }
-
-        if unsafe { RtlAddFunctionTable(function_table, 1, dyn_base) } == 0 {
-            println!("Registering Function Table failed!!");
-        }
 
         let compiled_code = buffer.make_exec().unwrap();
 

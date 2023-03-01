@@ -9,6 +9,7 @@ edition = "2021"
 gameroy-core = { path = "../core" }
 
 dynasmrt = "2.0.0"
+cfg-if = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.45.0", features = [

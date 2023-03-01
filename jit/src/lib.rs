@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use dynasmrt::{dynasm, x86::X86Relocation, DynasmApi, ExecutableBuffer};
+use dynasmrt::{dynasm, mmap::MutableBuffer, x86::X86Relocation, DynasmApi, ExecutableBuffer};
 use gameroy::{
     consts::LEN,
     disassembler::{Address, Cursor},
@@ -9,6 +9,7 @@ use gameroy::{
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
+#[cfg(target_os = "windows")]
 mod windows;
 
 pub struct Block {
@@ -213,13 +214,20 @@ impl<'a> BlockCompiler<'a> {
 
         let code = ops.finalize().unwrap();
 
-        let buffer = windows::to_mutable_buffer_with_unwin_info(
-            code,
-            prolog_len,
-            push_rax_offset,
-            push_rbx_offset,
-            push_rbp_offset,
-        );
+        cfg_if::cfg_if! {
+            if #[cfg(target_os = "windows")] {
+                let buffer = windows::to_mutable_buffer_with_unwin_info(
+                    code,
+                    prolog_len,
+                    push_rax_offset,
+                    push_rbx_offset,
+                    push_rbp_offset,
+                );
+            } else {
+                let _ = (prolog_len, push_rax_offset, push_rbx_offset, push_rbp_offset);
+                let buffer = to_mutable_buffer(code);
+            }
+        }
 
         let compiled_code = buffer.make_exec().unwrap();
 
@@ -231,6 +239,14 @@ impl<'a> BlockCompiler<'a> {
             _compiled_code: compiled_code,
         }
     }
+}
+
+#[allow(dead_code)]
+fn to_mutable_buffer(code: Vec<u8>) -> MutableBuffer {
+    let mut buffer = MutableBuffer::new(code.len()).unwrap();
+    buffer.set_len(code.len());
+    buffer[..].copy_from_slice(code.as_slice());
+    buffer
 }
 
 fn interpreter_call(op: u8) -> extern "sysv64" fn(&mut GameBoy) {

@@ -1193,6 +1193,7 @@ dependencies = [
 name = "gameroy-jit"
 version = "0.1.0"
 dependencies = [
+ "cfg-if 1.0.0",
  "dynasmrt",
  "gameroy-core",
  "windows-sys 0.45.0",

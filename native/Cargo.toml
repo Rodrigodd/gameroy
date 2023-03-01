@@ -26,11 +26,15 @@ default = ["threads", "console", "audio-engine", "rfd"]
 [dependencies]
 
 gameroy = { path = "..", default-features = false }
-gameroy-jit = { path = "../jit" }
+
 winit = "0.26.1"
 flexi_logger = "0.22.3"
 clap = "3.1.5"
 log = "0.4"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+
+gameroy-jit = { path = "../jit" }
 
 [build-dependencies]
 embed-resource = "1.7.1"

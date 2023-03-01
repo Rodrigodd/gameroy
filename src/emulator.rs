@@ -9,7 +9,6 @@ use gameroy::{
     interpreter::Interpreter,
     parser::Vbm,
 };
-use gameroy_jit::JitCompiler;
 use instant::{Instant, SystemTime};
 use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
@@ -351,7 +350,8 @@ pub struct Emulator {
     gb: Arc<ParkMutex<GameBoy>>,
     proxy: EventLoopProxy<UserEvent>,
 
-    jit_compiler: JitCompiler,
+    #[cfg(target_arch = "x86_64")]
+    jit_compiler: gameroy_jit::JitCompiler,
 
     joypad: Arc<ParkMutex<Timeline>>,
 
@@ -455,7 +455,8 @@ impl Emulator {
         Self {
             gb,
             proxy,
-            jit_compiler: JitCompiler::new(),
+            #[cfg(target_arch = "x86_64")]
+            jit_compiler: gameroy_jit::JitCompiler::new(),
             joypad,
             rom,
             debug: false,
@@ -725,7 +726,10 @@ impl Emulator {
                     }
 
                     while gb.clock_count < target_clock {
+                        #[cfg(target_arch = "x86_64")]
                         self.jit_compiler.interpret_block(&mut gb);
+                        #[cfg(not(target_arch = "x86_64"))]
+                        Interpreter(&mut gb).interpret_op();
                     }
 
                     drop(gb);

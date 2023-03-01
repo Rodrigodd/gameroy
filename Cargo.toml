@@ -33,7 +33,6 @@ flexi_logger = "0.22.3"
 [dependencies]
 
 gameroy-core = { path = "core" }
-gameroy-jit = { path = "jit" }
 
 # giui = { path = "../giui" }
 giui = { git = "https://github.com/Rodrigodd/giui" }
@@ -62,6 +61,10 @@ cfg-if = "1.0.0"
 toml = "0.5.9"
 flate2 = "1.0.24"
 ureq = { version = "2.6.2", default-features = false }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+
+gameroy-jit = { path = "jit" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 

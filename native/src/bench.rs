@@ -9,8 +9,6 @@ use gameroy_lib::gameroy::{
     interpreter::Interpreter,
 };
 
-use gameroy_jit::JitCompiler;
-
 // Return the mean and standart error of the samples
 fn mean(samples: &[Duration]) -> (Duration, Duration) {
     let sum: Duration = samples.iter().sum();
@@ -66,6 +64,12 @@ pub fn benchmark(
     game_boy.serial.get_mut().serial_transfer_callback = None;
 
     let mut times = if jit {
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            eprintln!("JIT mode only avaliable on x86_64");
+            return;
+        }
+        #[cfg(target_arch = "x86_64")]
         run_jitted(len, &mut game_boy, timeout)
     } else {
         run_interpreted(len, &mut game_boy, timeout)
@@ -100,8 +104,9 @@ fn run_interpreted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Dura
     times
 }
 
+#[cfg(target_arch = "x86_64")]
 fn run_jitted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration> {
-    let mut jit_compiler = JitCompiler::new();
+    let mut jit_compiler = gameroy_jit::JitCompiler::new();
 
     let mut times = Vec::with_capacity(len);
     for _ in 0..len {

@@ -424,29 +424,17 @@ impl Trace {
                 let cursors = &std::cell::RefCell::new(cursors);
                 let only_one_bank = rom.cartridge.num_banks() == 2;
 
-                let jump = move |dest| {
-                    // jumps from rom to ram are ignored
-                    if dest > 0x7FFF {
-                        return;
-                    }
-                    self.add_jump(address, bank, dest);
-                    let bank = if only_one_bank {
-                        // If there is only one switchable bank, it will be the active.
-                        Some(1)
-                    } else if dest < 0x4000 {
-                        // if it jump to the bank 0, the program can switch banks.
-                        None
-                    } else {
-                        // if it continue in this bank, it is unlikely that it will switch banks.
-                        bank
-                    };
-                    cursors.borrow_mut().push(Cursor {
-                        bank,
-                        pc: dest,
-                        reg_a: None,
-                    });
-                };
-                compute_step(cursors, len, cursor, &op, jump);
+                let (step, jump) = compute_step(len, cursor, &op, only_one_bank);
+                cursors.borrow_mut().extend(step);
+
+                let Some(jump) = jump else { return };
+
+                // jumps from rom to ram are ignored
+                if jump.pc > 0x7FFF {
+                    return;
+                }
+                self.add_jump(address, bank, jump.pc);
+                cursors.borrow_mut().push(jump);
             }
             None => {
                 if pc <= 0x7FFF {
@@ -468,24 +456,10 @@ impl Trace {
                 let cursors = &std::cell::RefCell::new(cursors);
                 let only_one_bank = rom.cartridge.num_banks() == 2;
 
-                let jump = move |dest| {
-                    let bank = if only_one_bank {
-                        // If there is only one switchable bank, it will be the active.
-                        Some(1)
-                    } else if dest < 0x4000 {
-                        // if it jump to the bank 0, the program can switch banks.
-                        None
-                    } else {
-                        // if it continue in this bank, it is unlikely that it will switch banks.
-                        bank
-                    };
-                    cursors.borrow_mut().push(Cursor {
-                        bank,
-                        pc: dest,
-                        reg_a: None,
-                    });
-                };
-                compute_step(cursors, len, cursor, &op, jump);
+                let (step, jump) = compute_step(len, cursor, &op, only_one_bank);
+                cursors
+                    .borrow_mut()
+                    .extend([step, jump].into_iter().flatten());
             }
         }
     }
@@ -523,64 +497,85 @@ impl Trace {
     }
 }
 
+/// Return a (step, jump) pair.
 pub fn compute_step(
-    cursors: &std::cell::RefCell<&mut Vec<Cursor>>,
     len: u8,
     curr: Cursor,
     op: &[u8],
-    mut jump: impl FnMut(u16),
-) {
+    only_one_bank: bool,
+) -> (Option<Cursor>, Option<Cursor>) {
     let Cursor { pc, bank, reg_a } = curr;
     let step = move || {
-        cursors.borrow_mut().push(Cursor {
+        Some(Cursor {
             bank,
             pc: pc + len as u16,
             reg_a,
+        })
+    };
+    let jump = move |dest: u16| {
+        let bank = if only_one_bank {
+            // If there is only one switchable bank, it will be the active.
+            Some(1)
+        } else if dest < 0x4000 {
+            // if it jump to the bank 0, the program can switch banks.
+            None
+        } else {
+            // if it continue in this bank, it is unlikely that it will switch banks.
+            bank
+        };
+        Some(Cursor {
+            bank,
+            pc: dest,
+            reg_a: None,
         })
     };
     match op[0] {
         0xC3 => {
             // JP $aaaa
             let dest = u16::from_le_bytes([op[1], op[2]]);
-            jump(dest);
+            (None, jump(dest))
         }
         0xE9 => {
             // JP (HL)
             // I can't predict where this will jump to
+            (None, None)
         }
         x if x & 0b11100111 == 0b11000010 => {
             // JP cc, $aaaa
             let dest = u16::from_le_bytes([op[1], op[2]]);
-            jump(dest);
-            step();
+            (step(), jump(dest))
         }
         0x18 => {
             // JR $rr
             let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-            jump(dest);
-            step();
+            (step(), jump(dest))
         }
         x if x & 0b1110_0111 == 0b0010_0000 => {
             // JR cc, $rr
             let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
-            jump(dest);
-            step();
+            (step(), jump(dest))
         }
         x if x & 0b1100_1111 == 0b0000_1010 || x & 0b1111_1000 == 0b0111_1000 => {
             // LD A, ?
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: pc + len as u16,
-                reg_a: None,
-            })
+            (
+                Some(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a: None,
+                }),
+                None,
+            )
         }
         0x3e => {
             // LD A, d8
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: pc + len as u16,
-                reg_a: Some(op[1]),
-            })
+            (
+                Some(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a: Some(op[1]),
+                }),
+                None,
+            )
         }
         0xEA => {
             // LD (a16), A
@@ -595,24 +590,28 @@ pub fn compute_step(
                     bank = None;
                 }
             }
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: pc + len as u16,
-                reg_a,
-            })
+            (
+                Some(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a,
+                }),
+                None,
+            )
         }
         0x08 => {
             // LD (a16), SP
             let address = u16::from_le_bytes([op[1], op[2]]);
-            if (0x2000..=0x3FFF).contains(&address) {
-                cursors.borrow_mut().push(Cursor {
+            let step = if (0x2000..=0x3FFF).contains(&address) {
+                Some(Cursor {
                     bank: None,
                     pc: pc + len as u16,
                     reg_a,
                 })
             } else {
-                step();
-            }
+                step()
+            };
+            (step, None)
         }
         x if x == 0x36
             || x & 0b1100_1111 == 0b0000_0010
@@ -621,40 +620,48 @@ pub fn compute_step(
             // LD (?), ?
             // this could switch bank, but is unlikely to happen when inside a switchable bank.
             let bank = if pc < 0x4000 { None } else { bank };
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: pc + len as u16,
-                reg_a,
-            })
+            (
+                Some(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a,
+                }),
+                None,
+            )
         }
         x if x == 0xCD || x & 0b11100111 == 0b11000100 => {
             // CALL $aaaa or CALL cc, $aaaa
             let dest = u16::from_le_bytes([op[1], op[2]]);
-            jump(dest);
             // the call could switch bank, but is unlikely to happen when inside a switchable bank.
             let bank = if pc >= 0x4000 || dest >= 0x4000 {
                 bank
             } else {
                 None
             };
-            cursors.borrow_mut().push(Cursor {
-                bank,
-                pc: pc + len as u16,
-                reg_a: None,
-            })
+            (
+                Some(Cursor {
+                    bank,
+                    pc: pc + len as u16,
+                    reg_a: None,
+                }),
+                jump(dest),
+            )
         }
-        0xC9 | 0xD9 => { /* RET or RETI */ }
+        0xC9 | 0xD9 => {
+            // RET or RETI
+            (None, None)
+        }
         x if x & 0b11000111 == 0b11000111 => {
             // RST n
             let dest = (x & 0b00111000) as u16;
-            jump(dest);
-            // TODO: same RST (and maybe others calls too) discard the return address in the calee,
-            // so tracing the next instruction here would be wrong.
-            step();
+            (
+                // TODO: some RST (and maybe others calls too) discard the return address in the
+                // calee, so tracing the next instruction here would be wrong.
+                step(),
+                jump(dest),
+            )
         }
-        _ => {
-            step();
-        }
+        _ => (step(), None),
     }
 }
 

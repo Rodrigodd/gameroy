@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use dynasmrt::{dynasm, mmap::MutableBuffer, x86::X86Relocation, DynasmApi, ExecutableBuffer};
@@ -40,27 +39,25 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u16) {
     };
 
     let mut cursors = vec![cursor];
-    let cursors = RefCell::new(&mut cursors);
-
-    let stop = std::cell::Cell::new(false);
-    let jump = |_dest| {
-        stop.set(true);
-    };
 
     let mut max_clock_cycles = 0;
     let mut length = 0;
 
-    while let Some(cursor) = {
-        let mut x = cursors.borrow_mut();
-        x.pop()
-    } {
+    let only_one_bank = gb.cartridge.num_banks() == 2;
+
+    while let Some(cursor) = cursors.pop() {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
         max_clock_cycles += gameroy::consts::CLOCK[op[0] as usize] as u16;
-        gameroy::disassembler::compute_step(&cursors, len, cursor, &op, jump);
-        if stop.get() || [0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
+
+        let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
+
+        if jump.is_some() || [0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
             break;
         }
+
+        let Some(step) = step else { break };
+        cursors.push(step);
     }
 
     // in case any of the instructions branches.
@@ -103,7 +100,7 @@ impl JitCompiler {
         let next_interrupt = gb.next_interrupt();
         match block {
             Some(block) if (gb.clock_count + block.max_clock_cycles as u64) < next_interrupt => {
-                // println!("running {:04x}", block.start_address);
+                // println!("running {:04x}", block._start_address);
                 block.call(gb);
             }
             _ => {

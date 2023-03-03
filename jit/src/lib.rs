@@ -57,7 +57,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
 
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
 
-        if jump.is_some() || [0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
+        if jump.is_some() || [0x76, 0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
             break;
         }
 

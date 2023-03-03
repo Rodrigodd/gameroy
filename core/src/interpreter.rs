@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use crate::{
     consts,
     gameboy::{
@@ -65,83 +67,7 @@ fn add(a: u8, b: u8) -> u8 {
 pub struct Interpreter<'a>(pub &'a mut GameBoy);
 impl Interpreter<'_> {
     pub fn interpret_op(&mut self) {
-        self.0.update_interrupt();
-
-        if self.0.v_blank_trigger.get() {
-            self.0.v_blank_trigger.set(false);
-            self.0.call_v_blank_callback();
-        }
-
-        if self.0.cpu.state == CpuState::Halt {
-            self.0.tick(2);
-        }
-
-        self.0.update_interrupt();
-        let interrupts: u8 = self.0.interrupt_flag.get() & self.0.interrupt_enabled;
-
-        if self.0.cpu.state == CpuState::Halt {
-            self.0.tick(2);
-        }
-
-        // TODO: I don't know the behaviour of Stopped state. Treating the same as Halt.
-        if self.0.cpu.state == CpuState::Stopped {
-            self.0.tick(2);
-        }
-
-        if interrupts != 0 {
-            self.0.cpu.state = CpuState::Running;
-
-            if self.0.cpu.ime == ImeState::Enabled {
-                self.0.cpu.ime = ImeState::Disabled;
-                self.0.tick(4);
-                let mut interrupt = 8;
-                let mut address = 0x00;
-                // The push could overwrite IE, canceling the jump, but only it first write. PC is
-                // set to 0x0000 instead.
-                {
-                    let value = self.0.cpu.pc;
-                    let [lsb, msb] = value.to_le_bytes();
-                    self.0.tick(4); // 1 M-cycle with SP in address buss
-                    self.0.write(sub16(self.0.cpu.sp, 1), msb);
-
-                    self.0.update_interrupt();
-                    if self.0.interrupt_flag.get() & self.0.interrupt_enabled != 0 {
-                        interrupt = (self.0.interrupt_flag.get() & self.0.interrupt_enabled)
-                            .trailing_zeros() as usize;
-                        address = [
-                            0x40, // V-Blank
-                            0x48, // STAT
-                            0x50, // Timer
-                            0x58, // Serial
-                            0x60, // Joypad
-                        ][interrupt];
-                    }
-                    self.0.tick(4); // 1 M-cycle with SP-1 in address buss
-                    self.0.write(sub16(self.0.cpu.sp, 2), lsb);
-                    self.0.tick(4); // 1 M-cycle with SP-2 in address buss
-                    self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
-                };
-
-                if interrupt != 8 {
-                    self.0.update_interrupt();
-                    self.0
-                        .interrupt_flag
-                        .set(self.0.interrupt_flag.get() & !(1 << interrupt));
-                    self.jump_to(address);
-                } else {
-                    self.jump_to(0x0000);
-                }
-                self.0.tick(4);
-
-                // return, to allow detecting the interrupt
-                return;
-            }
-        }
-        if self.0.cpu.ime == ImeState::ToBeEnable {
-            self.0.cpu.ime = ImeState::Enabled;
-        }
-
-        if self.0.cpu.state != CpuState::Running {
+        if let ControlFlow::Break(_) = self.handle_interrupt() {
             return;
         }
 
@@ -678,6 +604,91 @@ impl Interpreter<'_> {
             // RST 38H 1:16 - - - -
             0xff => self.rst(0x38),
         }
+    }
+
+    pub fn handle_interrupt(&mut self) -> ControlFlow<()> {
+        self.0.update_interrupt();
+
+        if self.0.v_blank_trigger.get() {
+            self.0.v_blank_trigger.set(false);
+            self.0.call_v_blank_callback();
+        }
+
+        if self.0.cpu.state == CpuState::Halt {
+            self.0.tick(2);
+        }
+
+        self.0.update_interrupt();
+        let interrupts: u8 = self.0.interrupt_flag.get() & self.0.interrupt_enabled;
+
+        if self.0.cpu.state == CpuState::Halt {
+            self.0.tick(2);
+        }
+
+        // TODO: I don't know the behaviour of Stopped state. Treating the same as Halt.
+        if self.0.cpu.state == CpuState::Stopped {
+            self.0.tick(2);
+        }
+
+        if interrupts != 0 {
+            self.0.cpu.state = CpuState::Running;
+
+            if self.0.cpu.ime == ImeState::Enabled {
+                self.0.cpu.ime = ImeState::Disabled;
+                self.0.tick(4);
+                let mut interrupt = 8;
+                let mut address = 0x00;
+                // The push could overwrite IE, canceling the jump, but only it first write. PC is
+                // set to 0x0000 instead.
+                {
+                    let value = self.0.cpu.pc;
+                    let [lsb, msb] = value.to_le_bytes();
+                    self.0.tick(4); // 1 M-cycle with SP in address buss
+                    self.0.write(sub16(self.0.cpu.sp, 1), msb);
+
+                    self.0.update_interrupt();
+                    if self.0.interrupt_flag.get() & self.0.interrupt_enabled != 0 {
+                        interrupt = (self.0.interrupt_flag.get() & self.0.interrupt_enabled)
+                            .trailing_zeros() as usize;
+                        address = [
+                            0x40, // V-Blank
+                            0x48, // STAT
+                            0x50, // Timer
+                            0x58, // Serial
+                            0x60, // Joypad
+                        ][interrupt];
+                    }
+                    self.0.tick(4); // 1 M-cycle with SP-1 in address buss
+                    self.0.write(sub16(self.0.cpu.sp, 2), lsb);
+                    self.0.tick(4); // 1 M-cycle with SP-2 in address buss
+                    self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
+                };
+
+                if interrupt != 8 {
+                    self.0.update_interrupt();
+                    self.0
+                        .interrupt_flag
+                        .set(self.0.interrupt_flag.get() & !(1 << interrupt));
+                    self.jump_to(address);
+                } else {
+                    self.jump_to(0x0000);
+                }
+                self.0.tick(4);
+
+                // return, to allow detecting the interrupt
+                return ControlFlow::Break(());
+            }
+        }
+        if self.0.cpu.ime == ImeState::ToBeEnable {
+            self.0.cpu.ime = ImeState::Enabled;
+        }
+
+        // TODO: I don't know the behaviour of Stopped state. Treating the same as Halt.
+
+        if self.0.cpu.state != CpuState::Running {
+            return ControlFlow::Break(());
+        }
+        ControlFlow::Continue(())
     }
 
     pub fn interpret_op_cb(&mut self) {

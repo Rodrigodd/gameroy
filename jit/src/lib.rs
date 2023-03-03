@@ -103,10 +103,13 @@ impl JitCompiler {
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {
         let block = self.get_block(gb);
         let next_interrupt = gb.next_interrupt();
+        let start_clock = gb.clock_count;
         match block {
             Some(block) if (gb.clock_count + block.max_clock_cycles as u64) < next_interrupt => {
                 // println!("running {:04x}", block._start_address);
                 block.call(gb);
+                debug_assert!(gb.clock_count - start_clock <= block.max_clock_cycles as u64);
+                debug_assert!(gb.clock_count != start_clock);
             }
             _ => {
                 let mut inter = Interpreter(gb);

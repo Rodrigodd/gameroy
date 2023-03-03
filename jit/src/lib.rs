@@ -118,7 +118,7 @@ impl JitCompiler {
 
                     inter.interpret_op();
 
-                    if have_jump {
+                    if have_jump || inter.0.cpu.state != CpuState::Running {
                         break;
                     }
                 }

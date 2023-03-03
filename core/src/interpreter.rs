@@ -679,11 +679,10 @@ impl Interpreter<'_> {
                 return ControlFlow::Break(());
             }
         }
+
         if self.0.cpu.ime == ImeState::ToBeEnable {
             self.0.cpu.ime = ImeState::Enabled;
         }
-
-        // TODO: I don't know the behaviour of Stopped state. Treating the same as Halt.
 
         if self.0.cpu.state != CpuState::Running {
             return ControlFlow::Break(());

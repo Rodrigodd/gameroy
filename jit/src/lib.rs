@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use dynasmrt::{dynasm, mmap::MutableBuffer, x86::X86Relocation, DynasmApi, ExecutableBuffer};
 use gameroy::{
-    consts::LEN,
+    consts::{CB_CLOCK, CLOCK, LEN},
     disassembler::{Address, Cursor},
     gameboy::GameBoy,
     interpreter::{Condition, Interpreter, Reg, Reg16},
@@ -49,6 +49,9 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
         max_clock_cycles += CLOCK[op[0] as usize] as u32;
+        if op[0] == 0xcb {
+            max_clock_cycles += CB_CLOCK[op[1] as usize] as u32;
+        }
 
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
 

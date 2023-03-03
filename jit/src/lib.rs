@@ -141,12 +141,16 @@ struct BlockCompiler<'gb> {
 macro_rules! call {
     ($($call:tt)*) => {
         {
-            extern "sysv64" fn function(gb: &mut GameBoy) {
+            extern "sysv64" fn function(gb: &mut GameBoy) -> bool {
                 // println!("running {}", stringify!($($call)*));
                 let mut interpreter = Interpreter(gb);
+                if interpreter.handle_interrupt().is_break() {
+                    return true;
+                }
                 //call to instructions relies on pc being already read.
                 interpreter.read_next_pc();
-                interpreter.$($call)*
+                interpreter.$($call)*;
+                false
             }
             function
         }
@@ -208,11 +212,14 @@ impl<'a> BlockCompiler<'a> {
                 ; mov rax, QWORD call as usize as i64
                 ; mov rdi, rbx
                 ; call rax
+                ; test rax, rax
+                ; jnz ->exit
             )
         }
 
         dynasm!(ops
             ; .arch x64
+            ; ->exit:
             ; pop rax
             ; pop rbx
             ; pop rbp
@@ -258,7 +265,7 @@ fn to_mutable_buffer(code: Vec<u8>) -> MutableBuffer {
     buffer
 }
 
-fn interpreter_call(op: u8) -> extern "sysv64" fn(&mut GameBoy) {
+fn interpreter_call(op: u8) -> extern "sysv64" fn(&mut GameBoy) -> bool {
     use Condition::*;
     match op {
         // NOP 1:4 - - - -

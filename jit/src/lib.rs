@@ -14,7 +14,7 @@ mod windows;
 pub struct Block {
     _start_address: u16,
     _length: u16,
-    max_clock_cycles: u16,
+    max_clock_cycles: u32,
     fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
     _compiled_code: ExecutableBuffer,
 }
@@ -29,7 +29,7 @@ impl Block {
     }
 }
 
-fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u16) {
+fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
@@ -48,7 +48,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u16) {
     while let Some(cursor) = cursors.pop() {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
-        max_clock_cycles += gameroy::consts::CLOCK[op[0] as usize] as u16;
+        max_clock_cycles += CLOCK[op[0] as usize] as u32;
 
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
 
@@ -123,7 +123,7 @@ struct BlockCompiler<'gb> {
     gb: &'gb GameBoy,
     pc: u16,
     length: u16,
-    max_clock_cycles: u16,
+    max_clock_cycles: u32,
 }
 
 macro_rules! call {

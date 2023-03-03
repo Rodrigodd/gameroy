@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use dynasmrt::{dynasm, mmap::MutableBuffer, x86::X86Relocation, DynasmApi, ExecutableBuffer};
+use dynasmrt::{
+    dynasm, mmap::MutableBuffer, x64::X64Relocation, DynasmApi, DynasmLabelApi, ExecutableBuffer,
+};
 use gameroy::{
     consts::{CB_CLOCK, CLOCK, LEN},
     disassembler::{Address, Cursor},
@@ -169,7 +171,7 @@ impl<'a> BlockCompiler<'a> {
             self.length,
             self.max_clock_cycles,
         );
-        let mut ops: dynasmrt::VecAssembler<X86Relocation> = dynasmrt::VecAssembler::new(0);
+        let mut ops: dynasmrt::VecAssembler<X64Relocation> = dynasmrt::VecAssembler::new(0);
 
         let push_rbp_offset;
         let push_rbx_offset;

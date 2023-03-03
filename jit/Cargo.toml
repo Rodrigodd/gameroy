@@ -16,3 +16,6 @@ windows-sys = { version = "0.45.0", features = [
     "Win32_System_Diagnostics_Debug",
     "Win32_Foundation",
 ] }
+
+[dev-dependencies]
+rayon = "1.6.1"

@@ -6,7 +6,7 @@ use dynasmrt::{
 use gameroy::{
     consts::{CB_CLOCK, CLOCK, LEN},
     disassembler::{Address, Cursor},
-    gameboy::GameBoy,
+    gameboy::{cpu::CpuState, GameBoy},
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
@@ -105,13 +105,17 @@ impl JitCompiler {
         let next_interrupt = gb.next_interrupt();
         let start_clock = gb.clock_count;
         match block {
-            Some(block) if (gb.clock_count + block.max_clock_cycles as u64) < next_interrupt => {
-                // println!("running {:04x}", block._start_address);
+            Some(block)
+                if gb.cpu.state == CpuState::Running
+                    && (gb.clock_count + block.max_clock_cycles as u64 + 4) < next_interrupt =>
+            {
+                // println!("running {:04x} ({})", block._start_address, gb.clock_count);
                 block.call(gb);
                 debug_assert!(gb.clock_count - start_clock <= block.max_clock_cycles as u64);
                 debug_assert!(gb.clock_count != start_clock);
             }
             _ => {
+                // println!("interpr {:04x} ({})", gb.cpu.pc, gb.clock_count);
                 let mut inter = Interpreter(gb);
                 loop {
                     let have_jump = inter.will_jump_to().is_some();

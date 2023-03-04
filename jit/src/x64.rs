@@ -1,17 +1,44 @@
-use dynasmrt::{dynasm, mmap::MutableBuffer, x64::X64Relocation, DynasmApi, DynasmLabelApi};
+use dynasmrt::{
+    dynasm, mmap::MutableBuffer, x64::X64Relocation, DynasmApi, DynasmLabelApi, VecAssembler,
+};
 
 use gameroy::{
-    consts::LEN,
-    gameboy::{cpu::ImeState, GameBoy},
+    consts::{CB_CLOCK, CLOCK, LEN},
+    gameboy::{
+        cpu::{Cpu, ImeState},
+        GameBoy,
+    },
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
 use crate::{trace_a_block, Block};
 
+macro_rules! offset {
+    (@ $parent:path, $field:tt) => {
+        memoffset::offset_of!($parent, $field)
+    };
+    (@ $parent:path, $field:tt : $next:path, $($tail:tt)*) => {
+        {
+            #[allow(dead_code)] fn is_eq(x: $parent) -> $next { x.$field }
+            memoffset::offset_of!($parent, $field)
+        }
+        + offset!(@ $next, $($tail)*)
+    };
+    ($parent:path, $field:tt : $next:path, $($tail:tt)*) => {
+        offset!(@ $parent, $field: $next, $($tail)*)
+    };
+    ($parent:path, $field:tt) => {
+        memoffset::offset_of!($parent, $field)
+    };
+}
+
 pub struct BlockCompiler<'gb> {
     gb: &'gb GameBoy,
+    /// The value of PC for the current instruction
     pc: u16,
     length: u16,
+    /// the accumulated clock count since the last write to GameBoy.clock_count
+    accum_clock_count: u32,
     max_clock_cycles: u32,
 }
 
@@ -22,16 +49,12 @@ impl<'a> BlockCompiler<'a> {
             gb,
             pc: start,
             length,
+            accum_clock_count: 0,
             max_clock_cycles,
         }
     }
 
-    fn read_next_op(&mut self) -> u8 {
-        let op = self.gb.read(self.pc);
-        self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
-        op
-    }
-
+    /// Update self.pc to the next instruction
     pub fn compile_block(mut self) -> Block {
         println!(
             "compiling {:02x}_{:04x} (len: {}, cycles: {})",
@@ -63,22 +86,29 @@ impl<'a> BlockCompiler<'a> {
         let start = self.pc;
         let end = start + self.length;
         while self.pc < end {
-            let op = self.read_next_op();
+            let op = self.gb.read(self.pc);
+
             // if STOP or HALT, fallback to interpreter
             if op == 0x10 || op == 0x76 {
                 break;
             }
 
-            let call = interpreter_call(op);
-            dynasm!(ops
-                ; .arch x64
-                ; mov rax, QWORD call as usize as i64
-                ; mov rdi, rbx
-                ; call rax
-                ; test rax, rax
-                ; jnz ->exit
-            )
+            // if true, the opcode was compiled without handling clock_count
+            if self.compile_opcode(&mut ops, op) {
+                // TODO: remember to include branching time when implemented.
+                self.accum_clock_count += CLOCK[op as usize] as u32;
+                if op == 0xcb {
+                    self.accum_clock_count += CB_CLOCK[op as usize] as u32;
+                }
+            }
+
+            self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
         }
+
+        self.update_clock_count(&mut ops);
+
+        // NOTE: this is current unecessary because all blocks end up in a interpreter call.
+        // self.update_pc(&mut ops);
 
         dynasm!(ops
             ; .arch x64
@@ -118,6 +148,72 @@ impl<'a> BlockCompiler<'a> {
             _compiled_code: compiled_code,
         }
     }
+
+    fn update_clock_count(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        // add the accumulated clock_count
+        if self.accum_clock_count != 0 {
+            assert!(self.accum_clock_count <= i32::MAX as u32);
+            let c = offset!(GameBoy, clock_count);
+            dynasm!(ops
+                ; .arch x64
+                ; add DWORD [rbx + c as i32], self.accum_clock_count as i32
+            );
+            self.accum_clock_count = 0;
+        }
+    }
+
+    fn update_pc(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let pc = offset!(GameBoy, cpu: Cpu, pc);
+        dynasm!(ops
+            ; .arch x64
+            ; mov WORD [rbx + pc as i32], self.pc as i16
+        );
+    }
+
+    /// Compile a Opcode. Return false if the compiled fallbacks to the interpreter (which means
+    /// that clock_count were already updated).
+    fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
+        match op {
+            // INC BC 1:8 - - - -
+            // 0x03 => inc(ops, Reg::BC),
+            // INC B 1:4 Z 0 H -
+            0x04 => inc(ops, Reg::B),
+            // INC C 1:4 Z 0 H -
+            0x0c => inc(ops, Reg::C),
+            // INC DE 1:8 - - - -
+            // 0x13 => inc(ops, Reg::DE),
+            // INC D 1:4 Z 0 H -
+            0x14 => inc(ops, Reg::D),
+            // INC E 1:4 Z 0 H -
+            0x1c => inc(ops, Reg::E),
+            // INC HL 1:8 - - - -
+            // 0x23 => inc(ops, Reg::HL),
+            // INC H 1:4 Z 0 H -
+            0x24 => inc(ops, Reg::H),
+            // INC L 1:4 Z 0 H -
+            0x2c => inc(ops, Reg::L),
+            // INC SP 1:8 - - - -
+            // 0x33 => inc(ops, Reg::SP),
+            // INC A 1:4 Z 0 H -
+            0x3c => inc(ops, Reg::A),
+            _ => {
+                self.update_clock_count(ops);
+                self.update_pc(ops);
+
+                let call = interpreter_call(op);
+                dynasm!(ops
+                    ; .arch x64
+                    ; mov rax, QWORD call as usize as i64
+                    ; mov rdi, rbx
+                    ; call rax
+                    ; test rax, rax
+                    ; jnz ->exit
+                );
+                return false;
+            }
+        }
+        true
+    }
 }
 
 #[allow(dead_code)]
@@ -126,6 +222,61 @@ fn to_mutable_buffer(code: Vec<u8>) -> MutableBuffer {
     buffer.set_len(code.len());
     buffer[..].copy_from_slice(code.as_slice());
     buffer
+}
+
+pub fn inc(ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    let reg = match reg {
+        Reg::A => offset!(GameBoy, cpu: Cpu, a),
+        Reg::B => offset!(GameBoy, cpu: Cpu, b),
+        Reg::C => offset!(GameBoy, cpu: Cpu, c),
+        Reg::D => offset!(GameBoy, cpu: Cpu, d),
+        Reg::E => offset!(GameBoy, cpu: Cpu, e),
+        Reg::H => offset!(GameBoy, cpu: Cpu, h),
+        Reg::L => offset!(GameBoy, cpu: Cpu, l),
+        Reg::BC => {
+            // self.0.cpu.set_bc(add16(self.0.cpu.bc(), 1));
+            // self.0.tick(4);
+            // return;
+            unimplemented!()
+        }
+        Reg::DE => {
+            // self.0.cpu.set_de(add16(self.0.cpu.de(), 1));
+            // self.0.tick(4);
+            // return;
+            unimplemented!()
+        }
+        Reg::HL => {
+            // self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
+            // self.0.tick(4);
+            // return;
+            unimplemented!()
+        }
+        Reg::SP => {
+            // self.0.cpu.sp = add16(self.0.cpu.sp, 1);
+            // self.0.tick(4);
+            // return;
+            unimplemented!()
+        }
+        _ => unreachable!(),
+    };
+    let f = offset!(GameBoy, cpu: Cpu, f);
+
+    // use rax, rcx, rdx
+    dynasm!(ops
+        ; movzx	eax, [rbx + reg as i32] // load reg
+        ; movzx	ecx, [rbx + f as i32]   // load f
+        ; inc	al                      // increase reg
+        ; sete	dl // Z flag
+        ; mov	[rbx + reg as i32], al  // save reg
+        ; and	cl, 0x1F                // clear Z, N, H
+        ; shl	dl, 7
+        ; or	dl, cl                  // set Z
+        ; test	al, 0xF
+        ; sete	al // H flag
+        ; shl	al, 5
+        ; or	al, dl                  // set H
+        ; mov	[rbx + f as i32], al    // save f
+    );
 }
 
 macro_rules! call {

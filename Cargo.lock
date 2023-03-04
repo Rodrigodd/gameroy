@@ -1196,6 +1196,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "dynasmrt",
  "gameroy-core",
+ "memoffset 0.8.0",
  "rayon",
  "windows-sys 0.45.0",
 ]

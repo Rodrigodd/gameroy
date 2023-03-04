@@ -125,11 +125,18 @@ impl JitCompiler {
                 // println!("interpr {:04x} ({})", gb.cpu.pc, gb.clock_count);
                 let mut inter = Interpreter(gb);
                 loop {
-                    let have_jump = inter.will_jump_to().is_some();
+                    let op = inter.0.read(inter.0.cpu.pc);
 
                     inter.interpret_op();
 
-                    if have_jump || inter.0.cpu.state != CpuState::Running {
+                    let is_jump = [
+                        0xc2, 0xc3, 0xca, 0xd2, 0xda, 0xe9, 0x18, 0x20, 0x28, 0x30, 0x38, 0xc4,
+                        0xcc, 0xcd, 0xd4, 0xdc, 0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9, 0xc7, 0xcf,
+                        0xd7, 0xdf, 0xe7, 0xef, 0xf7, 0xff,
+                    ]
+                    .contains(&op);
+
+                    if is_jump || inter.0.cpu.state != CpuState::Running {
                         break;
                     }
                 }

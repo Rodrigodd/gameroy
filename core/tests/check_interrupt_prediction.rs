@@ -187,7 +187,11 @@ fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> 
                     print!("|");
                     for x in 0..SCREEN_WIDTH {
                         let c = screen[y * SCREEN_WIDTH + x];
-                        print!("{}", [' ', '.', '+', '@'][c as usize]);
+                        if c < 4 {
+                            print!("{}", [' ', '.', '+', '@', '~'][c as usize]);
+                        } else {
+                            print!("x{:x}", c);
+                        }
                     }
                     println!("|");
                 }

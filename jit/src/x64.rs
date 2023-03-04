@@ -2,7 +2,7 @@ use dynasmrt::{dynasm, mmap::MutableBuffer, x64::X64Relocation, DynasmApi, Dynas
 
 use gameroy::{
     consts::LEN,
-    gameboy::GameBoy,
+    gameboy::{cpu::ImeState, GameBoy},
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
@@ -137,6 +137,11 @@ macro_rules! call {
                 if interpreter.handle_interrupt().is_break() {
                     return true;
                 }
+
+                if interpreter.0.cpu.ime == ImeState::ToBeEnable {
+                    interpreter.0.cpu.ime = ImeState::Enabled;
+                }
+
                 //call to instructions relies on pc being already read.
                 interpreter.read_next_pc();
                 interpreter.$($call)*;

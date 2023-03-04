@@ -71,6 +71,14 @@ impl Interpreter<'_> {
             return;
         }
 
+        if self.0.cpu.ime == ImeState::ToBeEnable {
+            self.0.cpu.ime = ImeState::Enabled;
+        }
+
+        if self.0.cpu.state != CpuState::Running {
+            return;
+        }
+
         use Condition::*;
         let op = self.read_next_pc();
         let trace = false;
@@ -678,14 +686,6 @@ impl Interpreter<'_> {
                 // return, to allow detecting the interrupt
                 return ControlFlow::Break(());
             }
-        }
-
-        if self.0.cpu.ime == ImeState::ToBeEnable {
-            self.0.cpu.ime = ImeState::Enabled;
-        }
-
-        if self.0.cpu.state != CpuState::Running {
-            return ControlFlow::Break(());
         }
         ControlFlow::Continue(())
     }

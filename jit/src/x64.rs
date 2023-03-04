@@ -64,6 +64,11 @@ impl<'a> BlockCompiler<'a> {
         let end = start + self.length;
         while self.pc < end {
             let op = self.read_next_op();
+            // if STOP or HALT, fallback to interpreter
+            if op == 0x10 || op == 0x76 {
+                break;
+            }
+
             let call = interpreter_call(op);
             dynasm!(ops
                 ; .arch x64

@@ -58,12 +58,12 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
 
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
 
-        if jump.is_some() || [0x76, 0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
-            break;
-        }
-
         let Some(step) = step else { break };
         cursors.push(step);
+
+        if jump.is_some() || [0x10, 0x76, 0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
+            break;
+        }
     }
 
     // in case any of the instructions branches.
@@ -92,6 +92,12 @@ impl JitCompiler {
     pub fn get_block(&mut self, gb: &GameBoy) -> Option<&Block> {
         let pc = gb.cpu.pc;
         let bank = gb.cartridge.curr_bank();
+
+        let op = gb.read(pc);
+        // if STOP or HALT, fallback to interpreter
+        if op == 0x10 || op == 0x76 {
+            return None;
+        }
 
         let address = Address::from_pc(Some(bank), pc)?;
         Some(

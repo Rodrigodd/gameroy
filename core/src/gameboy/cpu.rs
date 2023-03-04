@@ -79,17 +79,19 @@ impl Default for ImeState {
     }
 }
 
-#[repr(C)]
+// Each pair of registers is in the reverse order to allow addressing them as a single 16 bit
+// registers in little-endian machines.
+#[repr(C, align(2))]
 #[derive(Default, Debug, PartialEq, Eq)]
 pub struct Cpu {
-    pub a: u8,
     pub f: Flags,
-    pub b: u8,
+    pub a: u8,
     pub c: u8,
-    pub d: u8,
+    pub b: u8,
     pub e: u8,
-    pub h: u8,
+    pub d: u8,
     pub l: u8,
+    pub h: u8,
     pub sp: u16,
     pub pc: u16,
     pub ime: ImeState,
@@ -106,6 +108,7 @@ impl fmt::Display for Cpu {
         Ok(())
     }
 }
+
 crate::save_state!(Cpu, self, data {
     self.a;
     self.f.0;
@@ -164,6 +167,7 @@ impl Cpu {
 /// 4 - C: Carry flag
 /// Remaning bits are read/writeable, but are not flags.
 #[derive(Default, Debug, PartialEq, Eq)]
+#[repr(transparent)]
 pub struct Flags(pub u8);
 impl Flags {
     pub fn z(&self) -> bool {

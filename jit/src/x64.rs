@@ -175,25 +175,25 @@ impl<'a> BlockCompiler<'a> {
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
         match op {
             // INC BC 1:8 - - - -
-            // 0x03 => inc(ops, Reg::BC),
+            0x03 => inc16(ops, Reg::BC),
             // INC B 1:4 Z 0 H -
             0x04 => inc(ops, Reg::B),
             // INC C 1:4 Z 0 H -
             0x0c => inc(ops, Reg::C),
             // INC DE 1:8 - - - -
-            // 0x13 => inc(ops, Reg::DE),
+            0x13 => inc16(ops, Reg::DE),
             // INC D 1:4 Z 0 H -
             0x14 => inc(ops, Reg::D),
             // INC E 1:4 Z 0 H -
             0x1c => inc(ops, Reg::E),
             // INC HL 1:8 - - - -
-            // 0x23 => inc(ops, Reg::HL),
+            0x23 => inc16(ops, Reg::HL),
             // INC H 1:4 Z 0 H -
             0x24 => inc(ops, Reg::H),
             // INC L 1:4 Z 0 H -
             0x2c => inc(ops, Reg::L),
             // INC SP 1:8 - - - -
-            // 0x33 => inc(ops, Reg::SP),
+            0x33 => inc16(ops, Reg::SP),
             // INC A 1:4 Z 0 H -
             0x3c => inc(ops, Reg::A),
             _ => {
@@ -233,35 +233,11 @@ pub fn inc(ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
         Reg::E => offset!(GameBoy, cpu: Cpu, e),
         Reg::H => offset!(GameBoy, cpu: Cpu, h),
         Reg::L => offset!(GameBoy, cpu: Cpu, l),
-        Reg::BC => {
-            // self.0.cpu.set_bc(add16(self.0.cpu.bc(), 1));
-            // self.0.tick(4);
-            // return;
-            unimplemented!()
-        }
-        Reg::DE => {
-            // self.0.cpu.set_de(add16(self.0.cpu.de(), 1));
-            // self.0.tick(4);
-            // return;
-            unimplemented!()
-        }
-        Reg::HL => {
-            // self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
-            // self.0.tick(4);
-            // return;
-            unimplemented!()
-        }
-        Reg::SP => {
-            // self.0.cpu.sp = add16(self.0.cpu.sp, 1);
-            // self.0.tick(4);
-            // return;
-            unimplemented!()
-        }
         _ => unreachable!(),
     };
     let f = offset!(GameBoy, cpu: Cpu, f);
 
-    // use rax, rcx, rdx
+    // uses rax, rcx, rdx
     dynasm!(ops
         ; movzx	eax, [rbx + reg as i32] // load reg
         ; movzx	ecx, [rbx + f as i32]   // load f
@@ -276,6 +252,30 @@ pub fn inc(ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
         ; shl	al, 5
         ; or	al, dl                  // set H
         ; mov	[rbx + f as i32], al    // save f
+    );
+}
+
+pub fn inc16(ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    let reg = match reg {
+        Reg::BC => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, c) + 1 == offset!(GameBoy, cpu: Cpu, b));
+            offset!(GameBoy, cpu: Cpu, c)
+        }
+        Reg::DE => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, e) + 1 == offset!(GameBoy, cpu: Cpu, d));
+            offset!(GameBoy, cpu: Cpu, e)
+        }
+        Reg::HL => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, l) + 1 == offset!(GameBoy, cpu: Cpu, h));
+            offset!(GameBoy, cpu: Cpu, l)
+        }
+        Reg::SP => {
+            offset!(GameBoy, cpu: Cpu, sp)
+        }
+        _ => unreachable!(),
+    };
+    dynasm!(ops
+        ; inc WORD [rbx + reg as i32]
     );
 }
 

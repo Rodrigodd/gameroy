@@ -7,6 +7,7 @@ accepted = [
     "ISC",
     "BSD-3-Clause",
     "BSL-1.0",
+    "MPL-2.0",
 ]
 
 targets = ["x86_64-pc-windows-msvc"]

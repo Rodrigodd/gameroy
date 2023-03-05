@@ -174,28 +174,190 @@ impl<'a> BlockCompiler<'a> {
     /// that clock_count were already updated).
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
         match op {
+            // LD (BC),A 1:8 - - - -
+            // 0x02 => load(ops, Reg::BC, Reg::A),
             // INC BC 1:8 - - - -
             0x03 => inc16(ops, Reg::BC),
             // INC B 1:4 Z 0 H -
             0x04 => inc(ops, Reg::B),
+            // LD B,d8 2:8 - - - -
+            // 0x06 => load(ops, Reg::B, Reg::Im8),
+            // LD A,(BC) 1:8 - - - -
+            // 0x0a => load(ops, Reg::A, Reg::BC),
             // INC C 1:4 Z 0 H -
             0x0c => inc(ops, Reg::C),
+            // LD C,d8 2:8 - - - -
+            // 0x0e => load(ops, Reg::C, Reg::Im8),
+            // LD (DE),A 1:8 - - - -
+            // 0x12 => load(ops, Reg::DE, Reg::A),
             // INC DE 1:8 - - - -
             0x13 => inc16(ops, Reg::DE),
             // INC D 1:4 Z 0 H -
             0x14 => inc(ops, Reg::D),
+            // LD D,d8 2:8 - - - -
+            // 0x16 => load(ops, Reg::D, Reg::Im8),
+            // LD A,(DE) 1:8 - - - -
+            // 0x1a => load(ops, Reg::A, Reg::DE),
             // INC E 1:4 Z 0 H -
             0x1c => inc(ops, Reg::E),
+            // LD E,d8 2:8 - - - -
+            // 0x1e => load(ops, Reg::E, Reg::Im8),
+            // LD (HL+),A 1:8 - - - -
+            // 0x22 => load(ops, Reg::HLI, Reg::A),
             // INC HL 1:8 - - - -
             0x23 => inc16(ops, Reg::HL),
             // INC H 1:4 Z 0 H -
             0x24 => inc(ops, Reg::H),
+            // LD H,d8 2:8 - - - -
+            // 0x26 => load(ops, Reg::H, Reg::Im8),
+            // LD A,(HL+) 1:8 - - - -
+            // 0x2a => load(ops, Reg::A, Reg::HLI),
             // INC L 1:4 Z 0 H -
             0x2c => inc(ops, Reg::L),
+            // LD L,d8 2:8 - - - -
+            // 0x2e => load(ops, Reg::L, Reg::Im8),
+            // LD (HL-),A 1:8 - - - -
+            // 0x32 => load(ops, Reg::HLD, Reg::A),
             // INC SP 1:8 - - - -
             0x33 => inc16(ops, Reg::SP),
+            // LD (HL),d8 2:12 - - - -
+            // 0x36 => load(ops, Reg::HL, Reg::Im8),
+            // LD A,(HL-) 1:8 - - - -
+            // 0x3a => load(ops, Reg::A, Reg::HLD),
             // INC A 1:4 Z 0 H -
             0x3c => inc(ops, Reg::A),
+            // LD A,d8 2:8 - - - -
+            // 0x3e => load(ops, Reg::A, Reg::Im8),
+            // LD B,B 1:4 - - - -
+            0x40 => load(ops, Reg::B, Reg::B),
+            // LD B,C 1:4 - - - -
+            0x41 => load(ops, Reg::B, Reg::C),
+            // LD B,D 1:4 - - - -
+            0x42 => load(ops, Reg::B, Reg::D),
+            // LD B,E 1:4 - - - -
+            0x43 => load(ops, Reg::B, Reg::E),
+            // LD B,H 1:4 - - - -
+            0x44 => load(ops, Reg::B, Reg::H),
+            // LD B,L 1:4 - - - -
+            0x45 => load(ops, Reg::B, Reg::L),
+            // LD B,(HL) 1:8 - - - -
+            // 0x46 => load(ops, Reg::B, Reg::HL),
+            // LD B,A 1:4 - - - -
+            0x47 => load(ops, Reg::B, Reg::A),
+            // LD C,B 1:4 - - - -
+            0x48 => load(ops, Reg::C, Reg::B),
+            // LD C,C 1:4 - - - -
+            0x49 => load(ops, Reg::C, Reg::C),
+            // LD C,D 1:4 - - - -
+            0x4a => load(ops, Reg::C, Reg::D),
+            // LD C,E 1:4 - - - -
+            0x4b => load(ops, Reg::C, Reg::E),
+            // LD C,H 1:4 - - - -
+            0x4c => load(ops, Reg::C, Reg::H),
+            // LD C,L 1:4 - - - -
+            0x4d => load(ops, Reg::C, Reg::L),
+            // LD C,(HL) 1:8 - - - -
+            // 0x4e => load(ops, Reg::C, Reg::HL),
+            // LD C,A 1:4 - - - -
+            0x4f => load(ops, Reg::C, Reg::A),
+            // LD D,B 1:4 - - - -
+            0x50 => load(ops, Reg::D, Reg::B),
+            // LD D,C 1:4 - - - -
+            0x51 => load(ops, Reg::D, Reg::C),
+            // LD D,D 1:4 - - - -
+            0x52 => load(ops, Reg::D, Reg::D),
+            // LD D,E 1:4 - - - -
+            0x53 => load(ops, Reg::D, Reg::E),
+            // LD D,H 1:4 - - - -
+            0x54 => load(ops, Reg::D, Reg::H),
+            // LD D,L 1:4 - - - -
+            0x55 => load(ops, Reg::D, Reg::L),
+            // LD D,(HL) 1:8 - - - -
+            // 0x56 => load(ops, Reg::D, Reg::HL),
+            // LD D,A 1:4 - - - -
+            0x57 => load(ops, Reg::D, Reg::A),
+            // LD E,B 1:4 - - - -
+            0x58 => load(ops, Reg::E, Reg::B),
+            // LD E,C 1:4 - - - -
+            0x59 => load(ops, Reg::E, Reg::C),
+            // LD E,D 1:4 - - - -
+            0x5a => load(ops, Reg::E, Reg::D),
+            // LD E,E 1:4 - - - -
+            0x5b => load(ops, Reg::E, Reg::E),
+            // LD E,H 1:4 - - - -
+            0x5c => load(ops, Reg::E, Reg::H),
+            // LD E,L 1:4 - - - -
+            0x5d => load(ops, Reg::E, Reg::L),
+            // LD E,(HL) 1:8 - - - -
+            // 0x5e => load(ops, Reg::E, Reg::HL),
+            // LD E,A 1:4 - - - -
+            0x5f => load(ops, Reg::E, Reg::A),
+            // LD H,B 1:4 - - - -
+            0x60 => load(ops, Reg::H, Reg::B),
+            // LD H,C 1:4 - - - -
+            0x61 => load(ops, Reg::H, Reg::C),
+            // LD H,D 1:4 - - - -
+            0x62 => load(ops, Reg::H, Reg::D),
+            // LD H,E 1:4 - - - -
+            0x63 => load(ops, Reg::H, Reg::E),
+            // LD H,H 1:4 - - - -
+            0x64 => load(ops, Reg::H, Reg::H),
+            // LD H,L 1:4 - - - -
+            0x65 => load(ops, Reg::H, Reg::L),
+            // LD H,(HL) 1:8 - - - -
+            // 0x66 => load(ops, Reg::H, Reg::HL),
+            // LD H,A 1:4 - - - -
+            0x67 => load(ops, Reg::H, Reg::A),
+            // LD L,B 1:4 - - - -
+            0x68 => load(ops, Reg::L, Reg::B),
+            // LD L,C 1:4 - - - -
+            0x69 => load(ops, Reg::L, Reg::C),
+            // LD L,D 1:4 - - - -
+            0x6a => load(ops, Reg::L, Reg::D),
+            // LD L,E 1:4 - - - -
+            0x6b => load(ops, Reg::L, Reg::E),
+            // LD L,H 1:4 - - - -
+            0x6c => load(ops, Reg::L, Reg::H),
+            // LD L,L 1:4 - - - -
+            0x6d => load(ops, Reg::L, Reg::L),
+            // LD L,(HL) 1:8 - - - -
+            // 0x6e => load(ops, Reg::L, Reg::HL),
+            // LD L,A 1:4 - - - -
+            0x6f => load(ops, Reg::L, Reg::A),
+            // LD (HL),B 1:8 - - - -
+            // 0x70 => load(ops, Reg::HL, Reg::B),
+            // LD (HL),C 1:8 - - - -
+            // 0x71 => load(ops, Reg::HL, Reg::C),
+            // LD (HL),D 1:8 - - - -
+            // 0x72 => load(ops, Reg::HL, Reg::D),
+            // LD (HL),E 1:8 - - - -
+            // 0x73 => load(ops, Reg::HL, Reg::E),
+            // LD (HL),H 1:8 - - - -
+            // 0x74 => load(ops, Reg::HL, Reg::H),
+            // LD (HL),L 1:8 - - - -
+            // 0x75 => load(ops, Reg::HL, Reg::L),
+            // LD (HL),A 1:8 - - - -
+            // 0x77 => load(ops, Reg::HL, Reg::A),
+            // LD A,B 1:4 - - - -
+            0x78 => load(ops, Reg::A, Reg::B),
+            // LD A,C 1:4 - - - -
+            0x79 => load(ops, Reg::A, Reg::C),
+            // LD A,D 1:4 - - - -
+            0x7a => load(ops, Reg::A, Reg::D),
+            // LD A,E 1:4 - - - -
+            0x7b => load(ops, Reg::A, Reg::E),
+            // LD A,H 1:4 - - - -
+            0x7c => load(ops, Reg::A, Reg::H),
+            // LD A,L 1:4 - - - -
+            0x7d => load(ops, Reg::A, Reg::L),
+            // LD A,(HL) 1:8 - - - -
+            // 0x7e => load(ops, Reg::A, Reg::HL),
+            // LD A,A 1:4 - - - -
+            0x7f => load(ops, Reg::A, Reg::A),
+            // LD (a16),A 3:16 - - - -
+            // 0xea => load(ops, Reg::Im16, Reg::A),
+            // LD A,(a16) 3:16 - - - -
+            // 0xfa => load(ops, Reg::A, Reg::Im16),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -222,6 +384,48 @@ fn to_mutable_buffer(code: Vec<u8>) -> MutableBuffer {
     buffer.set_len(code.len());
     buffer[..].copy_from_slice(code.as_slice());
     buffer
+}
+
+pub fn load(ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+    let dst = match dst {
+        Reg::A => offset!(GameBoy, cpu: Cpu, a),
+        Reg::B => offset!(GameBoy, cpu: Cpu, b),
+        Reg::C => offset!(GameBoy, cpu: Cpu, c),
+        Reg::D => offset!(GameBoy, cpu: Cpu, d),
+        Reg::E => offset!(GameBoy, cpu: Cpu, e),
+        Reg::H => offset!(GameBoy, cpu: Cpu, h),
+        Reg::L => offset!(GameBoy, cpu: Cpu, l),
+        Reg::Im8 => todo!(),
+        Reg::Im16 => todo!(),
+        Reg::BC => todo!(),
+        Reg::DE => todo!(),
+        Reg::HL => todo!(),
+        Reg::SP => todo!(),
+        Reg::HLI => todo!(),
+        Reg::HLD => todo!(),
+    };
+    let src = match src {
+        Reg::A => offset!(GameBoy, cpu: Cpu, a),
+        Reg::B => offset!(GameBoy, cpu: Cpu, b),
+        Reg::C => offset!(GameBoy, cpu: Cpu, c),
+        Reg::D => offset!(GameBoy, cpu: Cpu, d),
+        Reg::E => offset!(GameBoy, cpu: Cpu, e),
+        Reg::H => offset!(GameBoy, cpu: Cpu, h),
+        Reg::L => offset!(GameBoy, cpu: Cpu, l),
+        Reg::Im8 => todo!(),
+        Reg::Im16 => todo!(),
+        Reg::BC => todo!(),
+        Reg::DE => todo!(),
+        Reg::HL => todo!(),
+        Reg::SP => todo!(),
+        Reg::HLI => todo!(),
+        Reg::HLD => todo!(),
+    };
+
+    dynasm!(ops
+        ; movzx eax, BYTE [rbx + src as i32]
+        ; mov BYTE [rbx + dst as i32], al
+    );
 }
 
 pub fn inc(ops: &mut VecAssembler<X64Relocation>, reg: Reg) {

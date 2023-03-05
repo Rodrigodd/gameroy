@@ -181,13 +181,13 @@ impl<'a> BlockCompiler<'a> {
             // INC B 1:4 Z 0 H -
             0x04 => self.inc(ops, Reg::B),
             // LD B,d8 2:8 - - - -
-            // 0x06 => self.load(ops, Reg::B, Reg::Im8),
+            0x06 => self.load(ops, Reg::B, Reg::Im8),
             // LD A,(BC) 1:8 - - - -
             // 0x0a => self.load(ops, Reg::A, Reg::BC),
             // INC C 1:4 Z 0 H -
             0x0c => self.inc(ops, Reg::C),
             // LD C,d8 2:8 - - - -
-            // 0x0e => self.load(ops, Reg::C, Reg::Im8),
+            0x0e => self.load(ops, Reg::C, Reg::Im8),
             // LD (DE),A 1:8 - - - -
             // 0x12 => self.load(ops, Reg::DE, Reg::A),
             // INC DE 1:8 - - - -
@@ -195,13 +195,13 @@ impl<'a> BlockCompiler<'a> {
             // INC D 1:4 Z 0 H -
             0x14 => self.inc(ops, Reg::D),
             // LD D,d8 2:8 - - - -
-            // 0x16 => self.load(ops, Reg::D, Reg::Im8),
+            0x16 => self.load(ops, Reg::D, Reg::Im8),
             // LD A,(DE) 1:8 - - - -
             // 0x1a => self.load(ops, Reg::A, Reg::DE),
             // INC E 1:4 Z 0 H -
             0x1c => self.inc(ops, Reg::E),
             // LD E,d8 2:8 - - - -
-            // 0x1e => self.load(ops, Reg::E, Reg::Im8),
+            0x1e => self.load(ops, Reg::E, Reg::Im8),
             // LD (HL+),A 1:8 - - - -
             // 0x22 => self.load(ops, Reg::HLI, Reg::A),
             // INC HL 1:8 - - - -
@@ -209,13 +209,13 @@ impl<'a> BlockCompiler<'a> {
             // INC H 1:4 Z 0 H -
             0x24 => self.inc(ops, Reg::H),
             // LD H,d8 2:8 - - - -
-            // 0x26 => self.load(ops, Reg::H, Reg::Im8),
+            0x26 => self.load(ops, Reg::H, Reg::Im8),
             // LD A,(HL+) 1:8 - - - -
             // 0x2a => self.load(ops, Reg::A, Reg::HLI),
             // INC L 1:4 Z 0 H -
             0x2c => self.inc(ops, Reg::L),
             // LD L,d8 2:8 - - - -
-            // 0x2e => self.load(ops, Reg::L, Reg::Im8),
+            0x2e => self.load(ops, Reg::L, Reg::Im8),
             // LD (HL-),A 1:8 - - - -
             // 0x32 => self.load(ops, Reg::HLD, Reg::A),
             // INC SP 1:8 - - - -
@@ -227,7 +227,7 @@ impl<'a> BlockCompiler<'a> {
             // INC A 1:4 Z 0 H -
             0x3c => self.inc(ops, Reg::A),
             // LD A,d8 2:8 - - - -
-            // 0x3e => self.load(ops, Reg::A, Reg::Im8),
+            0x3e => self.load(ops, Reg::A, Reg::Im8),
             // LD B,B 1:4 - - - -
             0x40 => self.load(ops, Reg::B, Reg::B),
             // LD B,C 1:4 - - - -
@@ -403,7 +403,11 @@ impl<'a> BlockCompiler<'a> {
             Reg::E => offset!(GameBoy, cpu: Cpu, e),
             Reg::H => offset!(GameBoy, cpu: Cpu, h),
             Reg::L => offset!(GameBoy, cpu: Cpu, l),
-            Reg::Im8 => todo!(),
+            Reg::Im8 => {
+                return dynasm!(ops
+                    ; mov BYTE [rbx + dst as i32], self.gb.read(self.pc.wrapping_add(1)) as i8
+                );
+            }
             Reg::Im16 => todo!(),
             Reg::BC => todo!(),
             Reg::DE => todo!(),

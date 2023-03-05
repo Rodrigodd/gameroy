@@ -239,19 +239,19 @@ pub fn inc(ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
 
     // uses rax, rcx, rdx
     dynasm!(ops
-        ; movzx	eax, [rbx + reg as i32] // load reg
-        ; movzx	ecx, [rbx + f as i32]   // load f
-        ; inc	al                      // increase reg
+        ; movzx	eax, BYTE [rbx + reg as i32] // load reg
+        ; movzx	ecx, BYTE [rbx + f as i32]   // load f
+        ; inc	al                           // increase reg
         ; sete	dl // Z flag
-        ; mov	[rbx + reg as i32], al  // save reg
-        ; and	cl, 0x1F                // clear Z, N, H
+        ; mov	[rbx + reg as i32], al       // save reg
+        ; and	cl, 0x1F                     // clear Z, N, H
         ; shl	dl, 7
-        ; or	dl, cl                  // set Z
+        ; or	dl, cl                       // set Z
         ; test	al, 0xF
         ; sete	al // H flag
         ; shl	al, 5
-        ; or	al, dl                  // set H
-        ; mov	[rbx + f as i32], al    // save f
+        ; or	al, dl                       // set H
+        ; mov	[rbx + f as i32], al         // save f
     );
 }
 

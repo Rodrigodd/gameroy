@@ -221,7 +221,7 @@ impl<'a> BlockCompiler<'a> {
             // INC SP 1:8 - - - -
             0x33 => self.inc16(ops, Reg::SP),
             // LD (HL),d8 2:12 - - - -
-            // 0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
+            0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
             // LD A,(HL-) 1:8 - - - -
             // 0x3a => self.load(ops, Reg::A, Reg::HLD),
             // INC A 1:4 Z 0 H -
@@ -381,7 +381,7 @@ impl<'a> BlockCompiler<'a> {
         let dst = reg_offset(dst);
         match src {
             Reg::Im8 => {
-                let value = self.gb.read(self.pc.wrapping_add(1));
+                let value = self.get_immediate();
                 dynasm!(ops
                     ; mov BYTE [rbx + dst as i32], value as i8
                 );
@@ -398,8 +398,6 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
-        let src = reg_offset(src);
-
         match dst {
             Reg::BC | Reg::DE | Reg::HL => {
                 extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
@@ -420,6 +418,16 @@ impl<'a> BlockCompiler<'a> {
                     ; mov rdi, rbx
                     ; mov si, WORD [rbx + dst as i32]
                     ; mov dl, BYTE [rbx + src as i32]
+                    ;; match src {
+                        Reg::Im8 => {
+                            let value = self.get_immediate();
+                            dynasm!(ops; mov dl, BYTE value as i8)
+                        }
+                        _ => {
+                            let src = reg_offset(src);
+                            dynasm!(ops; mov dl, BYTE [rbx + src as i32])
+                        }
+                    }
                     ; call rax
                     ; test rax, rax
                     ; jnz ->exit
@@ -456,6 +464,10 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; inc WORD [rbx + reg as i32]
         );
+    }
+
+    fn get_immediate(&mut self) -> u8 {
+        self.gb.read(self.pc.wrapping_add(1))
     }
 }
 

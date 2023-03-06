@@ -379,20 +379,22 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn load_reg_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         let dst = reg_offset(dst);
-        let src = match src {
-            Reg::A | Reg::B | Reg::C | Reg::D | Reg::E | Reg::H | Reg::L => reg_offset(src),
+        match src {
             Reg::Im8 => {
-                return dynasm!(ops
-                    ; mov BYTE [rbx + dst as i32], self.gb.read(self.pc.wrapping_add(1)) as i8
+                let value = self.gb.read(self.pc.wrapping_add(1));
+                dynasm!(ops
+                    ; mov BYTE [rbx + dst as i32], value as i8
+                );
+            }
+            Reg::A | Reg::B | Reg::C | Reg::D | Reg::E | Reg::H | Reg::L => {
+                let src = reg_offset(src);
+                dynasm!(ops
+                    ; movzx eax, BYTE [rbx + src as i32]
+                    ; mov BYTE [rbx + dst as i32], al
                 );
             }
             _ => unreachable!(),
-        };
-
-        dynasm!(ops
-            ; movzx eax, BYTE [rbx + src as i32]
-            ; mov BYTE [rbx + dst as i32], al
-        );
+        }
     }
 
     pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {

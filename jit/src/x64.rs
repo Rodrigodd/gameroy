@@ -175,7 +175,7 @@ impl<'a> BlockCompiler<'a> {
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
         match op {
             // LD (BC),A 1:8 - - - -
-            // 0x02 => self.load(ops, Reg::BC, Reg::A),
+            0x02 => self.load_mem_reg(ops, Reg::BC, Reg::A),
             // INC BC 1:8 - - - -
             0x03 => self.inc16(ops, Reg::BC),
             // INC B 1:4 Z 0 H -
@@ -189,7 +189,7 @@ impl<'a> BlockCompiler<'a> {
             // LD C,d8 2:8 - - - -
             0x0e => self.load_reg_reg(ops, Reg::C, Reg::Im8),
             // LD (DE),A 1:8 - - - -
-            // 0x12 => self.load(ops, Reg::DE, Reg::A),
+            0x12 => self.load_mem_reg(ops, Reg::DE, Reg::A),
             // INC DE 1:8 - - - -
             0x13 => self.inc16(ops, Reg::DE),
             // INC D 1:4 Z 0 H -
@@ -401,7 +401,7 @@ impl<'a> BlockCompiler<'a> {
         let src = reg_offset(src);
 
         match dst {
-            Reg::HL => {
+            Reg::BC | Reg::DE | Reg::HL => {
                 extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
                     gb.write(address, value);
                     // if the next instruction is a interpreter call, `handle_interrupt` would be

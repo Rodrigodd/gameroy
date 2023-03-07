@@ -183,7 +183,7 @@ impl<'a> BlockCompiler<'a> {
             // LD B,d8 2:8 - - - -
             0x06 => self.load_reg_reg(ops, Reg::B, Reg::Im8),
             // LD A,(BC) 1:8 - - - -
-            // 0x0a => self.load(ops, Reg::A, Reg::BC),
+            0x0a => self.load_reg_mem(ops, Reg::A, Reg::BC),
             // INC C 1:4 Z 0 H -
             0x0c => self.inc(ops, Reg::C),
             // LD C,d8 2:8 - - - -
@@ -197,7 +197,7 @@ impl<'a> BlockCompiler<'a> {
             // LD D,d8 2:8 - - - -
             0x16 => self.load_reg_reg(ops, Reg::D, Reg::Im8),
             // LD A,(DE) 1:8 - - - -
-            // 0x1a => self.load(ops, Reg::A, Reg::DE),
+            0x1a => self.load_reg_mem(ops, Reg::A, Reg::DE),
             // INC E 1:4 Z 0 H -
             0x1c => self.inc(ops, Reg::E),
             // LD E,d8 2:8 - - - -
@@ -211,7 +211,7 @@ impl<'a> BlockCompiler<'a> {
             // LD H,d8 2:8 - - - -
             0x26 => self.load_reg_reg(ops, Reg::H, Reg::Im8),
             // LD A,(HL+) 1:8 - - - -
-            // 0x2a => self.load(ops, Reg::A, Reg::HLI),
+            0x2a => self.load_reg_mem(ops, Reg::A, Reg::HLI),
             // INC L 1:4 Z 0 H -
             0x2c => self.inc(ops, Reg::L),
             // LD L,d8 2:8 - - - -
@@ -223,7 +223,7 @@ impl<'a> BlockCompiler<'a> {
             // LD (HL),d8 2:12 - - - -
             0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
             // LD A,(HL-) 1:8 - - - -
-            // 0x3a => self.load(ops, Reg::A, Reg::HLD),
+            0x3a => self.load_reg_mem(ops, Reg::A, Reg::HLD),
             // INC A 1:4 Z 0 H -
             0x3c => self.inc(ops, Reg::A),
             // LD A,d8 2:8 - - - -
@@ -241,7 +241,7 @@ impl<'a> BlockCompiler<'a> {
             // LD B,L 1:4 - - - -
             0x45 => self.load_reg_reg(ops, Reg::B, Reg::L),
             // LD B,(HL) 1:8 - - - -
-            // 0x46 => self.load(ops, Reg::B, Reg::HL),
+            0x46 => self.load_reg_mem(ops, Reg::B, Reg::HL),
             // LD B,A 1:4 - - - -
             0x47 => self.load_reg_reg(ops, Reg::B, Reg::A),
             // LD C,B 1:4 - - - -
@@ -257,7 +257,7 @@ impl<'a> BlockCompiler<'a> {
             // LD C,L 1:4 - - - -
             0x4d => self.load_reg_reg(ops, Reg::C, Reg::L),
             // LD C,(HL) 1:8 - - - -
-            // 0x4e => self.load(ops, Reg::C, Reg::HL),
+            0x4e => self.load_reg_mem(ops, Reg::C, Reg::HL),
             // LD C,A 1:4 - - - -
             0x4f => self.load_reg_reg(ops, Reg::C, Reg::A),
             // LD D,B 1:4 - - - -
@@ -273,7 +273,7 @@ impl<'a> BlockCompiler<'a> {
             // LD D,L 1:4 - - - -
             0x55 => self.load_reg_reg(ops, Reg::D, Reg::L),
             // LD D,(HL) 1:8 - - - -
-            // 0x56 => self.load(ops, Reg::D, Reg::HL),
+            0x56 => self.load_reg_mem(ops, Reg::D, Reg::HL),
             // LD D,A 1:4 - - - -
             0x57 => self.load_reg_reg(ops, Reg::D, Reg::A),
             // LD E,B 1:4 - - - -
@@ -289,7 +289,7 @@ impl<'a> BlockCompiler<'a> {
             // LD E,L 1:4 - - - -
             0x5d => self.load_reg_reg(ops, Reg::E, Reg::L),
             // LD E,(HL) 1:8 - - - -
-            // 0x5e => self.load(ops, Reg::E, Reg::HL),
+            0x5e => self.load_reg_mem(ops, Reg::E, Reg::HL),
             // LD E,A 1:4 - - - -
             0x5f => self.load_reg_reg(ops, Reg::E, Reg::A),
             // LD H,B 1:4 - - - -
@@ -305,7 +305,7 @@ impl<'a> BlockCompiler<'a> {
             // LD H,L 1:4 - - - -
             0x65 => self.load_reg_reg(ops, Reg::H, Reg::L),
             // LD H,(HL) 1:8 - - - -
-            // 0x66 => self.load(ops, Reg::H, Reg::HL),
+            0x66 => self.load_reg_mem(ops, Reg::H, Reg::HL),
             // LD H,A 1:4 - - - -
             0x67 => self.load_reg_reg(ops, Reg::H, Reg::A),
             // LD L,B 1:4 - - - -
@@ -321,7 +321,7 @@ impl<'a> BlockCompiler<'a> {
             // LD L,L 1:4 - - - -
             0x6d => self.load_reg_reg(ops, Reg::L, Reg::L),
             // LD L,(HL) 1:8 - - - -
-            // 0x6e => self.load(ops, Reg::L, Reg::HL),
+            0x6e => self.load_reg_mem(ops, Reg::L, Reg::HL),
             // LD L,A 1:4 - - - -
             0x6f => self.load_reg_reg(ops, Reg::L, Reg::A),
             // LD (HL),B 1:8 - - - -
@@ -351,7 +351,7 @@ impl<'a> BlockCompiler<'a> {
             // LD A,L 1:4 - - - -
             0x7d => self.load_reg_reg(ops, Reg::A, Reg::L),
             // LD A,(HL) 1:8 - - - -
-            // 0x7e => self.load(ops, Reg::A, Reg::HL),
+            0x7e => self.load_reg_mem(ops, Reg::A, Reg::HL),
             // LD A,A 1:4 - - - -
             0x7f => self.load_reg_reg(ops, Reg::A, Reg::A),
             // LD (a16),A 3:16 - - - -
@@ -436,6 +436,34 @@ impl<'a> BlockCompiler<'a> {
                     ; call rax
                     ; test rax, rax
                     ; jnz ->exit
+                );
+            }
+            _ => unreachable!(),
+        };
+    }
+
+    pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+        match src {
+            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
+                extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
+                    gb.read(address)
+                }
+
+                let address = reg_offset(src);
+                let dst = reg_offset(dst);
+
+                dynasm!(ops
+                    ; .arch x64
+                    ; mov rax, QWORD read as usize as i64
+                    ; mov rdi, rbx
+                    ; mov si, WORD [rbx + address as i32]
+                    ;; match src {
+                        Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
+                        Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
+                        _ => {}
+                    }
+                    ; call rax
+                    ; mov BYTE [rbx + dst as i32], al
                 );
             }
             _ => unreachable!(),

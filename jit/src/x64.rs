@@ -357,7 +357,7 @@ impl<'a> BlockCompiler<'a> {
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
             // LD A,(a16) 3:16 - - - -
-            // 0xfa => self.load(ops, Reg::A, Reg::Im16),
+            0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -451,23 +451,31 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match src {
-            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
+            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
                 extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
                     gb.read(address)
                 }
 
-                let address = reg_offset(src);
                 let dst = reg_offset(dst);
 
                 dynasm!(ops
                     ; .arch x64
                     ; mov rax, QWORD read as usize as i64
                     ; mov rdi, rbx
-                    ; mov si, WORD [rbx + address as i32]
                     ;; match src {
-                        Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
-                        Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
-                        _ => {}
+                        Reg::Im16 => {
+                            let address = self.get_immediate16();
+                            dynasm!(ops; mov si, WORD address as i16);
+                        },
+                        _ => {
+                            let address = reg_offset(src);
+                            dynasm!(ops; mov si, WORD [rbx + address as i32]);
+                            match src {
+                                Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
+                                Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
+                                _ => {}
+                            }
+                        }
                     }
                     ; call rax
                     ; mov BYTE [rbx + dst as i32], al

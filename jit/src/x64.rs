@@ -355,7 +355,7 @@ impl<'a> BlockCompiler<'a> {
             // LD A,A 1:4 - - - -
             0x7f => self.load_reg_reg(ops, Reg::A, Reg::A),
             // LD (a16),A 3:16 - - - -
-            // 0xea => self.load(ops, Reg::Im16, Reg::A),
+            0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
             // LD A,(a16) 3:16 - - - -
             // 0xfa => self.load(ops, Reg::A, Reg::Im16),
             _ => {
@@ -399,7 +399,7 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match dst {
-            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
+            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
                 extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
                     gb.write(address, value);
                     // if the next instruction is a interpreter call, `handle_interrupt` would be
@@ -410,17 +410,24 @@ impl<'a> BlockCompiler<'a> {
                     false
                 }
 
-                let address = reg_offset(dst);
-
                 dynasm!(ops
                     ; .arch x64
                     ; mov rax, QWORD write as usize as i64
                     ; mov rdi, rbx
-                    ; mov si, WORD [rbx + address as i32]
                     ;; match dst {
-                        Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
-                        Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
-                        _ => {}
+                        Reg::Im16 => {
+                            let address = self.get_immediate16();
+                            dynasm!(ops; mov si, WORD address as i16);
+                        },
+                        _ => {
+                            let address = reg_offset(dst);
+                            dynasm!(ops; mov si, WORD [rbx + address as i32]);
+                            match dst {
+                                Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
+                                Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
+                                _ => {}
+                            }
+                        }
                     }
                     ; mov dl, BYTE [rbx + src as i32]
                     ;; match src {
@@ -501,6 +508,12 @@ impl<'a> BlockCompiler<'a> {
 
     fn get_immediate(&mut self) -> u8 {
         self.gb.read(self.pc.wrapping_add(1))
+    }
+
+    fn get_immediate16(&mut self) -> u16 {
+        let l = self.gb.read(self.pc.wrapping_add(1));
+        let h = self.gb.read(self.pc.wrapping_add(2));
+        u16::from_be_bytes([h, l])
     }
 }
 

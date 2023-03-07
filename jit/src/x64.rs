@@ -203,7 +203,7 @@ impl<'a> BlockCompiler<'a> {
             // LD E,d8 2:8 - - - -
             0x1e => self.load_reg_reg(ops, Reg::E, Reg::Im8),
             // LD (HL+),A 1:8 - - - -
-            // 0x22 => self.load(ops, Reg::HLI, Reg::A),
+            0x22 => self.load_mem_reg(ops, Reg::HLI, Reg::A),
             // INC HL 1:8 - - - -
             0x23 => self.inc16(ops, Reg::HL),
             // INC H 1:4 Z 0 H -
@@ -217,7 +217,7 @@ impl<'a> BlockCompiler<'a> {
             // LD L,d8 2:8 - - - -
             0x2e => self.load_reg_reg(ops, Reg::L, Reg::Im8),
             // LD (HL-),A 1:8 - - - -
-            // 0x32 => self.load(ops, Reg::HLD, Reg::A),
+            0x32 => self.load_mem_reg(ops, Reg::HLD, Reg::A),
             // INC SP 1:8 - - - -
             0x33 => self.inc16(ops, Reg::SP),
             // LD (HL),d8 2:12 - - - -
@@ -399,7 +399,7 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match dst {
-            Reg::BC | Reg::DE | Reg::HL => {
+            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
                 extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
                     gb.write(address, value);
                     // if the next instruction is a interpreter call, `handle_interrupt` would be
@@ -410,13 +410,18 @@ impl<'a> BlockCompiler<'a> {
                     false
                 }
 
-                let dst = reg_offset(dst);
+                let address = reg_offset(dst);
 
                 dynasm!(ops
                     ; .arch x64
                     ; mov rax, QWORD write as usize as i64
                     ; mov rdi, rbx
-                    ; mov si, WORD [rbx + dst as i32]
+                    ; mov si, WORD [rbx + address as i32]
+                    ;; match dst {
+                        Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
+                        Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
+                        _ => {}
+                    }
                     ; mov dl, BYTE [rbx + src as i32]
                     ;; match src {
                         Reg::Im8 => {
@@ -488,7 +493,7 @@ fn reg_offset(reg: Reg) -> usize {
             debug_assert!(offset!(GameBoy, cpu: Cpu, e) + 1 == offset!(GameBoy, cpu: Cpu, d));
             offset!(GameBoy, cpu: Cpu, e)
         }
-        Reg::HL => {
+        Reg::HL | Reg::HLI | Reg::HLD => {
             debug_assert!(offset!(GameBoy, cpu: Cpu, l) + 1 == offset!(GameBoy, cpu: Cpu, h));
             offset!(GameBoy, cpu: Cpu, l)
         }

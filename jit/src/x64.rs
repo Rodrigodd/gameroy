@@ -176,6 +176,8 @@ impl<'a> BlockCompiler<'a> {
         match op {
             // NOP 1:4 - - - -
             0x00 => {}
+            // LD BC,d16 3:12 - - - -
+            0x01 => self.load16(ops, Reg16::BC, Reg16::Im16),
             // LD (BC),A 1:8 - - - -
             0x02 => self.load_mem_reg(ops, Reg::BC, Reg::A),
             // INC BC 1:8 - - - -
@@ -186,6 +188,10 @@ impl<'a> BlockCompiler<'a> {
             0x05 => self.dec(ops, Reg::B),
             // LD B,d8 2:8 - - - -
             0x06 => self.load_reg_reg(ops, Reg::B, Reg::Im8),
+            // LD (a16),SP 3:20 - - - -
+            0x08 => self.load16(ops, Reg16::Im16, Reg16::SP),
+            // LD DE,d16 3:12 - - - -
+            0x11 => self.load16(ops, Reg16::DE, Reg16::Im16),
             // LD A,(BC) 1:8 - - - -
             0x0a => self.load_reg_mem(ops, Reg::A, Reg::BC),
             // DEC BC 1:8 - - - -
@@ -216,6 +222,8 @@ impl<'a> BlockCompiler<'a> {
             0x1d => self.dec(ops, Reg::E),
             // LD E,d8 2:8 - - - -
             0x1e => self.load_reg_reg(ops, Reg::E, Reg::Im8),
+            // LD HL,d16 3:12 - - - -
+            0x21 => self.load16(ops, Reg16::HL, Reg16::Im16),
             // LD (HL+),A 1:8 - - - -
             0x22 => self.load_mem_reg(ops, Reg::HLI, Reg::A),
             // INC HL 1:8 - - - -
@@ -236,6 +244,8 @@ impl<'a> BlockCompiler<'a> {
             0x2d => self.dec(ops, Reg::L),
             // LD L,d8 2:8 - - - -
             0x2e => self.load_reg_reg(ops, Reg::L, Reg::Im8),
+            // LD SP,d16 3:12 - - - -
+            0x31 => self.load16(ops, Reg16::SP, Reg16::Im16),
             // LD (HL-),A 1:8 - - - -
             0x32 => self.load_mem_reg(ops, Reg::HLD, Reg::A),
             // INC SP 1:8 - - - -
@@ -384,6 +394,8 @@ impl<'a> BlockCompiler<'a> {
             0x7f => self.load_reg_reg(ops, Reg::A, Reg::A),
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
+            // LD SP,HL 1:8 - - - -
+            0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
             0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
             _ => {
@@ -419,6 +431,26 @@ impl<'a> BlockCompiler<'a> {
                 dynasm!(ops
                     ; movzx eax, BYTE [rbx + src as i32]
                     ; mov BYTE [rbx + dst as i32], al
+                );
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn load16(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg16, src: Reg16) {
+        let dst = reg_offset16(dst);
+        match src {
+            Reg16::Im16 => {
+                let value = self.get_immediate16();
+                dynasm!(ops
+                    ; mov WORD [rbx + dst as i32], value as i16
+                );
+            }
+            Reg16::BC | Reg16::DE | Reg16::HL => {
+                let src = reg_offset16(src);
+                dynasm!(ops
+                    ; movzx eax, WORD [rbx + src as i32]
+                    ; mov WORD [rbx + dst as i32], ax
                 );
             }
             _ => unreachable!(),
@@ -580,6 +612,31 @@ impl<'a> BlockCompiler<'a> {
         let l = self.gb.read(self.pc.wrapping_add(1));
         let h = self.gb.read(self.pc.wrapping_add(2));
         u16::from_be_bytes([h, l])
+    }
+}
+
+fn reg_offset16(reg: Reg16) -> usize {
+    match reg {
+        Reg16::AF => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, f) + 1 == offset!(GameBoy, cpu: Cpu, a));
+            offset!(GameBoy, cpu: Cpu, f)
+        }
+        Reg16::BC => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, c) + 1 == offset!(GameBoy, cpu: Cpu, b));
+            offset!(GameBoy, cpu: Cpu, c)
+        }
+        Reg16::DE => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, e) + 1 == offset!(GameBoy, cpu: Cpu, d));
+            offset!(GameBoy, cpu: Cpu, e)
+        }
+        Reg16::HL => {
+            debug_assert!(offset!(GameBoy, cpu: Cpu, l) + 1 == offset!(GameBoy, cpu: Cpu, h));
+            offset!(GameBoy, cpu: Cpu, l)
+        }
+        Reg16::SP => {
+            offset!(GameBoy, cpu: Cpu, sp)
+        }
+        _ => unreachable!(),
     }
 }
 

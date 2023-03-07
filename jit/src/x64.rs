@@ -174,6 +174,8 @@ impl<'a> BlockCompiler<'a> {
     /// that clock_count were already updated).
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
         match op {
+            // NOP 1:4 - - - -
+            0x00 => {}
             // LD (BC),A 1:8 - - - -
             0x02 => self.load_mem_reg(ops, Reg::BC, Reg::A),
             // INC BC 1:8 - - - -

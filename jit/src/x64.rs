@@ -182,12 +182,18 @@ impl<'a> BlockCompiler<'a> {
             0x03 => self.inc16(ops, Reg::BC),
             // INC B 1:4 Z 0 H -
             0x04 => self.inc(ops, Reg::B),
+            // DEC B 1:4 Z 1 H -
+            0x05 => self.dec(ops, Reg::B),
             // LD B,d8 2:8 - - - -
             0x06 => self.load_reg_reg(ops, Reg::B, Reg::Im8),
             // LD A,(BC) 1:8 - - - -
             0x0a => self.load_reg_mem(ops, Reg::A, Reg::BC),
+            // DEC BC 1:8 - - - -
+            0x0b => self.dec16(ops, Reg::BC),
             // INC C 1:4 Z 0 H -
             0x0c => self.inc(ops, Reg::C),
+            // DEC C 1:4 Z 1 H -
+            0x0d => self.dec(ops, Reg::C),
             // LD C,d8 2:8 - - - -
             0x0e => self.load_reg_reg(ops, Reg::C, Reg::Im8),
             // LD (DE),A 1:8 - - - -
@@ -196,12 +202,18 @@ impl<'a> BlockCompiler<'a> {
             0x13 => self.inc16(ops, Reg::DE),
             // INC D 1:4 Z 0 H -
             0x14 => self.inc(ops, Reg::D),
+            // DEC D 1:4 Z 1 H -
+            0x15 => self.dec(ops, Reg::D),
             // LD D,d8 2:8 - - - -
             0x16 => self.load_reg_reg(ops, Reg::D, Reg::Im8),
             // LD A,(DE) 1:8 - - - -
             0x1a => self.load_reg_mem(ops, Reg::A, Reg::DE),
+            // DEC DE 1:8 - - - -
+            0x1b => self.dec16(ops, Reg::DE),
             // INC E 1:4 Z 0 H -
             0x1c => self.inc(ops, Reg::E),
+            // DEC E 1:4 Z 1 H -
+            0x1d => self.dec(ops, Reg::E),
             // LD E,d8 2:8 - - - -
             0x1e => self.load_reg_reg(ops, Reg::E, Reg::Im8),
             // LD (HL+),A 1:8 - - - -
@@ -210,24 +222,38 @@ impl<'a> BlockCompiler<'a> {
             0x23 => self.inc16(ops, Reg::HL),
             // INC H 1:4 Z 0 H -
             0x24 => self.inc(ops, Reg::H),
+            // DEC H 1:4 Z 1 H -
+            0x25 => self.dec(ops, Reg::H),
             // LD H,d8 2:8 - - - -
             0x26 => self.load_reg_reg(ops, Reg::H, Reg::Im8),
             // LD A,(HL+) 1:8 - - - -
             0x2a => self.load_reg_mem(ops, Reg::A, Reg::HLI),
+            // DEC HL 1:8 - - - -
+            0x2b => self.dec16(ops, Reg::HL),
             // INC L 1:4 Z 0 H -
             0x2c => self.inc(ops, Reg::L),
+            // DEC L 1:4 Z 1 H -
+            0x2d => self.dec(ops, Reg::L),
             // LD L,d8 2:8 - - - -
             0x2e => self.load_reg_reg(ops, Reg::L, Reg::Im8),
             // LD (HL-),A 1:8 - - - -
             0x32 => self.load_mem_reg(ops, Reg::HLD, Reg::A),
             // INC SP 1:8 - - - -
             0x33 => self.inc16(ops, Reg::SP),
+            // INC (HL) 1:12 Z 0 H -
+            // 0x34 => self.inc16(Reg::HL),
+            // DEC (HL) 1:12 Z 1 H -
+            // 0x35 => self.dec16(Reg::HL),
             // LD (HL),d8 2:12 - - - -
             0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
             // LD A,(HL-) 1:8 - - - -
             0x3a => self.load_reg_mem(ops, Reg::A, Reg::HLD),
+            // DEC SP 1:8 - - - -
+            0x3b => self.dec16(ops, Reg::SP),
             // INC A 1:4 Z 0 H -
             0x3c => self.inc(ops, Reg::A),
+            // DEC A 1:4 Z 1 H -
+            0x3d => self.dec(ops, Reg::A),
             // LD A,d8 2:8 - - - -
             0x3e => self.load_reg_reg(ops, Reg::A, Reg::Im8),
             // LD B,B 1:4 - - - -
@@ -513,6 +539,36 @@ impl<'a> BlockCompiler<'a> {
         let reg = reg_offset(reg);
         dynasm!(ops
             ; inc WORD [rbx + reg as i32]
+        );
+    }
+
+    pub fn dec(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let reg = reg_offset(reg);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        // uses rax, rcx, rdx
+        dynasm!(ops
+            ; movzx	eax, BYTE [rbx + reg as i32]
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; and	cl, 31
+            ; test	al, 15
+            ; sete	dl
+            ; shl	dl, 5
+            ; or	dl, cl
+            ; dec	al
+            ; mov	BYTE [rbx + reg as i32], al
+            ; setne	al
+            ; shl	al, 7
+            ; or	al, dl
+            ; add	al, -64
+            ; mov	BYTE [rbx + f as i32], al
+        );
+    }
+
+    pub fn dec16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let reg = reg_offset(reg);
+        dynasm!(ops
+            ; dec WORD [rbx + reg as i32]
         );
     }
 

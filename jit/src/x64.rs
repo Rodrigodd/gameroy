@@ -418,6 +418,8 @@ impl<'a> BlockCompiler<'a> {
             0x87 => self.add(ops, Reg::A),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
+            // ADD SP,r8 2:16 0 0 H C
+            0xe8 => self.add_sp(ops),
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
             // LD SP,HL 1:8 - - - -
@@ -607,6 +609,61 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; dec WORD [rbx + reg as i32]
         );
+    }
+
+    pub fn add_sp(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let sp = reg_offset16(Reg16::SP);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        let value = self.get_immediate();
+        if value as i8 >= 0 {
+            dynasm!(ops
+                ; movzx	r9d, WORD [rbx + sp as i32]
+                ; movzx	ecx, r9b
+                ; mov	r8b, BYTE value as i8
+                ; lea	esi, [rcx + r8]
+                ; cmp	esi, 256
+                ; setae	dl
+                ; and	cl, 15
+                ; mov	eax, r8d
+                ; and	al, 15
+                ; add	al, cl
+                ; cmp	al, 16
+                ; setae	al
+                ; add	r9d, r8d
+                ; mov	WORD [rbx + sp as i32], r9w
+                ; movzx	ecx, BYTE [rbx + f as i32]
+                ; and	cl, 15
+                ; shl	al, 5
+                ; shl	dl, 4
+                ; or	dl, cl
+                ; or	dl, al
+                ; mov	BYTE [rbx + f as i32], dl
+            );
+        } else {
+            dynasm!(ops
+                ; movzx	eax, WORD [rbx + sp as i32]
+                ; mov	cl, BYTE value.wrapping_neg() as i8
+                ; mov	edx, eax
+                ; sub	edx, ecx
+                ; movzx	ecx, dl
+                ; movzx	esi, al
+                ; cmp	cx, si
+                ; setbe	cl
+                ; mov	esi, edx
+                ; and	esi, 15
+                ; and	eax, 15
+                ; cmp	si, ax
+                ; setbe	al
+                ; mov	WORD [rbx + sp as i32], dx
+                ; movzx	edx, BYTE [rbx + f as i32]
+                ; and	dl, 15
+                ; shl	al, 5
+                ; or	al, dl
+                ; shl	cl, 4
+                ; or	cl, al
+                ; mov	BYTE [rbx + f as i32], cl
+            );
+        }
     }
 
     pub fn add(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {

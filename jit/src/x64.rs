@@ -392,6 +392,24 @@ impl<'a> BlockCompiler<'a> {
             0x7e => self.load_reg_mem(ops, Reg::A, Reg::HL),
             // LD A,A 1:4 - - - -
             0x7f => self.load_reg_reg(ops, Reg::A, Reg::A),
+            // ADD A,B 1:4 Z 0 H C
+            0x80 => self.add(ops, Reg::B),
+            // ADD A,C 1:4 Z 0 H C
+            0x81 => self.add(ops, Reg::C),
+            // ADD A,D 1:4 Z 0 H C
+            0x82 => self.add(ops, Reg::D),
+            // ADD A,E 1:4 Z 0 H C
+            0x83 => self.add(ops, Reg::E),
+            // ADD A,H 1:4 Z 0 H C
+            0x84 => self.add(ops, Reg::H),
+            // ADD A,L 1:4 Z 0 H C
+            0x85 => self.add(ops, Reg::L),
+            // ADD A,(HL) 1:8 Z 0 H C
+            0x86 => self.add(ops, Reg::HL),
+            // ADD A,A 1:4 Z 0 H C
+            0x87 => self.add(ops, Reg::A),
+            // ADD A,d8 2:8 Z 0 H C
+            0xc6 => self.add(ops, Reg::Im8),
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
             // LD SP,HL 1:8 - - - -
@@ -512,32 +530,11 @@ impl<'a> BlockCompiler<'a> {
     pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match src {
             Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
-                extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
-                    gb.read(address)
-                }
+                self.read_mem(ops, src);
 
                 let dst = reg_offset(dst);
-
                 dynasm!(ops
                     ; .arch x64
-                    ; mov rax, QWORD read as usize as i64
-                    ; mov rdi, rbx
-                    ;; match src {
-                        Reg::Im16 => {
-                            let address = self.get_immediate16();
-                            dynasm!(ops; mov si, WORD address as i16);
-                        },
-                        _ => {
-                            let address = reg_offset(src);
-                            dynasm!(ops; mov si, WORD [rbx + address as i32]);
-                            match src {
-                                Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
-                                Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
-                                _ => {}
-                            }
-                        }
-                    }
-                    ; call rax
                     ; mov BYTE [rbx + dst as i32], al
                 );
             }
@@ -601,6 +598,75 @@ impl<'a> BlockCompiler<'a> {
         let reg = reg_offset(reg);
         dynasm!(ops
             ; dec WORD [rbx + reg as i32]
+        );
+    }
+
+    pub fn add(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    dynasm!(ops; mov	al, BYTE value as i8);
+                }
+                Reg::HL => {
+                    self.read_mem(ops, Reg::HL);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + a as i32]
+            ; movzx	esi, BYTE [rbx + f as i32]
+            ; mov	r8d, ecx
+            ; add	r8b, al
+            ; setb	dl
+            ; and	sil, 15
+            ; test	r8b, r8b
+            ; sete	r9b
+            ; shl	r9b, 7
+            ; and	cl, 15
+            ; and	al, 15
+            ; add	al, cl
+            ; cmp	al, 16
+            ; setae	al
+            ; shl	al, 5
+            ; shl	dl, 4
+            ; or	dl, sil
+            ; or	dl, r9b
+            ; or	dl, al
+            ; mov	BYTE [rbx + f as i32], dl
+            ; mov	BYTE [rbx + a as i32], r8b
+        )
+    }
+
+    fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg) {
+        extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
+            gb.read(address)
+        }
+
+        dynasm!(ops
+            ; .arch x64
+            ; mov rax, QWORD read as usize as i64
+            ; mov rdi, rbx
+            ;; match src {
+                Reg::Im16 => {
+                    let address = self.get_immediate16();
+                    dynasm!(ops; mov si, WORD address as i16);
+                },
+                _ => {
+                    let address = reg_offset(src);
+                    dynasm!(ops; mov si, WORD [rbx + address as i32]);
+                    match src {
+                        Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
+                        Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
+                        _ => {}
+                    }
+                }
+            }
+            ; call rax
         );
     }
 

@@ -416,8 +416,26 @@ impl<'a> BlockCompiler<'a> {
             0x86 => self.add(ops, Reg::HL),
             // ADD A,A 1:4 Z 0 H C
             0x87 => self.add(ops, Reg::A),
+            // SUB B 1:4 Z 1 H C
+            0x90 => self.sub(ops, Reg::B),
+            // SUB C 1:4 Z 1 H C
+            0x91 => self.sub(ops, Reg::C),
+            // SUB D 1:4 Z 1 H C
+            0x92 => self.sub(ops, Reg::D),
+            // SUB E 1:4 Z 1 H C
+            0x93 => self.sub(ops, Reg::E),
+            // SUB H 1:4 Z 1 H C
+            0x94 => self.sub(ops, Reg::H),
+            // SUB L 1:4 Z 1 H C
+            0x95 => self.sub(ops, Reg::L),
+            // SUB (HL) 1:8 Z 1 H C
+            0x96 => self.sub(ops, Reg::HL),
+            // SUB A 1:4 Z 1 H C
+            0x97 => self.sub(ops, Reg::A),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
+            // SUB d8 2:8 Z 1 H C
+            0xd6 => self.sub(ops, Reg::Im8),
             // ADD SP,r8 2:16 0 0 H C
             0xe8 => self.add_sp(ops),
             // LD (a16),A 3:16 - - - -
@@ -731,6 +749,46 @@ impl<'a> BlockCompiler<'a> {
             ; or	cl, al
             ; mov	BYTE [rbx + f as i32], cl
         );
+    }
+
+    pub fn sub(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    dynasm!(ops; mov	al, BYTE value as i8);
+                }
+                Reg::HL => {
+                    self.read_mem(ops, Reg::HL);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + a as i32]
+            ; movzx	r8d, BYTE [rbx + f as i32]
+            ; mov	esi, ecx
+            ; sub	sil, al
+            ; setb	dl
+            ; sete	r9b
+            ; and	r8b, 15
+            ; shl	r9b, 7
+            ; and	cl, 15
+            ; and	al, 15
+            ; cmp	cl, al
+            ; setb	al
+            ; shl	al, 5
+            ; or	al, r8b
+            ; shl	dl, 4
+            ; or	dl, al
+            ; or	dl, r9b
+            ; or	dl, 64
+            ; mov	BYTE [rbx + f as i32], dl
+            ; mov	BYTE [rbx + a as i32], sil
+        )
     }
 
     fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg) {

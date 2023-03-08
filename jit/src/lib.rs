@@ -136,7 +136,9 @@ impl JitCompiler {
                     ]
                     .contains(&op);
 
-                    if is_jump || inter.0.cpu.state != CpuState::Running {
+                    let is_interrupt = [0x40, 0x48, 0x50, 0x58, 0x60].contains(&inter.0.cpu.pc);
+
+                    if is_jump || is_interrupt || inter.0.cpu.state != CpuState::Running {
                         break;
                     }
                 }

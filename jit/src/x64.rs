@@ -190,6 +190,8 @@ impl<'a> BlockCompiler<'a> {
             0x06 => self.load_reg_reg(ops, Reg::B, Reg::Im8),
             // LD (a16),SP 3:20 - - - -
             0x08 => self.load16(ops, Reg16::Im16, Reg16::SP),
+            // ADD HL,BC 1:8 - 0 H C
+            0x09 => self.add16(ops, Reg16::BC),
             // LD DE,d16 3:12 - - - -
             0x11 => self.load16(ops, Reg16::DE, Reg16::Im16),
             // LD A,(BC) 1:8 - - - -
@@ -212,6 +214,8 @@ impl<'a> BlockCompiler<'a> {
             0x15 => self.dec(ops, Reg::D),
             // LD D,d8 2:8 - - - -
             0x16 => self.load_reg_reg(ops, Reg::D, Reg::Im8),
+            // ADD HL,DE 1:8 - 0 H C
+            0x19 => self.add16(ops, Reg16::DE),
             // LD A,(DE) 1:8 - - - -
             0x1a => self.load_reg_mem(ops, Reg::A, Reg::DE),
             // DEC DE 1:8 - - - -
@@ -234,6 +238,8 @@ impl<'a> BlockCompiler<'a> {
             0x25 => self.dec(ops, Reg::H),
             // LD H,d8 2:8 - - - -
             0x26 => self.load_reg_reg(ops, Reg::H, Reg::Im8),
+            // ADD HL,HL 1:8 - 0 H C
+            0x29 => self.add16(ops, Reg16::HL),
             // LD A,(HL+) 1:8 - - - -
             0x2a => self.load_reg_mem(ops, Reg::A, Reg::HLI),
             // DEC HL 1:8 - - - -
@@ -256,6 +262,8 @@ impl<'a> BlockCompiler<'a> {
             // 0x35 => self.dec16(Reg::HL),
             // LD (HL),d8 2:12 - - - -
             0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
+            // ADD HL,SP 1:8 - 0 H C
+            0x39 => self.add16(ops, Reg16::SP),
             // LD A,(HL-) 1:8 - - - -
             0x3a => self.load_reg_mem(ops, Reg::A, Reg::HLD),
             // DEC SP 1:8 - - - -
@@ -640,6 +648,32 @@ impl<'a> BlockCompiler<'a> {
             ; mov	BYTE [rbx + f as i32], dl
             ; mov	BYTE [rbx + a as i32], r8b
         )
+    }
+
+    pub fn add16(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg16) {
+        let hl = reg_offset16(Reg16::HL);
+        let src = reg_offset16(src);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ; movzx	eax, WORD [rbx + src as i32]
+            ; movzx	esi, WORD [rbx + hl as i32]
+            ; mov	edx, esi
+            ; add	dx, ax
+            ; setb	cl
+            ; mov	WORD [rbx + hl as i32], dx
+            ; movzx	edx, BYTE [rbx + f as i32]
+            ; and	esi, 4095
+            ; and	eax, 4095
+            ; add	eax, esi
+            ; cmp	eax, 4096
+            ; setae	al
+            ; and	dl, -113
+            ; shl	al, 5
+            ; shl	cl, 4
+            ; or	cl, dl
+            ; or	cl, al
+            ; mov	BYTE [rbx + f as i32], cl
+        );
     }
 
     fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg) {

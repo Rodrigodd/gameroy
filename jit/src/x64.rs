@@ -416,6 +416,22 @@ impl<'a> BlockCompiler<'a> {
             0x86 => self.add(ops, Reg::HL),
             // ADD A,A 1:4 Z 0 H C
             0x87 => self.add(ops, Reg::A),
+            // ADC A,B 1:4 Z 0 H C
+            0x88 => self.adc(ops, Reg::B),
+            // ADC A,C 1:4 Z 0 H C
+            0x89 => self.adc(ops, Reg::C),
+            // ADC A,D 1:4 Z 0 H C
+            0x8a => self.adc(ops, Reg::D),
+            // ADC A,E 1:4 Z 0 H C
+            0x8b => self.adc(ops, Reg::E),
+            // ADC A,H 1:4 Z 0 H C
+            0x8c => self.adc(ops, Reg::H),
+            // ADC A,L 1:4 Z 0 H C
+            0x8d => self.adc(ops, Reg::L),
+            // ADC A,(HL) 1:8 Z 0 H C
+            0x8e => self.adc(ops, Reg::HL),
+            // ADC A,A 1:4 Z 0 H C
+            0x8f => self.adc(ops, Reg::A),
             // SUB B 1:4 Z 1 H C
             0x90 => self.sub(ops, Reg::B),
             // SUB C 1:4 Z 1 H C
@@ -434,6 +450,8 @@ impl<'a> BlockCompiler<'a> {
             0x97 => self.sub(ops, Reg::A),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
+            // ADC A,d8 2:8 Z 0 H C
+            0xce => self.adc(ops, Reg::Im8),
             // SUB d8 2:8 Z 1 H C
             0xd6 => self.sub(ops, Reg::Im8),
             // ADD SP,r8 2:16 0 0 H C
@@ -788,6 +806,80 @@ impl<'a> BlockCompiler<'a> {
             ; or	dl, 64
             ; mov	BYTE [rbx + f as i32], dl
             ; mov	BYTE [rbx + a as i32], sil
+        )
+    }
+
+    pub fn adc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        if let Reg::HL = reg {
+            self.read_mem(ops, Reg::HL);
+        }
+        dynasm!(ops
+            ; movzx	edx, BYTE [rbx + a as i32]
+            ; movzx	r8d, BYTE [rbx + f as i32]
+            ; mov	esi, r8d
+            ; shr	esi, 4
+            ; and	esi, 1
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    dynasm!(ops
+                        ; lea	ecx, [rdx + rsi]
+                        ; add	ecx, value as i32
+                    );
+                }
+                Reg::HL => {
+                    dynasm!(ops
+                        ; lea	ecx, [rax + rdx]
+                        ; add	ecx, esi
+                    );
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; lea	ecx, [rax + rdx]
+                        ; add	ecx, esi
+                    );
+                }
+            }
+            ; test	cl, cl
+            ; sete	r9b
+            ; and	r8b, 15
+            ; shl	r9b, 7
+            ; and	edx, 15
+
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    dynasm!(ops
+                        ; add	edx, (value & 0xF) as i32
+                        ; add	edx, esi
+                        ; cmp	dx, 16
+                    );
+                }
+                _ => {
+                    dynasm!(ops
+                        ; and	eax, 15
+                        ; add	eax, edx
+                        ; add	eax, esi
+                        ; cmp	ax, 16
+                    );
+                }
+            }
+
+            ; setae	al
+            ; shl	al, 5
+            ; cmp	ecx, 256
+            ; setae	dl
+            ; shl	dl, 4
+            ; or	dl, r8b
+            ; or	dl, r9b
+            ; or	dl, al
+            ; mov	BYTE [rbx + f as i32], dl
+            ; mov	BYTE [rbx + a as i32], cl
         )
     }
 

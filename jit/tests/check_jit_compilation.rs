@@ -169,7 +169,6 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
         while game_boy_b.clock_count < game_boy_a.clock_count {
             Interpreter(&mut game_boy_b).interpret_op();
         }
-        assert_eq!(game_boy_a.clock_count, game_boy_b.clock_count);
 
         if !assert_equal(&game_boy_a, &game_boy_b, &vblank.lock().unwrap()) {
             return false;

@@ -480,6 +480,22 @@ impl<'a> BlockCompiler<'a> {
             0xa6 => self.and(ops, Reg::HL),
             // AND A 1:4 Z 0 1 0
             0xa7 => self.and(ops, Reg::A),
+            // XOR B 1:4 Z 0 0 0
+            0xa8 => self.xor(ops, Reg::B),
+            // XOR C 1:4 Z 0 0 0
+            0xa9 => self.xor(ops, Reg::C),
+            // XOR D 1:4 Z 0 0 0
+            0xaa => self.xor(ops, Reg::D),
+            // XOR E 1:4 Z 0 0 0
+            0xab => self.xor(ops, Reg::E),
+            // XOR H 1:4 Z 0 0 0
+            0xac => self.xor(ops, Reg::H),
+            // XOR L 1:4 Z 0 0 0
+            0xad => self.xor(ops, Reg::L),
+            // XOR (HL) 1:8 Z 0 0 0
+            0xae => self.xor(ops, Reg::HL),
+            // XOR A 1:4 Z 0 0 0
+            0xaf => self.xor(ops, Reg::A),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
             // ADC A,d8 2:8 Z 0 H C
@@ -494,6 +510,8 @@ impl<'a> BlockCompiler<'a> {
             0xe8 => self.add_sp(ops),
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
+            // XOR d8 2:8 Z 0 0 0
+            0xee => self.xor(ops, Reg::Im8),
             // LD SP,HL 1:8 - - - -
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
@@ -1005,6 +1023,42 @@ impl<'a> BlockCompiler<'a> {
             ; shl	al, 7
             ; or	al, cl
             ; add	al, -96
+            ; mov	BYTE [rbx + f as i32], al
+        )
+    }
+
+    pub fn xor(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    dynasm!(ops
+                        ; movzx	ecx, BYTE [rbx + f as i32]
+                        ; xor	BYTE [rbx + a as i32], BYTE value as i8
+                    );
+                }
+                Reg::HL => {
+                    self.read_mem(ops, Reg::HL);
+                    dynasm!(ops
+                        ; movzx	ecx, BYTE [rbx + f as i32]
+                        ; xor	BYTE [rbx + a as i32], al
+                    );
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; movzx	ecx, BYTE [rbx + f as i32]
+                        ; xor	BYTE [rbx + a as i32], al
+                    );
+                }
+            }
+            ; sete	al
+            ; and	cl, 15
+            ; shl	al, 7
+            ; or	al, cl
             ; mov	BYTE [rbx + f as i32], al
         )
     }

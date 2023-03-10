@@ -5,10 +5,13 @@ use windows_sys::Win32::System::Diagnostics::Debug::{
     RtlAddFunctionTable, IMAGE_RUNTIME_FUNCTION_ENTRY, IMAGE_RUNTIME_FUNCTION_ENTRY_0,
 };
 
+/// See: https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-170#unwind-operation-code
 const UWOP_PUSH_NONVOL: u8 = 0;
-const RAX: u8 = 0;
+
+// See: https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-170#operation-info
 const RBX: u8 = 3;
 const RPB: u8 = 5;
+const R12: u8 = 12;
 
 /// See: https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64?view=msvc-170#struct-unwind_code
 #[allow(dead_code)]
@@ -61,7 +64,7 @@ fn align(x: usize, alignment: usize) -> usize {
 pub fn to_mutable_buffer_with_unwin_info(
     code: Vec<u8>,
     prolog_len: u8,
-    push_rax_offset: u8,
+    push_r12_offset: u8,
     push_rbx_offset: u8,
     push_rbp_offset: u8,
 ) -> MutableBuffer {
@@ -94,8 +97,8 @@ pub fn to_mutable_buffer_with_unwin_info(
                 // the unwind code must be in reverse order. Read 3.b) of Unwind Procedure.
                 unwind_codes_array: [
                     UnwindCode {
-                        offset_in_prolog: push_rax_offset,
-                        code_info: UWOP_PUSH_NONVOL | (RAX << 4),
+                        offset_in_prolog: push_r12_offset,
+                        code_info: UWOP_PUSH_NONVOL | (R12 << 4),
                     },
                     UnwindCode {
                         offset_in_prolog: push_rbx_offset,

@@ -67,7 +67,7 @@ impl<'a> BlockCompiler<'a> {
 
         let push_rbp_offset;
         let push_rbx_offset;
-        let push_rax_offset;
+        let push_r12_offset;
         let prolog_len;
 
         dynasm!(ops
@@ -76,8 +76,8 @@ impl<'a> BlockCompiler<'a> {
             ; push rbp
             ;; push_rbx_offset = ops.offset().0 as u8
             ; push rbx
-            ;; push_rax_offset = ops.offset().0 as u8
-            ; push rax
+            ;; push_r12_offset = ops.offset().0 as u8
+            ; push r12
             ;; prolog_len = ops.offset().0 as u8
             ; mov rbp, rsp
             ; mov rbx, rdi
@@ -113,7 +113,7 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; .arch x64
             ; ->exit:
-            ; pop rax
+            ; pop r12
             ; pop rbx
             ; pop rbp
             ; ret
@@ -128,12 +128,12 @@ impl<'a> BlockCompiler<'a> {
                 let buffer = crate::windows::to_mutable_buffer_with_unwin_info(
                     code,
                     prolog_len,
-                    push_rax_offset,
+                    push_r12_offset,
                     push_rbx_offset,
                     push_rbp_offset,
                 );
             } else {
-                let _ = (prolog_len, push_rax_offset, push_rbx_offset, push_rbp_offset);
+                let _ = (prolog_len, push_r12_offset, push_rbx_offset, push_rbp_offset);
                 let buffer = to_mutable_buffer(code);
             }
         }

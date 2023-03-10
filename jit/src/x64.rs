@@ -512,6 +512,22 @@ impl<'a> BlockCompiler<'a> {
             0xb6 => self.or(ops, Reg::HL),
             // OR A 1:4 Z 0 0 0
             0xb7 => self.or(ops, Reg::A),
+            // CP B 1:4 Z 1 H C
+            0xb8 => self.cp(ops, Reg::B),
+            // CP C 1:4 Z 1 H C
+            0xb9 => self.cp(ops, Reg::C),
+            // CP D 1:4 Z 1 H C
+            0xba => self.cp(ops, Reg::D),
+            // CP E 1:4 Z 1 H C
+            0xbb => self.cp(ops, Reg::E),
+            // CP H 1:4 Z 1 H C
+            0xbc => self.cp(ops, Reg::H),
+            // CP L 1:4 Z 1 H C
+            0xbd => self.cp(ops, Reg::L),
+            // CP (HL) 1:8 Z 1 H C
+            0xbe => self.cp(ops, Reg::HL),
+            // CP A 1:4 Z 1 H C
+            0xbf => self.cp(ops, Reg::A),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
             // ADC A,d8 2:8 Z 0 H C
@@ -534,6 +550,8 @@ impl<'a> BlockCompiler<'a> {
             0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
             // OR d8 2:8 Z 0 0 0
             0xf6 => self.or(ops, Reg::Im8),
+            // CP d8 2:8 Z 1 H C
+            0xfe => self.cp(ops, Reg::Im8),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -1114,6 +1132,49 @@ impl<'a> BlockCompiler<'a> {
             ; shl	al, 7
             ; or	al, cl
             ; mov	BYTE [rbx + f as i32], al
+        )
+    }
+
+    pub fn cp(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    // TODO: I can use immediate instructions instead of loading the value in a rax.
+                    dynasm!(ops
+                        ; mov	al, BYTE value as i8
+                    );
+                }
+                Reg::HL => {
+                    self.read_mem(ops, Reg::HL);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                    );
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + a as i32]
+            ; movzx	esi, BYTE [rbx + f as i32]
+            ; and	sil, 15
+            ; cmp	cl, al
+            ; setne	dl
+            ; setb	r8b
+            ; shl	r8b, 4
+            ; and	cl, 15
+            ; and	al, 15
+            ; cmp	cl, al
+            ; setb	al
+            ; shl	al, 5
+            ; shl	dl, 7
+            ; or	dl, sil
+            ; or	dl, r8b
+            ; or	dl, al
+            ; add	dl, -64
+            ; mov	BYTE [rbx + f as i32], dl
         )
     }
 

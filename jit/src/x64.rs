@@ -257,9 +257,9 @@ impl<'a> BlockCompiler<'a> {
             // INC SP 1:8 - - - -
             0x33 => self.inc16(ops, Reg::SP),
             // INC (HL) 1:12 Z 0 H -
-            // 0x34 => self.inc16(Reg::HL),
+            0x34 => self.inc_mem(ops),
             // DEC (HL) 1:12 Z 1 H -
-            // 0x35 => self.dec16(Reg::HL),
+            0x35 => self.dec_mem(ops),
             // LD (HL),d8 2:12 - - - -
             0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
             // ADD HL,SP 1:8 - 0 H C
@@ -652,7 +652,7 @@ impl<'a> BlockCompiler<'a> {
     pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match src {
             Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
-                self.read_mem(ops, src);
+                self.read_mem(ops, src, false);
 
                 let dst = reg_offset(dst);
                 dynasm!(ops
@@ -693,11 +693,33 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
+    pub fn inc_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ;; self.read_mem(ops, Reg::HL, true)
+            ; inc	al
+            ; sete	cl
+            ; movzx	edx, BYTE [rbx + f as i32]
+            ; and	dl, 31
+            ; shl	cl, 7
+            ; or	cl, dl
+            ; test	al, 15
+            ; sete	dl
+            ; shl	dl, 5
+            ; or	dl, cl
+            ; mov	BYTE [rbx + f as i32], dl
+            ; movzx	edx, al
+            ; mov	rdi, rbx
+            ; mov	esi, r12d
+            ;; self.write_mem(ops)
+        );
+    }
+
     pub fn dec(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
         let reg = reg_offset(reg);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
-        // uses rax, rcx, rdx
         dynasm!(ops
             ; movzx	eax, BYTE [rbx + reg as i32]
             ; movzx	ecx, BYTE [rbx + f as i32]
@@ -720,6 +742,32 @@ impl<'a> BlockCompiler<'a> {
         let reg = reg_offset(reg);
         dynasm!(ops
             ; dec WORD [rbx + reg as i32]
+        );
+    }
+
+    pub fn dec_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ;; self.read_mem(ops, Reg::HL, true)
+            ; mov	esi, eax
+            ; dec	sil
+            ; sete	dl
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; and	cl, 31
+            ; shl	dl, 7
+            ; neg	al
+            ; test	al, 15
+            ; sete	al
+            ; shl	al, 5
+            ; or	dl, cl
+            ; or	dl, al
+            ; or	dl, 64
+            ; mov	BYTE [rbx + f as i32], dl
+            ; movzx	edx, sil
+            ; mov	rdi, rbx
+            ; mov	esi, r12d
+            ;; self.write_mem(ops)
         );
     }
 
@@ -788,7 +836,7 @@ impl<'a> BlockCompiler<'a> {
                     dynasm!(ops; mov	al, BYTE value as i8);
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                 }
                 _ => {
                     let reg = reg_offset(reg);
@@ -855,7 +903,7 @@ impl<'a> BlockCompiler<'a> {
                     dynasm!(ops; mov	al, BYTE value as i8);
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                 }
                 _ => {
                     let reg = reg_offset(reg);
@@ -890,7 +938,7 @@ impl<'a> BlockCompiler<'a> {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         if let Reg::HL = reg {
-            self.read_mem(ops, Reg::HL);
+            self.read_mem(ops, Reg::HL, false);
         }
         dynasm!(ops
             ; movzx	edx, BYTE [rbx + a as i32]
@@ -973,7 +1021,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                 }
                 _ => {
                     let reg = reg_offset(reg);
@@ -1025,7 +1073,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                     dynasm!(ops
                         ; movzx	ecx, BYTE [rbx + f as i32]
                         ; and	BYTE [rbx + a as i32], al
@@ -1062,7 +1110,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                     dynasm!(ops
                         ; movzx	ecx, BYTE [rbx + f as i32]
                         ; xor	BYTE [rbx + a as i32], al
@@ -1098,7 +1146,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                     dynasm!(ops
                         ; movzx	ecx, BYTE [rbx + f as i32]
                         ; or	BYTE [rbx + a as i32], al
@@ -1134,7 +1182,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
                 Reg::HL => {
-                    self.read_mem(ops, Reg::HL);
+                    self.read_mem(ops, Reg::HL, false);
                 }
                 _ => {
                     let reg = reg_offset(reg);
@@ -1164,7 +1212,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg) {
+    fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg, preserve_in_r12: bool) {
         extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
             gb.read(address)
         }
@@ -1187,6 +1235,9 @@ impl<'a> BlockCompiler<'a> {
                         _ => {}
                     }
                 }
+            }
+            ;; if preserve_in_r12 {
+                dynasm!(ops; mov r12d, esi)
             }
             ; call rax
         );

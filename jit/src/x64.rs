@@ -614,19 +614,8 @@ impl<'a> BlockCompiler<'a> {
     pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match dst {
             Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
-                extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
-                    gb.write(address, value);
-                    // if the next instruction is a interpreter call, `handle_interrupt` would be
-                    // called twice, but I don't think this causes a problem.
-                    if Interpreter(gb).handle_interrupt().is_break() {
-                        return true;
-                    }
-                    false
-                }
-
                 dynasm!(ops
                     ; .arch x64
-                    ; mov rax, QWORD write as usize as i64
                     ; mov rdi, rbx
                     ;; match dst {
                         Reg::Im16 => {
@@ -643,7 +632,6 @@ impl<'a> BlockCompiler<'a> {
                             }
                         }
                     }
-                    ; mov dl, BYTE [rbx + src as i32]
                     ;; match src {
                         Reg::Im8 => {
                             let value = self.get_immediate();
@@ -654,9 +642,7 @@ impl<'a> BlockCompiler<'a> {
                             dynasm!(ops; mov dl, BYTE [rbx + src as i32])
                         }
                     }
-                    ; call rax
-                    ; test rax, rax
-                    ; jnz ->exit
+                    ;; self.write_mem(ops)
                 );
             }
             _ => unreachable!(),
@@ -1203,6 +1189,29 @@ impl<'a> BlockCompiler<'a> {
                 }
             }
             ; call rax
+        );
+    }
+
+    fn write_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
+            gb.write(address, value);
+            // if the next instruction is a interpreter call, `handle_interrupt` would be
+            // called twice, but I don't think this causes a problem.
+            if Interpreter(gb).handle_interrupt().is_break() {
+                return true;
+            }
+            false
+        }
+
+        dynasm!(ops
+            ; .arch x64
+            ; mov rax, QWORD write as usize as i64
+            // ; mov rdi, rbx
+            // ; mov si, WORD [rbx + address as i32]
+            // ; mov dl, BYTE [rbx + src as i32]
+            ; call rax
+            ; test rax, rax
+            ; jnz ->exit
         );
     }
 

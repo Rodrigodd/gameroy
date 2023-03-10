@@ -448,12 +448,30 @@ impl<'a> BlockCompiler<'a> {
             0x96 => self.sub(ops, Reg::HL),
             // SUB A 1:4 Z 1 H C
             0x97 => self.sub(ops, Reg::A),
+            // SBC A,B 1:4 Z 1 H C
+            0x98 => self.sbc(ops, Reg::B),
+            // SBC A,C 1:4 Z 1 H C
+            0x99 => self.sbc(ops, Reg::C),
+            // SBC A,D 1:4 Z 1 H C
+            0x9a => self.sbc(ops, Reg::D),
+            // SBC A,E 1:4 Z 1 H C
+            0x9b => self.sbc(ops, Reg::E),
+            // SBC A,H 1:4 Z 1 H C
+            0x9c => self.sbc(ops, Reg::H),
+            // SBC A,L 1:4 Z 1 H C
+            0x9d => self.sbc(ops, Reg::L),
+            // SBC A,(HL) 1:8 Z 1 H C
+            0x9e => self.sbc(ops, Reg::HL),
+            // SBC A,A 1:4 Z 1 H C
+            0x9f => self.sbc(ops, Reg::A),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
             // ADC A,d8 2:8 Z 0 H C
             0xce => self.adc(ops, Reg::Im8),
             // SUB d8 2:8 Z 1 H C
             0xd6 => self.sub(ops, Reg::Im8),
+            // SBC A,d8 2:8 Z 1 H C
+            0xde => self.sbc(ops, Reg::Im8),
             // ADD SP,r8 2:16 0 0 H C
             0xe8 => self.add_sp(ops),
             // LD (a16),A 3:16 - - - -
@@ -880,6 +898,59 @@ impl<'a> BlockCompiler<'a> {
             ; or	dl, al
             ; mov	BYTE [rbx + f as i32], dl
             ; mov	BYTE [rbx + a as i32], cl
+        )
+    }
+
+    pub fn sbc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ;; match reg {
+                Reg::Im8 => {
+                    let value = self.get_immediate();
+                    // TODO: I can use immediate add's instead of loading the value in a rax.
+                    dynasm!(ops
+                        ; mov	al, BYTE value as i8
+                    );
+                }
+                Reg::HL => {
+                    self.read_mem(ops, Reg::HL);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                    );
+                }
+            }
+            ; movzx	esi, BYTE [rbx + a as i32]
+            ; movzx	r8d, BYTE [rbx + f as i32]
+            ; mov	ecx, r8d
+            ; shr	ecx, 4
+            ; and	ecx, 1
+            ; mov	edx, esi
+            ; sub	edx, eax
+            ; sub	edx, ecx
+            ; test	dl, dl
+            ; sete	r9b
+            ; and	r8b, 15
+            ; shl	r9b, 7
+            ; and	esi, 15
+            ; and	eax, 15
+            ; add	eax, ecx
+            ; cmp	si, ax
+            ; setb	cl
+            ; shl	cl, 5
+            ; or	cl, r8b
+            ; or	cl, r9b
+            ; mov	eax, edx
+            ; shr	eax, 11
+            ; and	al, 16
+            ; or	al, cl
+            ; or	al, 64
+            ; mov	BYTE [rbx + f as i32], al
+            ; mov	BYTE [rbx + a as i32], dl
         )
     }
 

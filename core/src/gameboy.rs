@@ -390,7 +390,9 @@ impl GameBoy {
 
     pub fn write16(&mut self, address: u16, value: u16) {
         let [a, b] = value.to_le_bytes();
+        self.tick(4);
         self.write(address, a);
+        self.tick(4);
         self.write(address.wrapping_add(1), b);
     }
 

@@ -194,8 +194,6 @@ impl<'a> BlockCompiler<'a> {
             0x08 => self.load16(ops, Reg16::Im16, Reg16::SP),
             // ADD HL,BC 1:8 - 0 H C
             0x09 => self.add16(ops, Reg16::BC),
-            // LD DE,d16 3:12 - - - -
-            0x11 => self.load16(ops, Reg16::DE, Reg16::Im16),
             // LD A,(BC) 1:8 - - - -
             0x0a => self.load_reg_mem(ops, Reg::A, Reg::BC),
             // DEC BC 1:8 - - - -
@@ -206,6 +204,8 @@ impl<'a> BlockCompiler<'a> {
             0x0d => self.dec(ops, Reg::C),
             // LD C,d8 2:8 - - - -
             0x0e => self.load_reg_reg(ops, Reg::C, Reg::Im8),
+            // LD DE,d16 3:12 - - - -
+            0x11 => self.load16(ops, Reg16::DE, Reg16::Im16),
             // LD (DE),A 1:8 - - - -
             0x12 => self.load_mem_reg(ops, Reg::DE, Reg::A),
             // INC DE 1:8 - - - -

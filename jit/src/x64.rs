@@ -204,6 +204,8 @@ impl<'a> BlockCompiler<'a> {
             0x0d => self.dec(ops, Reg::C),
             // LD C,d8 2:8 - - - -
             0x0e => self.load_reg_reg(ops, Reg::C, Reg::Im8),
+            // RRC A 2:8 Z 0 0 C
+            0x0f => self.rrca(ops),
             // LD DE,d16 3:12 - - - -
             0x11 => self.load16(ops, Reg16::DE, Reg16::Im16),
             // LD (DE),A 1:8 - - - -
@@ -1228,6 +1230,24 @@ impl<'a> BlockCompiler<'a> {
             ; or	dl, cl
             ; mov	BYTE [rbx + f as i32], dl
             ; rol	al, 1
+            ; mov	BYTE [rbx + a as i32], al
+        )
+    }
+
+    pub fn rrca(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; movzx	eax, BYTE [rbx + a as i32]
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; and	cl, 15
+            ; mov	edx, eax
+            ; shl	dl, 4
+            ; and	dl, 16
+            ; or	dl, cl
+            ; mov	BYTE [rbx + f as i32], dl
+            ; ror	al, 1
             ; mov	BYTE [rbx + a as i32], al
         )
     }

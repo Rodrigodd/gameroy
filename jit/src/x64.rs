@@ -218,6 +218,8 @@ impl<'a> BlockCompiler<'a> {
             0x15 => self.dec(ops, Reg::D),
             // LD D,d8 2:8 - - - -
             0x16 => self.load_reg_reg(ops, Reg::D, Reg::Im8),
+            // RLA 1:4 0 0 0 C
+            0x17 => self.rla(ops),
             // ADD HL,DE 1:8 - 0 H C
             0x19 => self.add16(ops, Reg16::DE),
             // LD A,(DE) 1:8 - - - -
@@ -230,6 +232,8 @@ impl<'a> BlockCompiler<'a> {
             0x1d => self.dec(ops, Reg::E),
             // LD E,d8 2:8 - - - -
             0x1e => self.load_reg_reg(ops, Reg::E, Reg::Im8),
+            // RRA 1:4 0 0 0 C
+            0x1f => self.rra(ops),
             // LD HL,d16 3:12 - - - -
             0x21 => self.load16(ops, Reg16::HL, Reg16::Im16),
             // LD (HL+),A 1:8 - - - -
@@ -1249,6 +1253,50 @@ impl<'a> BlockCompiler<'a> {
             ; mov	BYTE [rbx + f as i32], dl
             ; ror	al, 1
             ; mov	BYTE [rbx + a as i32], al
+        )
+    }
+
+    pub fn rla(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; movzx	ecx, BYTE [rbx + a as i32]
+            ; movzx	esi, BYTE [rbx + f as i32]
+            ; mov	edx, esi
+            ; shr	dl, 4
+            ; and	dl, 1
+            ; and	sil, 15
+            ; mov	eax, ecx
+            ; shr	al, 3
+            ; and	al, 16
+            ; or	al, sil
+            ; mov	BYTE [rbx + f as i32], al
+            ; add	cl, cl
+            ; or	cl, dl
+            ; mov	BYTE [rbx + a as i32], cl
+        )
+    }
+
+    pub fn rra(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; movzx	esi, BYTE [rbx + a as i32]
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; mov	edx, ecx
+            ; and	dl, 15
+            ; mov	eax, esi
+            ; shl	al, 4
+            ; and	al, 16
+            ; or	al, dl
+            ; mov	BYTE [rbx + f as i32], al
+            ; shr	sil, 1
+            ; shl	cl, 3
+            ; and	cl, -128
+            ; or	cl, sil
+            ; mov	BYTE [rbx + a as i32], cl
         )
     }
 

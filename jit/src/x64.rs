@@ -286,6 +286,8 @@ impl<'a> BlockCompiler<'a> {
             0x3d => self.dec(ops, Reg::A),
             // LD A,d8 2:8 - - - -
             0x3e => self.load_reg_reg(ops, Reg::A, Reg::Im8),
+            // CCF 1:4 - 0 0 C
+            0x3f => self.ccf(ops),
             // LD B,B 1:4 - - - -
             0x40 => self.load_reg_reg(ops, Reg::B, Reg::B),
             // LD B,C 1:4 - - - -
@@ -1399,6 +1401,18 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; not	BYTE [rbx + a as i32]
             ; or	BYTE [rbx + f as i32], 0x60
+        );
+    }
+
+    pub fn ccf(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; movzx	eax, BYTE [rbx + a as i32]
+            ; and	al, -97
+            ; xor	al, 16
+            ; mov	BYTE [rbx + f as i32], al
         );
     }
 

@@ -246,6 +246,8 @@ impl<'a> BlockCompiler<'a> {
             0x25 => self.dec(ops, Reg::H),
             // LD H,d8 2:8 - - - -
             0x26 => self.load_reg_reg(ops, Reg::H, Reg::Im8),
+            // DAA 1:4 Z - 0 C
+            0x27 => self.daa(ops),
             // ADD HL,HL 1:8 - 0 H C
             0x29 => self.add16(ops, Reg16::HL),
             // LD A,(HL+) 1:8 - - - -
@@ -1324,6 +1326,67 @@ impl<'a> BlockCompiler<'a> {
             ; and	cl, -128
             ; or	cl, sil
             ; mov	BYTE [rbx + a as i32], cl
+        )
+    }
+
+    pub fn daa(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; movzx	eax, BYTE [rbx + f as i32]
+            ; test	al, 64 // test N flag
+            ; jne	>N_IS_SET
+            ; mov	r11d, eax
+            ; mov	r10d, eax
+            ; movzx	r8d, al
+            ; and	al, 16
+            ; shr	al, 4 // C flag
+            ; and	r11b, 32
+            ; shr	r11b, 5
+            ; mov	esi, DWORD [rbx + a as i32]
+            ; cmp	sil, BYTE 0x9a_u8 as i8
+            ; setae	dl // a > 0x99
+            ; or	dl, al
+            ; lea	eax, [rsi + 0x60]
+            ; or	r10b, 16
+            ; movzx	eax, al
+            ; test	dl, dl // if c && a > 0x99
+            ; cmove	eax, esi
+            ; mov	ecx, eax
+            ; and	cl, 14
+            ; cmp	cl, 10
+            ; setae	r9b // a & 0xF > 0x9
+            ; or	r9b, r11b
+            ; lea	ecx, [rax + 0x6]
+            ; movzx	ecx, cl
+            ; test	r9b, r9b
+            ; cmove	ecx, eax
+            ; movzx	eax, r10b
+            ; test	dl, dl
+            ; cmove	eax, r8d
+            ; jne	>STORE_A
+            ; test	r9b, r9b
+            ; je	>CONTINUE
+            ; jmp	>STORE_A
+            ; N_IS_SET:
+            ; test	al, 16
+            ; je	>C_IS_UNSET
+            ; add	BYTE [rbx + a as i32], -0x60
+            ; C_IS_UNSET:
+            ; movzx	ecx, BYTE [rbx + a as i32]
+            ; test	al, 32
+            ; je	>CONTINUE
+            ; add	cl, -0x6
+            ; STORE_A:
+            ; mov	BYTE [rbx + a as i32], cl
+            ; CONTINUE:
+            ; test	cl, cl
+            ; sete	cl
+            ; and	al, 95
+            ; shl	cl, 7
+            ; or	cl, al
+            ; mov	BYTE [rbx + f as i32], cl
         )
     }
 

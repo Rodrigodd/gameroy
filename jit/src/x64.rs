@@ -600,22 +600,49 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn load16(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg16, src: Reg16) {
-        let dst = reg_offset16(dst);
-        match src {
+        match dst {
             Reg16::Im16 => {
-                let value = self.get_immediate16();
-                dynasm!(ops
-                    ; mov WORD [rbx + dst as i32], value as i16
-                );
-            }
-            Reg16::BC | Reg16::DE | Reg16::HL => {
-                let src = reg_offset16(src);
+                let dst = self.get_immediate16();
+                match src {
+                    Reg16::SP => {}
+                    _ => unreachable!(),
+                }
+                let src = reg_offset16(Reg16::SP);
                 dynasm!(ops
                     ; movzx eax, WORD [rbx + src as i32]
-                    ; mov WORD [rbx + dst as i32], ax
+                    ; mov   r12d, eax
+                    ; shr   r12d, 8
+                    ; mov	rdi, rbx
+                    ; mov	esi, dst as i32
+                    ; movzx edx, al
                 );
+                self.write_mem(ops);
+                dynasm!(ops
+                    ; mov	rdi, rbx
+                    ; mov	esi, (dst + 1) as i32
+                    ; mov   edx, r12d
+                );
+                self.write_mem(ops);
             }
-            _ => unreachable!(),
+            _ => {
+                let dst = reg_offset16(dst);
+                match src {
+                    Reg16::Im16 => {
+                        let value = self.get_immediate16();
+                        dynasm!(ops
+                            ; mov WORD [rbx + dst as i32], value as i16
+                        );
+                    }
+                    Reg16::BC | Reg16::DE | Reg16::HL => {
+                        let src = reg_offset16(src);
+                        dynasm!(ops
+                            ; movzx eax, WORD [rbx + src as i32]
+                            ; mov WORD [rbx + dst as i32], ax
+                        );
+                    }
+                    _ => unreachable!(),
+                }
+            }
         }
     }
 

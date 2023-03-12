@@ -260,6 +260,8 @@ impl<'a> BlockCompiler<'a> {
             0x2d => self.dec(ops, Reg::L),
             // LD L,d8 2:8 - - - -
             0x2e => self.load_reg_reg(ops, Reg::L, Reg::Im8),
+            // CPL 1:4 - 1 1 -
+            0x2f => self.cpl(ops),
             // LD SP,d16 3:12 - - - -
             0x31 => self.load16(ops, Reg16::SP, Reg16::Im16),
             // LD (HL-),A 1:8 - - - -
@@ -1388,6 +1390,16 @@ impl<'a> BlockCompiler<'a> {
             ; or	cl, al
             ; mov	BYTE [rbx + f as i32], cl
         )
+    }
+
+    pub fn cpl(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; not	BYTE [rbx + a as i32]
+            ; or	BYTE [rbx + f as i32], 0x60
+        );
     }
 
     fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg, preserve_in_r12: bool) {

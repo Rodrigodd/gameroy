@@ -93,7 +93,13 @@ impl JitCompiler {
         let pc = gb.cpu.pc;
         let bank = gb.cartridge.curr_bank();
 
-        let op = gb.read(pc);
+        if pc >= 0x8000 {
+            // don't compile code outside ROM
+            return None;
+        }
+
+        let op = gb.cartridge.read(pc);
+
         // if STOP or HALT, fallback to interpreter
         if op == 0x10 || op == 0x76 {
             return None;

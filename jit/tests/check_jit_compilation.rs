@@ -90,7 +90,7 @@ fn test_all_files() -> Result<(), ()> {
 
 #[test]
 fn test_one() {
-    let rom = r"blargg\cpu_instrs\cpu_instrs.gb";
+    let rom = r"blargg/cpu_instrs/cpu_instrs.gb";
     let rom = TEST_ROM_PATH.to_string() + rom;
     let timeout = 30 * CLOCK_SPEED;
     let ok = test_interrupt_prediction(&rom, timeout);

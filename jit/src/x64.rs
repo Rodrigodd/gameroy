@@ -544,18 +544,24 @@ impl<'a> BlockCompiler<'a> {
             0xbf => self.cp(ops, Reg::A),
             // POP BC 1:12 - - - -
             0xc1 => self.pop(ops, Reg16::BC),
+            // PUSH BC 1:16 - - - -
+            0xc5 => self.push(ops, Reg16::BC),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
             // ADC A,d8 2:8 Z 0 H C
             0xce => self.adc(ops, Reg::Im8),
             // POP DE 1:12 - - - -
             0xd1 => self.pop(ops, Reg16::DE),
+            // PUSH DE 1:16 - - - -
+            0xd5 => self.push(ops, Reg16::DE),
             // SUB d8 2:8 Z 1 H C
             0xd6 => self.sub(ops, Reg::Im8),
             // SBC A,d8 2:8 Z 1 H C
             0xde => self.sbc(ops, Reg::Im8),
             // POP HL 1:12 - - - -
             0xe1 => self.pop(ops, Reg16::HL),
+            // PUSH HL 1:16 - - - -
+            0xe5 => self.push(ops, Reg16::HL),
             // AND d8 2:8 Z 0 1 0
             0xe6 => self.and(ops, Reg::Im8),
             // ADD SP,r8 2:16 0 0 H C
@@ -566,12 +572,14 @@ impl<'a> BlockCompiler<'a> {
             0xee => self.xor(ops, Reg::Im8),
             // POP AF 1:12 Z N H C
             0xf1 => self.pop(ops, Reg16::AF),
+            // PUSH AF 1:16 - - - -
+            0xf5 => self.push(ops, Reg16::AF),
+            // OR d8 2:8 Z 0 0 0
+            0xf6 => self.or(ops, Reg::Im8),
             // LD SP,HL 1:8 - - - -
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
             0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
-            // OR d8 2:8 Z 0 0 0
-            0xf6 => self.or(ops, Reg::Im8),
             // CP d8 2:8 Z 1 H C
             0xfe => self.cp(ops, Reg::Im8),
             _ => {
@@ -1440,6 +1448,28 @@ impl<'a> BlockCompiler<'a> {
             ; add	r12d, 2
             ; mov	WORD [rbx + sp as i32], r12w
             ; mov	BYTE [rbx + (reg + 1) as i32], al
+        )
+    }
+
+    pub fn push(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg16) {
+        let sp = reg_offset16(Reg16::SP);
+        let reg = reg_offset16(reg);
+        dynasm!(ops
+            ; movzx	r12d, WORD [rbx + reg as i32]
+            ; mov	edx, r12d
+            ; shr	edx, 8
+            ; movzx	eax, WORD [rbx + sp as i32]
+            ; dec	eax
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.write_mem(ops)
+            ; movzx	eax, WORD [rbx + sp as i32]
+            ; add	eax, -2
+            ; movzx	edx, r12b
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.write_mem(ops)
+            ; add	WORD [rbx + sp as i32], -2
         )
     }
 

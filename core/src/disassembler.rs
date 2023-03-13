@@ -18,7 +18,7 @@ impl fmt::LowerHex for ReallySigned {
 }
 
 /// A address in the ROM.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Address {
     /// The bank where this address belongs
     pub bank: u16,

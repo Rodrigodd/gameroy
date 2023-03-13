@@ -5,7 +5,10 @@ use gameroy::{
     gameboy::{cpu::CpuState, GameBoy},
     interpreter::Interpreter,
 };
-use std::collections::BTreeMap;
+use std::{
+    collections::HashMap,
+    hash::{BuildHasher, Hasher},
+};
 
 use self::x64::BlockCompiler;
 
@@ -72,8 +75,30 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     (start_address, length, max_clock_cycles)
 }
 
+struct NoHashHasher(u64);
+impl Hasher for NoHashHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, _: &[u8]) {
+        panic!("should only be hashing u16")
+    }
+
+    fn write_u16(&mut self, i: u16) {
+        self.0 = (self.0 << 16) | i as u64;
+    }
+}
+impl BuildHasher for NoHashHasher {
+    type Hasher = Self;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        Self(0)
+    }
+}
+
 pub struct JitCompiler {
-    blocks: BTreeMap<Address, Block>,
+    blocks: HashMap<Address, Block, NoHashHasher>,
 }
 
 impl Default for JitCompiler {
@@ -85,7 +110,7 @@ impl Default for JitCompiler {
 impl JitCompiler {
     pub fn new() -> Self {
         Self {
-            blocks: BTreeMap::new(),
+            blocks: HashMap::with_hasher(NoHashHasher(0)),
         }
     }
 

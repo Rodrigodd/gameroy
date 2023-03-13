@@ -108,6 +108,8 @@ fn run_interpreted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Dura
 fn run_jitted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration> {
     let mut jit_compiler = gameroy_jit::JitCompiler::new();
 
+    pre_run(game_boy, timeout, &mut jit_compiler);
+
     let mut times = Vec::with_capacity(len);
     for _ in 0..len {
         game_boy.reset();
@@ -118,4 +120,12 @@ fn run_jitted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration>
         times.push(start.elapsed());
     }
     times
+}
+
+#[inline(never)]
+fn pre_run(game_boy: &mut GameBoy, timeout: u64, jit_compiler: &mut gameroy_jit::JitCompiler) {
+    game_boy.reset();
+    while game_boy.clock_count < timeout {
+        jit_compiler.interpret_block(game_boy);
+    }
 }

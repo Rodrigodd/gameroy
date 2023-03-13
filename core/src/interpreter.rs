@@ -1740,7 +1740,7 @@ impl Interpreter<'_> {
         self.jump_to(address as u16);
     }
 
-    fn rlc(&mut self, reg: Reg) {
+    pub fn rlc(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         r = r.rotate_left(1);
         self.write(reg, r);
@@ -1750,7 +1750,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(r & 0x1 != 0);
     }
 
-    fn rrc(&mut self, reg: Reg) {
+    pub fn rrc(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         r = r.rotate_right(1);
         self.write(reg, r);
@@ -1760,7 +1760,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(r & 0x80 != 0);
     }
 
-    fn rl(&mut self, reg: Reg) {
+    pub fn rl(&mut self, reg: Reg) {
         let c = self.0.cpu.f.c() as u8;
         let mut r = self.read(reg);
         self.0.cpu.f.def_c(r & 0x80 != 0);
@@ -1771,7 +1771,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn rr(&mut self, reg: Reg) {
+    pub fn rr(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         let c = self.0.cpu.f.c() as u8;
         self.0.cpu.f.def_c(r & 0x01 != 0);
@@ -1782,7 +1782,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn sla(&mut self, reg: Reg) {
+    pub fn sla(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         let c = r & 0x80 != 0;
         r <<= 1;
@@ -1793,7 +1793,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.def_c(c);
     }
 
-    fn sra(&mut self, reg: Reg) {
+    pub fn sra(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         self.0.cpu.f.def_c(r & 0x01 != 0);
         r = (r & 0x80) | (r >> 1);
@@ -1803,7 +1803,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_h();
     }
 
-    fn swap(&mut self, reg: Reg) {
+    pub fn swap(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         r = ((r & 0x0F) << 4) | ((r & 0xF0) >> 4);
         self.write(reg, r);
@@ -1813,7 +1813,7 @@ impl Interpreter<'_> {
         self.0.cpu.f.clr_c();
     }
 
-    fn srl(&mut self, reg: Reg) {
+    pub fn srl(&mut self, reg: Reg) {
         let mut r = self.read(reg);
         let c = r & 0x01 != 0;
         r >>= 1;
@@ -1988,20 +1988,20 @@ impl Interpreter<'_> {
         self.0.tick(4);
     }
 
-    fn bit(&mut self, bit: u8, reg: Reg) {
+    pub fn bit(&mut self, bit: u8, reg: Reg) {
         let r = self.read(reg);
         self.0.cpu.f.def_z((r & (1 << bit)) == 0);
         self.0.cpu.f.clr_n();
         self.0.cpu.f.set_h();
     }
 
-    fn res(&mut self, bit: u8, reg: Reg) {
+    pub fn res(&mut self, bit: u8, reg: Reg) {
         let mut r = self.read(reg);
         r &= !(1 << bit);
         self.write(reg, r);
     }
 
-    fn set(&mut self, bit: u8, reg: Reg) {
+    pub fn set(&mut self, bit: u8, reg: Reg) {
         let mut r = self.read(reg);
         r |= 1 << bit;
         self.write(reg, r);

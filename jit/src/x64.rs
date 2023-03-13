@@ -548,6 +548,8 @@ impl<'a> BlockCompiler<'a> {
             0xc5 => self.push(ops, Reg16::BC),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
+            // PREFIX CB 1:4 - - - -
+            0xcb => return self.compile_opcode_cb(ops),
             // ADC A,d8 2:8 Z 0 H C
             0xce => self.adc(ops, Reg::Im8),
             // POP DE 1:12 - - - -
@@ -587,6 +589,28 @@ impl<'a> BlockCompiler<'a> {
                 self.update_pc(ops);
 
                 let call = interpreter_call(op);
+                dynasm!(ops
+                    ; .arch x64
+                    ; mov rax, QWORD call as usize as i64
+                    ; mov rdi, rbx
+                    ; call rax
+                    ; test rax, rax
+                    ; jnz ->exit
+                );
+                return false;
+            }
+        }
+        true
+    }
+
+    fn compile_opcode_cb(&mut self, ops: &mut VecAssembler<X64Relocation>) -> bool {
+        let op = self.gb.read(self.pc + 1);
+        match op {
+            _ => {
+                self.update_clock_count(ops);
+                self.update_pc(ops);
+
+                let call = interpreter_call_cb(op);
                 dynasm!(ops
                     ; .arch x64
                     ; mov rax, QWORD call as usize as i64
@@ -1637,6 +1661,32 @@ macro_rules! call {
     };
 }
 
+macro_rules! call_cb {
+    ($($call:tt)*) => {
+        {
+            extern "sysv64" fn function(gb: &mut GameBoy) -> bool {
+                // println!("running {}", stringify!($($call)*));
+                let mut interpreter = Interpreter(gb);
+                if interpreter.handle_interrupt().is_break() {
+                    return true;
+                }
+
+                if interpreter.0.cpu.ime == ImeState::ToBeEnable {
+                    interpreter.0.cpu.ime = ImeState::Enabled;
+                }
+
+                // call to instructions relies on pc being already read.
+                interpreter.read_next_pc();
+                // and the next one.
+                interpreter.read_next_pc();
+                interpreter.$($call)*;
+                false
+            }
+            function
+        }
+    };
+}
+
 fn interpreter_call(op: u8) -> extern "sysv64" fn(&mut GameBoy) -> bool {
     use Condition::*;
     match op {
@@ -2152,5 +2202,522 @@ fn interpreter_call(op: u8) -> extern "sysv64" fn(&mut GameBoy) -> bool {
         0xfe => call!(cp(Reg::Im8)),
         // RST 38H 1:16 - - - -
         0xff => call!(rst(0x38)),
+    }
+}
+
+fn interpreter_call_cb(op: u8) -> extern "sysv64" fn(&mut GameBoy) -> bool {
+    match op {
+        // RLC B 2:8 Z 0 0 C
+        0x00 => call_cb!(rlc(Reg::B)),
+        // RLC C 2:8 Z 0 0 C
+        0x01 => call_cb!(rlc(Reg::C)),
+        // RLC D 2:8 Z 0 0 C
+        0x02 => call_cb!(rlc(Reg::D)),
+        // RLC E 2:8 Z 0 0 C
+        0x03 => call_cb!(rlc(Reg::E)),
+        // RLC H 2:8 Z 0 0 C
+        0x04 => call_cb!(rlc(Reg::H)),
+        // RLC L 2:8 Z 0 0 C
+        0x05 => call_cb!(rlc(Reg::L)),
+        // RLC (HL) 2:16 Z 0 0 C
+        0x06 => call_cb!(rlc(Reg::HL)),
+        // RLC A 2:8 Z 0 0 C
+        0x07 => call_cb!(rlc(Reg::A)),
+        // RRC B 2:8 Z 0 0 C
+        0x08 => call_cb!(rrc(Reg::B)),
+        // RRC C 2:8 Z 0 0 C
+        0x09 => call_cb!(rrc(Reg::C)),
+        // RRC D 2:8 Z 0 0 C
+        0x0a => call_cb!(rrc(Reg::D)),
+        // RRC E 2:8 Z 0 0 C
+        0x0b => call_cb!(rrc(Reg::E)),
+        // RRC H 2:8 Z 0 0 C
+        0x0c => call_cb!(rrc(Reg::H)),
+        // RRC L 2:8 Z 0 0 C
+        0x0d => call_cb!(rrc(Reg::L)),
+        // RRC (HL) 2:16 Z 0 0 C
+        0x0e => call_cb!(rrc(Reg::HL)),
+        // RRC A 2:8 Z 0 0 C
+        0x0f => call_cb!(rrc(Reg::A)),
+        // RL B 2:8 Z 0 0 C
+        0x10 => call_cb!(rl(Reg::B)),
+        // RL C 2:8 Z 0 0 C
+        0x11 => call_cb!(rl(Reg::C)),
+        // RL D 2:8 Z 0 0 C
+        0x12 => call_cb!(rl(Reg::D)),
+        // RL E 2:8 Z 0 0 C
+        0x13 => call_cb!(rl(Reg::E)),
+        // RL H 2:8 Z 0 0 C
+        0x14 => call_cb!(rl(Reg::H)),
+        // RL L 2:8 Z 0 0 C
+        0x15 => call_cb!(rl(Reg::L)),
+        // RL (HL) 2:16 Z 0 0 C
+        0x16 => call_cb!(rl(Reg::HL)),
+        // RL A 2:8 Z 0 0 C
+        0x17 => call_cb!(rl(Reg::A)),
+        // RR B 2:8 Z 0 0 C
+        0x18 => call_cb!(rr(Reg::B)),
+        // RR C 2:8 Z 0 0 C
+        0x19 => call_cb!(rr(Reg::C)),
+        // RR D 2:8 Z 0 0 C
+        0x1a => call_cb!(rr(Reg::D)),
+        // RR E 2:8 Z 0 0 C
+        0x1b => call_cb!(rr(Reg::E)),
+        // RR H 2:8 Z 0 0 C
+        0x1c => call_cb!(rr(Reg::H)),
+        // RR L 2:8 Z 0 0 C
+        0x1d => call_cb!(rr(Reg::L)),
+        // RR (HL) 2:16 Z 0 0 C
+        0x1e => call_cb!(rr(Reg::HL)),
+        // RR A 2:8 Z 0 0 C
+        0x1f => call_cb!(rr(Reg::A)),
+        // SLA B 2:8 Z 0 0 C
+        0x20 => call_cb!(sla(Reg::B)),
+        // SLA C 2:8 Z 0 0 C
+        0x21 => call_cb!(sla(Reg::C)),
+        // SLA D 2:8 Z 0 0 C
+        0x22 => call_cb!(sla(Reg::D)),
+        // SLA E 2:8 Z 0 0 C
+        0x23 => call_cb!(sla(Reg::E)),
+        // SLA H 2:8 Z 0 0 C
+        0x24 => call_cb!(sla(Reg::H)),
+        // SLA L 2:8 Z 0 0 C
+        0x25 => call_cb!(sla(Reg::L)),
+        // SLA (HL) 2:16 Z 0 0 C
+        0x26 => call_cb!(sla(Reg::HL)),
+        // SLA A 2:8 Z 0 0 C
+        0x27 => call_cb!(sla(Reg::A)),
+        // SRA B 2:8 Z 0 0 0
+        0x28 => call_cb!(sra(Reg::B)),
+        // SRA C 2:8 Z 0 0 0
+        0x29 => call_cb!(sra(Reg::C)),
+        // SRA D 2:8 Z 0 0 0
+        0x2a => call_cb!(sra(Reg::D)),
+        // SRA E 2:8 Z 0 0 0
+        0x2b => call_cb!(sra(Reg::E)),
+        // SRA H 2:8 Z 0 0 0
+        0x2c => call_cb!(sra(Reg::H)),
+        // SRA L 2:8 Z 0 0 0
+        0x2d => call_cb!(sra(Reg::L)),
+        // SRA (HL) 2:16 Z 0 0 0
+        0x2e => call_cb!(sra(Reg::HL)),
+        // SRA A 2:8 Z 0 0 0
+        0x2f => call_cb!(sra(Reg::A)),
+        // SWAP B 2:8 Z 0 0 0
+        0x30 => call_cb!(swap(Reg::B)),
+        // SWAP C 2:8 Z 0 0 0
+        0x31 => call_cb!(swap(Reg::C)),
+        // SWAP D 2:8 Z 0 0 0
+        0x32 => call_cb!(swap(Reg::D)),
+        // SWAP E 2:8 Z 0 0 0
+        0x33 => call_cb!(swap(Reg::E)),
+        // SWAP H 2:8 Z 0 0 0
+        0x34 => call_cb!(swap(Reg::H)),
+        // SWAP L 2:8 Z 0 0 0
+        0x35 => call_cb!(swap(Reg::L)),
+        // SWAP (HL) 2:16 Z 0 0 0
+        0x36 => call_cb!(swap(Reg::HL)),
+        // SWAP A 2:8 Z 0 0 0
+        0x37 => call_cb!(swap(Reg::A)),
+        // SRL B 2:8 Z 0 0 C
+        0x38 => call_cb!(srl(Reg::B)),
+        // SRL C 2:8 Z 0 0 C
+        0x39 => call_cb!(srl(Reg::C)),
+        // SRL D 2:8 Z 0 0 C
+        0x3a => call_cb!(srl(Reg::D)),
+        // SRL E 2:8 Z 0 0 C
+        0x3b => call_cb!(srl(Reg::E)),
+        // SRL H 2:8 Z 0 0 C
+        0x3c => call_cb!(srl(Reg::H)),
+        // SRL L 2:8 Z 0 0 C
+        0x3d => call_cb!(srl(Reg::L)),
+        // SRL (HL) 2:16 Z 0 0 C
+        0x3e => call_cb!(srl(Reg::HL)),
+        // SRL A 2:8 Z 0 0 C
+        0x3f => call_cb!(srl(Reg::A)),
+        // BIT 0,B 2:8 Z 0 1 -
+        0x40 => call_cb!(bit(0, Reg::B)),
+        // BIT 0,C 2:8 Z 0 1 -
+        0x41 => call_cb!(bit(0, Reg::C)),
+        // BIT 0,D 2:8 Z 0 1 -
+        0x42 => call_cb!(bit(0, Reg::D)),
+        // BIT 0,E 2:8 Z 0 1 -
+        0x43 => call_cb!(bit(0, Reg::E)),
+        // BIT 0,H 2:8 Z 0 1 -
+        0x44 => call_cb!(bit(0, Reg::H)),
+        // BIT 0,L 2:8 Z 0 1 -
+        0x45 => call_cb!(bit(0, Reg::L)),
+        // BIT 0,(HL) 2:16 Z 0 1 -
+        0x46 => call_cb!(bit(0, Reg::HL)),
+        // BIT 0,A 2:8 Z 0 1 -
+        0x47 => call_cb!(bit(0, Reg::A)),
+        // BIT 1,B 2:8 Z 0 1 -
+        0x48 => call_cb!(bit(1, Reg::B)),
+        // BIT 1,C 2:8 Z 0 1 -
+        0x49 => call_cb!(bit(1, Reg::C)),
+        // BIT 1,D 2:8 Z 0 1 -
+        0x4a => call_cb!(bit(1, Reg::D)),
+        // BIT 1,E 2:8 Z 0 1 -
+        0x4b => call_cb!(bit(1, Reg::E)),
+        // BIT 1,H 2:8 Z 0 1 -
+        0x4c => call_cb!(bit(1, Reg::H)),
+        // BIT 1,L 2:8 Z 0 1 -
+        0x4d => call_cb!(bit(1, Reg::L)),
+        // BIT 1,(HL) 2:16 Z 0 1 -
+        0x4e => call_cb!(bit(1, Reg::HL)),
+        // BIT 1,A 2:8 Z 0 1 -
+        0x4f => call_cb!(bit(1, Reg::A)),
+        // BIT 2,B 2:8 Z 0 1 -
+        0x50 => call_cb!(bit(2, Reg::B)),
+        // BIT 2,C 2:8 Z 0 1 -
+        0x51 => call_cb!(bit(2, Reg::C)),
+        // BIT 2,D 2:8 Z 0 1 -
+        0x52 => call_cb!(bit(2, Reg::D)),
+        // BIT 2,E 2:8 Z 0 1 -
+        0x53 => call_cb!(bit(2, Reg::E)),
+        // BIT 2,H 2:8 Z 0 1 -
+        0x54 => call_cb!(bit(2, Reg::H)),
+        // BIT 2,L 2:8 Z 0 1 -
+        0x55 => call_cb!(bit(2, Reg::L)),
+        // BIT 2,(HL) 2:16 Z 0 1 -
+        0x56 => call_cb!(bit(2, Reg::HL)),
+        // BIT 2,A 2:8 Z 0 1 -
+        0x57 => call_cb!(bit(2, Reg::A)),
+        // BIT 3,B 2:8 Z 0 1 -
+        0x58 => call_cb!(bit(3, Reg::B)),
+        // BIT 3,C 2:8 Z 0 1 -
+        0x59 => call_cb!(bit(3, Reg::C)),
+        // BIT 3,D 2:8 Z 0 1 -
+        0x5a => call_cb!(bit(3, Reg::D)),
+        // BIT 3,E 2:8 Z 0 1 -
+        0x5b => call_cb!(bit(3, Reg::E)),
+        // BIT 3,H 2:8 Z 0 1 -
+        0x5c => call_cb!(bit(3, Reg::H)),
+        // BIT 3,L 2:8 Z 0 1 -
+        0x5d => call_cb!(bit(3, Reg::L)),
+        // BIT 3,(HL) 2:16 Z 0 1 -
+        0x5e => call_cb!(bit(3, Reg::HL)),
+        // BIT 3,A 2:8 Z 0 1 -
+        0x5f => call_cb!(bit(3, Reg::A)),
+        // BIT 4,B 2:8 Z 0 1 -
+        0x60 => call_cb!(bit(4, Reg::B)),
+        // BIT 4,C 2:8 Z 0 1 -
+        0x61 => call_cb!(bit(4, Reg::C)),
+        // BIT 4,D 2:8 Z 0 1 -
+        0x62 => call_cb!(bit(4, Reg::D)),
+        // BIT 4,E 2:8 Z 0 1 -
+        0x63 => call_cb!(bit(4, Reg::E)),
+        // BIT 4,H 2:8 Z 0 1 -
+        0x64 => call_cb!(bit(4, Reg::H)),
+        // BIT 4,L 2:8 Z 0 1 -
+        0x65 => call_cb!(bit(4, Reg::L)),
+        // BIT 4,(HL) 2:16 Z 0 1 -
+        0x66 => call_cb!(bit(4, Reg::HL)),
+        // BIT 4,A 2:8 Z 0 1 -
+        0x67 => call_cb!(bit(4, Reg::A)),
+        // BIT 5,B 2:8 Z 0 1 -
+        0x68 => call_cb!(bit(5, Reg::B)),
+        // BIT 5,C 2:8 Z 0 1 -
+        0x69 => call_cb!(bit(5, Reg::C)),
+        // BIT 5,D 2:8 Z 0 1 -
+        0x6a => call_cb!(bit(5, Reg::D)),
+        // BIT 5,E 2:8 Z 0 1 -
+        0x6b => call_cb!(bit(5, Reg::E)),
+        // BIT 5,H 2:8 Z 0 1 -
+        0x6c => call_cb!(bit(5, Reg::H)),
+        // BIT 5,L 2:8 Z 0 1 -
+        0x6d => call_cb!(bit(5, Reg::L)),
+        // BIT 5,(HL) 2:16 Z 0 1 -
+        0x6e => call_cb!(bit(5, Reg::HL)),
+        // BIT 5,A 2:8 Z 0 1 -
+        0x6f => call_cb!(bit(5, Reg::A)),
+        // BIT 6,B 2:8 Z 0 1 -
+        0x70 => call_cb!(bit(6, Reg::B)),
+        // BIT 6,C 2:8 Z 0 1 -
+        0x71 => call_cb!(bit(6, Reg::C)),
+        // BIT 6,D 2:8 Z 0 1 -
+        0x72 => call_cb!(bit(6, Reg::D)),
+        // BIT 6,E 2:8 Z 0 1 -
+        0x73 => call_cb!(bit(6, Reg::E)),
+        // BIT 6,H 2:8 Z 0 1 -
+        0x74 => call_cb!(bit(6, Reg::H)),
+        // BIT 6,L 2:8 Z 0 1 -
+        0x75 => call_cb!(bit(6, Reg::L)),
+        // BIT 6,(HL) 2:16 Z 0 1 -
+        0x76 => call_cb!(bit(6, Reg::HL)),
+        // BIT 6,A 2:8 Z 0 1 -
+        0x77 => call_cb!(bit(6, Reg::A)),
+        // BIT 7,B 2:8 Z 0 1 -
+        0x78 => call_cb!(bit(7, Reg::B)),
+        // BIT 7,C 2:8 Z 0 1 -
+        0x79 => call_cb!(bit(7, Reg::C)),
+        // BIT 7,D 2:8 Z 0 1 -
+        0x7a => call_cb!(bit(7, Reg::D)),
+        // BIT 7,E 2:8 Z 0 1 -
+        0x7b => call_cb!(bit(7, Reg::E)),
+        // BIT 7,H 2:8 Z 0 1 -
+        0x7c => call_cb!(bit(7, Reg::H)),
+        // BIT 7,L 2:8 Z 0 1 -
+        0x7d => call_cb!(bit(7, Reg::L)),
+        // BIT 7,(HL) 2:16 Z 0 1 -
+        0x7e => call_cb!(bit(7, Reg::HL)),
+        // BIT 7,A 2:8 Z 0 1 -
+        0x7f => call_cb!(bit(7, Reg::A)),
+        // RES 0,B 2:8 - - - -
+        0x80 => call_cb!(res(0, Reg::B)),
+        // RES 0,C 2:8 - - - -
+        0x81 => call_cb!(res(0, Reg::C)),
+        // RES 0,D 2:8 - - - -
+        0x82 => call_cb!(res(0, Reg::D)),
+        // RES 0,E 2:8 - - - -
+        0x83 => call_cb!(res(0, Reg::E)),
+        // RES 0,H 2:8 - - - -
+        0x84 => call_cb!(res(0, Reg::H)),
+        // RES 0,L 2:8 - - - -
+        0x85 => call_cb!(res(0, Reg::L)),
+        // RES 0,(HL) 2:16 - - - -
+        0x86 => call_cb!(res(0, Reg::HL)),
+        // RES 0,A 2:8 - - - -
+        0x87 => call_cb!(res(0, Reg::A)),
+        // RES 1,B 2:8 - - - -
+        0x88 => call_cb!(res(1, Reg::B)),
+        // RES 1,C 2:8 - - - -
+        0x89 => call_cb!(res(1, Reg::C)),
+        // RES 1,D 2:8 - - - -
+        0x8a => call_cb!(res(1, Reg::D)),
+        // RES 1,E 2:8 - - - -
+        0x8b => call_cb!(res(1, Reg::E)),
+        // RES 1,H 2:8 - - - -
+        0x8c => call_cb!(res(1, Reg::H)),
+        // RES 1,L 2:8 - - - -
+        0x8d => call_cb!(res(1, Reg::L)),
+        // RES 1,(HL) 2:16 - - - -
+        0x8e => call_cb!(res(1, Reg::HL)),
+        // RES 1,A 2:8 - - - -
+        0x8f => call_cb!(res(1, Reg::A)),
+        // RES 2,B 2:8 - - - -
+        0x90 => call_cb!(res(2, Reg::B)),
+        // RES 2,C 2:8 - - - -
+        0x91 => call_cb!(res(2, Reg::C)),
+        // RES 2,D 2:8 - - - -
+        0x92 => call_cb!(res(2, Reg::D)),
+        // RES 2,E 2:8 - - - -
+        0x93 => call_cb!(res(2, Reg::E)),
+        // RES 2,H 2:8 - - - -
+        0x94 => call_cb!(res(2, Reg::H)),
+        // RES 2,L 2:8 - - - -
+        0x95 => call_cb!(res(2, Reg::L)),
+        // RES 2,(HL) 2:16 - - - -
+        0x96 => call_cb!(res(2, Reg::HL)),
+        // RES 2,A 2:8 - - - -
+        0x97 => call_cb!(res(2, Reg::A)),
+        // RES 3,B 2:8 - - - -
+        0x98 => call_cb!(res(3, Reg::B)),
+        // RES 3,C 2:8 - - - -
+        0x99 => call_cb!(res(3, Reg::C)),
+        // RES 3,D 2:8 - - - -
+        0x9a => call_cb!(res(3, Reg::D)),
+        // RES 3,E 2:8 - - - -
+        0x9b => call_cb!(res(3, Reg::E)),
+        // RES 3,H 2:8 - - - -
+        0x9c => call_cb!(res(3, Reg::H)),
+        // RES 3,L 2:8 - - - -
+        0x9d => call_cb!(res(3, Reg::L)),
+        // RES 3,(HL) 2:16 - - - -
+        0x9e => call_cb!(res(3, Reg::HL)),
+        // RES 3,A 2:8 - - - - Ax
+        0x9f => call_cb!(res(3, Reg::A)),
+        // RES 4,B 2:8 - - - -
+        0xa0 => call_cb!(res(4, Reg::B)),
+        // RES 4,C 2:8 - - - -
+        0xa1 => call_cb!(res(4, Reg::C)),
+        // RES 4,D 2:8 - - - -
+        0xa2 => call_cb!(res(4, Reg::D)),
+        // RES 4,E 2:8 - - - -
+        0xa3 => call_cb!(res(4, Reg::E)),
+        // RES 4,H 2:8 - - - -
+        0xa4 => call_cb!(res(4, Reg::H)),
+        // RES 4,L 2:8 - - - -
+        0xa5 => call_cb!(res(4, Reg::L)),
+        // RES 4,(HL) 2:16 - - - -
+        0xa6 => call_cb!(res(4, Reg::HL)),
+        // RES 4,A 2:8 - - - -
+        0xa7 => call_cb!(res(4, Reg::A)),
+        // RES 5,B 2:8 - - - -
+        0xa8 => call_cb!(res(5, Reg::B)),
+        // RES 5,C 2:8 - - - -
+        0xa9 => call_cb!(res(5, Reg::C)),
+        // RES 5,D 2:8 - - - -
+        0xaa => call_cb!(res(5, Reg::D)),
+        // RES 5,E 2:8 - - - -
+        0xab => call_cb!(res(5, Reg::E)),
+        // RES 5,H 2:8 - - - -
+        0xac => call_cb!(res(5, Reg::H)),
+        // RES 5,L 2:8 - - - -
+        0xad => call_cb!(res(5, Reg::L)),
+        // RES 5,(HL) 2:16 - - - -
+        0xae => call_cb!(res(5, Reg::HL)),
+        // RES 5,A 2:8 - - - - Bx
+        0xaf => call_cb!(res(5, Reg::A)),
+        // RES 6,B 2:8 - - - -
+        0xb0 => call_cb!(res(6, Reg::B)),
+        // RES 6,C 2:8 - - - -
+        0xb1 => call_cb!(res(6, Reg::C)),
+        // RES 6,D 2:8 - - - -
+        0xb2 => call_cb!(res(6, Reg::D)),
+        // RES 6,E 2:8 - - - -
+        0xb3 => call_cb!(res(6, Reg::E)),
+        // RES 6,H 2:8 - - - -
+        0xb4 => call_cb!(res(6, Reg::H)),
+        // RES 6,L 2:8 - - - -
+        0xb5 => call_cb!(res(6, Reg::L)),
+        // RES 6,(HL) 2:16 - - - -
+        0xb6 => call_cb!(res(6, Reg::HL)),
+        // RES 6,A 2:8 - - - -
+        0xb7 => call_cb!(res(6, Reg::A)),
+        // RES 7,B 2:8 - - - -
+        0xb8 => call_cb!(res(7, Reg::B)),
+        // RES 7,C 2:8 - - - -
+        0xb9 => call_cb!(res(7, Reg::C)),
+        // RES 7,D 2:8 - - - -
+        0xba => call_cb!(res(7, Reg::D)),
+        // RES 7,E 2:8 - - - -
+        0xbb => call_cb!(res(7, Reg::E)),
+        // RES 7,H 2:8 - - - -
+        0xbc => call_cb!(res(7, Reg::H)),
+        // RES 7,L 2:8 - - - -
+        0xbd => call_cb!(res(7, Reg::L)),
+        // RES 7,(HL) 2:16 - - - -
+        0xbe => call_cb!(res(7, Reg::HL)),
+        // RES 7,A 2:8 - - - - Cx
+        0xbf => call_cb!(res(7, Reg::A)),
+        // SET 0,B 2:8 - - - -
+        0xc0 => call_cb!(set(0, Reg::B)),
+        // SET 0,C 2:8 - - - -
+        0xc1 => call_cb!(set(0, Reg::C)),
+        // SET 0,D 2:8 - - - -
+        0xc2 => call_cb!(set(0, Reg::D)),
+        // SET 0,E 2:8 - - - -
+        0xc3 => call_cb!(set(0, Reg::E)),
+        // SET 0,H 2:8 - - - -
+        0xc4 => call_cb!(set(0, Reg::H)),
+        // SET 0,L 2:8 - - - -
+        0xc5 => call_cb!(set(0, Reg::L)),
+        // SET 0,(HL) 2:16 - - - -
+        0xc6 => call_cb!(set(0, Reg::HL)),
+        // SET 0,A 2:8 - - - -
+        0xc7 => call_cb!(set(0, Reg::A)),
+        // SET 1,B 2:8 - - - -
+        0xc8 => call_cb!(set(1, Reg::B)),
+        // SET 1,C 2:8 - - - -
+        0xc9 => call_cb!(set(1, Reg::C)),
+        // SET 1,D 2:8 - - - -
+        0xca => call_cb!(set(1, Reg::D)),
+        // SET 1,E 2:8 - - - -
+        0xcb => call_cb!(set(1, Reg::E)),
+        // SET 1,H 2:8 - - - -
+        0xcc => call_cb!(set(1, Reg::H)),
+        // SET 1,L 2:8 - - - -
+        0xcd => call_cb!(set(1, Reg::L)),
+        // SET 1,(HL) 2:16 - - - -
+        0xce => call_cb!(set(1, Reg::HL)),
+        // SET 1,A 2:8 - - - - Dx
+        0xcf => call_cb!(set(1, Reg::A)),
+        // SET 2,B 2:8 - - - -
+        0xd0 => call_cb!(set(2, Reg::B)),
+        // SET 2,C 2:8 - - - -
+        0xd1 => call_cb!(set(2, Reg::C)),
+        // SET 2,D 2:8 - - - -
+        0xd2 => call_cb!(set(2, Reg::D)),
+        // SET 2,E 2:8 - - - -
+        0xd3 => call_cb!(set(2, Reg::E)),
+        // SET 2,H 2:8 - - - -
+        0xd4 => call_cb!(set(2, Reg::H)),
+        // SET 2,L 2:8 - - - -
+        0xd5 => call_cb!(set(2, Reg::L)),
+        // SET 2,(HL) 2:16 - - - -
+        0xd6 => call_cb!(set(2, Reg::HL)),
+        // SET 2,A 2:8 - - - -
+        0xd7 => call_cb!(set(2, Reg::A)),
+        // SET 3,B 2:8 - - - -
+        0xd8 => call_cb!(set(3, Reg::B)),
+        // SET 3,C 2:8 - - - -
+        0xd9 => call_cb!(set(3, Reg::C)),
+        // SET 3,D 2:8 - - - -
+        0xda => call_cb!(set(3, Reg::D)),
+        // SET 3,E 2:8 - - - -
+        0xdb => call_cb!(set(3, Reg::E)),
+        // SET 3,H 2:8 - - - -
+        0xdc => call_cb!(set(3, Reg::H)),
+        // SET 3,L 2:8 - - - -
+        0xdd => call_cb!(set(3, Reg::L)),
+        // SET 3,(HL) 2:16 - - - -
+        0xde => call_cb!(set(3, Reg::HL)),
+        // SET 3,A 2:8 - - - - Ex
+        0xdf => call_cb!(set(3, Reg::A)),
+        // SET 4,B 2:8 - - - -
+        0xe0 => call_cb!(set(4, Reg::B)),
+        // SET 4,C 2:8 - - - -
+        0xe1 => call_cb!(set(4, Reg::C)),
+        // SET 4,D 2:8 - - - -
+        0xe2 => call_cb!(set(4, Reg::D)),
+        // SET 4,E 2:8 - - - -
+        0xe3 => call_cb!(set(4, Reg::E)),
+        // SET 4,H 2:8 - - - -
+        0xe4 => call_cb!(set(4, Reg::H)),
+        // SET 4,L 2:8 - - - -
+        0xe5 => call_cb!(set(4, Reg::L)),
+        // SET 4,(HL) 2:16 - - - -
+        0xe6 => call_cb!(set(4, Reg::HL)),
+        // SET 4,A 2:8 - - - -
+        0xe7 => call_cb!(set(4, Reg::A)),
+        // SET 5,B 2:8 - - - -
+        0xe8 => call_cb!(set(5, Reg::B)),
+        // SET 5,C 2:8 - - - -
+        0xe9 => call_cb!(set(5, Reg::C)),
+        // SET 5,D 2:8 - - - -
+        0xea => call_cb!(set(5, Reg::D)),
+        // SET 5,E 2:8 - - - -
+        0xeb => call_cb!(set(5, Reg::E)),
+        // SET 5,H 2:8 - - - -
+        0xec => call_cb!(set(5, Reg::H)),
+        // SET 5,L 2:8 - - - -
+        0xed => call_cb!(set(5, Reg::L)),
+        // SET 5,(HL) 2:16 - - - -
+        0xee => call_cb!(set(5, Reg::HL)),
+        // SET 5,A 2:8 - - - - Fx
+        0xef => call_cb!(set(5, Reg::A)),
+        // SET 6,B 2:8 - - - -
+        0xf0 => call_cb!(set(6, Reg::B)),
+        // SET 6,C 2:8 - - - -
+        0xf1 => call_cb!(set(6, Reg::C)),
+        // SET 6,D 2:8 - - - -
+        0xf2 => call_cb!(set(6, Reg::D)),
+        // SET 6,E 2:8 - - - -
+        0xf3 => call_cb!(set(6, Reg::E)),
+        // SET 6,H 2:8 - - - -
+        0xf4 => call_cb!(set(6, Reg::H)),
+        // SET 6,L 2:8 - - - -
+        0xf5 => call_cb!(set(6, Reg::L)),
+        // SET 6,(HL) 2:16 - - - -
+        0xf6 => call_cb!(set(6, Reg::HL)),
+        // SET 6,A 2:8 - - - -
+        0xf7 => call_cb!(set(6, Reg::A)),
+        // SET 7,B 2:8 - - - -
+        0xf8 => call_cb!(set(7, Reg::B)),
+        // SET 7,C 2:8 - - - -
+        0xf9 => call_cb!(set(7, Reg::C)),
+        // SET 7,D 2:8 - - - -
+        0xfa => call_cb!(set(7, Reg::D)),
+        // SET 7,E 2:8 - - - -
+        0xfb => call_cb!(set(7, Reg::E)),
+        // SET 7,H 2:8 - - - -
+        0xfc => call_cb!(set(7, Reg::H)),
+        // SET 7,L 2:8 - - - -
+        0xfd => call_cb!(set(7, Reg::L)),
+        // SET 7,(HL) 2:16 - - - -
+        0xfe => call_cb!(set(7, Reg::HL)),
+        // SET 7,A 2:8 - - - -
+        0xff => call_cb!(set(7, Reg::A)),
     }
 }

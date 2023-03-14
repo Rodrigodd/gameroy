@@ -608,6 +608,22 @@ impl<'a> BlockCompiler<'a> {
     fn compile_opcode_cb(&mut self, ops: &mut VecAssembler<X64Relocation>) -> bool {
         let op = self.gb.read(self.pc + 1);
         match op {
+            // RLC B 2:8 Z 0 0 C
+            0x00 => self.rlc(ops, Reg::B),
+            // RLC C 2:8 Z 0 0 C
+            0x01 => self.rlc(ops, Reg::C),
+            // RLC D 2:8 Z 0 0 C
+            0x02 => self.rlc(ops, Reg::D),
+            // RLC E 2:8 Z 0 0 C
+            0x03 => self.rlc(ops, Reg::E),
+            // RLC H 2:8 Z 0 0 C
+            0x04 => self.rlc(ops, Reg::H),
+            // RLC L 2:8 Z 0 0 C
+            0x05 => self.rlc(ops, Reg::L),
+            // RLC (HL) 2:16 Z 0 0 C
+            0x06 => self.rlc(ops, Reg::HL),
+            // RLC A 2:8 Z 0 0 C
+            0x07 => self.rlc(ops, Reg::A),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -1497,6 +1513,49 @@ impl<'a> BlockCompiler<'a> {
             ;; self.write_mem(ops)
             ; add	WORD [rbx + sp as i32], -2
         )
+    }
+
+    pub fn rlc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ;; match reg {
+                Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, true);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; mov	edx, eax
+            ; rol	dl, 1
+            ;; match reg {
+                Reg::HL => {
+                    dynasm!(ops
+                        ; mov	rdi, rbx
+                        ; mov	esi, r12d
+                    );
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; mov	BYTE [rbx + reg as i32], dl);
+                }
+            }
+            ; test	al, al
+            ; sete	al
+            ; and	cl, 15
+            ; shl	al, 7
+            ; or	al, cl
+            ; shl	dl, 4
+            ; and	dl, 16
+            ; or	dl, al
+            ; mov	BYTE [rbx + f as i32], dl
+            ;; if let Reg::HL = reg {
+                self.write_mem(ops);
+            }
+        );
     }
 
     fn read_mem_reg(

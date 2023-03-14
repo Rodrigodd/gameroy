@@ -688,6 +688,22 @@ impl<'a> BlockCompiler<'a> {
             0x26 => self.sla(ops, Reg::HL),
             // SLA A 2:8 Z 0 0 C
             0x27 => self.sla(ops, Reg::A),
+            // SRA B 2:8 Z 0 0 0
+            0x28 => self.sra(ops, Reg::B),
+            // SRA C 2:8 Z 0 0 0
+            0x29 => self.sra(ops, Reg::C),
+            // SRA D 2:8 Z 0 0 0
+            0x2a => self.sra(ops, Reg::D),
+            // SRA E 2:8 Z 0 0 0
+            0x2b => self.sra(ops, Reg::E),
+            // SRA H 2:8 Z 0 0 0
+            0x2c => self.sra(ops, Reg::H),
+            // SRA L 2:8 Z 0 0 0
+            0x2d => self.sra(ops, Reg::L),
+            // SRA (HL) 2:16 Z 0 0 0
+            0x2e => self.sra(ops, Reg::HL),
+            // SRA A 2:8 Z 0 0 0
+            0x2f => self.sra(ops, Reg::A),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -1774,6 +1790,49 @@ impl<'a> BlockCompiler<'a> {
             ; and	dl, 16
             ; or	dl, cl
             ; add	al, al
+            ; sete	cl
+            ; shl	cl, 7
+            ; or	cl, dl
+            ; mov	BYTE [rbx + f as i32], cl
+            ;; match reg {
+                Reg::HL => {
+                    dynasm!(ops
+                        ; mov	rdi, rbx
+                        ; mov   dl, al
+                        ; mov	esi, r12d
+                    );
+                    self.write_mem(ops);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; mov	BYTE [rbx + reg as i32], al);
+                }
+            }
+        );
+    }
+
+    pub fn sra(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, true);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; and	cl, 15
+            ; mov	edx, eax
+            ; shl	dl, 4
+            ; and	dl, 16
+            ; or	dl, cl
+            ; mov	ecx, eax
+            ; and	cl, -128
+            ; shr	al, 1
+            ; or	al, cl
             ; sete	cl
             ; shl	cl, 7
             ; or	cl, dl

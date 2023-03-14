@@ -860,7 +860,7 @@ impl<'a> BlockCompiler<'a> {
             dynasm!(ops
                 ; movzx	r9d, WORD [rbx + sp as i32]
                 ; movzx	ecx, r9b
-                ; mov	r8b, BYTE value as i8
+                ; mov	r8, BYTE value as i32
                 ; lea	esi, [rcx + r8]
                 ; cmp	esi, 256
                 ; setae	dl

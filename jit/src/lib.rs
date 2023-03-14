@@ -54,10 +54,11 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     while let Some(cursor) = cursors.pop() {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
-        max_clock_cycles += CLOCK[op[0] as usize] as u32;
-        if op[0] == 0xcb {
-            max_clock_cycles += CB_CLOCK[op[1] as usize] as u32;
-        }
+        max_clock_cycles += if op[0] == 0xcb {
+            CB_CLOCK[op[1] as usize] as u32
+        } else {
+            CLOCK[op[0] as usize] as u32
+        };
 
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
 

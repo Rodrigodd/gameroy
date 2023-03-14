@@ -96,10 +96,12 @@ impl<'a> BlockCompiler<'a> {
             // if true, the opcode was compiled without handling clock_count
             if self.compile_opcode(&mut ops, op) {
                 // TODO: remember to include branching time when implemented.
-                self.accum_clock_count += CLOCK[op as usize] as u32;
-                if op == 0xcb {
-                    self.accum_clock_count += CB_CLOCK[op as usize] as u32;
-                }
+                self.accum_clock_count += if op == 0xcb {
+                    let op = self.gb.read(self.pc + 1);
+                    CB_CLOCK[op as usize] as u32
+                } else {
+                    CLOCK[op as usize] as u32
+                };
             }
 
             self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);

@@ -736,6 +736,134 @@ impl<'a> BlockCompiler<'a> {
             0x3e => self.srl(ops, Reg::HL),
             // SRL A 2:8 Z 0 0 C
             0x3f => self.srl(ops, Reg::A),
+            // BIT 0,B 2:8 Z 0 1 -
+            0x40 => self.bit(ops, 0, Reg::B),
+            // BIT 0,C 2:8 Z 0 1 -
+            0x41 => self.bit(ops, 0, Reg::C),
+            // BIT 0,D 2:8 Z 0 1 -
+            0x42 => self.bit(ops, 0, Reg::D),
+            // BIT 0,E 2:8 Z 0 1 -
+            0x43 => self.bit(ops, 0, Reg::E),
+            // BIT 0,H 2:8 Z 0 1 -
+            0x44 => self.bit(ops, 0, Reg::H),
+            // BIT 0,L 2:8 Z 0 1 -
+            0x45 => self.bit(ops, 0, Reg::L),
+            // BIT 0,(HL) 2:16 Z 0 1 -
+            0x46 => self.bit(ops, 0, Reg::HL),
+            // BIT 0,A 2:8 Z 0 1 -
+            0x47 => self.bit(ops, 0, Reg::A),
+            // BIT 1,B 2:8 Z 0 1 -
+            0x48 => self.bit(ops, 1, Reg::B),
+            // BIT 1,C 2:8 Z 0 1 -
+            0x49 => self.bit(ops, 1, Reg::C),
+            // BIT 1,D 2:8 Z 0 1 -
+            0x4a => self.bit(ops, 1, Reg::D),
+            // BIT 1,E 2:8 Z 0 1 -
+            0x4b => self.bit(ops, 1, Reg::E),
+            // BIT 1,H 2:8 Z 0 1 -
+            0x4c => self.bit(ops, 1, Reg::H),
+            // BIT 1,L 2:8 Z 0 1 -
+            0x4d => self.bit(ops, 1, Reg::L),
+            // BIT 1,(HL) 2:16 Z 0 1 -
+            0x4e => self.bit(ops, 1, Reg::HL),
+            // BIT 1,A 2:8 Z 0 1 -
+            0x4f => self.bit(ops, 1, Reg::A),
+            // BIT 2,B 2:8 Z 0 1 -
+            0x50 => self.bit(ops, 2, Reg::B),
+            // BIT 2,C 2:8 Z 0 1 -
+            0x51 => self.bit(ops, 2, Reg::C),
+            // BIT 2,D 2:8 Z 0 1 -
+            0x52 => self.bit(ops, 2, Reg::D),
+            // BIT 2,E 2:8 Z 0 1 -
+            0x53 => self.bit(ops, 2, Reg::E),
+            // BIT 2,H 2:8 Z 0 1 -
+            0x54 => self.bit(ops, 2, Reg::H),
+            // BIT 2,L 2:8 Z 0 1 -
+            0x55 => self.bit(ops, 2, Reg::L),
+            // BIT 2,(HL) 2:16 Z 0 1 -
+            0x56 => self.bit(ops, 2, Reg::HL),
+            // BIT 2,A 2:8 Z 0 1 -
+            0x57 => self.bit(ops, 2, Reg::A),
+            // BIT 3,B 2:8 Z 0 1 -
+            0x58 => self.bit(ops, 3, Reg::B),
+            // BIT 3,C 2:8 Z 0 1 -
+            0x59 => self.bit(ops, 3, Reg::C),
+            // BIT 3,D 2:8 Z 0 1 -
+            0x5a => self.bit(ops, 3, Reg::D),
+            // BIT 3,E 2:8 Z 0 1 -
+            0x5b => self.bit(ops, 3, Reg::E),
+            // BIT 3,H 2:8 Z 0 1 -
+            0x5c => self.bit(ops, 3, Reg::H),
+            // BIT 3,L 2:8 Z 0 1 -
+            0x5d => self.bit(ops, 3, Reg::L),
+            // BIT 3,(HL) 2:16 Z 0 1 -
+            0x5e => self.bit(ops, 3, Reg::HL),
+            // BIT 3,A 2:8 Z 0 1 -
+            0x5f => self.bit(ops, 3, Reg::A),
+            // BIT 4,B 2:8 Z 0 1 -
+            0x60 => self.bit(ops, 4, Reg::B),
+            // BIT 4,C 2:8 Z 0 1 -
+            0x61 => self.bit(ops, 4, Reg::C),
+            // BIT 4,D 2:8 Z 0 1 -
+            0x62 => self.bit(ops, 4, Reg::D),
+            // BIT 4,E 2:8 Z 0 1 -
+            0x63 => self.bit(ops, 4, Reg::E),
+            // BIT 4,H 2:8 Z 0 1 -
+            0x64 => self.bit(ops, 4, Reg::H),
+            // BIT 4,L 2:8 Z 0 1 -
+            0x65 => self.bit(ops, 4, Reg::L),
+            // BIT 4,(HL) 2:16 Z 0 1 -
+            0x66 => self.bit(ops, 4, Reg::HL),
+            // BIT 4,A 2:8 Z 0 1 -
+            0x67 => self.bit(ops, 4, Reg::A),
+            // BIT 5,B 2:8 Z 0 1 -
+            0x68 => self.bit(ops, 5, Reg::B),
+            // BIT 5,C 2:8 Z 0 1 -
+            0x69 => self.bit(ops, 5, Reg::C),
+            // BIT 5,D 2:8 Z 0 1 -
+            0x6a => self.bit(ops, 5, Reg::D),
+            // BIT 5,E 2:8 Z 0 1 -
+            0x6b => self.bit(ops, 5, Reg::E),
+            // BIT 5,H 2:8 Z 0 1 -
+            0x6c => self.bit(ops, 5, Reg::H),
+            // BIT 5,L 2:8 Z 0 1 -
+            0x6d => self.bit(ops, 5, Reg::L),
+            // BIT 5,(HL) 2:16 Z 0 1 -
+            0x6e => self.bit(ops, 5, Reg::HL),
+            // BIT 5,A 2:8 Z 0 1 -
+            0x6f => self.bit(ops, 5, Reg::A),
+            // BIT 6,B 2:8 Z 0 1 -
+            0x70 => self.bit(ops, 6, Reg::B),
+            // BIT 6,C 2:8 Z 0 1 -
+            0x71 => self.bit(ops, 6, Reg::C),
+            // BIT 6,D 2:8 Z 0 1 -
+            0x72 => self.bit(ops, 6, Reg::D),
+            // BIT 6,E 2:8 Z 0 1 -
+            0x73 => self.bit(ops, 6, Reg::E),
+            // BIT 6,H 2:8 Z 0 1 -
+            0x74 => self.bit(ops, 6, Reg::H),
+            // BIT 6,L 2:8 Z 0 1 -
+            0x75 => self.bit(ops, 6, Reg::L),
+            // BIT 6,(HL) 2:16 Z 0 1 -
+            0x76 => self.bit(ops, 6, Reg::HL),
+            // BIT 6,A 2:8 Z 0 1 -
+            0x77 => self.bit(ops, 6, Reg::A),
+            // BIT 7,B 2:8 Z 0 1 -
+            0x78 => self.bit(ops, 7, Reg::B),
+            // BIT 7,C 2:8 Z 0 1 -
+            0x79 => self.bit(ops, 7, Reg::C),
+            // BIT 7,D 2:8 Z 0 1 -
+            0x7a => self.bit(ops, 7, Reg::D),
+            // BIT 7,E 2:8 Z 0 1 -
+            0x7b => self.bit(ops, 7, Reg::E),
+            // BIT 7,H 2:8 Z 0 1 -
+            0x7c => self.bit(ops, 7, Reg::H),
+            // BIT 7,L 2:8 Z 0 1 -
+            0x7d => self.bit(ops, 7, Reg::L),
+            // BIT 7,(HL) 2:16 Z 0 1 -
+            0x7e => self.bit(ops, 7, Reg::HL),
+            // BIT 7,A 2:8 Z 0 1 -
+            0x7f => self.bit(ops, 7, Reg::A),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -1962,6 +2090,34 @@ impl<'a> BlockCompiler<'a> {
                     dynasm!(ops; mov	BYTE [rbx + reg as i32], sil);
                 }
             }
+        );
+    }
+
+    pub fn bit(&mut self, ops: &mut VecAssembler<X64Relocation>, bit: u8, reg: Reg) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, false);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; and	cl, 31
+            ;; if bit == 7 {
+                // no shift need
+            } else if bit == 6 {
+                dynasm!(ops; add	al, al);
+            } else {
+                dynasm!(ops; shl	al, (7 - bit) as i8);
+            }
+            ; and	al, -128
+            ; or	al, cl
+            ; xor	al, -96
+            ; mov	BYTE [rbx + f as i32], al
         );
     }
 

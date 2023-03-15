@@ -864,6 +864,134 @@ impl<'a> BlockCompiler<'a> {
             0x7e => self.bit(ops, 7, Reg::HL),
             // BIT 7,A 2:8 Z 0 1 -
             0x7f => self.bit(ops, 7, Reg::A),
+            // RES 0,B 2:8 - - - -
+            0x80 => self.res(ops, 0, Reg::B),
+            // RES 0,C 2:8 - - - -
+            0x81 => self.res(ops, 0, Reg::C),
+            // RES 0,D 2:8 - - - -
+            0x82 => self.res(ops, 0, Reg::D),
+            // RES 0,E 2:8 - - - -
+            0x83 => self.res(ops, 0, Reg::E),
+            // RES 0,H 2:8 - - - -
+            0x84 => self.res(ops, 0, Reg::H),
+            // RES 0,L 2:8 - - - -
+            0x85 => self.res(ops, 0, Reg::L),
+            // RES 0,(HL) 2:16 - - - -
+            0x86 => self.res(ops, 0, Reg::HL),
+            // RES 0,A 2:8 - - - -
+            0x87 => self.res(ops, 0, Reg::A),
+            // RES 1,B 2:8 - - - -
+            0x88 => self.res(ops, 1, Reg::B),
+            // RES 1,C 2:8 - - - -
+            0x89 => self.res(ops, 1, Reg::C),
+            // RES 1,D 2:8 - - - -
+            0x8a => self.res(ops, 1, Reg::D),
+            // RES 1,E 2:8 - - - -
+            0x8b => self.res(ops, 1, Reg::E),
+            // RES 1,H 2:8 - - - -
+            0x8c => self.res(ops, 1, Reg::H),
+            // RES 1,L 2:8 - - - -
+            0x8d => self.res(ops, 1, Reg::L),
+            // RES 1,(HL) 2:16 - - - -
+            0x8e => self.res(ops, 1, Reg::HL),
+            // RES 1,A 2:8 - - - -
+            0x8f => self.res(ops, 1, Reg::A),
+            // RES 2,B 2:8 - - - -
+            0x90 => self.res(ops, 2, Reg::B),
+            // RES 2,C 2:8 - - - -
+            0x91 => self.res(ops, 2, Reg::C),
+            // RES 2,D 2:8 - - - -
+            0x92 => self.res(ops, 2, Reg::D),
+            // RES 2,E 2:8 - - - -
+            0x93 => self.res(ops, 2, Reg::E),
+            // RES 2,H 2:8 - - - -
+            0x94 => self.res(ops, 2, Reg::H),
+            // RES 2,L 2:8 - - - -
+            0x95 => self.res(ops, 2, Reg::L),
+            // RES 2,(HL) 2:16 - - - -
+            0x96 => self.res(ops, 2, Reg::HL),
+            // RES 2,A 2:8 - - - -
+            0x97 => self.res(ops, 2, Reg::A),
+            // RES 3,B 2:8 - - - -
+            0x98 => self.res(ops, 3, Reg::B),
+            // RES 3,C 2:8 - - - -
+            0x99 => self.res(ops, 3, Reg::C),
+            // RES 3,D 2:8 - - - -
+            0x9a => self.res(ops, 3, Reg::D),
+            // RES 3,E 2:8 - - - -
+            0x9b => self.res(ops, 3, Reg::E),
+            // RES 3,H 2:8 - - - -
+            0x9c => self.res(ops, 3, Reg::H),
+            // RES 3,L 2:8 - - - -
+            0x9d => self.res(ops, 3, Reg::L),
+            // RES 3,(HL) 2:16 - - - -
+            0x9e => self.res(ops, 3, Reg::HL),
+            // RES 3,A 2:8 - - - - Ax
+            0x9f => self.res(ops, 3, Reg::A),
+            // RES 4,B 2:8 - - - -
+            0xa0 => self.res(ops, 4, Reg::B),
+            // RES 4,C 2:8 - - - -
+            0xa1 => self.res(ops, 4, Reg::C),
+            // RES 4,D 2:8 - - - -
+            0xa2 => self.res(ops, 4, Reg::D),
+            // RES 4,E 2:8 - - - -
+            0xa3 => self.res(ops, 4, Reg::E),
+            // RES 4,H 2:8 - - - -
+            0xa4 => self.res(ops, 4, Reg::H),
+            // RES 4,L 2:8 - - - -
+            0xa5 => self.res(ops, 4, Reg::L),
+            // RES 4,(HL) 2:16 - - - -
+            0xa6 => self.res(ops, 4, Reg::HL),
+            // RES 4,A 2:8 - - - -
+            0xa7 => self.res(ops, 4, Reg::A),
+            // RES 5,B 2:8 - - - -
+            0xa8 => self.res(ops, 5, Reg::B),
+            // RES 5,C 2:8 - - - -
+            0xa9 => self.res(ops, 5, Reg::C),
+            // RES 5,D 2:8 - - - -
+            0xaa => self.res(ops, 5, Reg::D),
+            // RES 5,E 2:8 - - - -
+            0xab => self.res(ops, 5, Reg::E),
+            // RES 5,H 2:8 - - - -
+            0xac => self.res(ops, 5, Reg::H),
+            // RES 5,L 2:8 - - - -
+            0xad => self.res(ops, 5, Reg::L),
+            // RES 5,(HL) 2:16 - - - -
+            0xae => self.res(ops, 5, Reg::HL),
+            // RES 5,A 2:8 - - - - Bx
+            0xaf => self.res(ops, 5, Reg::A),
+            // RES 6,B 2:8 - - - -
+            0xb0 => self.res(ops, 6, Reg::B),
+            // RES 6,C 2:8 - - - -
+            0xb1 => self.res(ops, 6, Reg::C),
+            // RES 6,D 2:8 - - - -
+            0xb2 => self.res(ops, 6, Reg::D),
+            // RES 6,E 2:8 - - - -
+            0xb3 => self.res(ops, 6, Reg::E),
+            // RES 6,H 2:8 - - - -
+            0xb4 => self.res(ops, 6, Reg::H),
+            // RES 6,L 2:8 - - - -
+            0xb5 => self.res(ops, 6, Reg::L),
+            // RES 6,(HL) 2:16 - - - -
+            0xb6 => self.res(ops, 6, Reg::HL),
+            // RES 6,A 2:8 - - - -
+            0xb7 => self.res(ops, 6, Reg::A),
+            // RES 7,B 2:8 - - - -
+            0xb8 => self.res(ops, 7, Reg::B),
+            // RES 7,C 2:8 - - - -
+            0xb9 => self.res(ops, 7, Reg::C),
+            // RES 7,D 2:8 - - - -
+            0xba => self.res(ops, 7, Reg::D),
+            // RES 7,E 2:8 - - - -
+            0xbb => self.res(ops, 7, Reg::E),
+            // RES 7,H 2:8 - - - -
+            0xbc => self.res(ops, 7, Reg::H),
+            // RES 7,L 2:8 - - - -
+            0xbd => self.res(ops, 7, Reg::L),
+            // RES 7,(HL) 2:16 - - - -
+            0xbe => self.res(ops, 7, Reg::HL),
+            // RES 7,A 2:8 - - - - Cx
+            0xbf => self.res(ops, 7, Reg::A),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -2118,6 +2246,30 @@ impl<'a> BlockCompiler<'a> {
             ; or	al, cl
             ; xor	al, -96
             ; mov	BYTE [rbx + f as i32], al
+        );
+    }
+
+    pub fn res(&mut self, ops: &mut VecAssembler<X64Relocation>, bit: u8, reg: Reg) {
+        dynasm!(ops
+            ;; match reg {
+                Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; and   al, (!(1 << bit)) as i8
+                        ; mov	rdi, rbx
+                        ; mov   dl, al
+                        ; mov	esi, r12d
+                    );
+                    self.write_mem(ops);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; and BYTE [rbx + reg as i32], (!(1 << bit)) as i8
+                    );
+                }
+            }
         );
     }
 

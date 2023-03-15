@@ -720,6 +720,22 @@ impl<'a> BlockCompiler<'a> {
             0x36 => self.swap(ops, Reg::HL),
             // SWAP A 2:8 Z 0 0 0
             0x37 => self.swap(ops, Reg::A),
+            // SRL B 2:8 Z 0 0 C
+            0x38 => self.srl(ops, Reg::B),
+            // SRL C 2:8 Z 0 0 C
+            0x39 => self.srl(ops, Reg::C),
+            // SRL D 2:8 Z 0 0 C
+            0x3a => self.srl(ops, Reg::D),
+            // SRL E 2:8 Z 0 0 C
+            0x3b => self.srl(ops, Reg::E),
+            // SRL H 2:8 Z 0 0 C
+            0x3c => self.srl(ops, Reg::H),
+            // SRL L 2:8 Z 0 0 C
+            0x3d => self.srl(ops, Reg::L),
+            // SRL (HL) 2:16 Z 0 0 C
+            0x3e => self.srl(ops, Reg::HL),
+            // SRL A 2:8 Z 0 0 C
+            0x3f => self.srl(ops, Reg::A),
             _ => {
                 self.update_clock_count(ops);
                 self.update_pc(ops);
@@ -1903,6 +1919,47 @@ impl<'a> BlockCompiler<'a> {
                 _ => {
                     let reg = reg_offset(reg);
                     dynasm!(ops; mov	BYTE [rbx + reg as i32], cl);
+                }
+            }
+        );
+    }
+
+    pub fn srl(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ;; match reg {
+                Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, true);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                }
+            }
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; mov	esi, eax
+            ; shr	sil, 1
+            ; cmp	al, 2
+            ; setb	dl
+            ; and	cl, 15
+            ; shl	dl, 7
+            ; or	dl, cl
+            ; shl	al, 4
+            ; and	al, 16
+            ; or	al, dl
+            ; mov	BYTE [rbx + f as i32], al
+            ;; match reg {
+                Reg::HL => {
+                    dynasm!(ops
+                        ; mov	rdi, rbx
+                        ; mov   dl, sil
+                        ; mov	esi, r12d
+                    );
+                    self.write_mem(ops);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops; mov	BYTE [rbx + reg as i32], sil);
                 }
             }
         );

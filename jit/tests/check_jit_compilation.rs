@@ -99,6 +99,17 @@ fn test_one() {
     }
 }
 
+#[test]
+fn test_two() {
+    let rom = r"blargg/instr_timing/instr_timing.gb";
+    let rom = TEST_ROM_PATH.to_string() + rom;
+    let timeout = 30 * CLOCK_SPEED;
+    let ok = test_interrupt_prediction(&rom, timeout);
+    if !ok {
+        panic!("CPU desync!");
+    }
+}
+
 #[derive(Default)]
 struct VBlank {
     screen_a: Option<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,

@@ -3,7 +3,7 @@ use dynasmrt::{
 };
 
 use gameroy::{
-    consts::{CB_CLOCK, CLOCK, LEN},
+    consts::LEN,
     gameboy::{
         cpu::{Cpu, ImeState},
         GameBoy,
@@ -94,16 +94,9 @@ impl<'a> BlockCompiler<'a> {
                 break;
             }
 
-            // if true, the opcode was compiled without handling clock_count
+            // if false, the opcode was compiled to a interpreter call.
             if self.compile_opcode(&mut ops, op) {
                 last_one_was_compiled = true;
-                // TODO: remember to include branching time when implemented.
-                self.accum_clock_count += if op == 0xcb {
-                    let op = self.gb.read(self.pc + 1);
-                    CB_CLOCK[op as usize] as u32
-                } else {
-                    CLOCK[op as usize] as u32
-                };
             } else {
                 last_one_was_compiled = false;
             }
@@ -180,6 +173,7 @@ impl<'a> BlockCompiler<'a> {
     /// Compile a Opcode. Return false if the compiled fallbacks to the interpreter (which means
     /// that clock_count were already updated).
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
+        self.accum_clock_count += 4;
         match op {
             // NOP 1:4 - - - -
             0x00 => {}
@@ -592,6 +586,7 @@ impl<'a> BlockCompiler<'a> {
             // CP d8 2:8 Z 1 H C
             0xfe => self.cp(ops, Reg::Im8),
             _ => {
+                self.accum_clock_count -= 4;
                 self.update_clock_count(ops);
                 self.update_pc(ops);
 
@@ -612,6 +607,7 @@ impl<'a> BlockCompiler<'a> {
 
     fn compile_opcode_cb(&mut self, ops: &mut VecAssembler<X64Relocation>) -> bool {
         let op = self.gb.read(self.pc + 1);
+        self.accum_clock_count += 4;
         match op {
             // RLC B 2:8 Z 0 0 C
             0x00 => self.rlc(ops, Reg::B),
@@ -1175,19 +1171,22 @@ impl<'a> BlockCompiler<'a> {
                 self.write_mem(ops);
             }
             _ => {
-                let dst = reg_offset16(dst);
+                let dst_offset = reg_offset16(dst);
                 match src {
                     Reg16::Im16 => {
                         let value = self.get_immediate16();
                         dynasm!(ops
-                            ; mov WORD [rbx + dst as i32], value as i16
+                            ; mov WORD [rbx + dst_offset as i32], value as i16
                         );
                     }
                     Reg16::BC | Reg16::DE | Reg16::HL => {
+                        if dst == Reg16::SP && src == Reg16::HL {
+                            self.accum_clock_count += 4;
+                        }
                         let src = reg_offset16(src);
                         dynasm!(ops
                             ; movzx eax, WORD [rbx + src as i32]
-                            ; mov WORD [rbx + dst as i32], ax
+                            ; mov WORD [rbx + dst_offset as i32], ax
                         );
                     }
                     _ => unreachable!(),
@@ -1272,6 +1271,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn inc16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        self.accum_clock_count += 4;
         let reg = reg_offset(reg);
         dynasm!(ops
             ; inc WORD [rbx + reg as i32]
@@ -1324,6 +1324,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn dec16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+        self.accum_clock_count += 4;
         let reg = reg_offset(reg);
         dynasm!(ops
             ; dec WORD [rbx + reg as i32]
@@ -1360,6 +1361,7 @@ impl<'a> BlockCompiler<'a> {
         let sp = reg_offset16(Reg16::SP);
         let f = offset!(GameBoy, cpu: Cpu, f);
         let value = self.get_immediate();
+        self.accum_clock_count += 8;
         if value as i8 >= 0 {
             dynasm!(ops
                 ; movzx	r9d, WORD [rbx + sp as i32]
@@ -1455,6 +1457,7 @@ impl<'a> BlockCompiler<'a> {
     pub fn add16(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg16) {
         let hl = reg_offset16(Reg16::HL);
         let src = reg_offset16(src);
+        self.accum_clock_count += 4;
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
             ; movzx	eax, WORD [rbx + src as i32]
@@ -1522,6 +1525,11 @@ impl<'a> BlockCompiler<'a> {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
+        let immediate = if reg == Reg::Im8 {
+            self.get_immediate()
+        } else {
+            0
+        };
         if let Reg::HL = reg {
             self.read_mem_reg(ops, Reg::HL, false);
         }
@@ -1533,7 +1541,7 @@ impl<'a> BlockCompiler<'a> {
             ; and	esi, 1
             ;; match reg {
                 Reg::Im8 => {
-                    let value = self.get_immediate();
+                    let value = immediate;
                     dynasm!(ops
                         ; lea	ecx, [rdx + rsi]
                         ; add	ecx, value as i32
@@ -1562,7 +1570,7 @@ impl<'a> BlockCompiler<'a> {
 
             ;; match reg {
                 Reg::Im8 => {
-                    let value = self.get_immediate();
+                    let value = immediate;
                     dynasm!(ops
                         ; add	edx, (value & 0xF) as i32
                         ; add	edx, esi
@@ -1982,6 +1990,7 @@ impl<'a> BlockCompiler<'a> {
     pub fn push(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg16) {
         let sp = reg_offset16(Reg16::SP);
         let reg = reg_offset16(reg);
+        self.accum_clock_count += 4;
         dynasm!(ops
             ; movzx	r12d, WORD [rbx + reg as i32]
             ; mov	edx, r12d
@@ -2451,6 +2460,9 @@ impl<'a> BlockCompiler<'a> {
             gb.read(address)
         }
 
+        self.update_clock_count(ops);
+        self.accum_clock_count += 4;
+
         dynasm!(ops
             ; .arch x64
             ; mov rax, QWORD read as usize as i64
@@ -2471,6 +2483,9 @@ impl<'a> BlockCompiler<'a> {
             false
         }
 
+        self.update_clock_count(ops);
+        self.accum_clock_count += 4;
+
         dynasm!(ops
             ; .arch x64
             ; mov rax, QWORD write as usize as i64
@@ -2484,10 +2499,12 @@ impl<'a> BlockCompiler<'a> {
     }
 
     fn get_immediate(&mut self) -> u8 {
+        self.accum_clock_count += 4;
         self.gb.read(self.pc.wrapping_add(1))
     }
 
     fn get_immediate16(&mut self) -> u16 {
+        self.accum_clock_count += 8;
         let l = self.gb.read(self.pc.wrapping_add(1));
         let h = self.gb.read(self.pc.wrapping_add(2));
         u16::from_be_bytes([h, l])

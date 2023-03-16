@@ -85,6 +85,7 @@ impl<'a> BlockCompiler<'a> {
 
         let start = self.pc;
         let end = start + self.length;
+        let mut last_one_was_compiled = false;
         while self.pc < end {
             let op = self.gb.read(self.pc);
 
@@ -95,6 +96,7 @@ impl<'a> BlockCompiler<'a> {
 
             // if true, the opcode was compiled without handling clock_count
             if self.compile_opcode(&mut ops, op) {
+                last_one_was_compiled = true;
                 // TODO: remember to include branching time when implemented.
                 self.accum_clock_count += if op == 0xcb {
                     let op = self.gb.read(self.pc + 1);
@@ -102,6 +104,8 @@ impl<'a> BlockCompiler<'a> {
                 } else {
                     CLOCK[op as usize] as u32
                 };
+            } else {
+                last_one_was_compiled = false;
             }
 
             self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
@@ -109,8 +113,9 @@ impl<'a> BlockCompiler<'a> {
 
         self.update_clock_count(&mut ops);
 
-        // NOTE: this is current unecessary because all blocks end up in a interpreter call.
-        // self.update_pc(&mut ops);
+        if last_one_was_compiled {
+            self.update_pc(&mut ops);
+        }
 
         dynasm!(ops
             ; .arch x64

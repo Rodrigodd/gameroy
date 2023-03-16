@@ -997,21 +997,134 @@ impl<'a> BlockCompiler<'a> {
             0xbe => self.res(ops, 7, Reg::HL),
             // RES 7,A 2:8 - - - - Cx
             0xbf => self.res(ops, 7, Reg::A),
-            _ => {
-                self.update_clock_count(ops);
-                self.update_pc(ops);
-
-                let call = interpreter_call_cb(op);
-                dynasm!(ops
-                    ; .arch x64
-                    ; mov rax, QWORD call as usize as i64
-                    ; mov rdi, rbx
-                    ; call rax
-                    ; test rax, rax
-                    ; jnz ->exit
-                );
-                return false;
-            }
+            // SET 0,B 2:8 - - - -
+            0xc0 => self.set(ops, 0, Reg::B),
+            // SET 0,C 2:8 - - - -
+            0xc1 => self.set(ops, 0, Reg::C),
+            // SET 0,D 2:8 - - - -
+            0xc2 => self.set(ops, 0, Reg::D),
+            // SET 0,E 2:8 - - - -
+            0xc3 => self.set(ops, 0, Reg::E),
+            // SET 0,H 2:8 - - - -
+            0xc4 => self.set(ops, 0, Reg::H),
+            // SET 0,L 2:8 - - - -
+            0xc5 => self.set(ops, 0, Reg::L),
+            // SET 0,(HL) 2:16 - - - -
+            0xc6 => self.set(ops, 0, Reg::HL),
+            // SET 0,A 2:8 - - - -
+            0xc7 => self.set(ops, 0, Reg::A),
+            // SET 1,B 2:8 - - - -
+            0xc8 => self.set(ops, 1, Reg::B),
+            // SET 1,C 2:8 - - - -
+            0xc9 => self.set(ops, 1, Reg::C),
+            // SET 1,D 2:8 - - - -
+            0xca => self.set(ops, 1, Reg::D),
+            // SET 1,E 2:8 - - - -
+            0xcb => self.set(ops, 1, Reg::E),
+            // SET 1,H 2:8 - - - -
+            0xcc => self.set(ops, 1, Reg::H),
+            // SET 1,L 2:8 - - - -
+            0xcd => self.set(ops, 1, Reg::L),
+            // SET 1,(HL) 2:16 - - - -
+            0xce => self.set(ops, 1, Reg::HL),
+            // SET 1,A 2:8 - - - - Dx
+            0xcf => self.set(ops, 1, Reg::A),
+            // SET 2,B 2:8 - - - -
+            0xd0 => self.set(ops, 2, Reg::B),
+            // SET 2,C 2:8 - - - -
+            0xd1 => self.set(ops, 2, Reg::C),
+            // SET 2,D 2:8 - - - -
+            0xd2 => self.set(ops, 2, Reg::D),
+            // SET 2,E 2:8 - - - -
+            0xd3 => self.set(ops, 2, Reg::E),
+            // SET 2,H 2:8 - - - -
+            0xd4 => self.set(ops, 2, Reg::H),
+            // SET 2,L 2:8 - - - -
+            0xd5 => self.set(ops, 2, Reg::L),
+            // SET 2,(HL) 2:16 - - - -
+            0xd6 => self.set(ops, 2, Reg::HL),
+            // SET 2,A 2:8 - - - -
+            0xd7 => self.set(ops, 2, Reg::A),
+            // SET 3,B 2:8 - - - -
+            0xd8 => self.set(ops, 3, Reg::B),
+            // SET 3,C 2:8 - - - -
+            0xd9 => self.set(ops, 3, Reg::C),
+            // SET 3,D 2:8 - - - -
+            0xda => self.set(ops, 3, Reg::D),
+            // SET 3,E 2:8 - - - -
+            0xdb => self.set(ops, 3, Reg::E),
+            // SET 3,H 2:8 - - - -
+            0xdc => self.set(ops, 3, Reg::H),
+            // SET 3,L 2:8 - - - -
+            0xdd => self.set(ops, 3, Reg::L),
+            // SET 3,(HL) 2:16 - - - -
+            0xde => self.set(ops, 3, Reg::HL),
+            // SET 3,A 2:8 - - - - Ex
+            0xdf => self.set(ops, 3, Reg::A),
+            // SET 4,B 2:8 - - - -
+            0xe0 => self.set(ops, 4, Reg::B),
+            // SET 4,C 2:8 - - - -
+            0xe1 => self.set(ops, 4, Reg::C),
+            // SET 4,D 2:8 - - - -
+            0xe2 => self.set(ops, 4, Reg::D),
+            // SET 4,E 2:8 - - - -
+            0xe3 => self.set(ops, 4, Reg::E),
+            // SET 4,H 2:8 - - - -
+            0xe4 => self.set(ops, 4, Reg::H),
+            // SET 4,L 2:8 - - - -
+            0xe5 => self.set(ops, 4, Reg::L),
+            // SET 4,(HL) 2:16 - - - -
+            0xe6 => self.set(ops, 4, Reg::HL),
+            // SET 4,A 2:8 - - - -
+            0xe7 => self.set(ops, 4, Reg::A),
+            // SET 5,B 2:8 - - - -
+            0xe8 => self.set(ops, 5, Reg::B),
+            // SET 5,C 2:8 - - - -
+            0xe9 => self.set(ops, 5, Reg::C),
+            // SET 5,D 2:8 - - - -
+            0xea => self.set(ops, 5, Reg::D),
+            // SET 5,E 2:8 - - - -
+            0xeb => self.set(ops, 5, Reg::E),
+            // SET 5,H 2:8 - - - -
+            0xec => self.set(ops, 5, Reg::H),
+            // SET 5,L 2:8 - - - -
+            0xed => self.set(ops, 5, Reg::L),
+            // SET 5,(HL) 2:16 - - - -
+            0xee => self.set(ops, 5, Reg::HL),
+            // SET 5,A 2:8 - - - - Fx
+            0xef => self.set(ops, 5, Reg::A),
+            // SET 6,B 2:8 - - - -
+            0xf0 => self.set(ops, 6, Reg::B),
+            // SET 6,C 2:8 - - - -
+            0xf1 => self.set(ops, 6, Reg::C),
+            // SET 6,D 2:8 - - - -
+            0xf2 => self.set(ops, 6, Reg::D),
+            // SET 6,E 2:8 - - - -
+            0xf3 => self.set(ops, 6, Reg::E),
+            // SET 6,H 2:8 - - - -
+            0xf4 => self.set(ops, 6, Reg::H),
+            // SET 6,L 2:8 - - - -
+            0xf5 => self.set(ops, 6, Reg::L),
+            // SET 6,(HL) 2:16 - - - -
+            0xf6 => self.set(ops, 6, Reg::HL),
+            // SET 6,A 2:8 - - - -
+            0xf7 => self.set(ops, 6, Reg::A),
+            // SET 7,B 2:8 - - - -
+            0xf8 => self.set(ops, 7, Reg::B),
+            // SET 7,C 2:8 - - - -
+            0xf9 => self.set(ops, 7, Reg::C),
+            // SET 7,D 2:8 - - - -
+            0xfa => self.set(ops, 7, Reg::D),
+            // SET 7,E 2:8 - - - -
+            0xfb => self.set(ops, 7, Reg::E),
+            // SET 7,H 2:8 - - - -
+            0xfc => self.set(ops, 7, Reg::H),
+            // SET 7,L 2:8 - - - -
+            0xfd => self.set(ops, 7, Reg::L),
+            // SET 7,(HL) 2:16 - - - -
+            0xfe => self.set(ops, 7, Reg::HL),
+            // SET 7,A 2:8 - - - -
+            0xff => self.set(ops, 7, Reg::A),
         }
         true
     }
@@ -2272,6 +2385,30 @@ impl<'a> BlockCompiler<'a> {
                     dynasm!(ops
                         ; movzx	eax, BYTE [rbx + reg as i32]
                         ; and BYTE [rbx + reg as i32], (!(1 << bit)) as i8
+                    );
+                }
+            }
+        );
+    }
+
+    pub fn set(&mut self, ops: &mut VecAssembler<X64Relocation>, bit: u8, reg: Reg) {
+        dynasm!(ops
+            ;; match reg {
+                Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; or	al, (1 << bit) as i8
+                        ; mov	rdi, rbx
+                        ; movzx	edx, al
+                        ; mov	esi, r12d
+                    );
+                    self.write_mem(ops);
+                }
+                _ => {
+                    let reg = reg_offset(reg);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; or BYTE [rbx + reg as i32], (1 << bit) as i8
                     );
                 }
             }

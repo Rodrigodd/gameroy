@@ -3,6 +3,7 @@ use std::fmt;
 use crate::save_state::{LoadStateError, SaveState, SaveStateContext};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub enum CpuState {
     Running = 0,
     Halt = 1,

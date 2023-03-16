@@ -5,7 +5,7 @@ use dynasmrt::{
 use gameroy::{
     consts::LEN,
     gameboy::{
-        cpu::{Cpu, ImeState},
+        cpu::{Cpu, CpuState, ImeState},
         GameBoy,
     },
     interpreter::{Condition, Interpreter, Reg, Reg16},
@@ -207,6 +207,8 @@ impl<'a> BlockCompiler<'a> {
             0x0e => self.load_reg_reg(ops, Reg::C, Reg::Im8),
             // RRC A 2:8 Z 0 0 C
             0x0f => self.rrca(ops),
+            // STOP 0 2:4 - - - -
+            0x10 => self.stop(ops),
             // LD DE,d16 3:12 - - - -
             0x11 => self.load16(ops, Reg16::DE, Reg16::Im16),
             // LD (DE),A 1:8 - - - -
@@ -2100,6 +2102,14 @@ impl<'a> BlockCompiler<'a> {
             ; mov	rdi, rbx
             ;; self.write_mem(ops)
             ; add	WORD [rbx + sp as i32], -2
+        )
+    }
+
+    pub fn stop(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        debug_assert_eq!(std::mem::size_of::<CpuState>(), 1);
+        let state = offset!(GameBoy, cpu: Cpu, state);
+        dynasm!(ops
+            ; mov BYTE [rbx + state as i32], CpuState::Stopped as u8 as i8
         )
     }
 

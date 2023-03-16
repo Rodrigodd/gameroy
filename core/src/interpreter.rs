@@ -17,7 +17,7 @@ pub enum Condition {
     NC,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum Reg {
     A,
@@ -37,7 +37,7 @@ pub enum Reg {
     HLD,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Reg16 {
     AF,
     BC,

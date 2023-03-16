@@ -555,10 +555,16 @@ impl<'a> BlockCompiler<'a> {
             0xce => self.adc(ops, Reg::Im8),
             // POP DE 1:12 - - - -
             0xd1 => self.pop(ops, Reg16::DE),
+            //
+            0xd3 => self.invalid_opcode(ops, op),
             // PUSH DE 1:16 - - - -
             0xd5 => self.push(ops, Reg16::DE),
             // SUB d8 2:8 Z 1 H C
             0xd6 => self.sub(ops, Reg::Im8),
+            //
+            0xdb => self.invalid_opcode(ops, op),
+            //
+            0xdd => self.invalid_opcode(ops, op),
             // SBC A,d8 2:8 Z 1 H C
             0xde => self.sbc(ops, Reg::Im8),
             // LDH (a8),A 2:12 - - - -
@@ -567,6 +573,10 @@ impl<'a> BlockCompiler<'a> {
             0xe1 => self.pop(ops, Reg16::HL),
             // LD (C),A 2:8 - - - -
             0xe2 => self.loadh(ops, Reg::C, Reg::A),
+            //
+            0xe3 => self.invalid_opcode(ops, op),
+            //
+            0xe4 => self.invalid_opcode(ops, op),
             // PUSH HL 1:16 - - - -
             0xe5 => self.push(ops, Reg16::HL),
             // AND d8 2:8 Z 0 1 0
@@ -575,6 +585,12 @@ impl<'a> BlockCompiler<'a> {
             0xe8 => self.add_sp(ops),
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
+            //
+            0xeb => self.invalid_opcode(ops, op),
+            //
+            0xec => self.invalid_opcode(ops, op),
+            //
+            0xed => self.invalid_opcode(ops, op),
             // XOR d8 2:8 Z 0 0 0
             0xee => self.xor(ops, Reg::Im8),
             // LDH A,(a8) 2:12 - - - -
@@ -583,6 +599,8 @@ impl<'a> BlockCompiler<'a> {
             0xf1 => self.pop(ops, Reg16::AF),
             // LD A,(C) 2:8 - - - -
             0xf2 => self.loadh(ops, Reg::A, Reg::C),
+            //
+            0xf4 => self.invalid_opcode(ops, op),
             // PUSH AF 1:16 - - - -
             0xf5 => self.push(ops, Reg16::AF),
             // OR d8 2:8 Z 0 0 0
@@ -591,6 +609,10 @@ impl<'a> BlockCompiler<'a> {
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
             0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
+            //
+            0xfc => self.invalid_opcode(ops, op),
+            //
+            0xfd => self.invalid_opcode(ops, op),
             // CP d8 2:8 Z 1 H C
             0xfe => self.cp(ops, Reg::Im8),
             _ => {
@@ -1131,6 +1153,10 @@ impl<'a> BlockCompiler<'a> {
             0xff => self.set(ops, 7, Reg::A),
         }
         true
+    }
+
+    pub fn invalid_opcode(&mut self, _ops: &mut VecAssembler<X64Relocation>, opcode: u8) {
+        println!("compiled invalid instructions: {opcode:02x}");
     }
 
     pub fn load_reg_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {

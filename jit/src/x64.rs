@@ -561,8 +561,12 @@ impl<'a> BlockCompiler<'a> {
             0xd6 => self.sub(ops, Reg::Im8),
             // SBC A,d8 2:8 Z 1 H C
             0xde => self.sbc(ops, Reg::Im8),
+            // LDH (a8),A 2:12 - - - -
+            0xe0 => self.loadh(ops, Reg::Im8, Reg::A),
             // POP HL 1:12 - - - -
             0xe1 => self.pop(ops, Reg16::HL),
+            // LD (C),A 2:8 - - - -
+            0xe2 => self.loadh(ops, Reg::C, Reg::A),
             // PUSH HL 1:16 - - - -
             0xe5 => self.push(ops, Reg16::HL),
             // AND d8 2:8 Z 0 1 0
@@ -573,8 +577,12 @@ impl<'a> BlockCompiler<'a> {
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
             // XOR d8 2:8 Z 0 0 0
             0xee => self.xor(ops, Reg::Im8),
+            // LDH A,(a8) 2:12 - - - -
+            0xf0 => self.loadh(ops, Reg::A, Reg::Im8),
             // POP AF 1:12 Z N H C
             0xf1 => self.pop(ops, Reg16::AF),
+            // LD A,(C) 2:8 - - - -
+            0xf2 => self.loadh(ops, Reg::A, Reg::C),
             // PUSH AF 1:16 - - - -
             0xf5 => self.push(ops, Reg16::AF),
             // OR d8 2:8 Z 0 0 0
@@ -1246,6 +1254,65 @@ impl<'a> BlockCompiler<'a> {
             }
             _ => unreachable!(),
         };
+    }
+
+    pub fn loadh(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+        match src {
+            Reg::A => {
+                let reg = reg_offset(Reg::A);
+                dynasm!(ops
+                    ; movzx	edx, BYTE [rbx + reg as i32] // load reg
+                )
+            }
+            Reg::C => {
+                let reg = reg_offset(Reg::C);
+                dynasm!(ops
+                    ; movzx	eax, BYTE [rbx + reg as i32] // load reg
+                    ; or eax, 0xff00
+                    ; mov	rdi, rbx
+                    ; movzx	esi, ax
+                    ;; self.read_mem(ops)
+                )
+            }
+            Reg::Im8 => {
+                let value = self.get_immediate();
+                dynasm!(ops
+                    ; mov	rdi, rbx
+                    ; mov	esi, WORD (0xff00 | value as u16) as i32
+                    ;; self.read_mem(ops)
+                )
+            }
+            _ => unreachable!(),
+        };
+
+        match dst {
+            Reg::A => {
+                let reg = reg_offset(Reg::A);
+                dynasm!(ops
+                    ; .arch x64
+                    ; mov BYTE [rbx + reg as i32], al
+                );
+            }
+            Reg::C => {
+                let reg = reg_offset(Reg::C);
+                dynasm!(ops
+                    ; mov	rdi, rbx
+                    ; movzx	eax, BYTE [rbx + reg as i32]
+                    ; or	eax, 0xff00
+                    ; movzx	esi, ax
+                    ;; self.write_mem(ops)
+                );
+            }
+            Reg::Im8 => {
+                let value = self.get_immediate();
+                dynasm!(ops
+                    ; mov	rdi, rbx
+                    ; mov	esi, (0xff00 | value as u16) as i32
+                    ;; self.write_mem(ops)
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 
     pub fn inc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {

@@ -104,8 +104,6 @@ impl<'a> BlockCompiler<'a> {
             self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
         }
 
-        self.update_clock_count(&mut ops);
-
         if last_one_was_compiled {
             self.update_pc(&mut ops);
         }
@@ -113,6 +111,7 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; .arch x64
             ; ->exit:
+            ;; self.update_clock_count(&mut ops)
             ; pop r12
             ; pop rbx
             ; pop rbp
@@ -174,6 +173,7 @@ impl<'a> BlockCompiler<'a> {
     /// that clock_count were already updated).
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
         self.accum_clock_count += 4;
+        use Condition::*;
         match op {
             // NOP 1:4 - - - -
             0x00 => {}
@@ -223,6 +223,8 @@ impl<'a> BlockCompiler<'a> {
             0x16 => self.load_reg_reg(ops, Reg::D, Reg::Im8),
             // RLA 1:4 0 0 0 C
             0x17 => self.rla(ops),
+            // JR r8 2:12 - - - -
+            0x18 => self.jump_rel(ops, None),
             // ADD HL,DE 1:8 - 0 H C
             0x19 => self.add16(ops, Reg16::DE),
             // LD A,(DE) 1:8 - - - -
@@ -237,6 +239,8 @@ impl<'a> BlockCompiler<'a> {
             0x1e => self.load_reg_reg(ops, Reg::E, Reg::Im8),
             // RRA 1:4 0 0 0 C
             0x1f => self.rra(ops),
+            // JR NZ,r8 2:12/8 - - - -
+            0x20 => self.jump_rel(ops, NZ),
             // LD HL,d16 3:12 - - - -
             0x21 => self.load16(ops, Reg16::HL, Reg16::Im16),
             // LD (HL+),A 1:8 - - - -
@@ -251,6 +255,8 @@ impl<'a> BlockCompiler<'a> {
             0x26 => self.load_reg_reg(ops, Reg::H, Reg::Im8),
             // DAA 1:4 Z - 0 C
             0x27 => self.daa(ops),
+            // JR Z,r8 2:12/8 - - - -
+            0x28 => self.jump_rel(ops, Z),
             // ADD HL,HL 1:8 - 0 H C
             0x29 => self.add16(ops, Reg16::HL),
             // LD A,(HL+) 1:8 - - - -
@@ -265,6 +271,8 @@ impl<'a> BlockCompiler<'a> {
             0x2e => self.load_reg_reg(ops, Reg::L, Reg::Im8),
             // CPL 1:4 - 1 1 -
             0x2f => self.cpl(ops),
+            // JR NC,r8 2:12/8 - - - -
+            0x30 => self.jump_rel(ops, NC),
             // LD SP,d16 3:12 - - - -
             0x31 => self.load16(ops, Reg16::SP, Reg16::Im16),
             // LD (HL-),A 1:8 - - - -
@@ -277,6 +285,8 @@ impl<'a> BlockCompiler<'a> {
             0x35 => self.dec_mem(ops),
             // LD (HL),d8 2:12 - - - -
             0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
+            // JR C,r8 2:12/8 - - - -
+            0x38 => self.jump_rel(ops, C),
             // ADD HL,SP 1:8 - 0 H C
             0x39 => self.add16(ops, Reg16::SP),
             // LD A,(HL-) 1:8 - - - -
@@ -2110,6 +2120,53 @@ impl<'a> BlockCompiler<'a> {
         let state = offset!(GameBoy, cpu: Cpu, state);
         dynasm!(ops
             ; mov BYTE [rbx + state as i32], CpuState::Stopped as u8 as i8
+        )
+    }
+
+    fn check_condition(&self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        use Condition::*;
+        match c {
+            None => {}
+            Z => {
+                dynasm!(ops
+                    ; cmp	BYTE [rbx + f as i32], 0
+                    ; jns >skip_jump
+                )
+            }
+            NZ => {
+                dynasm!(ops
+                    ; cmp	BYTE [rbx + f as i32], 0
+                    ; js >skip_jump
+                )
+            }
+            C => {
+                dynasm!(ops
+                    ; test	BYTE [rbx + f as i32], 0x10
+                    ; je >skip_jump
+                )
+            }
+            NC => {
+                dynasm!(ops
+                    ; test	BYTE [rbx + f as i32], 0x10
+                    ; jne >skip_jump
+                )
+            }
+        }
+    }
+
+    pub fn jump_rel(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+        let clock_count = offset!(GameBoy, clock_count);
+        let pc = offset!(GameBoy, cpu: Cpu, pc);
+
+        let r8 = self.get_immediate() as i8;
+        self.check_condition(ops, c);
+        dynasm!(ops
+            ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16 + 2
+            ; add	QWORD [rbx + clock_count as i32], 4
+            ; jmp ->exit
+            ; skip_jump:
         )
     }
 

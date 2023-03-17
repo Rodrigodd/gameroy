@@ -557,22 +557,32 @@ impl<'a> BlockCompiler<'a> {
             0xbf => self.cp(ops, Reg::A),
             // POP BC 1:12 - - - -
             0xc1 => self.pop(ops, Reg16::BC),
+            // JP NZ,a16 3:16/12 - - - -
+            0xc2 => self.jump(ops, NZ),
+            // JP a16 3:16 - - - -
+            0xc3 => self.jump(ops, None),
             // PUSH BC 1:16 - - - -
             0xc5 => self.push(ops, Reg16::BC),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
+            // JP Z,a16 3:16/12 - - - -
+            0xca => self.jump(ops, Z),
             // PREFIX CB 1:4 - - - -
             0xcb => return self.compile_opcode_cb(ops),
             // ADC A,d8 2:8 Z 0 H C
             0xce => self.adc(ops, Reg::Im8),
             // POP DE 1:12 - - - -
             0xd1 => self.pop(ops, Reg16::DE),
+            // JP NC,a16 3:16/12 - - - -
+            0xd2 => self.jump(ops, NC),
             //
             0xd3 => self.invalid_opcode(ops, op),
             // PUSH DE 1:16 - - - -
             0xd5 => self.push(ops, Reg16::DE),
             // SUB d8 2:8 Z 1 H C
             0xd6 => self.sub(ops, Reg::Im8),
+            // JP C,a16 3:16/12 - - - -
+            0xda => self.jump(ops, C),
             //
             0xdb => self.invalid_opcode(ops, op),
             //
@@ -2164,6 +2174,20 @@ impl<'a> BlockCompiler<'a> {
         self.check_condition(ops, c);
         dynasm!(ops
             ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16 + 2
+            ; add	QWORD [rbx + clock_count as i32], 4
+            ; jmp ->exit
+            ; skip_jump:
+        )
+    }
+
+    pub fn jump(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+        let clock_count = offset!(GameBoy, clock_count);
+        let pc = offset!(GameBoy, cpu: Cpu, pc);
+
+        let address = self.get_immediate16();
+        self.check_condition(ops, c);
+        dynasm!(ops
+            ; mov WORD [rbx + pc as i32], address as i16
             ; add	QWORD [rbx + clock_count as i32], 4
             ; jmp ->exit
             ; skip_jump:

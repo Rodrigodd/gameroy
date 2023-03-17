@@ -18,7 +18,7 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
 - Graphical interface for listing roms in a folder.
 - Debugger with a graphical interface:
   - Views for disassembly, registers, video RAM, etc...
-  - Statically trace rom for executable memory ranges (and at runtime).
+  - Statically (or while running) trace a rom for executable memory ranges.
   - Add breakpoints at read, write, jump or execution of memory addresses.
   - Watch addresses.
   - Step code backwards.
@@ -27,18 +27,21 @@ An emulator and debugger for the Nintendo Game Boy, written in Rust.
 
 You can find pre compiled binaries in the [Releases page](https://github.com/Rodrigodd/gameroy/releases).
 
+For building this project, you need [the Rust toolchain](https://www.rust-lang.org/tools/install)
+installed (includes `cargo`).
+
 This project depends on [resvg](https://github.com/RazrFalcon/resvg) (version
 0.23, at time of writing) for rendering assets, and [cargo-about](https://github.com/EmbarkStudios/cargo-about)
-(0.5.1) for generate a list of licenses (this last one is optional). 
+(0.5.1) for generating a list of licenses (this last one is optional). 
 
-You can install them using cargo:
+Both can be installed using cargo:
 
 ```shell
 cargo install resvg
 cargo install cargo-about
 ```
 
-### Native
+### Windows and Linux
 
 Compiling and running for native, i.e, Windows and Linux (other platforms are
 untested), only needs cargo:
@@ -77,7 +80,7 @@ To build and install the .apk in a device:
 
 ```shell
 cd android
-./gradlew installDebug # or gradlew installDebug, on Windows
+./gradlew installDebug # or `gradlew installDebug`, on Windows
 ```
 
 To see the logs:
@@ -86,9 +89,9 @@ To see the logs:
 adb logcat *:S gameroy:V RustStdoutStderr:V
 ```
 
-The project uses
+(The project uses
 [rust-android-gradle](https://github.com/mozilla/rust-android-gradle) for
-building the rust code for android.
+building the rust code for android.)
 
 ## Config
 

@@ -605,6 +605,8 @@ impl<'a> BlockCompiler<'a> {
             0xe6 => self.and(ops, Reg::Im8),
             // ADD SP,r8 2:16 0 0 H C
             0xe8 => self.add_sp(ops),
+            // JP HL 1:4 - - - -
+            0xe9 => self.jump_hl(ops),
             // LD (a16),A 3:16 - - - -
             0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
             //
@@ -2191,6 +2193,16 @@ impl<'a> BlockCompiler<'a> {
             ; add	QWORD [rbx + clock_count as i32], 4
             ; jmp ->exit
             ; skip_jump:
+        )
+    }
+
+    pub fn jump_hl(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let hl = reg_offset16(Reg16::HL);
+        let pc = offset!(GameBoy, cpu: Cpu, pc);
+        dynasm!(ops
+            ; movzx eax, WORD [rbx + hl as i32]
+            ; mov WORD [rbx + pc as i32], ax
+            ; jmp ->exit
         )
     }
 

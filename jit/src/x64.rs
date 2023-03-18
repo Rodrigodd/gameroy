@@ -344,6 +344,8 @@ impl<'a> BlockCompiler<'a> {
             0x35 => self.dec_mem(ops),
             // LD (HL),d8 2:12 - - - -
             0x36 => self.load_mem_reg(ops, Reg::HL, Reg::Im8),
+            // SCF 1:4 - 0 0 1
+            0x37 => self.scf(ops),
             // JR C,r8 2:12/8 - - - -
             0x38 => self.jump_rel(ops, C),
             // ADD HL,SP 1:8 - 0 H C
@@ -2181,6 +2183,17 @@ impl<'a> BlockCompiler<'a> {
             ; movzx	eax, BYTE [rbx + f as i32]
             ; and	al, -97
             ; xor	al, 16
+            ; mov	BYTE [rbx + f as i32], al
+        );
+    }
+
+    pub fn scf(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        dynasm!(ops
+            ; movzx	eax, BYTE [rbx + f as i32]
+            ; and	al, -113
+            ; or	al, 16
             ; mov	BYTE [rbx + f as i32], al
         );
     }

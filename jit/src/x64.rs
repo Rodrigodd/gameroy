@@ -620,6 +620,8 @@ impl<'a> BlockCompiler<'a> {
             0xc2 => self.jump(ops, NZ),
             // JP a16 3:16 - - - -
             0xc3 => self.jump(ops, None),
+            // CALL NZ,a16 3:24/12 - - - -
+            0xc4 => self.call(ops, NZ),
             // PUSH BC 1:16 - - - -
             0xc5 => self.push(ops, Reg16::BC),
             // ADD A,d8 2:8 Z 0 H C
@@ -628,6 +630,10 @@ impl<'a> BlockCompiler<'a> {
             0xca => self.jump(ops, Z),
             // PREFIX CB 1:4 - - - -
             0xcb => return self.compile_opcode_cb(ops),
+            // CALL Z,a16 3:24/12 - - - -
+            0xcc => self.call(ops, Z),
+            // CALL a16 3:24 - - - -
+            0xcd => self.call(ops, None),
             // ADC A,d8 2:8 Z 0 H C
             0xce => self.adc(ops, Reg::Im8),
             // POP DE 1:12 - - - -
@@ -636,6 +642,8 @@ impl<'a> BlockCompiler<'a> {
             0xd2 => self.jump(ops, NC),
             //
             0xd3 => self.invalid_opcode(ops, op),
+            // CALL NC,a16 3:24/12 - - - -
+            0xd4 => self.call(ops, NC),
             // PUSH DE 1:16 - - - -
             0xd5 => self.push(ops, Reg16::DE),
             // SUB d8 2:8 Z 1 H C
@@ -644,6 +652,8 @@ impl<'a> BlockCompiler<'a> {
             0xda => self.jump(ops, C),
             //
             0xdb => self.invalid_opcode(ops, op),
+            // CALL C,a16 3:24/12 - - - -
+            0xdc => self.call(ops, C),
             //
             0xdd => self.invalid_opcode(ops, op),
             // SBC A,d8 2:8 Z 1 H C
@@ -2278,6 +2288,47 @@ impl<'a> BlockCompiler<'a> {
             ; mov WORD [rbx + pc as i32], ax
             ; jmp ->exit_jump
         )
+    }
+
+    pub fn call(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+        let clock_count_offset = offset!(GameBoy, clock_count);
+        let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
+        let sp_offset = reg_offset16(Reg16::SP);
+
+        let address = self.get_immediate16();
+        let pc = self.pc + 3;
+        self.update_clock_count(ops);
+        self.check_condition(ops, c);
+        dynasm!(ops
+            // push pc
+            ; add DWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
+            ; mov	edx, (pc >> 8) as i32
+            ; movzx	eax, WORD [rbx + sp_offset as i32]
+            ; dec	eax
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.write_mem(ops)
+            // revert clock count increases inside write_mem, because they should be conditional.
+            ;; self.tick(-4)
+
+            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; movzx	eax, WORD [rbx + sp_offset as i32]
+            ; add	eax, -2
+            ; mov	edx, (pc & 0xff) as i32
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.write_mem(ops)
+            // revert clock count increases inside write_mem, because they should be conditional.
+            ;; self.tick(-4)
+
+            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add	WORD [rbx + sp_offset as i32], -2
+
+            ; mov WORD [rbx + pc_offset as i32], address as i16
+
+            ; jmp ->exit_jump
+            ; skip_jump:
+        );
     }
 
     pub fn rlc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {

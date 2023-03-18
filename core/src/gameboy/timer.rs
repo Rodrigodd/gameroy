@@ -103,8 +103,6 @@ impl Timer {
             return false;
         }
 
-        self.next_interrupt = self.estimate_next_interrupt();
-
         let elapsed = clock_count - self.last_clock_count;
         self.last_clock_count = clock_count;
 

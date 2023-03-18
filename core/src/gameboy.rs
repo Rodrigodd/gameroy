@@ -62,6 +62,8 @@ pub struct GameBoy {
 
     /// Used to toggle the next interrupt prediction, to be able to test its correctness.
     pub predict_interrupt: bool,
+    /// The clock_count when the next interrupt may happen.
+    pub next_interrupt: Cell<u64>,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -133,6 +135,8 @@ crate::save_state!(GameBoy, self, ctx, data {
 
     bitset [self.boot_rom_active, self.v_blank_trigger];
     // self.v_blank;
+
+    on_load self.update_next_interrupt();
 });
 impl GameBoy {
     pub fn new(boot_rom: Option<[u8; 0x100]>, cartridge: Cartridge) -> Self {
@@ -158,6 +162,7 @@ impl GameBoy {
             v_blank_trigger: false.into(),
             v_blank: None,
             predict_interrupt: true,
+            next_interrupt: 0.into(),
         };
 
         if this.boot_rom.is_none() {
@@ -325,12 +330,14 @@ impl GameBoy {
         self.clock_count += count as u64;
     }
 
-    pub fn next_interrupt(&self) -> u64 {
-        self.ppu
-            .borrow()
-            .next_interrupt
-            .min(self.timer.borrow().next_interrupt)
-            .min(self.serial.borrow().next_interrupt)
+    pub fn update_next_interrupt(&self) {
+        self.next_interrupt.set(
+            self.ppu
+                .borrow()
+                .next_interrupt
+                .min(self.timer.borrow().next_interrupt)
+                .min(self.serial.borrow().next_interrupt),
+        )
     }
 
     pub fn update_interrupt(&self) {
@@ -367,6 +374,8 @@ impl GameBoy {
                 .set(self.interrupt_flag.get() | (1 << 0));
             self.v_blank_trigger.set(true);
         }
+
+        self.update_next_interrupt();
     }
 
     fn update_timer(&self) {
@@ -374,6 +383,8 @@ impl GameBoy {
             self.interrupt_flag
                 .set(self.interrupt_flag.get() | (1 << 2));
         }
+
+        self.update_next_interrupt();
     }
 
     fn update_serial(&self) {
@@ -382,6 +393,8 @@ impl GameBoy {
             self.interrupt_flag
                 .set(self.interrupt_flag.get() | (1 << 3));
         }
+
+        self.update_next_interrupt();
     }
 
     pub fn read16(&self, address: u16) -> u16 {
@@ -404,6 +417,7 @@ impl GameBoy {
             0x04..=0x07 => {
                 self.update_timer();
                 self.timer.get_mut().write(address, value);
+                self.update_next_interrupt();
             }
             0x08..=0x0e => {}
             0x0f => {

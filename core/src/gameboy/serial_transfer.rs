@@ -100,8 +100,11 @@ impl Serial {
             _ => unreachable!(),
         }
 
-        let this = &mut *gb.serial.get_mut();
-        this.next_interrupt = this.estimate_next_interrupt();
+        {
+            let this = &mut *gb.serial.get_mut();
+            this.next_interrupt = this.estimate_next_interrupt();
+        }
+        gb.update_next_interrupt();
     }
 
     pub fn read(gb: &GameBoy, address: u8) -> u8 {

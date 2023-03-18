@@ -1455,8 +1455,11 @@ impl Ppu {
 
     /// Update the value of Ppu::next_prediction. Must be called ever time the ppu is mutated.
     fn update_interrupt_prediction(gb: &GameBoy) {
-        let mut ppu = gb.ppu.borrow_mut();
-        ppu.next_interrupt = ppu.estimate_next_interrupt();
+        {
+            let mut ppu = gb.ppu.borrow_mut();
+            ppu.next_interrupt = ppu.estimate_next_interrupt();
+        }
+        gb.update_next_interrupt();
     }
 
     pub fn estimate_next_interrupt(&self) -> u64 {

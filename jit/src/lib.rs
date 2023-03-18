@@ -141,7 +141,7 @@ impl JitCompiler {
 
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {
         let block = self.get_block(gb);
-        let next_interrupt = gb.next_interrupt();
+        let next_interrupt = gb.next_interrupt.get();
         let start_clock = gb.clock_count;
         match block {
             Some(block)

@@ -470,6 +470,8 @@ impl<'a> BlockCompiler<'a> {
             0x74 => self.load_mem_reg(ops, Reg::HL, Reg::H),
             // LD (HL),L 1:8 - - - -
             0x75 => self.load_mem_reg(ops, Reg::HL, Reg::L),
+            // HALT 1:4 - - - -
+            0x76 => self.halt(ops),
             // LD (HL),A 1:8 - - - -
             0x77 => self.load_mem_reg(ops, Reg::HL, Reg::A),
             // LD A,B 1:4 - - - -
@@ -2237,6 +2239,13 @@ impl<'a> BlockCompiler<'a> {
             ; mov	rdi, rbx
             ;; self.write_mem(ops)
             ; add	WORD [rbx + sp as i32], -2
+        )
+    }
+
+    pub fn halt(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let state = offset!(GameBoy, cpu: Cpu, state);
+        dynasm!(ops
+            ; mov BYTE [rbx + state as i32], CpuState::Halt as u8 as i8
         )
     }
 

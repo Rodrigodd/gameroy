@@ -614,6 +614,8 @@ impl<'a> BlockCompiler<'a> {
             0xbe => self.cp(ops, Reg::HL),
             // CP A 1:4 Z 1 H C
             0xbf => self.cp(ops, Reg::A),
+            // RET NZ 1:20/8 - - - -
+            0xc0 => self.ret(ops, NZ),
             // POP BC 1:12 - - - -
             0xc1 => self.pop(ops, Reg16::BC),
             // JP NZ,a16 3:16/12 - - - -
@@ -628,6 +630,10 @@ impl<'a> BlockCompiler<'a> {
             0xc6 => self.add(ops, Reg::Im8),
             // RST 00H 1:16 - - - -
             0xc7 => self.rst(ops, 0x00),
+            // RET Z 1:20/8 - - - -
+            0xc8 => self.ret(ops, Z),
+            // RET 1:16 - - - -
+            0xc9 => self.ret(ops, None),
             // JP Z,a16 3:16/12 - - - -
             0xca => self.jump(ops, Z),
             // PREFIX CB 1:4 - - - -
@@ -640,6 +646,8 @@ impl<'a> BlockCompiler<'a> {
             0xce => self.adc(ops, Reg::Im8),
             // RST 08H 1:16 - - - -
             0xcf => self.rst(ops, 0x08),
+            // RET NC 1:20/8 - - - -
+            0xd0 => self.ret(ops, NC),
             // POP DE 1:12 - - - -
             0xd1 => self.pop(ops, Reg16::DE),
             // JP NC,a16 3:16/12 - - - -
@@ -654,6 +662,10 @@ impl<'a> BlockCompiler<'a> {
             0xd6 => self.sub(ops, Reg::Im8),
             // RST 10H 1:16 - - - -
             0xd7 => self.rst(ops, 0x10),
+            // RET C 1:20/8 - - - -
+            0xd8 => self.ret(ops, C),
+            // RETI 1:16 - - - -
+            0xd9 => self.reti(ops),
             // JP C,a16 3:16/12 - - - -
             0xda => self.jump(ops, C),
             //
@@ -2384,6 +2396,49 @@ impl<'a> BlockCompiler<'a> {
 
             ; jmp ->exit_jump
         );
+    }
+
+    pub fn ret(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+        let clock_count_offset = offset!(GameBoy, clock_count);
+        let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
+        let sp_offset = reg_offset16(Reg16::SP);
+
+        self.update_clock_count(ops);
+        if c != Condition::None {
+            dynasm!(ops; add DWORD [rbx + clock_count_offset as i32], 4);
+        }
+        self.check_condition(ops, c);
+        dynasm!(ops
+            // pop pc
+            ; movzx	r12d, WORD [rbx + sp_offset as i32]
+            ; mov	rdi, rbx
+            ; mov	esi, r12d
+            ;; self.read_mem(ops)
+            // revert clock count increases inside write_mem, because they should be conditional.
+            ;; self.tick(-4)
+            ; add DWORD [rbx + clock_count_offset as i32], 4
+
+            ; mov	BYTE [rbx + pc_offset as i32], al
+            ; lea	eax, [r12 + 1]
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.read_mem(ops)
+            // revert clock count increases inside write_mem, because they should be conditional.
+            ;; self.tick(-4)
+            ; add DWORD [rbx + clock_count_offset as i32], 8
+
+            ; add	r12d, 2
+            ; mov	WORD [rbx + sp_offset as i32], r12w
+            ; mov	BYTE [rbx + (pc_offset + 1) as i32], al
+
+            ; jmp ->exit_jump
+            ; skip_jump:
+        );
+    }
+
+    pub fn reti(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        self.ret(ops, Condition::None);
+        self.ime_state = Some(ImeState::Enabled);
     }
 
     pub fn rlc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {

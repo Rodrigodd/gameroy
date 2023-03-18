@@ -2175,11 +2175,10 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn ccf(&mut self, ops: &mut VecAssembler<X64Relocation>) {
-        let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         dynasm!(ops
-            ; movzx	eax, BYTE [rbx + a as i32]
+            ; movzx	eax, BYTE [rbx + f as i32]
             ; and	al, -97
             ; xor	al, 16
             ; mov	BYTE [rbx + f as i32], al

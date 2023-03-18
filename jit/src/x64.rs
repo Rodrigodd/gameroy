@@ -626,6 +626,8 @@ impl<'a> BlockCompiler<'a> {
             0xc5 => self.push(ops, Reg16::BC),
             // ADD A,d8 2:8 Z 0 H C
             0xc6 => self.add(ops, Reg::Im8),
+            // RST 00H 1:16 - - - -
+            0xc7 => self.rst(ops, 0x00),
             // JP Z,a16 3:16/12 - - - -
             0xca => self.jump(ops, Z),
             // PREFIX CB 1:4 - - - -
@@ -636,6 +638,8 @@ impl<'a> BlockCompiler<'a> {
             0xcd => self.call(ops, None),
             // ADC A,d8 2:8 Z 0 H C
             0xce => self.adc(ops, Reg::Im8),
+            // RST 08H 1:16 - - - -
+            0xcf => self.rst(ops, 0x08),
             // POP DE 1:12 - - - -
             0xd1 => self.pop(ops, Reg16::DE),
             // JP NC,a16 3:16/12 - - - -
@@ -648,6 +652,8 @@ impl<'a> BlockCompiler<'a> {
             0xd5 => self.push(ops, Reg16::DE),
             // SUB d8 2:8 Z 1 H C
             0xd6 => self.sub(ops, Reg::Im8),
+            // RST 10H 1:16 - - - -
+            0xd7 => self.rst(ops, 0x10),
             // JP C,a16 3:16/12 - - - -
             0xda => self.jump(ops, C),
             //
@@ -658,6 +664,8 @@ impl<'a> BlockCompiler<'a> {
             0xdd => self.invalid_opcode(ops, op),
             // SBC A,d8 2:8 Z 1 H C
             0xde => self.sbc(ops, Reg::Im8),
+            // RST 18H 1:16 - - - -
+            0xdf => self.rst(ops, 0x18),
             // LDH (a8),A 2:12 - - - -
             0xe0 => self.loadh(ops, Reg::Im8, Reg::A),
             // POP HL 1:12 - - - -
@@ -672,6 +680,8 @@ impl<'a> BlockCompiler<'a> {
             0xe5 => self.push(ops, Reg16::HL),
             // AND d8 2:8 Z 0 1 0
             0xe6 => self.and(ops, Reg::Im8),
+            // RST 20H 1:16 - - - -
+            0xe7 => self.rst(ops, 0x20),
             // ADD SP,r8 2:16 0 0 H C
             0xe8 => self.add_sp(ops),
             // JP HL 1:4 - - - -
@@ -686,6 +696,8 @@ impl<'a> BlockCompiler<'a> {
             0xed => self.invalid_opcode(ops, op),
             // XOR d8 2:8 Z 0 0 0
             0xee => self.xor(ops, Reg::Im8),
+            // RST 28H 1:16 - - - -
+            0xef => self.rst(ops, 0x28),
             // LDH A,(a8) 2:12 - - - -
             0xf0 => self.loadh(ops, Reg::A, Reg::Im8),
             // POP AF 1:12 Z N H C
@@ -700,6 +712,8 @@ impl<'a> BlockCompiler<'a> {
             0xf5 => self.push(ops, Reg16::AF),
             // OR d8 2:8 Z 0 0 0
             0xf6 => self.or(ops, Reg::Im8),
+            // RST 30H 1:16 - - - -
+            0xf7 => self.rst(ops, 0x30),
             // LD SP,HL 1:8 - - - -
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
@@ -712,6 +726,8 @@ impl<'a> BlockCompiler<'a> {
             0xfd => self.invalid_opcode(ops, op),
             // CP d8 2:8 Z 1 H C
             0xfe => self.cp(ops, Reg::Im8),
+            // RST 38H 1:16 - - - -
+            0xff => self.rst(ops, 0x38),
             _ => {
                 self.tick(-4);
                 self.update_clock_count(ops);
@@ -2328,6 +2344,45 @@ impl<'a> BlockCompiler<'a> {
 
             ; jmp ->exit_jump
             ; skip_jump:
+        );
+    }
+
+    pub fn rst(&mut self, ops: &mut VecAssembler<X64Relocation>, address: u8) {
+        let clock_count_offset = offset!(GameBoy, clock_count);
+        let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
+        let sp_offset = reg_offset16(Reg16::SP);
+
+        let address = address as u16;
+        let pc = self.pc + 1;
+        self.update_clock_count(ops);
+        dynasm!(ops
+            // push pc
+            ; add DWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
+            ; mov	edx, (pc >> 8) as i32
+            ; movzx	eax, WORD [rbx + sp_offset as i32]
+            ; dec	eax
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.write_mem(ops)
+            // revert clock count increases inside write_mem, because they should be conditional.
+            ;; self.tick(-4)
+
+            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; movzx	eax, WORD [rbx + sp_offset as i32]
+            ; add	eax, -2
+            ; mov	edx, (pc & 0xff) as i32
+            ; movzx	esi, ax
+            ; mov	rdi, rbx
+            ;; self.write_mem(ops)
+            // revert clock count increases inside write_mem, because they should be conditional.
+            ;; self.tick(-4)
+
+            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add	WORD [rbx + sp_offset as i32], -2
+
+            ; mov WORD [rbx + pc_offset as i32], address as i16
+
+            ; jmp ->exit_jump
         );
     }
 

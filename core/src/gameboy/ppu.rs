@@ -1574,9 +1574,9 @@ impl Ppu {
             }
         };
         let next_mode2 = {
-            // a mode2 interrupt happens 3 or 4 cycles after start_clock_count
+            // mode2 interrupt starts 3 or 4 cycles after line_clock_count and lasts for just 1 cycle
             let start = self.line_start_clock_count + 3;
-            let end = start + 80;
+            let end = start + 4;
 
             if self.last_clock_count < start {
                 start

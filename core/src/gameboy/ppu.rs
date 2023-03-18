@@ -1515,8 +1515,6 @@ impl Ppu {
             self.line_start_clock_count + SCANLINE_CYCLES * lines_until_next_frame as u64
         };
 
-        next_interrupt = next_interrupt.min(next_vblank);
-
         let next_lyc = if self.lyc < SCANLINE_PER_FRAME {
             let ly = if ly < 143 { ly } else { 143 };
 
@@ -1604,7 +1602,6 @@ impl Ppu {
         //     }
         // };
 
-        // TODO: if stat_signal is true, the interrupt may not happen in the next trigger.
         if self.stat & 0x08 != 0 {
             next_interrupt = next_interrupt.min(next_mode0);
         }
@@ -1617,6 +1614,8 @@ impl Ppu {
         if self.stat & 0x40 != 0 {
             next_interrupt = next_interrupt.min(next_lyc);
         }
+
+        next_interrupt = next_interrupt.min(next_vblank);
 
         next_interrupt
     }

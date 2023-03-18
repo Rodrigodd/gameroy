@@ -1617,6 +1617,28 @@ impl Ppu {
 
         next_interrupt = next_interrupt.min(next_vblank);
 
+        // println!(
+        //     "\
+        //     next_interrupt: {next_interrupt}
+        //         ly: {}
+        //         clock_count: {}
+        //         line_start: {}
+        //         next_frame: {next_frame}
+        //         stat_mode: {}
+        //         stat_signal: {}
+        //         mode0: {next_mode0}
+        //         mode1: {next_mode1}
+        //         mode2: {next_mode2}
+        //         next_lyc: {next_lyc}
+        //         next_vblank: {next_vblank}
+        //     ",
+        //     self.ly,
+        //     self.last_clock_count,
+        //     self.line_start_clock_count,
+        //     self.stat_mode_for_interrupt,
+        //     self.stat_signal
+        // );
+
         next_interrupt
     }
 }

@@ -730,6 +730,8 @@ impl<'a> BlockCompiler<'a> {
             0xf6 => self.or(ops, Reg::Im8),
             // RST 30H 1:16 - - - -
             0xf7 => self.rst(ops, 0x30),
+            // LD HL,SP+r8 2:12 0 0 H C
+            0xf8 => self.ldhl_sp(ops),
             // LD SP,HL 1:8 - - - -
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
@@ -744,6 +746,9 @@ impl<'a> BlockCompiler<'a> {
             0xfe => self.cp(ops, Reg::Im8),
             // RST 38H 1:16 - - - -
             0xff => self.rst(ops, 0x38),
+
+            // may be useful for debugging later.
+            #[allow(unreachable_patterns)]
             _ => {
                 self.tick(-4);
                 self.update_clock_count(ops);
@@ -1467,6 +1472,63 @@ impl<'a> BlockCompiler<'a> {
                 );
             }
             _ => unreachable!(),
+        }
+    }
+
+    pub fn ldhl_sp(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let sp = reg_offset16(Reg16::SP);
+        let hl = reg_offset16(Reg16::HL);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        let value = self.get_immediate();
+        self.tick(4);
+        if value as i8 >= 0 {
+            dynasm!(ops
+                ; movzx	r9d, WORD [rbx + sp as i32]
+                ; movzx	ecx, r9b
+                ; mov	r8, BYTE value as i32
+                ; lea	esi, [rcx + r8]
+                ; cmp	esi, 256
+                ; setae	dl
+                ; and	cl, 15
+                ; mov	eax, r8d
+                ; and	al, 15
+                ; add	al, cl
+                ; cmp	al, 16
+                ; setae	al
+                ; add	r9d, r8d
+                ; mov	WORD [rbx + hl as i32], r9w
+                ; movzx	ecx, BYTE [rbx + f as i32]
+                ; and	cl, 15
+                ; shl	al, 5
+                ; shl	dl, 4
+                ; or	dl, cl
+                ; or	dl, al
+                ; mov	BYTE [rbx + f as i32], dl
+            );
+        } else {
+            dynasm!(ops
+                ; movzx	eax, WORD [rbx + sp as i32]
+                ; mov	cl, BYTE value.wrapping_neg() as i8
+                ; mov	edx, eax
+                ; sub	edx, ecx
+                ; movzx	ecx, dl
+                ; movzx	esi, al
+                ; cmp	cx, si
+                ; setbe	cl
+                ; mov	esi, edx
+                ; and	esi, 15
+                ; and	eax, 15
+                ; cmp	si, ax
+                ; setbe	al
+                ; mov	WORD [rbx + hl as i32], dx
+                ; movzx	edx, BYTE [rbx + f as i32]
+                ; and	dl, 15
+                ; shl	al, 5
+                ; or	al, dl
+                ; shl	cl, 4
+                ; or	cl, al
+                ; mov	BYTE [rbx + f as i32], cl
+            );
         }
     }
 

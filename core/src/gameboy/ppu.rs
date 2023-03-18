@@ -2202,10 +2202,13 @@ mod test {
 
     #[test]
     fn fuzz() {
+        let start_time = std::time::Instant::now();
+
         let mut gb = GameBoy::new(None, Cartridge::halt_filled());
         gb.predict_interrupt = true;
         let mut rng = rand::thread_rng();
-        for _ in 0..10 {
+
+        while start_time.elapsed().as_secs() < 4 {
             for x in [LCDC, STAT, SCY, SCX, LY, LYC, BGP, OBP0, OBP1, WY, WX] {
                 if rng.gen_bool(0.2) {
                     gb.clock_count += 4;

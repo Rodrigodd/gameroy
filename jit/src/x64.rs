@@ -45,6 +45,9 @@ pub struct BlockCompiler<'gb> {
     max_clock_cycles: u32,
     /// If the last call to compiled_opcode invoked a gb.write call.
     did_write: bool,
+
+    /// The ime_state of the current instruction, if known.
+    ime_state: Option<ImeState>,
 }
 
 impl<'a> BlockCompiler<'a> {
@@ -58,6 +61,7 @@ impl<'a> BlockCompiler<'a> {
             curr_clock_count: 0,
             max_clock_cycles,
             did_write: false,
+            ime_state: None,
         }
     }
 
@@ -93,6 +97,9 @@ impl<'a> BlockCompiler<'a> {
         let start = self.pc;
         let end = start + self.length;
         let mut last_one_was_compiled = false;
+
+        let mut first = true;
+
         while self.pc < end {
             let op = self.gb.read(self.pc);
 
@@ -101,12 +108,30 @@ impl<'a> BlockCompiler<'a> {
                 break;
             }
 
+            if self.ime_state == Some(ImeState::ToBeEnable) {
+                self.ime_state = Some(ImeState::Enabled);
+            }
+
             // if false, the opcode was compiled to a interpreter call.
             if self.compile_opcode(&mut ops, op) {
                 last_one_was_compiled = true;
             } else {
                 last_one_was_compiled = false;
             }
+
+            // We need to update the ImeState::ToBeEnabled state to Enabled after the first
+            // instructions.
+            if first {
+                let ime_state = offset!(GameBoy, cpu: Cpu, ime);
+                dynasm!(ops
+                    ; cmp	BYTE [rbx + ime_state as i32], ImeState::ToBeEnable as u8 as i8
+                    ; jne	>skip
+                    ; mov	BYTE [rbx + ime_state as i32], ImeState::Enabled as u8 as i8
+                    ;skip:
+                )
+            }
+
+            first = false;
 
             // check if next_interrupt is not happening inside this block.
             if self.did_write {
@@ -134,6 +159,12 @@ impl<'a> BlockCompiler<'a> {
                 self.update_clock_count(&mut ops)
             }
             ; ->exit_jump:
+            ;; if let Some(ime_state) = self.ime_state {
+                let ime = offset!(GameBoy, cpu: Cpu, ime);
+                dynasm!(ops
+                    ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
+                )
+            }
             ; pop r12
             ; pop rbx
             ; pop rbp
@@ -651,6 +682,8 @@ impl<'a> BlockCompiler<'a> {
             0xf1 => self.pop(ops, Reg16::AF),
             // LD A,(C) 2:8 - - - -
             0xf2 => self.loadh(ops, Reg::A, Reg::C),
+            // DI 1:4 - - - -
+            0xf3 => self.di(ops),
             //
             0xf4 => self.invalid_opcode(ops, op),
             // PUSH AF 1:16 - - - -
@@ -661,6 +694,8 @@ impl<'a> BlockCompiler<'a> {
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
             0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
+            // EI 1:4 - - - -
+            0xfb => self.ei(ops),
             //
             0xfc => self.invalid_opcode(ops, op),
             //
@@ -2161,6 +2196,14 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; mov BYTE [rbx + state as i32], CpuState::Stopped as u8 as i8
         )
+    }
+
+    pub fn ei(&mut self, _ops: &mut VecAssembler<X64Relocation>) {
+        self.ime_state = Some(ImeState::ToBeEnable);
+    }
+
+    pub fn di(&mut self, _ops: &mut VecAssembler<X64Relocation>) {
+        self.ime_state = Some(ImeState::Disabled);
     }
 
     fn check_condition(&self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {

@@ -41,6 +41,7 @@ impl Default for CpuState {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[repr(u8)]
 pub enum ImeState {
     /// Interrupts are disable
     Disabled = 0,

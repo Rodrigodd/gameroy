@@ -39,7 +39,12 @@ pub struct BlockCompiler<'gb> {
     length: u16,
     /// the accumulated clock count since the last write to GameBoy.clock_count
     accum_clock_count: u32,
+    /// The ammount of cycles already compiled since the block start.
+    curr_clock_count: u32,
+
     max_clock_cycles: u32,
+    /// If the last call to compiled_opcode invoked a gb.write call.
+    did_write: bool,
 }
 
 impl<'a> BlockCompiler<'a> {
@@ -50,7 +55,9 @@ impl<'a> BlockCompiler<'a> {
             pc: start,
             length,
             accum_clock_count: 0,
+            curr_clock_count: 0,
             max_clock_cycles,
+            did_write: false,
         }
     }
 
@@ -101,17 +108,32 @@ impl<'a> BlockCompiler<'a> {
                 last_one_was_compiled = false;
             }
 
-            self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
-        }
+            // check if next_interrupt is not happening inside this block.
+            if self.did_write {
+                // self.block_length - self.curr_clock_count < gb.next_interrupt - gb.clock_count
+                let clock_count = offset!(GameBoy, clock_count);
+                let next_interrupt = offset!(GameBoy, next_interrupt);
+                dynasm!(ops
+                    ; mov	rax, QWORD [rbx + next_interrupt as i32]
+                    ; sub	rax, QWORD [rbx + clock_count as i32]
+                    ; cmp	rax, (self.max_clock_cycles - self.curr_clock_count) as i32
+                    ; jb	->exit
+                )
+            }
 
-        if last_one_was_compiled {
-            self.update_pc(&mut ops);
+            self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
         }
 
         dynasm!(ops
             ; .arch x64
             ; ->exit:
-            ;; self.update_clock_count(&mut ops)
+            ;; {
+                if last_one_was_compiled {
+                    self.update_pc(&mut ops);
+                }
+                self.update_clock_count(&mut ops)
+            }
+            ; ->exit_jump:
             ; pop r12
             ; pop rbx
             ; pop rbp
@@ -169,10 +191,16 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
+    fn tick(&mut self, count: i32) {
+        self.accum_clock_count = self.accum_clock_count.checked_add_signed(count).unwrap();
+        self.curr_clock_count = self.curr_clock_count.checked_add_signed(count).unwrap();
+    }
+
     /// Compile a Opcode. Return false if the compiled fallbacks to the interpreter (which means
     /// that clock_count were already updated).
     fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
-        self.accum_clock_count += 4;
+        self.tick(4);
+        self.did_write = false;
         use Condition::*;
         match op {
             // NOP 1:4 - - - -
@@ -640,7 +668,7 @@ impl<'a> BlockCompiler<'a> {
             // CP d8 2:8 Z 1 H C
             0xfe => self.cp(ops, Reg::Im8),
             _ => {
-                self.accum_clock_count -= 4;
+                self.tick(-4);
                 self.update_clock_count(ops);
                 self.update_pc(ops);
 
@@ -661,7 +689,7 @@ impl<'a> BlockCompiler<'a> {
 
     fn compile_opcode_cb(&mut self, ops: &mut VecAssembler<X64Relocation>) -> bool {
         let op = self.gb.read(self.pc + 1);
-        self.accum_clock_count += 4;
+        self.tick(4);
         match op {
             // RLC B 2:8 Z 0 0 C
             0x00 => self.rlc(ops, Reg::B),
@@ -1239,7 +1267,7 @@ impl<'a> BlockCompiler<'a> {
                     }
                     Reg16::BC | Reg16::DE | Reg16::HL => {
                         if dst == Reg16::SP && src == Reg16::HL {
-                            self.accum_clock_count += 4;
+                            self.tick(4);
                         }
                         let src = reg_offset16(src);
                         dynasm!(ops
@@ -1388,7 +1416,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn inc16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
-        self.accum_clock_count += 4;
+        self.tick(4);
         let reg = reg_offset(reg);
         dynasm!(ops
             ; inc WORD [rbx + reg as i32]
@@ -1441,7 +1469,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn dec16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
-        self.accum_clock_count += 4;
+        self.tick(4);
         let reg = reg_offset(reg);
         dynasm!(ops
             ; dec WORD [rbx + reg as i32]
@@ -1478,7 +1506,7 @@ impl<'a> BlockCompiler<'a> {
         let sp = reg_offset16(Reg16::SP);
         let f = offset!(GameBoy, cpu: Cpu, f);
         let value = self.get_immediate();
-        self.accum_clock_count += 8;
+        self.tick(8);
         if value as i8 >= 0 {
             dynasm!(ops
                 ; movzx	r9d, WORD [rbx + sp as i32]
@@ -1574,7 +1602,7 @@ impl<'a> BlockCompiler<'a> {
     pub fn add16(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg16) {
         let hl = reg_offset16(Reg16::HL);
         let src = reg_offset16(src);
-        self.accum_clock_count += 4;
+        self.tick(4);
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
             ; movzx	eax, WORD [rbx + src as i32]
@@ -2107,7 +2135,7 @@ impl<'a> BlockCompiler<'a> {
     pub fn push(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg16) {
         let sp = reg_offset16(Reg16::SP);
         let reg = reg_offset16(reg);
-        self.accum_clock_count += 4;
+        self.tick(4);
         dynasm!(ops
             ; movzx	r12d, WORD [rbx + reg as i32]
             ; mov	edx, r12d
@@ -2176,8 +2204,8 @@ impl<'a> BlockCompiler<'a> {
         self.check_condition(ops, c);
         dynasm!(ops
             ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16 + 2
-            ; add	QWORD [rbx + clock_count as i32], 4
-            ; jmp ->exit
+            ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
+            ; jmp ->exit_jump
             ; skip_jump:
         )
     }
@@ -2190,8 +2218,8 @@ impl<'a> BlockCompiler<'a> {
         self.check_condition(ops, c);
         dynasm!(ops
             ; mov WORD [rbx + pc as i32], address as i16
-            ; add	QWORD [rbx + clock_count as i32], 4
-            ; jmp ->exit
+            ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
+            ; jmp ->exit_jump
             ; skip_jump:
         )
     }
@@ -2199,10 +2227,13 @@ impl<'a> BlockCompiler<'a> {
     pub fn jump_hl(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         let hl = reg_offset16(Reg16::HL);
         let pc = offset!(GameBoy, cpu: Cpu, pc);
+        let clock_count = offset!(GameBoy, clock_count);
+
         dynasm!(ops
+            ; add DWORD [rbx + clock_count as i32], self.accum_clock_count as i32
             ; movzx eax, WORD [rbx + hl as i32]
             ; mov WORD [rbx + pc as i32], ax
-            ; jmp ->exit
+            ; jmp ->exit_jump
         )
     }
 
@@ -2657,7 +2688,7 @@ impl<'a> BlockCompiler<'a> {
         }
 
         self.update_clock_count(ops);
-        self.accum_clock_count += 4;
+        self.tick(4);
 
         dynasm!(ops
             ; .arch x64
@@ -2669,18 +2700,13 @@ impl<'a> BlockCompiler<'a> {
     }
 
     fn write_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
-        extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) -> bool {
+        extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) {
             gb.write(address, value);
-            // if the next instruction is a interpreter call, `handle_interrupt` would be
-            // called twice, but I don't think this causes a problem.
-            if Interpreter(gb).handle_interrupt().is_break() {
-                return true;
-            }
-            false
         }
 
+        self.did_write = true;
         self.update_clock_count(ops);
-        self.accum_clock_count += 4;
+        self.tick(4);
 
         dynasm!(ops
             ; .arch x64
@@ -2689,18 +2715,16 @@ impl<'a> BlockCompiler<'a> {
             // ; mov si, WORD [rbx + address as i32]
             // ; mov dl, BYTE [rbx + src as i32]
             ; call rax
-            ; test rax, rax
-            ; jnz ->exit
         );
     }
 
     fn get_immediate(&mut self) -> u8 {
-        self.accum_clock_count += 4;
+        self.tick(4);
         self.gb.read(self.pc.wrapping_add(1))
     }
 
     fn get_immediate16(&mut self) -> u16 {
-        self.accum_clock_count += 8;
+        self.tick(8);
         let l = self.gb.read(self.pc.wrapping_add(1));
         let h = self.gb.read(self.pc.wrapping_add(2));
         u16::from_be_bytes([h, l])

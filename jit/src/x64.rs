@@ -141,12 +141,17 @@ impl<'a> BlockCompiler<'a> {
                 // self.block_length - self.curr_clock_count < gb.next_interrupt - gb.clock_count
                 let clock_count = offset!(GameBoy, clock_count);
                 let next_interrupt = offset!(GameBoy, next_interrupt);
+                self.update_clock_count(&mut ops);
                 dynasm!(ops
+                    ;; self.update_pc(&mut ops)
                     ; mov	rax, QWORD [rbx + next_interrupt as i32]
                     ; sub	rax, QWORD [rbx + clock_count as i32]
                     ; cmp	rax, (self.max_clock_cycles - self.curr_clock_count) as i32
-                    ; jb	->exit
-                )
+                    ; jb	>skip_jump
+                    ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
+                    ;; self.exit_block(&mut ops)
+                    ;skip_jump:
+                );
             }
         }
 

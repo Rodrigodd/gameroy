@@ -337,7 +337,15 @@ impl GameBoy {
                 .next_interrupt
                 .min(self.timer.borrow().next_interrupt)
                 .min(self.serial.borrow().next_interrupt),
-        )
+        );
+
+        // If the interrupt_enabled was modified in the last instructions, the next interrupt may
+        // happen immediately.
+        let interrupts: u8 = self.interrupt_flag.get() & self.interrupt_enabled;
+        if interrupts != 0 {
+            self.next_interrupt
+                .set(self.next_interrupt.get().min(self.clock_count));
+        }
     }
 
     pub fn update_interrupt(&self) {
@@ -355,6 +363,7 @@ impl GameBoy {
         if self.serial.borrow().next_interrupt < self.clock_count + 4 {
             self.update_serial();
         }
+        self.update_next_interrupt();
     }
 
     pub fn update_all(&self) {
@@ -446,8 +455,8 @@ impl GameBoy {
             0x51..=0x7f => {}
             0x80..=0xfe => self.hram[address as usize - 0x80] = value,
             0xff => {
-                self.update_interrupt();
-                self.interrupt_enabled = value
+                self.interrupt_enabled = value;
+                self.update_next_interrupt();
             }
         }
     }

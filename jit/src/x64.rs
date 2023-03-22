@@ -159,12 +159,7 @@ impl<'a> BlockCompiler<'a> {
                 self.update_clock_count(&mut ops)
             }
             ; ->exit_jump:
-            ;; if let Some(ime_state) = self.ime_state {
-                let ime = offset!(GameBoy, cpu: Cpu, ime);
-                dynasm!(ops
-                    ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
-                )
-            }
+            ;; self.update_ime_state(&mut ops)
             ; pop r12
             ; pop rbx
             ; pop rbp
@@ -220,6 +215,15 @@ impl<'a> BlockCompiler<'a> {
             ; .arch x64
             ; mov WORD [rbx + pc as i32], self.pc as i16
         );
+    }
+
+    fn update_ime_state(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        if let Some(ime_state) = self.ime_state {
+            let ime = offset!(GameBoy, cpu: Cpu, ime);
+            dynasm!(ops
+                ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
+            )
+        }
     }
 
     fn tick(&mut self, count: i32) {

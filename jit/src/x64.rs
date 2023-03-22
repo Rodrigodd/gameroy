@@ -112,6 +112,8 @@ impl<'a> BlockCompiler<'a> {
                 self.ime_state = Some(ImeState::Enabled);
             }
 
+            self.pc += 1;
+
             // if false, the opcode was compiled to a interpreter call.
             if self.compile_opcode(&mut ops, op) {
                 last_one_was_compiled = true;
@@ -145,8 +147,6 @@ impl<'a> BlockCompiler<'a> {
                     ; jb	->exit
                 )
             }
-
-            self.pc = self.pc.wrapping_add(LEN[op as usize] as u16);
         }
 
         dynasm!(ops
@@ -770,7 +770,8 @@ impl<'a> BlockCompiler<'a> {
     }
 
     fn compile_opcode_cb(&mut self, ops: &mut VecAssembler<X64Relocation>) -> bool {
-        let op = self.gb.read(self.pc + 1);
+        let op = self.gb.read(self.pc);
+        self.pc += 1;
         self.tick(4);
         match op {
             // RLC B 2:8 Z 0 0 C
@@ -2367,7 +2368,7 @@ impl<'a> BlockCompiler<'a> {
         let r8 = self.get_immediate() as i8;
         self.check_condition(ops, c);
         dynasm!(ops
-            ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16 + 2
+            ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16
             ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
             ; jmp ->exit_jump
             ; skip_jump:
@@ -2407,7 +2408,7 @@ impl<'a> BlockCompiler<'a> {
         let sp_offset = reg_offset16(Reg16::SP);
 
         let address = self.get_immediate16();
-        let pc = self.pc + 3;
+        let pc = self.pc;
         self.update_clock_count(ops);
         self.check_condition(ops, c);
         dynasm!(ops
@@ -2448,7 +2449,7 @@ impl<'a> BlockCompiler<'a> {
         let sp_offset = reg_offset16(Reg16::SP);
 
         let address = address as u16;
-        let pc = self.pc + 1;
+        let pc = self.pc;
         self.update_clock_count(ops);
         dynasm!(ops
             // push pc
@@ -3007,13 +3008,17 @@ impl<'a> BlockCompiler<'a> {
 
     fn get_immediate(&mut self) -> u8 {
         self.tick(4);
-        self.gb.read(self.pc.wrapping_add(1))
+        let value = self.gb.read(self.pc);
+        self.pc += 1;
+        value
     }
 
     fn get_immediate16(&mut self) -> u16 {
         self.tick(8);
-        let l = self.gb.read(self.pc.wrapping_add(1));
-        let h = self.gb.read(self.pc.wrapping_add(2));
+        let l = self.gb.read(self.pc);
+        self.pc += 1;
+        let h = self.gb.read(self.pc);
+        self.pc += 1;
         u16::from_be_bytes([h, l])
     }
 }

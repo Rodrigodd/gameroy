@@ -182,6 +182,36 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
         }
 
         if !assert_equal(&game_boy_a, &game_boy_b, &vblank.lock().unwrap()) {
+            let mut dissasembly = String::new();
+            game_boy_b
+                .trace
+                .borrow_mut()
+                .fmt(&game_boy_b, &mut dissasembly)
+                .unwrap();
+
+            let h = &game_boy_b.cartridge.header;
+            let _ = std::fs::create_dir("failed_test");
+            let name = format!(
+                "{}_{:02x}",
+                h.title_as_string().split_whitespace().next().unwrap_or(""),
+                h.global_checksum
+            );
+            std::fs::write("failed_test/".to_owned() + &name + ".s", dissasembly).unwrap();
+
+            let bin_dir = format!("failed_test/{}", name);
+            let _ = std::fs::remove_dir_all(&bin_dir);
+            let _ = std::fs::create_dir(&bin_dir);
+            for (address, block) in jit_compiler.blocks.iter() {
+                std::fs::write(
+                    format!(
+                        "failed_test/{}/{:02x}_{:04x}.bin",
+                        name, address.bank, address.address
+                    ),
+                    &*block._compiled_code,
+                )
+                .unwrap();
+            }
+
             return false;
         }
 

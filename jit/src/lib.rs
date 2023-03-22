@@ -22,7 +22,7 @@ pub struct Block {
     _length: u16,
     max_clock_cycles: u32,
     fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
-    _compiled_code: ExecutableBuffer,
+    pub _compiled_code: ExecutableBuffer,
 }
 
 impl Block {
@@ -76,7 +76,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     (start_address, length, max_clock_cycles)
 }
 
-struct NoHashHasher(u64);
+pub struct NoHashHasher(u64);
 impl Hasher for NoHashHasher {
     fn finish(&self) -> u64 {
         self.0
@@ -99,7 +99,7 @@ impl BuildHasher for NoHashHasher {
 }
 
 pub struct JitCompiler {
-    blocks: HashMap<Address, Block, NoHashHasher>,
+    pub blocks: HashMap<Address, Block, NoHashHasher>,
 }
 
 impl Default for JitCompiler {

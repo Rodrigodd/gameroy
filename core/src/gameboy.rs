@@ -410,14 +410,6 @@ impl GameBoy {
         u16::from_le_bytes([self.read(address), self.read(address.wrapping_add(1))])
     }
 
-    pub fn write16(&mut self, address: u16, value: u16) {
-        let [a, b] = value.to_le_bytes();
-        self.tick(4);
-        self.write(address, a);
-        self.tick(4);
-        self.write(address.wrapping_add(1), b);
-    }
-
     fn write_io(&mut self, address: u8, value: u8) {
         match address {
             0x00 => self.joypad_io = 0b1100_1111 | (value & 0x30), // JOYPAD

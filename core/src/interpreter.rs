@@ -1259,9 +1259,27 @@ impl Interpreter<'_> {
         }
     }
 
+    fn gb_read(&self, address: u16) -> u8 {
+        #[allow(clippy::let_and_return)] // being useful for debugging
+        let value = self.0.read(address);
+        value
+    }
+
+    fn gb_write(&mut self, address: u16, value: u8) {
+        self.0.write(address, value);
+    }
+
+    fn gb_write16(&mut self, address: u16, value: u16) {
+        let [a, b] = value.to_le_bytes();
+        self.0.tick(4);
+        self.gb_write(address, a);
+        self.0.tick(4);
+        self.gb_write(address.wrapping_add(1), b);
+    }
+
     /// Read from PC, tick 4 cycles, and increase it by 1
     pub fn read_next_pc(&mut self) -> u8 {
-        let v = self.0.read(self.0.cpu.pc);
+        let v = self.gb_read(self.0.cpu.pc);
         self.0.tick(4);
         self.0.cpu.pc = add16(self.0.cpu.pc, 1);
         v
@@ -1286,33 +1304,33 @@ impl Interpreter<'_> {
             Reg::Im8 => self.read_next_pc(),
             Reg::Im16 => {
                 let address = self.read_next_pc16();
-                let v = self.0.read(address);
+                let v = self.gb_read(address);
                 self.0.tick(4);
                 v
             }
             Reg::BC => {
-                let v = self.0.read(self.0.cpu.bc());
+                let v = self.gb_read(self.0.cpu.bc());
                 self.0.tick(4);
                 v
             }
             Reg::DE => {
-                let v = self.0.read(self.0.cpu.de());
+                let v = self.gb_read(self.0.cpu.de());
                 self.0.tick(4);
                 v
             }
             Reg::HL => {
-                let v = self.0.read(self.0.cpu.hl());
+                let v = self.gb_read(self.0.cpu.hl());
                 self.0.tick(4);
                 v
             }
             Reg::HLI => {
-                let v = self.0.read(self.0.cpu.hl());
+                let v = self.gb_read(self.0.cpu.hl());
                 self.0.tick(4);
                 self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
                 v
             }
             Reg::HLD => {
-                let v = self.0.read(self.0.cpu.hl());
+                let v = self.gb_read(self.0.cpu.hl());
                 self.0.tick(4);
                 self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
                 v
@@ -1331,33 +1349,33 @@ impl Interpreter<'_> {
             Reg::H => self.0.cpu.h = value,
             Reg::L => self.0.cpu.l = value,
             Reg::Im8 => {
-                self.0.write(add16(self.0.cpu.pc, 1), value);
+                self.gb_write(add16(self.0.cpu.pc, 1), value);
                 self.0.tick(4);
             }
             Reg::Im16 => {
                 let adress = self.read_next_pc16();
-                self.0.write(adress, value);
+                self.gb_write(adress, value);
                 self.0.tick(4);
             }
             Reg::BC => {
-                self.0.write(self.0.cpu.bc(), value);
+                self.gb_write(self.0.cpu.bc(), value);
                 self.0.tick(4);
             }
             Reg::DE => {
-                self.0.write(self.0.cpu.de(), value);
+                self.gb_write(self.0.cpu.de(), value);
                 self.0.tick(4);
             }
             Reg::HL => {
-                self.0.write(self.0.cpu.hl(), value);
+                self.gb_write(self.0.cpu.hl(), value);
                 self.0.tick(4);
             }
             Reg::HLI => {
-                self.0.write(self.0.cpu.hl(), value);
+                self.gb_write(self.0.cpu.hl(), value);
                 self.0.tick(4);
                 self.0.cpu.set_hl(add16(self.0.cpu.hl(), 1));
             }
             Reg::HLD => {
-                self.0.write(self.0.cpu.hl(), value);
+                self.gb_write(self.0.cpu.hl(), value);
                 self.0.tick(4);
                 self.0.cpu.set_hl(sub16(self.0.cpu.hl(), 1));
             }
@@ -1436,17 +1454,17 @@ impl Interpreter<'_> {
     fn pushr(&mut self, value: u16) {
         let [lsb, msb] = value.to_le_bytes();
         self.0.tick(4); // 1 M-cycle with SP in address buss
-        self.0.write(sub16(self.0.cpu.sp, 1), msb);
+        self.gb_write(sub16(self.0.cpu.sp, 1), msb);
         self.0.tick(4); // 1 M-cycle with SP-1 in address buss
-        self.0.write(sub16(self.0.cpu.sp, 2), lsb);
+        self.gb_write(sub16(self.0.cpu.sp, 2), lsb);
         self.0.tick(4); // 1 M-cycle with SP-2 in address buss
         self.0.cpu.sp = sub16(self.0.cpu.sp, 2);
     }
 
     fn popr(&mut self) -> u16 {
-        let lsp = self.0.read(self.0.cpu.sp);
+        let lsp = self.gb_read(self.0.cpu.sp);
         self.0.tick(4); // 1 M-cycle with SP in address buss
-        let msp = self.0.read(add16(self.0.cpu.sp, 1));
+        let msp = self.gb_read(add16(self.0.cpu.sp, 1));
         self.0.tick(4); // 1 M-cycle with SP+1 in address buss
         self.0.cpu.sp = add16(self.0.cpu.sp, 2);
         u16::from_be_bytes([msp, lsp])
@@ -1510,13 +1528,13 @@ impl Interpreter<'_> {
         let src = match src {
             Reg::A => self.0.cpu.a,
             Reg::C => {
-                let v = self.0.read(0xFF00 | self.0.cpu.c as u16);
+                let v = self.gb_read(0xFF00 | self.0.cpu.c as u16);
                 self.0.tick(4);
                 v
             }
             Reg::Im8 => {
                 let r8 = self.read_next_pc();
-                let v = self.0.read(0xFF00 | r8 as u16);
+                let v = self.gb_read(0xFF00 | r8 as u16);
                 self.0.tick(4);
                 v
             }
@@ -1526,12 +1544,12 @@ impl Interpreter<'_> {
         match dst {
             Reg::A => self.0.cpu.a = src,
             Reg::C => {
-                self.0.write(0xFF00 | self.0.cpu.c as u16, src);
+                self.gb_write(0xFF00 | self.0.cpu.c as u16, src);
                 self.0.tick(4);
             }
             Reg::Im8 => {
                 let r8 = self.read_next_pc();
-                self.0.write(0xFF00 | r8 as u16, src);
+                self.gb_write(0xFF00 | r8 as u16, src);
                 self.0.tick(4);
             }
             _ => unreachable!(),
@@ -1557,7 +1575,7 @@ impl Interpreter<'_> {
             Reg16::SP => self.0.cpu.sp = v,
             Reg16::Im16 => {
                 let adress = self.read_next_pc16();
-                self.0.write16(adress, v)
+                self.gb_write16(adress, v)
             }
             _ => unreachable!(),
         }

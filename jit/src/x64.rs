@@ -98,8 +98,6 @@ impl<'a> BlockCompiler<'a> {
         let end = start + self.length;
         let mut last_one_was_compiled = false;
 
-        let mut first = true;
-
         while self.pc < end {
             let op = self.gb.read(self.pc);
 
@@ -119,22 +117,10 @@ impl<'a> BlockCompiler<'a> {
                 last_one_was_compiled = false;
             }
 
-            // We need to update the ImeState::ToBeEnabled state to Enabled after the first
-            // instructions.
-            if first {
-                let ime_state = offset!(GameBoy, cpu: Cpu, ime);
-                dynasm!(ops
-                    ; cmp	BYTE [rbx + ime_state as i32], ImeState::ToBeEnable as u8 as i8
-                    ; jne	>skip
-                    ; mov	BYTE [rbx + ime_state as i32], ImeState::Enabled as u8 as i8
-                    ;skip:
-                )
             if ime_enabled {
                 self.ime_state = Some(ImeState::Enabled);
                 break;
             }
-
-            first = false;
 
             // check if next_interrupt is not happening inside this block.
             if self.did_write {

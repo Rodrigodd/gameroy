@@ -158,7 +158,6 @@ impl<'a> BlockCompiler<'a> {
                 }
                 self.update_clock_count(&mut ops)
             }
-            ; ->exit_jump:
             ;; self.update_ime_state(&mut ops)
             ; pop r12
             ; pop rbx
@@ -224,6 +223,23 @@ impl<'a> BlockCompiler<'a> {
                 ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
             )
         }
+    }
+
+    fn exit_block(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        // self.update_pc(ops);
+        self.update_ime_state(ops);
+        let clock_count = offset!(GameBoy, clock_count);
+        dynasm!(ops
+            ; .arch x64
+            // ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
+        );
+
+        dynasm!(ops
+            ; pop r12
+            ; pop rbx
+            ; pop rbp
+            ; ret
+        );
     }
 
     fn tick(&mut self, count: i32) {
@@ -2374,7 +2390,7 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16
             ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
-            ; jmp ->exit_jump
+            ;; self.exit_block(ops)
             ; skip_jump:
         )
     }
@@ -2388,7 +2404,7 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ; mov WORD [rbx + pc as i32], address as i16
             ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
-            ; jmp ->exit_jump
+            ;; self.exit_block(ops)
             ; skip_jump:
         )
     }
@@ -2402,7 +2418,7 @@ impl<'a> BlockCompiler<'a> {
             ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
             ; movzx eax, WORD [rbx + hl as i32]
             ; mov WORD [rbx + pc as i32], ax
-            ; jmp ->exit_jump
+            ;; self.exit_block(ops)
         )
     }
 
@@ -2442,7 +2458,7 @@ impl<'a> BlockCompiler<'a> {
 
             ; mov WORD [rbx + pc_offset as i32], address as i16
 
-            ; jmp ->exit_jump
+            ;; self.exit_block(ops)
             ; skip_jump:
         );
     }
@@ -2482,7 +2498,7 @@ impl<'a> BlockCompiler<'a> {
 
             ; mov WORD [rbx + pc_offset as i32], address as i16
 
-            ; jmp ->exit_jump
+            ;; self.exit_block(ops)
         );
     }
 
@@ -2519,7 +2535,7 @@ impl<'a> BlockCompiler<'a> {
             ; mov	WORD [rbx + sp_offset as i32], r12w
             ; mov	BYTE [rbx + (pc_offset + 1) as i32], al
 
-            ; jmp ->exit_jump
+            ;; self.exit_block(ops)
             ; skip_jump:
         );
     }

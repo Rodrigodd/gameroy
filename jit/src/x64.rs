@@ -2541,8 +2541,8 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn reti(&mut self, ops: &mut VecAssembler<X64Relocation>) {
-        self.ret(ops, Condition::None);
         self.ime_state = Some(ImeState::Enabled);
+        self.ret(ops, Condition::None);
     }
 
     pub fn rlc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {

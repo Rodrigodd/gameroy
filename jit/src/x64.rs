@@ -108,9 +108,7 @@ impl<'a> BlockCompiler<'a> {
                 break;
             }
 
-            if self.ime_state == Some(ImeState::ToBeEnable) {
-                self.ime_state = Some(ImeState::Enabled);
-            }
+            let ime_enabled = self.ime_state == Some(ImeState::ToBeEnable);
 
             self.pc += 1;
 
@@ -131,6 +129,9 @@ impl<'a> BlockCompiler<'a> {
                     ; mov	BYTE [rbx + ime_state as i32], ImeState::Enabled as u8 as i8
                     ;skip:
                 )
+            if ime_enabled {
+                self.ime_state = Some(ImeState::Enabled);
+                break;
             }
 
             first = false;

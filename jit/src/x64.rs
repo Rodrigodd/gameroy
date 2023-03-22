@@ -208,7 +208,7 @@ impl<'a> BlockCompiler<'a> {
             let c = offset!(GameBoy, clock_count);
             dynasm!(ops
                 ; .arch x64
-                ; add DWORD [rbx + c as i32], self.accum_clock_count as i32
+                ; add QWORD [rbx + c as i32], self.accum_clock_count as i32
             );
             self.accum_clock_count = 0;
         }
@@ -2395,7 +2395,7 @@ impl<'a> BlockCompiler<'a> {
         let clock_count = offset!(GameBoy, clock_count);
 
         dynasm!(ops
-            ; add DWORD [rbx + clock_count as i32], self.accum_clock_count as i32
+            ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
             ; movzx eax, WORD [rbx + hl as i32]
             ; mov WORD [rbx + pc as i32], ax
             ; jmp ->exit_jump
@@ -2413,7 +2413,7 @@ impl<'a> BlockCompiler<'a> {
         self.check_condition(ops, c);
         dynasm!(ops
             // push pc
-            ; add DWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
+            ; add QWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
             ; mov	edx, (pc >> 8) as i32
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; dec	eax
@@ -2423,7 +2423,7 @@ impl<'a> BlockCompiler<'a> {
             // revert clock count increases inside write_mem, because they should be conditional.
             ;; self.tick(-4)
 
-            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; add	eax, -2
             ; mov	edx, (pc & 0xff) as i32
@@ -2433,7 +2433,7 @@ impl<'a> BlockCompiler<'a> {
             // revert clock count increases inside write_mem, because they should be conditional.
             ;; self.tick(-4)
 
-            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; add	WORD [rbx + sp_offset as i32], -2
 
             ; mov WORD [rbx + pc_offset as i32], address as i16
@@ -2453,7 +2453,7 @@ impl<'a> BlockCompiler<'a> {
         self.update_clock_count(ops);
         dynasm!(ops
             // push pc
-            ; add DWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
+            ; add QWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
             ; mov	edx, (pc >> 8) as i32
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; dec	eax
@@ -2463,7 +2463,7 @@ impl<'a> BlockCompiler<'a> {
             // revert clock count increases inside write_mem, because they should be conditional.
             ;; self.tick(-4)
 
-            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; add	eax, -2
             ; mov	edx, (pc & 0xff) as i32
@@ -2473,7 +2473,7 @@ impl<'a> BlockCompiler<'a> {
             // revert clock count increases inside write_mem, because they should be conditional.
             ;; self.tick(-4)
 
-            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; add	WORD [rbx + sp_offset as i32], -2
 
             ; mov WORD [rbx + pc_offset as i32], address as i16
@@ -2489,7 +2489,7 @@ impl<'a> BlockCompiler<'a> {
 
         self.update_clock_count(ops);
         if c != Condition::None {
-            dynasm!(ops; add DWORD [rbx + clock_count_offset as i32], 4);
+            dynasm!(ops; add QWORD [rbx + clock_count_offset as i32], 4);
         }
         self.check_condition(ops, c);
         dynasm!(ops
@@ -2500,7 +2500,7 @@ impl<'a> BlockCompiler<'a> {
             ;; self.read_mem(ops)
             // revert clock count increases inside write_mem, because they should be conditional.
             ;; self.tick(-4)
-            ; add DWORD [rbx + clock_count_offset as i32], 4
+            ; add QWORD [rbx + clock_count_offset as i32], 4
 
             ; mov	BYTE [rbx + pc_offset as i32], al
             ; lea	eax, [r12 + 1]
@@ -2509,7 +2509,7 @@ impl<'a> BlockCompiler<'a> {
             ;; self.read_mem(ops)
             // revert clock count increases inside write_mem, because they should be conditional.
             ;; self.tick(-4)
-            ; add DWORD [rbx + clock_count_offset as i32], 8
+            ; add QWORD [rbx + clock_count_offset as i32], 8
 
             ; add	r12d, 2
             ; mov	WORD [rbx + sp_offset as i32], r12w

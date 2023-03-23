@@ -2283,20 +2283,27 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn pop(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg16) {
         let sp = reg_offset16(Reg16::SP);
-        let reg = reg_offset16(reg);
+        let reg_offset = reg_offset16(reg);
         dynasm!(ops
             ; movzx	r12d, WORD [rbx + sp as i32]
             ; mov	rdi, rbx
             ; mov	esi, r12d
             ;; self.read_mem(ops)
-            ; mov	BYTE [rbx + reg as i32], al
+            ;; if reg == Reg16::AF {
+                dynasm!(ops
+                    ; and al, 0xf0u8 as i8
+                    ; mov	BYTE [rbx + reg_offset as i32], al
+                );
+            } else {
+                dynasm!(ops; mov	BYTE [rbx + reg_offset as i32], al);
+            }
             ; lea	eax, [r12 + 1]
             ; movzx	esi, ax
             ; mov	rdi, rbx
             ;; self.read_mem(ops)
             ; add	r12d, 2
             ; mov	WORD [rbx + sp as i32], r12w
-            ; mov	BYTE [rbx + (reg + 1) as i32], al
+            ; mov	BYTE [rbx + (reg_offset + 1) as i32], al
         )
     }
 

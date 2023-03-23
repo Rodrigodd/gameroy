@@ -107,6 +107,9 @@ impl<'a> BlockCompiler<'a> {
             }
 
             let ime_enabled = self.ime_state == Some(ImeState::ToBeEnable);
+            if ime_enabled {
+                self.ime_state = Some(ImeState::Enabled);
+            }
 
             self.pc += 1;
 
@@ -118,7 +121,6 @@ impl<'a> BlockCompiler<'a> {
             }
 
             if ime_enabled {
-                self.ime_state = Some(ImeState::Enabled);
                 break;
             }
 

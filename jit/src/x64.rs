@@ -2648,7 +2648,7 @@ impl<'a> BlockCompiler<'a> {
             ; and	dl, 1
             ; and	sil, 15
             ; mov	ecx, eax
-            ; shr	cl, 4
+            ; shr	cl, 3
             ; and	cl, 16
             ; or	cl, sil
             ; add	al, al

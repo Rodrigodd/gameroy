@@ -764,7 +764,6 @@ impl<'a> BlockCompiler<'a> {
             // may be useful for debugging later.
             #[allow(unreachable_patterns)]
             _ => {
-                self.tick(-4);
                 self.update_clock_count(ops);
                 self.update_pc(ops);
 
@@ -777,6 +776,11 @@ impl<'a> BlockCompiler<'a> {
                     ; test rax, rax
                     ; jnz ->exit
                 );
+                self.pc += gameroy::consts::LEN[op as usize] as u16 - 1;
+                self.curr_clock_count += gameroy::consts::CLOCK[op as usize] as u32 - 4;
+                if op == 0xcb {
+                    self.curr_clock_count += gameroy::consts::CB_CLOCK[op as usize] as u32;
+                }
                 return false;
             }
         }
@@ -3112,8 +3116,6 @@ macro_rules! call {
                     interpreter.0.cpu.ime = ImeState::Enabled;
                 }
 
-                //call to instructions relies on pc being already read.
-                interpreter.read_next_pc();
                 interpreter.$($call)*;
                 false
             }

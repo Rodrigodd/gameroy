@@ -66,17 +66,22 @@ pub fn benchmark(
     game_boy.reset();
     let start_clock_count = game_boy.clock_count;
 
-    let mut times = if jit {
+    if jit {
         #[cfg(not(target_arch = "x86_64"))]
         {
             eprintln!("JIT mode only avaliable on x86_64");
             return;
         }
         #[cfg(target_arch = "x86_64")]
-        run_jitted(len, &mut game_boy, timeout)
-    } else {
-        run_interpreted(len, &mut game_boy, timeout)
-    };
+        let mut times = run_jitted(len, &mut game_boy, timeout);
+
+        // Remove first run, because in that one the code is traced.
+        times.remove(0);
+
+        print_stats(times, game_boy.clock_count - start_clock_count);
+    }
+
+    let mut times = run_interpreted(len, &mut game_boy, timeout);
 
     // Remove first run, because in that one the code is compiled and traced.
     times.remove(0);

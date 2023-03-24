@@ -63,6 +63,9 @@ pub fn benchmark(
     // remove serial transfer console output
     game_boy.serial.get_mut().serial_transfer_callback = None;
 
+    game_boy.reset();
+    let start_clock_count = game_boy.clock_count;
+
     let mut times = if jit {
         #[cfg(not(target_arch = "x86_64"))]
         {
@@ -78,10 +81,14 @@ pub fn benchmark(
     // Remove first run, because in that one the code is compiled and traced.
     times.remove(0);
 
+    print_stats(times, game_boy.clock_count - start_clock_count);
+}
+
+fn print_stats(times: Vec<Duration>, clock_count: u64) {
     let (mean_time, mean_error) = mean(&times);
     println!("mean time: {:?} +/- {:?}", mean_time, mean_error);
 
-    let emulated_time = game_boy.clock_count as f64 / CLOCK_SPEED as f64;
+    let emulated_time = clock_count as f64 / CLOCK_SPEED as f64;
     let times = emulated_time / mean_time.as_secs_f64();
     let times_err = times * mean_error.as_secs_f64() / mean_time.as_secs_f64();
     println!(

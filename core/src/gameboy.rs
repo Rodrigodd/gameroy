@@ -217,6 +217,9 @@ impl GameBoy {
         self.ppu = Ppu::default().into();
         self.joypad = 0xFF;
         self.joypad_io = 0x00;
+
+        self.next_interrupt = 0.into();
+        self.update_next_interrupt();
     }
 
     /// Reset the gameboy to its state after disabling the boot.
@@ -256,6 +259,9 @@ impl GameBoy {
             .get_mut()
             .load_state(ctx, &mut &include_bytes!("../after_boot/sound.sav")[..])
             .unwrap();
+
+        self.next_interrupt = 0.into();
+        self.update_next_interrupt();
     }
 
     pub fn read(&self, mut address: u16) -> u8 {

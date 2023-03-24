@@ -1660,8 +1660,8 @@ impl Interpreter<'_> {
         let (r, o) = self.0.cpu.a.overflowing_add(v);
         self.0.cpu.f.def_z(r == 0);
         self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_c(o);
         self.0.cpu.f.def_h((self.0.cpu.a & 0xF) + (v & 0xF) > 0xF);
+        self.0.cpu.f.def_c(o);
         self.0.cpu.a = r;
     }
 
@@ -1703,35 +1703,35 @@ impl Interpreter<'_> {
         let v = self.read(reg);
         self.0.cpu.a &= v;
         self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_c();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.set_h();
+        self.0.cpu.f.clr_c();
     }
 
     pub fn or(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.a |= v;
         self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_c();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
+        self.0.cpu.f.clr_c();
     }
 
     pub fn xor(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.a ^= v;
         self.0.cpu.f.def_z(self.0.cpu.a == 0);
-        self.0.cpu.f.clr_c();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
+        self.0.cpu.f.clr_c();
     }
 
     pub fn cp(&mut self, reg: Reg) {
         let v = self.read(reg);
         self.0.cpu.f.def_z(self.0.cpu.a == v);
-        self.0.cpu.f.def_c(self.0.cpu.a < v);
         self.0.cpu.f.set_n();
         self.0.cpu.f.def_h(self.0.cpu.a & 0xF < v & 0xF);
+        self.0.cpu.f.def_c(self.0.cpu.a < v);
     }
 
     pub fn add16(&mut self, b: Reg16) {
@@ -1743,12 +1743,12 @@ impl Interpreter<'_> {
             Reg16::Im16 | Reg16::AF => unreachable!(),
         };
         let (r, o) = self.0.cpu.hl().overflowing_add(b);
+        let h = (self.0.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF;
+
         self.0.cpu.f.clr_n();
-        self.0
-            .cpu
-            .f
-            .def_h((self.0.cpu.hl() & 0x0FFF) + (b & 0x0FFF) > 0xFFF);
+        self.0.cpu.f.def_h(h);
         self.0.cpu.f.def_c(o);
+
         self.0.cpu.set_hl(r);
         self.0.tick(4);
     }
@@ -1843,9 +1843,7 @@ impl Interpreter<'_> {
     }
 
     pub fn add_sp(&mut self) {
-        let r;
-        let c;
-        let h;
+        let (r, c, h);
         let r8 = self.read_next_pc() as i8;
         if (r8) >= 0 {
             c = ((self.0.cpu.sp & 0xFF) + r8 as u16) > 0xFF;
@@ -1859,8 +1857,8 @@ impl Interpreter<'_> {
         self.0.cpu.sp = r;
         self.0.cpu.f.clr_z();
         self.0.cpu.f.clr_n();
-        self.0.cpu.f.def_c(c);
         self.0.cpu.f.def_h(h);
+        self.0.cpu.f.def_c(c);
         self.0.tick(8);
     }
 
@@ -1880,8 +1878,8 @@ impl Interpreter<'_> {
     }
 
     pub fn scf(&mut self) {
-        self.0.cpu.f.clr_h();
         self.0.cpu.f.clr_n();
+        self.0.cpu.f.clr_h();
         self.0.cpu.f.set_c();
     }
 
@@ -1941,11 +1939,11 @@ impl Interpreter<'_> {
 
     pub fn rla(&mut self) {
         let c = self.0.cpu.f.c() as u8;
-        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
-        self.0.cpu.a = self.0.cpu.a << 1 | c;
         self.0.cpu.f.clr_z();
         self.0.cpu.f.clr_n();
         self.0.cpu.f.clr_h();
+        self.0.cpu.f.def_c(self.0.cpu.a & 0x80 != 0);
+        self.0.cpu.a = self.0.cpu.a << 1 | c;
     }
 
     pub fn stop(&mut self) {

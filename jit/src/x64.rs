@@ -1913,7 +1913,7 @@ impl<'a> BlockCompiler<'a> {
                     let value = self.get_immediate();
                     // TODO: I can use immediate add's instead of loading the value in a rax.
                     dynasm!(ops
-                        ; mov	al, BYTE value as i8
+                        ; mov	eax, WORD value as i32
                     );
                 }
                 Reg::HL => {

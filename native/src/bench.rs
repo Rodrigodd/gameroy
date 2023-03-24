@@ -95,7 +95,6 @@ fn print_stats(times: Vec<Duration>, clock_count: u64) {
         "            {} times faster than real time.",
         print_val(times, times_err),
     );
-    log::info!("faster than real time: {} +/- {}", times, times_err);
 }
 
 fn run_interpreted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration> {

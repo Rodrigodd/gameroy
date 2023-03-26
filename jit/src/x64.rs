@@ -2563,31 +2563,31 @@ impl<'a> BlockCompiler<'a> {
                     dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
                 }
             }
-            ; movzx	ecx, BYTE [rbx + f as i32]
-            ; mov	edx, eax
-            ; rol	dl, 1
+            ; movzx	edx, BYTE [rbx + f as i32]
+            ; mov	ecx, eax
+            ; rol	cl, 1
             ;; match reg {
-                Reg::HL => {
-                    dynasm!(ops
-                        ; mov	rdi, rbx
-                        ; mov	esi, r12d
-                    );
-                }
+                Reg::HL => {}
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; mov	BYTE [rbx + reg as i32], dl);
+                    dynasm!(ops; mov	BYTE [rbx + reg as i32], cl);
                 }
             }
             ; test	al, al
             ; sete	al
-            ; and	cl, 15
+            ; and	dl, 15
             ; shl	al, 7
-            ; or	al, cl
-            ; shl	dl, 4
-            ; and	dl, 16
-            ; or	dl, al
-            ; mov	BYTE [rbx + f as i32], dl
+            ; or	al, dl
+            ; movzx	edx, cl
+            ; shl	cl, 4
+            ; and	cl, 16
+            ; or	cl, al
+            ; mov	BYTE [rbx + f as i32], cl
             ;; if let Reg::HL = reg {
+                dynasm!(ops
+                    ; mov	rdi, rbx
+                    ; mov	esi, r12d
+                );
                 self.write_mem(ops);
             }
         );
@@ -2606,31 +2606,31 @@ impl<'a> BlockCompiler<'a> {
                     dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
                 }
             }
-            ; movzx	ecx, BYTE [rbx + f as i32]
-            ; mov	edx, eax
-            ; ror	dl, 1
+            ; movzx	edx, BYTE [rbx + f as i32]
+            ; mov	ecx, eax
+            ; ror	cl, 1
             ;; match reg {
-                Reg::HL => {
-                    dynasm!(ops
-                        ; mov	rdi, rbx
-                        ; mov	esi, r12d
-                    );
-                }
+                Reg::HL => {}
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; mov	BYTE [rbx + reg as i32], dl);
+                    dynasm!(ops; mov	BYTE [rbx + reg as i32], cl);
                 }
             }
             ; test	al, al
             ; sete	al
-            ; and	cl, 15
+            ; and	dl, 15
             ; shl	al, 7
-            ; or	al, cl
-            ; shr	dl, 3
-            ; and	dl, 16
-            ; or	dl, al
-            ; mov	BYTE [rbx + f as i32], dl
+            ; or	al, dl
+            ; movzx	edx, cl
+            ; shr	cl, 3
+            ; and	cl, 16
+            ; or	cl, al
+            ; mov	BYTE [rbx + f as i32], cl
             ;; if let Reg::HL = reg {
+                dynasm!(ops
+                    ; mov	rdi, rbx
+                    ; mov	esi, r12d
+                );
                 self.write_mem(ops);
             }
         );

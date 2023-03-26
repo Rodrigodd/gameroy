@@ -126,7 +126,7 @@ impl<'a> BlockCompiler<'a> {
 
             // check if next_interrupt is not happening inside this block.
             if self.did_write {
-                // self.block_length - self.curr_clock_count < gb.next_interrupt - gb.clock_count
+                // next_interrupt - clock_count < max_clock_cycles - curr_clock_count
                 let clock_count = offset!(GameBoy, clock_count);
                 let next_interrupt = offset!(GameBoy, next_interrupt);
                 self.update_clock_count(&mut ops);
@@ -135,7 +135,7 @@ impl<'a> BlockCompiler<'a> {
                     ; mov	rax, QWORD [rbx + next_interrupt as i32]
                     ; sub	rax, QWORD [rbx + clock_count as i32]
                     ; cmp	rax, (self.max_clock_cycles - self.curr_clock_count) as i32
-                    ; jb	>skip_jump
+                    ; jg	>skip_jump
                     ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
                     ;; self.exit_block(&mut ops)
                     ;skip_jump:

@@ -585,7 +585,8 @@ pub fn compute_step(
             let address = u16::from_le_bytes([op[1], op[2]]);
             if (0x2000..=0x3FFF).contains(&address) {
                 if let Some(a) = reg_a {
-                    bank = Some(a as u16 & 0x1F);
+                    let value = a as u16 & 0x1F;
+                    bank = Some(if value == 0 { 1 } else { value });
                 } else {
                     bank = None;
                 }

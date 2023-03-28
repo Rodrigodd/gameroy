@@ -1692,7 +1692,7 @@ impl<'a> BlockCompiler<'a> {
         } else {
             dynasm!(ops
                 ; movzx	eax, WORD [rbx + sp as i32]
-                ; mov	cl, BYTE value.wrapping_neg() as i8
+                ; mov	ecx, BYTE value.wrapping_neg() as i8 as i32
                 ; mov	edx, eax
                 ; sub	edx, ecx
                 ; movzx	ecx, dl

@@ -1529,11 +1529,15 @@ impl Ppu {
 
             let mut start =
                 self.line_start_clock_count + SCANLINE_CYCLES * lines_until_lyc as u64 + 4;
-            let end = start + SCANLINE_CYCLES;
+            let mut end = start + SCANLINE_CYCLES;
 
-            // ly = 0 start early, 12 cycles into scanline 153.
             if self.lyc == 0 {
+                // ly = 0 start early, 12 cycles into scanline 153.
                 start -= SCANLINE_CYCLES + 8;
+            } else if self.lyc == 153 {
+                // ly = 153 start 6 cycles into scanline 153, and ends 6 cycles later.
+                start += 2;
+                end = start + 6;
             }
 
             if self.last_clock_count < start {

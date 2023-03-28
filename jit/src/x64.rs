@@ -278,7 +278,7 @@ impl<'a> BlockCompiler<'a> {
             0x0d => self.dec(ops, Reg::C),
             // LD C,d8 2:8 - - - -
             0x0e => self.load_reg_reg(ops, Reg::C, Reg::Im8),
-            // RRC A 2:8 Z 0 0 C
+            // RRCA 1:4 0 0 0 C
             0x0f => self.rrca(ops),
             // STOP 0 2:4 - - - -
             0x10 => self.stop(ops),

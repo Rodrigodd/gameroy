@@ -428,8 +428,8 @@ impl GameBoy {
             }
             0x08..=0x0e => {}
             0x0f => {
+                *self.interrupt_flag.get_mut() = value & 0x1f;
                 self.update_interrupt();
-                *self.interrupt_flag.get_mut() = value & 0x1f
             }
             0x10..=0x14 | 0x16..=0x1e | 0x20..=0x26 | 0x30..=0x3f => {
                 self.sound.get_mut().write(self.clock_count, address, value)

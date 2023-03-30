@@ -509,7 +509,7 @@ pub fn compute_step(
         Some(Cursor {
             bank0,
             bank,
-            pc: pc + len as u16,
+            pc: pc.wrapping_add(len as u16),
             reg_a,
         })
     };
@@ -549,12 +549,16 @@ pub fn compute_step(
         }
         0x18 => {
             // JR $rr
-            let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+            let dest = pc
+                .wrapping_sub(len as u16)
+                .wrapping_add_signed(op[1] as i8 as i16);
             (step(), jump(dest))
         }
         x if x & 0b1110_0111 == 0b0010_0000 => {
             // JR cc, $rr
-            let dest = ((pc + len as u16) as i16 + op[1] as i8 as i16) as u16;
+            let dest = pc
+                .wrapping_sub(len as u16)
+                .wrapping_add_signed(op[1] as i8 as i16);
             (step(), jump(dest))
         }
         x if x & 0b1100_1111 == 0b0000_1010 || x & 0b1111_1000 == 0b0111_1000 => {
@@ -563,7 +567,7 @@ pub fn compute_step(
                 Some(Cursor {
                     bank0,
                     bank,
-                    pc: pc + len as u16,
+                    pc: pc.wrapping_add(len as u16),
                     reg_a: None,
                 }),
                 None,
@@ -575,7 +579,7 @@ pub fn compute_step(
                 Some(Cursor {
                     bank0,
                     bank,
-                    pc: pc + len as u16,
+                    pc: pc.wrapping_add(len as u16),
                     reg_a: Some(op[1]),
                 }),
                 None,
@@ -594,7 +598,7 @@ pub fn compute_step(
                         Some(Cursor {
                             bank0: cart.bank0_from_bank(bank),
                             bank: Some(bank),
-                            pc: pc + len as u16,
+                            pc: pc.wrapping_add(len as u16),
                             reg_a,
                         }),
                         None,
@@ -604,7 +608,7 @@ pub fn compute_step(
                     Some(Cursor {
                         bank0,
                         bank,
-                        pc: pc + len as u16,
+                        pc: pc.wrapping_add(len as u16),
                         reg_a,
                     }),
                     None,
@@ -618,7 +622,7 @@ pub fn compute_step(
                 Some(Cursor {
                     bank0,
                     bank: None,
-                    pc: pc + len as u16,
+                    pc: pc.wrapping_add(len as u16),
                     reg_a,
                 })
             } else {
@@ -637,7 +641,7 @@ pub fn compute_step(
                 Some(Cursor {
                     bank0,
                     bank,
-                    pc: pc + len as u16,
+                    pc: pc.wrapping_add(len as u16),
                     reg_a,
                 }),
                 None,
@@ -656,7 +660,7 @@ pub fn compute_step(
                 Some(Cursor {
                     bank0,
                     bank,
-                    pc: pc + len as u16,
+                    pc: pc.wrapping_add(len as u16),
                     reg_a: None,
                 }),
                 jump(dest),

@@ -588,16 +588,17 @@ pub fn compute_step(
         0xEA => {
             // LD (a16), A
 
-            // If it write a know value of A to 0x2000..=0x3FFF region, the bank is switched.
+            // If it write a know value of A to ROM region, the bank can be switched.
             let address = u16::from_le_bytes([op[1], op[2]]);
 
             match (reg_a, address) {
                 (Some(value), 0x0000..=0x7FFF) => {
                     let bank = cart.bank_from_write(bank.unwrap_or(bank0), address, value);
+                    let bank0 = cart.bank0_from_bank(bank);
                     (
                         Some(Cursor {
-                            bank0: cart.bank0_from_bank(bank),
-                            bank: Some(bank),
+                            bank0,
+                            bank: (bank != bank0).then_some(bank),
                             pc: pc.wrapping_add(len as u16),
                             reg_a,
                         }),

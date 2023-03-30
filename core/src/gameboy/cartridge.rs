@@ -343,6 +343,131 @@ impl Cartridge {
             Mbc::Mbc5(x) => x.write(address, value, &self.rom, &mut self.ram),
         }
     }
+
+    /// Read at the given address, as if the given bank is active
+    pub fn read_at_bank(&self, bank: u16, address: u16) -> u8 {
+        match &self.mbc {
+            Mbc::None(x) => x.read_at_bank(bank, address, &self.rom),
+            Mbc::Mbc1(x) => x.read_at_bank(bank, address, &self.rom),
+            Mbc::Mbc1M(x) => x.read_at_bank(bank, address, &self.rom),
+            Mbc::Mbc2(x) => x.read_at_bank(bank, address, &self.rom),
+            Mbc::Mbc3(x) => x.read_at_bank(bank, address, &self.rom),
+            Mbc::Mbc5(x) => x.read_at_bank(bank, address, &self.rom),
+        }
+    }
+
+    pub fn bank0_from_bank(&self, bank: u16) -> u16 {
+        match &self.mbc {
+            Mbc::None(_) => 0,
+            Mbc::Mbc1(_) => bank & 0x60,
+            Mbc::Mbc1M(_) => bank & 0x30,
+            Mbc::Mbc2(_) => 0,
+            Mbc::Mbc3(_) => 0,
+            Mbc::Mbc5(_) => 0,
+        }
+    }
+
+    pub fn bank_from_write(&self, previous_bank: u16, address: u16, value: u8) -> u16 {
+        match &self.mbc {
+            Mbc::None(_) => previous_bank,
+            Mbc::Mbc1(_) => match address {
+                // RAM Enable
+                0x0000..=0x1FFF => previous_bank,
+                // ROM Bank Number
+                0x2000..=0x3FFF => {
+                    // only lower 5 bits are written
+                    let value = value & 0x1F;
+                    let value = if value == 0 {
+                        // Write 0 became 1 (5-bit register cannot be 0)
+                        1
+                    } else {
+                        value
+                    };
+                    (previous_bank & 0x60) | (value & 0x1F) as u16
+                }
+                _ => previous_bank,
+            },
+            Mbc::Mbc1M(_) => match address {
+                // RAM Enable
+                0x0000..=0x1FFF => previous_bank,
+                // ROM Bank Number
+                0x2000..=0x3FFF => {
+                    // only lower 5 bits are written
+                    let value = value & 0x1F;
+                    let value = if value == 0 {
+                        // Write 0 became 1 (5-bit register cannot be 0)
+                        1
+                    } else {
+                        value
+                    };
+                    (previous_bank & 0x30) | (value & 0x0F) as u16
+                }
+                // RAM Bank Number - or - Upper Bits of ROM Bank Number
+                0x4000..=0x5FFF => {
+                    // only higher 2 bits are written
+                    (previous_bank & 0x0F) | ((value & 0x3) << 4) as u16
+                }
+                // Banking Mode Select
+                0x6000..=0x7FFF => previous_bank,
+                _ => previous_bank,
+            },
+            Mbc::Mbc2(_) => match address {
+                // RAM Enable and ROM Bank Number
+                0x0000..=0x3FFF => {
+                    if (address >> 8) & 0x1 == 0 {
+                        previous_bank
+                    } else {
+                        // ROM Bank Number
+                        // The lower 4 bits control the selected bank.
+                        let value = value & 0x0F;
+                        if value == 0 {
+                            1
+                        } else {
+                            value as u16
+                        }
+                    }
+                }
+                0x4000..=0x7FFF => previous_bank,
+                _ => previous_bank,
+            },
+            Mbc::Mbc3(_) => match address {
+                // RAM Enable
+                0x0000..=0x1FFF => previous_bank,
+
+                // ROM Bank Number
+                0x2000..=0x3FFF => {
+                    // all 7 bits are written
+                    let value = value & 0x7F;
+                    if value == 0 {
+                        // Write 0 became 1 (register cannot be 0)
+                        1
+                    } else {
+                        value as u16
+                    }
+                }
+                // RAM Bank Number - or - Upper Bits of ROM Bank Number
+                0x4000..=0x5FFF => previous_bank,
+                // Latch Clock Data
+                0x6000..=0x7FFF => previous_bank,
+                _ => previous_bank,
+            },
+            Mbc::Mbc5(_) => match address {
+                // RAM Enable
+                0x0000..=0x1FFF => previous_bank,
+                // lower ROM Bank
+                0x2000..=0x2FFF => (previous_bank & 0xFF00) | value as u16,
+                // upper ROM Bank
+                0x3000..=0x3FFF => {
+                    // write the to bit-8 of the bank register
+                    (previous_bank & 0x00FF) | ((value as u16 & 0b1) << 8)
+                }
+                // RAM bank number
+                0x4000..=0x5FFF => (value & 0x0F) as u16,
+                0x6000..=0x7FFF => previous_bank,
+                _ => previous_bank,
+            },
+        }
+    }
 }
 
 /// Cartridge without a MBC chip
@@ -377,6 +502,14 @@ impl Mbc0 {
                 ram[address as usize - 0xA000] = value;
             }
             _ => unreachable!("write cartridge out of bounds"),
+        }
+    }
+
+    pub fn read_at_bank(&self, _bank: u16, address: u16, rom: &[u8]) -> u8 {
+        match address {
+            // ROM
+            0x0000..=0x7FFF => rom[address as usize],
+            _ => unreachable!("read rom out of bounds"),
         }
     }
 }
@@ -514,6 +647,28 @@ impl Mbc1 {
             _ => unreachable!("write cartridge out of bounds"),
         }
     }
+
+    pub fn read_at_bank(&self, bank: u16, address: u16, rom: &[u8]) -> u8 {
+        match address {
+            // ROM Bank X0
+            0x0000..=0x3FFF => {
+                if self.mode {
+                    let bank = bank & 0x60;
+
+                    let address_start = (0x4000 * bank as usize) % rom.len();
+                    rom[address as usize + address_start]
+                } else {
+                    rom[address as usize]
+                }
+            }
+            // ROM Bank 01-7F
+            0x4000..=0x7FFF => {
+                let address_start = (0x4000 * bank as usize) % rom.len();
+                rom[address as usize - 0x4000 + address_start]
+            }
+            _ => unreachable!("read rom out of bounds"),
+        }
+    }
 }
 
 /// Cartridge with a MBC1 multicart chip
@@ -611,7 +766,6 @@ impl Mbc1M {
                 } else {
                     value
                 };
-                // bit 4 is ignore in MBC1 multicard
                 self.selected_bank = (self.selected_bank & 0x30) | (value & 0x0F);
             }
             // RAM Bank Number - or - Upper Bits of ROM Bank Number
@@ -646,6 +800,28 @@ impl Mbc1M {
                 ram[ram_address] = value;
             }
             _ => unreachable!("write cartridge out of bounds"),
+        }
+    }
+
+    pub fn read_at_bank(&self, bank: u16, address: u16, rom: &[u8]) -> u8 {
+        match address {
+            // ROM Bank X0
+            0x0000..=0x3FFF => {
+                if self.mode {
+                    let bank = bank & 0x30;
+
+                    let address_start = (0x4000 * bank as usize) % rom.len();
+                    rom[address as usize + address_start]
+                } else {
+                    rom[address as usize]
+                }
+            }
+            // ROM Bank 01-7F
+            0x4000..=0x7FFF => {
+                let address_start = 0x4000 * bank as usize;
+                rom[address as usize - 0x4000 + address_start]
+            }
+            _ => unreachable!("read rom out of bounds"),
         }
     }
 }
@@ -726,6 +902,21 @@ impl Mbc2 {
                 ram[address as usize] = value | 0xF0;
             }
             _ => unreachable!("write cartridge out of bounds"),
+        }
+    }
+
+    pub fn read_at_bank(&self, bank: u16, address: u16, rom: &[u8]) -> u8 {
+        match address {
+            // ROM Bank 00
+            0x0000..=0x3FFF => rom[address as usize],
+            // ROM Bank 01-0F
+            0x4000..=0x7FFF => {
+                // PERF: I could already store the start_address, instead of computing it every
+                // time. The same for write, and others MBC's.
+                let address_start = 0x4000 * bank as usize;
+                rom[address as usize - 0x4000 + address_start]
+            }
+            _ => unreachable!("read rom out of bounds"),
         }
     }
 }
@@ -900,6 +1091,27 @@ impl Mbc3 {
             _ => unreachable!("write cartridge out of bounds"),
         }
     }
+
+    pub fn read_at_bank(&self, bank: u16, address: u16, rom: &[u8]) -> u8 {
+        match address {
+            // ROM Bank 00
+            0x0000..=0x3FFF => rom[address as usize],
+            // ROM Bank 01-7F
+            0x4000..=0x7FFF => {
+                let address_start = 0x4000 * bank as usize;
+                let i = address as usize - 0x4000 + address_start;
+                let len = rom.len();
+                if i > len {
+                    panic!(
+                        "reading from bank {:02x}, address {:04x}, but rom length is {:04x}",
+                        bank, i, len
+                    );
+                }
+                rom[i]
+            }
+            _ => unreachable!("read rom out of bounds"),
+        }
+    }
 }
 
 /// Cartridge with a MBC5 chip
@@ -964,9 +1176,11 @@ impl Mbc5 {
                 // write the to bit-8 of the bank register
                 self.selected_bank = (self.selected_bank & 0x00FF) | ((value as u16 & 0b1) << 8)
             }
+            // RAM bank number
             0x4000..=0x5FFF => {
                 self.selected_ram_bank = value & 0x0F;
             }
+            0x6000..=0x7FFF => {}
             // RAM banks
             0xA000..=0xBFFF => {
                 if !self.ram_enabled || ram.is_empty() {
@@ -976,6 +1190,19 @@ impl Mbc5 {
                 ram[address as usize - 0xA000 + start_address] = value;
             }
             _ => unreachable!("write cartridge out of bounds"),
+        }
+    }
+
+    pub fn read_at_bank(&self, bank: u16, address: u16, rom: &[u8]) -> u8 {
+        match address {
+            // ROM Bank 00
+            0x0000..=0x3FFF => rom[address as usize],
+            // ROM Bank 01-0F
+            0x4000..=0x7FFF => {
+                let address_start = 0x4000 * bank as usize;
+                rom[address as usize - 0x4000 + address_start]
+            }
+            _ => unreachable!("read rom out of bounds"),
         }
     }
 }

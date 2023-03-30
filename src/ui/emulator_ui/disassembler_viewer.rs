@@ -347,10 +347,12 @@ impl ListBuilder for DissasemblerList {
 
             let pc = cpu.pc;
             let bank = gb.cartridge.curr_bank();
-            self.pc = Some(Address::from_pc(Some(bank), pc).unwrap_or(Address {
-                address: pc,
-                bank: 0xFF,
-            }));
+            self.pc = Some(
+                Address::from_pc(Some(bank), pc, &gb.cartridge).unwrap_or(Address {
+                    address: pc,
+                    bank: 0xFF,
+                }),
+            );
             let pc = self.pc.unwrap();
 
             let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));

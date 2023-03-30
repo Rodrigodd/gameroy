@@ -1408,7 +1408,7 @@ impl Interpreter<'_> {
         let mut trace = self.0.trace.borrow_mut();
 
         // check early if this address is already traced, and return if it is
-        if address <= 0x7FFF && trace.is_already_traced(bank, address) {
+        if address <= 0x7FFF && trace.is_already_traced(bank, address, &self.0.cartridge) {
             return;
         }
 

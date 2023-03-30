@@ -5,7 +5,10 @@ use std::{
     ops::Range,
 };
 
-use crate::{consts, gameboy::GameBoy};
+use crate::{
+    consts,
+    gameboy::{cartridge::Cartridge, GameBoy},
+};
 
 struct ReallySigned(i8);
 
@@ -36,15 +39,22 @@ impl Address {
         Self { bank, address }
     }
 
-    pub fn from_pc(bank: Option<u16>, address: u16) -> Option<Self> {
-        if address <= 0x3FFF {
+    pub fn from_pc(bank: Option<u16>, address: u16, cart: &Cartridge) -> Option<Self> {
+        if let Some(bank) = bank {
+            if address <= 0x3FFF {
+                // it is in the main bank
+                Some(Self::new(cart.bank0_from_bank(bank), address))
+            } else if (0x4000..=0x7FFF).contains(&address) {
+                // it is in the switchable bank
+                assert!(bank != 0);
+                Some(Self::new(bank, address - 0x4000))
+            } else {
+                // it isn't in the rom
+                None
+            }
+        } else if address <= 0x3FFF {
             // it is in the main bank
             Some(Self::new(0, address))
-        } else if bank.is_some() && (0x4000..=0x7FFF).contains(&address) {
-            // it is in the switchable bank
-            let bank = bank.unwrap();
-            assert!(bank != 0);
-            Some(Self::new(bank, address - 0x4000))
         } else {
             // it isn't in the rom or the bank is unknow.
             None
@@ -59,9 +69,10 @@ impl Address {
         }
     }
 
-    fn as_cursor(&self) -> Cursor {
+    fn as_cursor(&self, cart: &Cartridge) -> Cursor {
         let pc = if self.bank != 0 { 0x4000 } else { 0x0000 } + self.address;
         Cursor {
+            bank0: cart.bank0_from_bank(self.bank),
             bank: Some(self.bank),
             pc,
             reg_a: None,
@@ -85,7 +96,9 @@ impl Label {
 }
 
 pub struct Cursor {
-    /// The currently active bank, if know
+    /// The currently active bank in the 0 to 3FFF range.
+    pub bank0: u16,
+    /// The currently active ROM bank, if know
     pub bank: Option<u16>,
     /// The program counter, can have any value in the entire range
     pub pc: u16,
@@ -95,35 +108,22 @@ pub struct Cursor {
 impl Cursor {
     /// Return the opcode, and the length
     pub fn get_op(&self, rom: &GameBoy) -> ([u8; 3], u8) {
-        let bank;
-        let offset = if (0x4000..=0x7FFF).contains(&self.pc) {
-            bank = self.bank.expect("I don't know what I am doing");
-            (self.pc - 0x4000) as usize
-        } else if self.pc <= 0x3FFF {
-            bank = 0;
-            self.pc as usize
-        } else {
-            let op = [
-                rom.read(self.pc),
-                rom.read(self.pc.wrapping_add(1)),
-                rom.read(self.pc.wrapping_add(2)),
-            ];
-            let len = consts::LEN[op[0] as usize];
-            return (op, len);
+        let bank = self.bank.unwrap_or(0);
+
+        let read_pc = |of| {
+            if self.pc.wrapping_add(of) < 0x7FFF {
+                // read ROM
+                rom.cartridge.read_at_bank(bank, self.pc.wrapping_add(of))
+            } else {
+                // read RAM
+                rom.read(self.pc.wrapping_add(of))
+            }
         };
 
-        let rom = &rom.cartridge.rom;
+        let op = [read_pc(0), read_pc(1), read_pc(2)];
+        let len = consts::LEN[op[0] as usize];
 
-        let i = (bank as usize * 0x4000 + offset) % rom.len();
-
-        let op = rom[i];
-        let len = consts::LEN[op as usize];
-        let op = &rom[i..i + len as usize];
-
-        let mut op_array = [0; 3];
-        op_array[0..len as usize].copy_from_slice(op);
-
-        (op_array, len)
+        (op, len)
     }
 }
 
@@ -181,7 +181,7 @@ impl Trace {
         w: &mut impl Write,
     ) -> fmt::Result {
         self.trace_starting_at(rom, bank, curr, None);
-        let curr_range = match self.get_curr_code_range(bank, curr) {
+        let curr_range = match self.get_curr_code_range(bank, curr, &rom.cartridge) {
             Some(x) => x,
             None => return writeln!(w, "Outside ROM..."),
         };
@@ -192,12 +192,12 @@ impl Trace {
         let mut i = 0;
         let mut c = 0;
         let mut pc = curr_range.start;
-        let curr = Address::from_pc(Some(bank), curr).unwrap();
+        let curr = Address::from_pc(Some(bank), curr, &rom.cartridge).unwrap();
         while pc < curr {
             queue[i] = pc;
             i = (i + 1) % LOOK_ABOVE as usize;
             c += 1;
-            let (_, len) = pc.as_cursor().get_op(rom);
+            let (_, len) = pc.as_cursor(&rom.cartridge).get_op(rom);
             pc.address += len as u16;
         }
         if c < LOOK_ABOVE {
@@ -216,7 +216,7 @@ impl Trace {
         };
         while pc < curr {
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
-            let (op, len) = pc.as_cursor().get_op(rom);
+            let (op, len) = pc.as_cursor(&rom.cartridge).get_op(rom);
             disassembly_opcode(pc.address, &op[0..len as usize], |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
@@ -224,7 +224,7 @@ impl Trace {
 
         let mut pc = curr;
         write!(w, ">>{:02x}_{:04x}: ", pc.bank, pc.address)?;
-        let (op, len) = pc.as_cursor().get_op(rom);
+        let (op, len) = pc.as_cursor(&rom.cartridge).get_op(rom);
         disassembly_opcode(pc.address, &op[0..len as usize], |x| label(pc, x), w)?;
         writeln!(w)?;
         pc.address += len as u16;
@@ -237,7 +237,7 @@ impl Trace {
                 break;
             }
             write!(w, "  {:02x}_{:04x}: ", pc.bank, pc.address)?;
-            let (op, len) = pc.as_cursor().get_op(rom);
+            let (op, len) = pc.as_cursor(&rom.cartridge).get_op(rom);
             disassembly_opcode(pc.address, &op[0..len as usize], |x| label(pc, x), w)?;
             writeln!(w)?;
             pc.address += len as u16;
@@ -245,8 +245,8 @@ impl Trace {
         Ok(())
     }
 
-    pub fn is_already_traced(&self, bank: u16, start: u16) -> bool {
-        start > 0x7FFF || self.get_curr_code_range(bank, start).is_some()
+    pub fn is_already_traced(&self, bank: u16, start: u16, cart: &Cartridge) -> bool {
+        start > 0x7FFF || self.get_curr_code_range(bank, start, cart).is_some()
     }
 
     pub fn trace_starting_at(
@@ -256,30 +256,27 @@ impl Trace {
         start: u16,
         label: Option<String>,
     ) {
-        let bank = if gameboy.cartridge.num_banks() == 2 {
-            Some(1)
-        } else if bank == 0 {
-            None
-        } else {
-            Some(bank)
-        };
-        let mut cursors = vec![Cursor {
-            bank,
+        let cursor = Cursor {
+            bank0: gameboy.cartridge.bank0_from_bank(bank),
+            bank: Some(bank),
             pc: start,
             reg_a: None,
-        }];
+        };
+
         if let Some(label) = label {
-            if let Some(x) = self.add_label(bank, start) {
+            if let Some(x) = self.add_label(cursor.bank, start, &gameboy.cartridge) {
                 x.name = label
             }
         }
+
+        let mut cursors = vec![cursor];
         while !cursors.is_empty() {
             self.trace_once(gameboy, &mut cursors);
         }
     }
 
-    fn get_curr_code_range(&self, bank: u16, pc: u16) -> Option<Range<Address>> {
-        let address = Address::from_pc(Some(bank), pc)?;
+    fn get_curr_code_range(&self, bank: u16, pc: u16, cart: &Cartridge) -> Option<Range<Address>> {
+        let address = Address::from_pc(Some(bank), pc, cart)?;
         self.code_ranges
             .binary_search_by(|range| {
                 use std::cmp::Ordering;
@@ -385,9 +382,9 @@ impl Trace {
         }
     }
 
-    fn add_label(&mut self, bank: Option<u16>, pc: u16) -> Option<&mut Label> {
+    fn add_label(&mut self, bank: Option<u16>, pc: u16, cart: &Cartridge) -> Option<&mut Label> {
         // the address may not be in the rom
-        match Address::from_pc(bank, pc) {
+        match Address::from_pc(bank, pc, cart) {
             Some(address) => Some(
                 self.labels
                     .entry(address)
@@ -402,8 +399,8 @@ impl Trace {
         }
     }
 
-    fn add_jump(&mut self, from: Address, bank: Option<u16>, pc: u16) {
-        if let Some(x) = self.add_label(bank, pc) {
+    fn add_jump(&mut self, from: Address, bank: Option<u16>, pc: u16, cart: &Cartridge) {
+        if let Some(x) = self.add_label(bank, pc, cart) {
             let to = x.address;
             self.jumps.insert(from, to);
         }
@@ -413,7 +410,7 @@ impl Trace {
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
         let Cursor { pc, bank, .. } = cursor;
-        match Address::from_pc(bank, pc) {
+        match Address::from_pc(bank, pc, &rom.cartridge) {
             Some(address) => {
                 let (op, len) = cursor.get_op(rom);
 
@@ -422,9 +419,8 @@ impl Trace {
                 }
 
                 let cursors = &std::cell::RefCell::new(cursors);
-                let only_one_bank = rom.cartridge.num_banks() == 2;
 
-                let (step, jump) = compute_step(len, cursor, &op, only_one_bank);
+                let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
                 cursors.borrow_mut().extend(step);
 
                 let Some(jump) = jump else { return };
@@ -433,7 +429,7 @@ impl Trace {
                 if jump.pc > 0x7FFF {
                     return;
                 }
-                self.add_jump(address, bank, jump.pc);
+                self.add_jump(address, bank, jump.pc, &rom.cartridge);
                 cursors.borrow_mut().push(jump);
             }
             None => {
@@ -454,9 +450,8 @@ impl Trace {
                 }
 
                 let cursors = &std::cell::RefCell::new(cursors);
-                let only_one_bank = rom.cartridge.num_banks() == 2;
 
-                let (step, jump) = compute_step(len, cursor, &op, only_one_bank);
+                let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
                 cursors
                     .borrow_mut()
                     .extend([step, jump].into_iter().flatten());
@@ -471,7 +466,7 @@ impl Trace {
                 if pc >= range.end {
                     break;
                 }
-                let (op, len) = pc.as_cursor().get_op(rom);
+                let (op, len) = pc.as_cursor(&rom.cartridge).get_op(rom);
                 if let Some(label) = self.labels.get(&pc) {
                     writeln!(f, "{}:", label.name)?;
                 }
@@ -502,18 +497,24 @@ pub fn compute_step(
     len: u8,
     curr: Cursor,
     op: &[u8],
-    only_one_bank: bool,
+    cart: &Cartridge,
 ) -> (Option<Cursor>, Option<Cursor>) {
-    let Cursor { pc, bank, reg_a } = curr;
+    let Cursor {
+        pc,
+        bank0,
+        bank,
+        reg_a,
+    } = curr;
     let step = move || {
         Some(Cursor {
+            bank0,
             bank,
             pc: pc + len as u16,
             reg_a,
         })
     };
     let jump = move |dest: u16| {
-        let bank = if only_one_bank {
+        let bank = if cart.num_banks() == 2 {
             // If there is only one switchable bank, it will be the active.
             Some(1)
         } else if dest < 0x4000 {
@@ -524,6 +525,7 @@ pub fn compute_step(
             bank
         };
         Some(Cursor {
+            bank0,
             bank,
             pc: dest,
             reg_a: None,
@@ -559,6 +561,7 @@ pub fn compute_step(
             // LD A, ?
             (
                 Some(Cursor {
+                    bank0,
                     bank,
                     pc: pc + len as u16,
                     reg_a: None,
@@ -570,6 +573,7 @@ pub fn compute_step(
             // LD A, d8
             (
                 Some(Cursor {
+                    bank0,
                     bank,
                     pc: pc + len as u16,
                     reg_a: Some(op[1]),
@@ -579,32 +583,40 @@ pub fn compute_step(
         }
         0xEA => {
             // LD (a16), A
-            let mut bank = bank;
-            // TODO: this only works for MBC1
+
             // If it write a know value of A to 0x2000..=0x3FFF region, the bank is switched.
             let address = u16::from_le_bytes([op[1], op[2]]);
-            if (0x2000..=0x3FFF).contains(&address) {
-                if let Some(a) = reg_a {
-                    let value = a as u16 & 0x1F;
-                    bank = Some(if value == 0 { 1 } else { value });
-                } else {
-                    bank = None;
+
+            match (reg_a, address) {
+                (Some(value), 0x0000..=0x7FFF) => {
+                    let bank = cart.bank_from_write(bank.unwrap_or(bank0), address, value);
+                    (
+                        Some(Cursor {
+                            bank0: cart.bank0_from_bank(bank),
+                            bank: Some(bank),
+                            pc: pc + len as u16,
+                            reg_a,
+                        }),
+                        None,
+                    )
                 }
+                _ => (
+                    Some(Cursor {
+                        bank0,
+                        bank,
+                        pc: pc + len as u16,
+                        reg_a,
+                    }),
+                    None,
+                ),
             }
-            (
-                Some(Cursor {
-                    bank,
-                    pc: pc + len as u16,
-                    reg_a,
-                }),
-                None,
-            )
         }
         0x08 => {
             // LD (a16), SP
             let address = u16::from_le_bytes([op[1], op[2]]);
-            let step = if (0x2000..=0x3FFF).contains(&address) {
+            let step = if (0x0000..=0x7FFF).contains(&address) {
                 Some(Cursor {
+                    bank0,
                     bank: None,
                     pc: pc + len as u16,
                     reg_a,
@@ -623,6 +635,7 @@ pub fn compute_step(
             let bank = if pc < 0x4000 { None } else { bank };
             (
                 Some(Cursor {
+                    bank0,
                     bank,
                     pc: pc + len as u16,
                     reg_a,
@@ -641,6 +654,7 @@ pub fn compute_step(
             };
             (
                 Some(Cursor {
+                    bank0,
                     bank,
                     pc: pc + len as u16,
                     reg_a: None,

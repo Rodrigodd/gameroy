@@ -39,6 +39,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
+        bank0: gb.cartridge.bank0_from_bank(bank),
         bank: Some(bank),
         pc: start_address,
         reg_a: Some(gb.cpu.a),
@@ -49,8 +50,6 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     let mut max_clock_cycles = 0;
     let mut length = 0;
 
-    let only_one_bank = gb.cartridge.num_banks() == 2;
-
     while let Some(cursor) = cursors.pop() {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
@@ -60,7 +59,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
             CLOCK[op[0] as usize] as u32
         };
 
-        let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, only_one_bank);
+        let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, &gb.cartridge);
 
         let step = match step {
             Some(step) if step.pc < 0x4000 || step.bank == Some(bank) => step,
@@ -134,7 +133,7 @@ impl JitCompiler {
             return None;
         }
 
-        let address = Address::from_pc(Some(bank), pc)?;
+        let address = Address::from_pc(Some(bank), pc, &gb.cartridge)?;
         Some(
             self.blocks
                 .entry(address)

@@ -32,7 +32,7 @@ fn test_all_files() -> Result<(), ()> {
     let mut roms = Vec::new();
     while let Some(entry) = tree.pop() {
         let entry = entry.unwrap();
-        println!("{}", entry.path().display());
+        println!("{:>4} {}", roms.len(), entry.path().display());
         if entry.file_type().unwrap().is_dir() {
             tree.extend(std::fs::read_dir(entry.path()).unwrap());
         } else if entry.path().extension().and_then(|x| x.to_str()) == Some("gb") {
@@ -51,11 +51,13 @@ fn test_all_files() -> Result<(), ()> {
     println!("\ntesting {} roms:", roms.len());
 
     let failed: Vec<_> = roms
-        .into_par_iter()
+        .into_iter()
+        .enumerate()
+        .par_bridge()
         .filter_map({
-            |rom| {
+            |(i, rom)| {
                 let catch_unwind = catch_unwind(|| {
-                    println!("{}:", rom);
+                    println!("{i:>4} {}:", rom);
                     test_interrupt_prediction(&rom, 20 * CLOCK_SPEED)
                 });
                 let ok = match catch_unwind {

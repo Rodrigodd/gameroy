@@ -48,6 +48,8 @@ pub struct BlockCompiler<'gb> {
 
     /// The ime_state of the current instruction, if known.
     ime_state: Option<ImeState>,
+    /// The ime_state of the current instruction, if known.
+    previous_ime_state: Option<ImeState>,
 }
 
 impl<'a> BlockCompiler<'a> {
@@ -62,6 +64,7 @@ impl<'a> BlockCompiler<'a> {
             max_clock_cycles,
             did_write: false,
             ime_state: None,
+            previous_ime_state: None,
         }
     }
 
@@ -108,6 +111,7 @@ impl<'a> BlockCompiler<'a> {
 
             let ime_enabled = self.ime_state == Some(ImeState::ToBeEnable);
             if ime_enabled {
+                self.previous_ime_state = self.ime_state;
                 self.ime_state = Some(ImeState::Enabled);
             }
 
@@ -211,20 +215,18 @@ impl<'a> BlockCompiler<'a> {
     }
 
     fn update_ime_state(&mut self, ops: &mut VecAssembler<X64Relocation>) {
-        if let Some(ime_state) = self.ime_state {
-            let ime = offset!(GameBoy, cpu: Cpu, ime);
-            if ime_state == ImeState::ToBeEnable {
-                dynasm!(ops
-                    ; cmp	BYTE [rdi + ime as i32], ImeState::Disabled as u8 as i8
-                    ; jne	>skip
-                    ; mov	BYTE [rdi + ime as i32], ime_state as u8 as i8
-                    ;skip:
-                )
-            } else {
-                dynasm!(ops
-                    ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
-                )
-            }
+        let ime = offset!(GameBoy, cpu: Cpu, ime);
+        match (self.ime_state, self.previous_ime_state) {
+            (Some(ImeState::ToBeEnable), None) => dynasm!(ops
+                ; cmp	BYTE [rdi + ime as i32], ImeState::Disabled as u8 as i8
+                ; jne	>skip
+                ; mov	BYTE [rdi + ime as i32], ImeState::ToBeEnable as u8 as i8
+                ;skip:
+            ),
+            (Some(ime_state), _) => dynasm!(ops
+                ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
+            ),
+            _ => {}
         }
     }
 
@@ -2355,10 +2357,18 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn ei(&mut self, _ops: &mut VecAssembler<X64Relocation>) {
-        self.ime_state = Some(ImeState::ToBeEnable);
+        match self.previous_ime_state {
+            Some(ImeState::Enabled) => {}
+            Some(ImeState::ToBeEnable) => {}
+            _ => {
+                self.previous_ime_state = self.ime_state;
+                self.ime_state = Some(ImeState::ToBeEnable);
+            }
+        }
     }
 
     pub fn di(&mut self, _ops: &mut VecAssembler<X64Relocation>) {
+        self.previous_ime_state = self.ime_state;
         self.ime_state = Some(ImeState::Disabled);
     }
 
@@ -2555,6 +2565,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn reti(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        self.previous_ime_state = self.ime_state;
         self.ime_state = Some(ImeState::Enabled);
         self.ret(ops, Condition::None);
     }

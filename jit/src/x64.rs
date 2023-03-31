@@ -3,7 +3,6 @@ use dynasmrt::{
 };
 
 use gameroy::{
-    consts::LEN,
     gameboy::{
         cpu::{Cpu, CpuState, ImeState},
         GameBoy,
@@ -233,11 +232,6 @@ impl<'a> BlockCompiler<'a> {
     fn exit_block(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         // self.update_pc(ops);
         self.update_ime_state(ops);
-        let clock_count = offset!(GameBoy, clock_count);
-        dynasm!(ops
-            ; .arch x64
-            // ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
-        );
 
         dynasm!(ops
             ; pop r12

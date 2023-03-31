@@ -1262,10 +1262,22 @@ impl Interpreter<'_> {
     fn gb_read(&self, address: u16) -> u8 {
         #[allow(clippy::let_and_return)] // being useful for debugging
         let value = self.0.read(address);
+        #[cfg(feature = "io_trace")]
+        self.0.io_trace.borrow_mut().push((
+            0 | ((self.0.clock_count & !3) as u8 >> 1),
+            address,
+            value,
+        ));
         value
     }
 
     fn gb_write(&mut self, address: u16, value: u8) {
+        #[cfg(feature = "io_trace")]
+        self.0.io_trace.borrow_mut().push((
+            1 | ((self.0.clock_count & !3) as u8 >> 1),
+            address,
+            value,
+        ));
         self.0.write(address, value);
     }
 
@@ -1279,7 +1291,7 @@ impl Interpreter<'_> {
 
     /// Read from PC, tick 4 cycles, and increase it by 1
     pub fn read_next_pc(&mut self) -> u8 {
-        let v = self.gb_read(self.0.cpu.pc);
+        let v = self.0.read(self.0.cpu.pc);
         self.0.tick(4);
         self.0.cpu.pc = add16(self.0.cpu.pc, 1);
         v

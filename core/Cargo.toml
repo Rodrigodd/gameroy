@@ -16,6 +16,9 @@ path = "src/lib.rs"
 name = "bench_emulator"
 harness = false
 
+[features]
+io_trace = []
+
 [dependencies]
 
 [dev-dependencies]

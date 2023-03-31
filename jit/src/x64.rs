@@ -3013,7 +3013,10 @@ impl<'a> BlockCompiler<'a> {
         extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
             let start_next_interrupt = gb.next_interrupt.get();
             let value = gb.read(address);
-            gb.io_trace.borrow_mut().push((0, address, value));
+            #[cfg(feature = "io_trace")]
+            gb.io_trace
+                .borrow_mut()
+                .push((0 | ((gb.clock_count & !3) as u8 >> 1), address, value));
             debug_assert!(
                 gb.next_interrupt.get() >= start_next_interrupt,
                 "{} >= {} (read {:04x})",
@@ -3038,6 +3041,10 @@ impl<'a> BlockCompiler<'a> {
 
     fn write_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) {
+            #[cfg(feature = "io_trace")]
+            gb.io_trace
+                .borrow_mut()
+                .push((1 | ((gb.clock_count & !3) as u8 >> 1), address, value));
             gb.write(address, value);
         }
 

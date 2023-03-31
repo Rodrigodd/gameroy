@@ -234,17 +234,74 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
 
 fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> bool {
     let screen_unsync = vblank.screen_a != vblank.screen_b;
+
+    #[cfg(feature = "io_trace")]
+    let io_unsync = !game_boy_a
+        .io_trace
+        .borrow()
+        .iter()
+        .filter(|(_, address, _)| *address >= 0x8000)
+        .cmp(
+            game_boy_b
+                .io_trace
+                .borrow()
+                .iter()
+                .filter(|(_, address, _)| *address >= 0x8000),
+        )
+        .is_eq();
+
+    #[cfg(not(feature = "io_trace"))]
+    let io_unsync = false;
+
     #[allow(unused_must_use)]
     if game_boy_a.cpu != game_boy_b.cpu
         || game_boy_a.clock_count != game_boy_b.clock_count
         || screen_unsync
+        || io_unsync
     {
         print!("\u{001b}[31m");
-        println!("{:>15}: {:?}", game_boy_a.clock_count, game_boy_a.cpu);
-        println!("{:>15}: {:?}", game_boy_b.clock_count, game_boy_b.cpu);
+        println!("{:>15}: {:x?}", game_boy_a.clock_count, game_boy_a.cpu);
+        println!("{:>15}: {:x?}", game_boy_b.clock_count, game_boy_b.cpu);
 
-        println!("{:?}", game_boy_a.ppu.borrow().oam);
-        println!("{:?}", game_boy_b.ppu.borrow().oam);
+        println!("{:02x?}", game_boy_a.ppu.borrow().oam);
+        println!("{:02x?}", game_boy_b.ppu.borrow().oam);
+
+        #[cfg(feature = "io_trace")]
+        {
+            let io_a = game_boy_a.io_trace.borrow();
+            let io_b = game_boy_b.io_trace.borrow();
+            let mut a = io_a.iter().copied();
+            // .filter(|(_, address, _)| *address >= 0x8000);
+            let mut b = io_b.iter().copied();
+            // .filter(|(_, address, _)| *address >= 0x8000);
+
+            println!("IO desync:");
+            loop {
+                let (a, b) = (a.next(), b.next());
+                if let (None, None) = (a, b) {
+                    break;
+                }
+                if let Some((kind, address, value)) = a {
+                    print!(
+                        "  {:1}{:02x} {value:02x} at {address:04x} | ",
+                        if kind & 1 == 0 { 'R' } else { 'W' },
+                        (kind & !1) << 1,
+                    );
+                } else {
+                    print!("               | ");
+                }
+
+                if let Some((kind, address, value)) = b {
+                    println!(
+                        "{:1}{:02x} {value:02x} at {address:04x}",
+                        if kind & 1 == 0 { 'R' } else { 'W' },
+                        (kind & !1) << 1,
+                    );
+                } else {
+                    println!("            ");
+                }
+            }
+        }
 
         if screen_unsync {
             let print_screen = |screen: &[u8; SCREEN_WIDTH * SCREEN_HEIGHT]| {
@@ -277,5 +334,12 @@ fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> 
         print!("\u{001b}[0m");
         return false;
     }
+
+    #[cfg(feature = "io_trace")]
+    {
+        game_boy_a.io_trace.borrow_mut().clear();
+        game_boy_b.io_trace.borrow_mut().clear();
+    }
+
     true
 }

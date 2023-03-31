@@ -64,6 +64,10 @@ pub struct GameBoy {
     pub predict_interrupt: bool,
     /// The clock_count when the next interrupt may happen.
     pub next_interrupt: Cell<u64>,
+
+    /// trace of reads and writes. (kind | ((clock_count & !3) >> 1), address, value), kind: 0=read,1=write
+    #[cfg(feature = "io_trace")]
+    pub io_trace: RefCell<Vec<(u8, u16, u8)>>,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -163,6 +167,9 @@ impl GameBoy {
             v_blank: None,
             predict_interrupt: true,
             next_interrupt: 0.into(),
+
+            #[cfg(feature = "io_trace")]
+            io_trace: Vec::new().into(),
         };
 
         if this.boot_rom.is_none() {

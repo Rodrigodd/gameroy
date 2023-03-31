@@ -246,6 +246,9 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             let bin_dir = format!("failed_test/{}", name);
             let _ = std::fs::remove_dir_all(&bin_dir);
             let _ = std::fs::create_dir(&bin_dir);
+
+            // Dump compiled blocks.
+            // Can be inspected using `objdump -D -b binary -Mintel,x86-64 -m i386 <file>`.
             for (address, block) in jit_compiler.blocks.iter() {
                 std::fs::write(
                     format!(

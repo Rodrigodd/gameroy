@@ -151,6 +151,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             }
         }
     }));
+    game_boy_a.serial.borrow_mut().serial_transfer_callback = None;
 
     let mut game_boy_b = GameBoy::new(None, cartridge);
     game_boy_b.predict_interrupt = true;
@@ -176,6 +177,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             }
         }
     }));
+    game_boy_b.serial.borrow_mut().serial_transfer_callback = None;
 
     while game_boy_a.clock_count < timeout {
         // print!("\u{001b}[37m");

@@ -141,6 +141,8 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     game_boy_a.v_blank = Some(Box::new({
         let vblank = vblank.clone();
         move |gb| {
+            // press the start button, repeatedly
+            gb.joypad ^= 0x80;
             let mut vblank = vblank.lock().unwrap();
             vblank.screen_a = Some(gb.ppu.borrow().screen);
             vblank.clock_count = Some(gb.clock_count);
@@ -155,6 +157,8 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     game_boy_b.v_blank = Some(Box::new({
         let vblank = vblank.clone();
         move |gb| {
+            // press the start button, repeatedly
+            gb.joypad ^= 0x80;
             let mut vblank = vblank.lock().unwrap();
 
             // The vblank shoud have been set by `gameboy_a`.

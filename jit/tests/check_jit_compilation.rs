@@ -204,6 +204,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
                 h.title_as_string().split_whitespace().next().unwrap_or(""),
                 h.global_checksum
             );
+            println!("dumping ROM in {name}.s");
             std::fs::write("failed_test/".to_owned() + &name + ".s", dissasembly).unwrap();
 
             let bin_dir = format!("failed_test/{}", name);

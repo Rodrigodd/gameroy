@@ -3017,7 +3017,17 @@ impl<'a> BlockCompiler<'a> {
 
     fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
-            gb.read(address)
+            let start_next_interrupt = gb.next_interrupt.get();
+            let value = gb.read(address);
+            gb.io_trace.borrow_mut().push((0, address, value));
+            debug_assert!(
+                gb.next_interrupt.get() >= start_next_interrupt,
+                "{} >= {} (read {:04x})",
+                gb.next_interrupt.get(),
+                start_next_interrupt,
+                address
+            );
+            value
         }
 
         self.update_clock_count(ops);

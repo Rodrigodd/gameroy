@@ -1271,10 +1271,10 @@ impl Interpreter<'_> {
 
     fn gb_write16(&mut self, address: u16, value: u16) {
         let [a, b] = value.to_le_bytes();
-        self.0.tick(4);
         self.gb_write(address, a);
         self.0.tick(4);
         self.gb_write(address.wrapping_add(1), b);
+        self.0.tick(4);
     }
 
     /// Read from PC, tick 4 cycles, and increase it by 1

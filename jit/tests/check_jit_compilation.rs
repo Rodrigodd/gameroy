@@ -104,6 +104,50 @@ fn test_two() {
     }
 }
 
+#[test]
+fn test_sprite_late() {
+    let rom = r"gambatte\sprites\sprite_late_late_disable_spx1B_2_dmg08_out3.gb";
+    let rom = TEST_ROM_PATH.to_string() + rom;
+    let timeout = 30 * CLOCK_SPEED;
+    let ok = test_interrupt_prediction(&rom, timeout);
+    if !ok {
+        panic!("CPU desync!");
+    }
+}
+
+#[test]
+fn test_mbc3_rtc() {
+    let rom = r"mealybug-tearoom-tests\mbc\mbc3_rtc.gb";
+    let rom = TEST_ROM_PATH.to_string() + rom;
+    let timeout = 30 * CLOCK_SPEED;
+    let ok = test_interrupt_prediction(&rom, timeout);
+    if !ok {
+        panic!("CPU desync!");
+    }
+}
+
+#[test]
+fn test_three() {
+    let rom = r"mooneye-test-suite\acceptance\ppu\intr_2_mode0_timing_sprites.gb";
+    let rom = TEST_ROM_PATH.to_string() + rom;
+    let timeout = 30 * CLOCK_SPEED;
+    let ok = test_interrupt_prediction(&rom, timeout);
+    if !ok {
+        panic!("CPU desync!");
+    }
+}
+
+#[test]
+fn test_four() {
+    let rom = r"mooneye-test-suite\acceptance\instr\daa.gb";
+    let rom = TEST_ROM_PATH.to_string() + rom;
+    let timeout = 30 * CLOCK_SPEED;
+    let ok = test_interrupt_prediction(&rom, timeout);
+    if !ok {
+        panic!("CPU desync!");
+    }
+}
+
 #[derive(Default)]
 struct VBlank {
     screen_a: Option<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,

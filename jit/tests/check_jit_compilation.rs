@@ -40,14 +40,6 @@ fn test_all_files() -> Result<(), ()> {
         }
     }
 
-    // let r = std::time::SystemTime::now()
-    //     .duration_since(std::time::UNIX_EPOCH)
-    //     .unwrap()
-    //     .as_millis() as usize
-    //     % roms.len();
-    // roms = vec![roms[r].clone()];
-    roms = roms[10..50].to_vec();
-
     println!("\ntesting {} roms:", roms.len());
 
     let failed: Vec<_> = roms
@@ -262,9 +254,6 @@ fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> 
         print!("\u{001b}[31m");
         println!("{:>15}: {:x?}", game_boy_a.clock_count, game_boy_a.cpu);
         println!("{:>15}: {:x?}", game_boy_b.clock_count, game_boy_b.cpu);
-
-        println!("{:02x?}", game_boy_a.ppu.borrow().oam);
-        println!("{:02x?}", game_boy_b.ppu.borrow().oam);
 
         #[cfg(feature = "io_trace")]
         {

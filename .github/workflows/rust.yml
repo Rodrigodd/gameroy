@@ -24,11 +24,6 @@ jobs:
     - name: Install depencies
       run: sudo apt-get install libasound2-dev libgtk-3-dev
 
-    - name: Install resvg
-      run: cargo install resvg
-    - name: Install cargo-about
-      run: cargo install cargo-about
-
     - uses: robinraju/release-downloader@v1.5
       with: 
         repository: "c-sp/gameboy-test-roms"

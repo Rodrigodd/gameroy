@@ -112,6 +112,11 @@ impl Default for JitCompiler {
 
 impl JitCompiler {
     pub fn new() -> Self {
+        println!(
+            "arch: {}, os: {}",
+            std::env::consts::ARCH,
+            std::env::consts::OS
+        );
         Self {
             blocks: HashMap::with_hasher(NoHashHasher(0)),
         }
@@ -150,7 +155,7 @@ impl JitCompiler {
                 if gb.cpu.state == CpuState::Running
                     && (gb.clock_count + block.max_clock_cycles as u64 + 4) < next_interrupt =>
             {
-                // println!("running {:04x} ({})", block._start_address, gb.clock_count);
+                println!("running {:04x} ({})", block._start_address, gb.clock_count);
                 block.call(gb);
                 debug_assert!(gb.clock_count - start_clock <= block.max_clock_cycles as u64);
                 debug_assert!(gb.clock_count != start_clock);

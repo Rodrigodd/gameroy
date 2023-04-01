@@ -217,9 +217,9 @@ impl<'a> BlockCompiler<'a> {
         let ime = offset!(GameBoy, cpu: Cpu, ime);
         match (self.ime_state, self.previous_ime_state) {
             (Some(ImeState::ToBeEnable), None) => dynasm!(ops
-                ; cmp	BYTE [rdi + ime as i32], ImeState::Disabled as u8 as i8
+                ; cmp	BYTE [rbx + ime as i32], ImeState::Disabled as u8 as i8
                 ; jne	>skip
-                ; mov	BYTE [rdi + ime as i32], ImeState::ToBeEnable as u8 as i8
+                ; mov	BYTE [rbx + ime as i32], ImeState::ToBeEnable as u8 as i8
                 ;skip:
             ),
             (Some(ime_state), _) => dynasm!(ops

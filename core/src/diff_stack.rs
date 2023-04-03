@@ -1,5 +1,143 @@
 use std::io::Write;
 
+/// A Stack where in each push, the previous top element is delta-compressed against the new
+/// element. Is used the build a save state stack.
+///
+/// Each element in the buffer is a list of bytes, followed by a 32-bit length.
+pub struct DiffStack {
+    buffer: Box<[u8]>,
+    top: usize,
+}
+
+impl DiffStack {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            buffer: vec![0; capacity].into_boxed_slice(),
+            top: 0,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.top = 0;
+    }
+
+    pub fn push(&mut self, new_elem: &[u8]) -> bool {
+        let free_pos = self.top;
+        let (buffer, free) = self.buffer.split_at_mut(free_pos);
+
+        if self.top > 0 {
+            let top_len = {
+                let len = &buffer[self.top - 4..self.top];
+                u32::from_le_bytes(len.try_into().unwrap()) as usize
+            };
+
+            self.top -= 4;
+
+            let top_elem_pos = self.top - top_len;
+            let top_elem = &buffer[top_elem_pos..self.top];
+
+            self.top -= top_len;
+
+            let diff_len = match delta_compress(new_elem, top_elem, &mut &mut free[..]) {
+                Ok(len) => len,
+                Err(_) => return false,
+            };
+
+            println!(
+                "diff_len {diff_len}: {:?}",
+                &self.buffer[free_pos..free_pos + diff_len]
+            );
+
+            self.buffer
+                .copy_within(free_pos..free_pos + diff_len, self.top);
+
+            self.top += diff_len;
+            self.buffer[self.top..][..4].copy_from_slice(&(diff_len as u32).to_le_bytes());
+            self.top += 4;
+        }
+
+        dbg!(self.top);
+
+        self.buffer[self.top..][..new_elem.len()].copy_from_slice(new_elem);
+
+        println!(
+            "new_len {}: {:?}",
+            new_elem.len(),
+            &self.buffer[self.top..self.top + new_elem.len()]
+        );
+
+        self.top += new_elem.len();
+        self.buffer[self.top..][..4].copy_from_slice(&(new_elem.len() as u32).to_le_bytes());
+        self.top += 4;
+
+        dbg!(self.top);
+
+        true
+    }
+
+    pub fn pop(&mut self, out: &mut impl Write) -> bool {
+        dbg!(self.top);
+
+        let free_pos = self.top;
+        let (buffer, free) = self.buffer.split_at_mut(free_pos);
+
+        let top_len = {
+            let len = &buffer[self.top - 4..self.top];
+            u32::from_le_bytes(len.try_into().unwrap()) as usize
+        };
+
+        self.top -= 4;
+
+        let top_elem_pos = self.top - top_len;
+        let top_elem = &buffer[top_elem_pos..self.top];
+
+        self.top -= top_len;
+
+        println!("top_len {top_len}: {top_elem:?}");
+
+        if self.top > 0 {
+            let prev_len = {
+                let len = &buffer[self.top - 4..self.top];
+                u32::from_le_bytes(len.try_into().unwrap()) as usize
+            };
+
+            self.top -= 4;
+
+            let prev_elem_pos = self.top - prev_len;
+            let prev_elem = &buffer[prev_elem_pos..self.top];
+
+            self.top -= prev_len;
+
+            println!("prev_len {prev_len}: {prev_elem:?}");
+
+            let undiff_len = match delta_decompress(top_elem, prev_elem, &mut &mut free[..]) {
+                Ok(len) => len,
+                Err(err) => {
+                    dbg!(err);
+                    return false;
+                }
+            };
+
+            out.write_all(top_elem).unwrap();
+
+            self.buffer
+                .copy_within(free_pos..free_pos + undiff_len, self.top);
+            println!(
+                "undiff_len {}: {:?}",
+                undiff_len,
+                &self.buffer[self.top..][..undiff_len]
+            );
+            self.top += undiff_len;
+            self.buffer[self.top..][..4].copy_from_slice(&(undiff_len as u32).to_le_bytes());
+            self.top += 4;
+        } else {
+            out.write_all(top_elem).unwrap();
+        }
+
+        true
+    }
+}
+
 // The compression works by writing the out the sequence:
 //
 // (equal_bytes_count:u16 | different_bytes_count:u16 | different_bytes:u8*)*
@@ -74,6 +212,7 @@ pub fn delta_decompress(
     Ok(out_len)
 }
 
+#[derive(Debug)]
 pub enum DecompressError {
     /// While reading the `equal_bytes` from the input data, the input ended early.
     InputTooSmall,
@@ -93,7 +232,7 @@ impl From<std::io::Error> for DecompressError {
 mod test {
     use rand::prelude::*;
 
-    use crate::diff_stack::DecompressError;
+    use crate::diff_stack::{DecompressError, DiffStack};
 
     /// Compress and decompress random data, and check if it is the same.
     #[test]
@@ -177,6 +316,59 @@ mod test {
                 Ok(len_out) => assert_eq!(len_out, b_.len()),
                 Err(super::DecompressError::Io(_)) => panic!("could not write to a Vec!?"),
                 _ => {}
+            }
+        }
+    }
+
+    #[test]
+    fn fuzz_push_pop() {
+        let mut a_ = Vec::new();
+        let mut buf = vec![0; 0x2000];
+        let mut d = Vec::new();
+        let mut pos = 0;
+        let mut thread_rng = rand::thread_rng();
+
+        let mut diff_stack = DiffStack::new(0x4000);
+
+        let start = std::time::Instant::now();
+        while start.elapsed().as_secs() < 20 {
+            let seed: u64 = thread_rng.gen();
+            let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+
+            let mut count = rng.gen_range(0.0f64..8.0).exp2() as usize;
+
+            println!("seed 0x{:016x} count {count}", seed);
+
+            diff_stack.clear();
+
+            for i in 0..count {
+                let a = {
+                    let len = rng.gen_range(0.0f64..8.0).exp2() as usize;
+                    if pos + len > 0x2000 {
+                        count = i;
+                        break;
+                    }
+                    rng.fill_bytes(&mut buf[pos..pos + len]);
+                    let a = &buf[pos..pos + len];
+                    d.push(pos);
+                    pos += len;
+                    a
+                };
+
+                assert!(diff_stack.push(a));
+            }
+
+            for _ in (0..count).rev() {
+                a_.clear();
+                assert!(diff_stack.pop(&mut a_));
+                let a = {
+                    let e = pos;
+                    let s = d.pop().unwrap();
+                    pos = s;
+                    &buf[s..e]
+                };
+
+                assert_eq!(a, a_);
             }
         }
     }

@@ -5,6 +5,7 @@ use audio_engine::{AudioEngine, SoundSource};
 use gameroy::{
     consts::CLOCK_SPEED,
     debugger::{Debugger, RunResult},
+    diff_stack::DiffStack,
     gameboy::GameBoy,
     interpreter::Interpreter,
     parser::Vbm,
@@ -220,15 +221,14 @@ impl std::io::Write for CircularBuffer {
 struct Timeline {
     /// a buffer for transient use.
     buffer: Vec<u8>,
-    /// Stores multiples save states, for the save state timeline.
-    savestate_buffer: CircularBuffer,
-    /// a list of pairs `(frame, clock_count, circular_range)`, listing the game state for each
-    /// frame. The data is stored in the savestate_buffer.
-    savestate_timeline: VecDeque<(usize, u64, (usize, usize))>,
+
+    /// A stack of save-states delta-compressed.
+    save_states: DiffStack,
+
     /// Current pressed keys by the user
     current_joypad: u8,
     /// Current frame being emulated
-    current_frame: usize,
+    current_frame: u32,
     /// The state of the joypad for each frame
     joypad_timeline: Vec<u8>,
 
@@ -236,15 +236,14 @@ struct Timeline {
     rewinding: bool,
 }
 impl Timeline {
-    fn new(current_frame: usize, joypad_timeline: Vec<u8>) -> Self {
+    fn new(current_frame: u32, joypad_timeline: Vec<u8>) -> Self {
         let kib = 2usize.pow(10);
         let mib = 2usize.pow(20);
         Self {
             buffer: Vec::with_capacity(64 * kib),
             current_frame,
             joypad_timeline,
-            savestate_buffer: CircularBuffer::new(32 * mib),
-            savestate_timeline: VecDeque::new(),
+            save_states: DiffStack::new(32 * mib),
             current_joypad: 0xff,
             rewinding: false,
         }
@@ -253,74 +252,60 @@ impl Timeline {
     fn save_state(&mut self, gb: &GameBoy) {
         self.buffer.clear();
         {
-            let mut encoder =
-                flate2::write::DeflateEncoder::new(&mut self.buffer, flate2::Compression::fast());
-            gb.save_state(timestamp(), &mut encoder).unwrap();
-            encoder.finish().unwrap();
+            self.buffer
+                .write_all(&gb.clock_count.to_le_bytes())
+                .unwrap();
+            self.buffer
+                .write_all(&self.current_frame.to_le_bytes())
+                .unwrap();
+            gb.save_state(timestamp(), &mut self.buffer).unwrap();
         }
         // println!("{:.3} KiB", (self.buffer.len() as f32) * 2f32.powi(-10));
-        while self.savestate_buffer.free_len() < self.buffer.len() {
-            let (_, _, (_, end)) = self
-                .savestate_timeline
-                .pop_front()
-                .expect("not enough size to save state");
-            self.savestate_buffer.tail = end;
+        if !self.save_states.push(&self.buffer) {
+            println!("cleared after {} frames", self.save_states.count());
+            self.save_states.clear();
+            self.save_states.push(&self.buffer);
         }
-        let start = self.savestate_buffer.head;
-        self.savestate_buffer.write_all(&self.buffer).unwrap();
-        let end = self.savestate_buffer.head;
-        self.savestate_timeline
-            .push_back((self.current_frame, gb.clock_count, (start, end)));
     }
 
     fn last_frame_clock_count(&self) -> Option<u64> {
-        self.savestate_timeline.back().map(|&(_, x, _)| x)
+        Some(u64::from_le_bytes(
+            self.save_states.top()?[0..8].try_into().unwrap(),
+        ))
     }
 
     /// Load the save sate of the last frame in the given `GameBoy`. Returns false if there is no
     /// last frame.
     fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
-        let &(_last_frame, clock_count, range) = if let Some(x) = self.savestate_timeline.back() {
-            x
-        } else {
-            debug_assert!(self.savestate_buffer.is_empty());
+        let Some(last_frame) = self.save_states.top() else {
+            debug_assert!(self.save_states.is_empty());
             return false;
         };
 
-        self.buffer.clear();
-        debug_assert!(self.savestate_buffer.head == range.1);
-        self.savestate_buffer.copy_slice(range, &mut self.buffer);
-
-        {
-            let mut decoder = flate2::read::DeflateDecoder::new(std::io::Cursor::new(&self.buffer));
-            gb.load_state(&mut decoder).unwrap();
-        }
-        debug_assert_eq!(gb.clock_count, clock_count);
+        gb.load_state(&mut &last_frame[12..]).unwrap();
         true
     }
 
     /// Remove the save state of the last frame
     fn pop_last_frame(&mut self) -> bool {
-        let (last_frame, _clock_count, range) = if let Some(x) = self.savestate_timeline.pop_back()
-        {
-            x
-        } else {
-            debug_assert!(self.savestate_buffer.is_empty());
+        let Some(last_frame) = self.save_states.top() else {
+            debug_assert!(self.save_states.is_empty());
             return false;
         };
 
-        self.savestate_buffer.head = range.0;
-        self.current_frame = last_frame;
+        self.current_frame = u32::from_le_bytes(last_frame[8..12].try_into().unwrap());
+
+        self.save_states.pop();
         true
     }
 
     /// Get next joypad and increase the current frame.
     fn next_frame(&mut self, gb: &GameBoy) -> u8 {
-        let joy = if self.current_frame < self.joypad_timeline.len() {
-            self.joypad_timeline[self.current_frame]
+        let joy = if (self.current_frame as usize) < self.joypad_timeline.len() {
+            self.joypad_timeline[self.current_frame as usize]
         } else {
             // if we are several frames behind, fill then with zeros
-            let diff = self.current_frame - self.joypad_timeline.len();
+            let diff = self.current_frame as usize - self.joypad_timeline.len();
             self.joypad_timeline.extend((0..diff).map(|_| 0xff));
 
             self.joypad_timeline.push(self.current_joypad);
@@ -330,9 +315,9 @@ impl Timeline {
         self.current_frame += 1;
         if self.current_frame % 30 == 0 {
             log::trace!(
-                "saved frames: {:3}, free_len: {:4}",
-                self.savestate_timeline.len(),
-                self.savestate_buffer.free_len()
+                "saved frames: {:3}",
+                self.save_states.count(),
+                // self.save_states.free_len()
             );
         }
         joy
@@ -421,7 +406,7 @@ impl Emulator {
             gb.clock_count
         };
         let frame_clock_count = 154 * 456;
-        let current_frame = (clock_count / frame_clock_count) as usize;
+        let current_frame = (clock_count / frame_clock_count) as u32;
         const BOOT_FRAMES: u64 = 23_384_580 / (154 * 456);
         let joypad_timeline = movie.map_or(Vec::new(), |m| {
             (0..BOOT_FRAMES)

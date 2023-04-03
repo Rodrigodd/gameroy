@@ -29,6 +29,19 @@ impl DiffStack {
         self.count = 0;
     }
 
+    pub fn top(&self) -> Option<&[u8]> {
+        if self.is_empty() {
+            return None;
+        }
+        let top_len = {
+            let len = &self.buffer[self.top - 4..self.top];
+            u32::from_le_bytes(len.try_into().unwrap()) as usize
+        };
+        let top_elem_pos = self.top - 4 - top_len;
+        let top = &self.buffer[top_elem_pos..self.top - 4];
+        Some(top)
+    }
+
     pub fn push(&mut self, new_elem: &[u8]) -> bool {
         let free_pos = self.top;
         let (buffer, free) = self.buffer.split_at_mut(free_pos);
@@ -69,7 +82,7 @@ impl DiffStack {
         true
     }
 
-    pub fn pop(&mut self, out: &mut impl Write) -> bool {
+    pub fn pop(&mut self) -> bool {
         let free_pos = self.top;
         let (buffer, free) = self.buffer.split_at_mut(free_pos);
 
@@ -103,15 +116,11 @@ impl DiffStack {
                 Err(err) => return false,
             };
 
-            out.write_all(top_elem).unwrap();
-
             self.buffer
                 .copy_within(free_pos..free_pos + undiff_len, self.top);
             self.top += undiff_len;
             self.buffer[self.top..][..4].copy_from_slice(&(undiff_len as u32).to_le_bytes());
             self.top += 4;
-        } else {
-            out.write_all(top_elem).unwrap();
         }
 
         self.count -= 1;
@@ -303,7 +312,6 @@ mod test {
 
     #[test]
     fn fuzz_push_pop() {
-        let mut a_ = Vec::new();
         let mut buf = vec![0; 0x2000];
         let mut d = Vec::new();
         let mut pos = 0;
@@ -340,8 +348,6 @@ mod test {
             }
 
             for _ in (0..count).rev() {
-                a_.clear();
-                assert!(diff_stack.pop(&mut a_));
                 let a = {
                     let e = pos;
                     let s = d.pop().unwrap();
@@ -349,7 +355,8 @@ mod test {
                     &buf[s..e]
                 };
 
-                assert_eq!(a, a_);
+                assert_eq!(a, diff_stack.top().unwrap());
+                assert!(diff_stack.pop());
             }
         }
     }

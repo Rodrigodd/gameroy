@@ -69,13 +69,13 @@ impl<'a> BlockCompiler<'a> {
 
     /// Update self.pc to the next instruction
     pub fn compile_block(mut self) -> Block {
-        println!(
-            "compiling {:02x}_{:04x} (len: {}, cycles: {})",
-            self.gb.cartridge.curr_bank(),
-            self.pc,
-            self.length,
-            self.max_clock_cycles,
-        );
+        // println!(
+        //     "compiling {:02x}_{:04x} (len: {}, cycles: {})",
+        //     self.gb.cartridge.curr_bank(),
+        //     self.pc,
+        //     self.length,
+        //     self.max_clock_cycles,
+        // );
         let mut ops: dynasmrt::VecAssembler<X64Relocation> = dynasmrt::VecAssembler::new(0);
 
         let push_rbp_offset;

@@ -43,11 +43,6 @@ impl DiffStack {
                 Err(_) => return false,
             };
 
-            println!(
-                "diff_len {diff_len}: {:?}",
-                &self.buffer[free_pos..free_pos + diff_len]
-            );
-
             self.buffer
                 .copy_within(free_pos..free_pos + diff_len, self.top);
 
@@ -56,28 +51,16 @@ impl DiffStack {
             self.top += 4;
         }
 
-        dbg!(self.top);
-
         self.buffer[self.top..][..new_elem.len()].copy_from_slice(new_elem);
-
-        println!(
-            "new_len {}: {:?}",
-            new_elem.len(),
-            &self.buffer[self.top..self.top + new_elem.len()]
-        );
 
         self.top += new_elem.len();
         self.buffer[self.top..][..4].copy_from_slice(&(new_elem.len() as u32).to_le_bytes());
         self.top += 4;
 
-        dbg!(self.top);
-
         true
     }
 
     pub fn pop(&mut self, out: &mut impl Write) -> bool {
-        dbg!(self.top);
-
         let free_pos = self.top;
         let (buffer, free) = self.buffer.split_at_mut(free_pos);
 
@@ -93,8 +76,6 @@ impl DiffStack {
 
         self.top -= top_len;
 
-        println!("top_len {top_len}: {top_elem:?}");
-
         if self.top > 0 {
             let prev_len = {
                 let len = &buffer[self.top - 4..self.top];
@@ -108,25 +89,15 @@ impl DiffStack {
 
             self.top -= prev_len;
 
-            println!("prev_len {prev_len}: {prev_elem:?}");
-
             let undiff_len = match delta_decompress(top_elem, prev_elem, &mut &mut free[..]) {
                 Ok(len) => len,
-                Err(err) => {
-                    dbg!(err);
-                    return false;
-                }
+                Err(err) => return false,
             };
 
             out.write_all(top_elem).unwrap();
 
             self.buffer
                 .copy_within(free_pos..free_pos + undiff_len, self.top);
-            println!(
-                "undiff_len {}: {:?}",
-                undiff_len,
-                &self.buffer[self.top..][..undiff_len]
-            );
             self.top += undiff_len;
             self.buffer[self.top..][..4].copy_from_slice(&(undiff_len as u32).to_le_bytes());
             self.top += 4;

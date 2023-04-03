@@ -29,6 +29,10 @@ impl DiffStack {
         self.count = 0;
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.top == 0
+    }
+
     pub fn top(&self) -> Option<&[u8]> {
         if self.is_empty() {
             return None;
@@ -37,16 +41,17 @@ impl DiffStack {
             let len = &self.buffer[self.top - 4..self.top];
             u32::from_le_bytes(len.try_into().unwrap()) as usize
         };
+
         let top_elem_pos = self.top - 4 - top_len;
         let top = &self.buffer[top_elem_pos..self.top - 4];
         Some(top)
     }
 
     pub fn push(&mut self, new_elem: &[u8]) -> bool {
-        let free_pos = self.top;
-        let (buffer, free) = self.buffer.split_at_mut(free_pos);
+        if !self.is_empty() {
+            let free_pos = self.top;
+            let (buffer, free) = self.buffer.split_at_mut(free_pos);
 
-        if self.top > 0 {
             let top_len = {
                 let len = &buffer[self.top - 4..self.top];
                 u32::from_le_bytes(len.try_into().unwrap()) as usize

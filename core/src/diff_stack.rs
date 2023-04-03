@@ -7,6 +7,7 @@ use std::io::Write;
 pub struct DiffStack {
     buffer: Box<[u8]>,
     top: usize,
+    count: usize,
 }
 
 impl DiffStack {
@@ -14,11 +15,18 @@ impl DiffStack {
         Self {
             buffer: vec![0; capacity].into_boxed_slice(),
             top: 0,
+            count: 0,
         }
+    }
+
+    /// The number of elements stored.
+    pub fn count(&self) -> usize {
+        self.count
     }
 
     pub fn clear(&mut self) {
         self.top = 0;
+        self.count = 0;
     }
 
     pub fn push(&mut self, new_elem: &[u8]) -> bool {
@@ -57,6 +65,7 @@ impl DiffStack {
         self.buffer[self.top..][..4].copy_from_slice(&(new_elem.len() as u32).to_le_bytes());
         self.top += 4;
 
+        self.count += 1;
         true
     }
 
@@ -105,6 +114,7 @@ impl DiffStack {
             out.write_all(top_elem).unwrap();
         }
 
+        self.count -= 1;
         true
     }
 }

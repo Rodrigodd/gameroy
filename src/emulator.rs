@@ -224,6 +224,10 @@ struct Timeline {
 
     /// A stack of save-states delta-compressed.
     save_states: DiffStack,
+    /// A second stack of save-states delta-compressed. Used to clear half of the save-states when
+    /// the stacks become full.
+    /// TODO: replace this by implementing a CircularBuffer in the DiffStack.
+    save_states2: DiffStack,
 
     /// Current pressed keys by the user
     current_joypad: u8,
@@ -243,7 +247,8 @@ impl Timeline {
             buffer: Vec::with_capacity(64 * kib),
             current_frame,
             joypad_timeline,
-            save_states: DiffStack::new(32 * mib),
+            save_states: DiffStack::new(16 * mib),
+            save_states2: DiffStack::new(16 * mib),
             current_joypad: 0xff,
             rewinding: false,
         }
@@ -262,6 +267,8 @@ impl Timeline {
         }
         // println!("{:.3} KiB", (self.buffer.len() as f32) * 2f32.powi(-10));
         if !self.save_states.push(&self.buffer) {
+            std::mem::swap(&mut self.save_states, &mut self.save_states2);
+
             println!("cleared after {} frames", self.save_states.count());
             self.save_states.clear();
             self.save_states.push(&self.buffer);
@@ -296,6 +303,10 @@ impl Timeline {
         self.current_frame = u32::from_le_bytes(last_frame[8..12].try_into().unwrap());
 
         self.save_states.pop();
+        if self.save_states.is_empty() {
+            std::mem::swap(&mut self.save_states, &mut self.save_states2);
+        }
+
         true
     }
 

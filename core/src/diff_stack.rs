@@ -50,6 +50,7 @@ impl DiffStack {
     pub fn push(&mut self, new_elem: &[u8]) -> bool {
         if !self.is_empty() {
             let free_pos = self.top;
+            let mut top = self.top;
             let (buffer, free) = self.buffer.split_at_mut(free_pos);
 
             let top_len = {
@@ -57,17 +58,25 @@ impl DiffStack {
                 u32::from_le_bytes(len.try_into().unwrap()) as usize
             };
 
-            self.top -= 4;
+            top -= 4;
 
-            let top_elem_pos = self.top - top_len;
-            let top_elem = &buffer[top_elem_pos..self.top];
+            let top_elem_pos = top - top_len;
+            let top_elem = &buffer[top_elem_pos..top];
 
-            self.top -= top_len;
+            top -= top_len;
 
             let diff_len = match delta_compress(new_elem, top_elem, &mut &mut free[..]) {
                 Ok(len) => len,
                 Err(_) => return false,
             };
+
+            // Check if there is run for storing the new_elem, and a extra space for decompressing
+            // the previous element on pop.
+            if top + diff_len + 4 + new_elem.len() + 4 + top_len > self.buffer.len() {
+                return false;
+            }
+
+            self.top = top;
 
             self.buffer
                 .copy_within(free_pos..free_pos + diff_len, self.top);
@@ -75,6 +84,11 @@ impl DiffStack {
             self.top += diff_len;
             self.buffer[self.top..][..4].copy_from_slice(&(diff_len as u32).to_le_bytes());
             self.top += 4;
+        } else {
+            // Check if there is run for storing the new_elem.
+            if self.top + new_elem.len() + 4 > self.buffer.len() {
+                return false;
+            }
         }
 
         self.buffer[self.top..][..new_elem.len()].copy_from_slice(new_elem);
@@ -116,13 +130,11 @@ impl DiffStack {
 
             self.top -= prev_len;
 
-            let undiff_len = match delta_decompress(top_elem, prev_elem, &mut &mut free[..]) {
-                Ok(len) => len,
-                Err(err) => return false,
-            };
+            // Can unwrap here, because the compressed data should be valid, and there should be
+            // enough free space for the decompression. Both are garanted on push.
+            let undiff_len = delta_decompress(top_elem, prev_elem, &mut &mut free[..]).unwrap();
 
-            self.buffer
-                .copy_within(free_pos..free_pos + undiff_len, self.top);
+            buffer[self.top..][..undiff_len].copy_from_slice(&free[..undiff_len]);
             self.top += undiff_len;
             self.buffer[self.top..][..4].copy_from_slice(&(undiff_len as u32).to_le_bytes());
             self.top += 4;

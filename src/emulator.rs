@@ -149,6 +149,10 @@ struct CircularBuffer {
     /// Next byte to read from. First byte of the used area.
     tail: usize,
 }
+
+// This code is not being used anymore, but may be useful when implementing a circular buffer in
+// DiffStack.
+#[allow(dead_code)]
 impl CircularBuffer {
     fn new(capacity: usize) -> Self {
         Self {

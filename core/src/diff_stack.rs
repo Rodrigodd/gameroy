@@ -317,28 +317,32 @@ mod test {
 
     #[test]
     fn fuzz_push_pop() {
-        let mut buf = vec![0; 0x2000];
+        let mut buf = vec![0; 0x40_0000];
         let mut d = Vec::new();
         let mut pos = 0;
         let mut thread_rng = rand::thread_rng();
 
-        let mut diff_stack = DiffStack::new(0x4000);
+        let mut diff_stack = DiffStack::new(0x1_0000);
 
         let start = std::time::Instant::now();
+        let mut tries = 0;
+        let mut overflow = 0;
         while start.elapsed().as_secs() < 20 {
             let seed: u64 = thread_rng.gen();
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 
-            let mut count = rng.gen_range(0.0f64..8.0).exp2() as usize;
+            let mut count = rng.gen_range(0.0f64..5.0).exp2() as usize;
 
-            println!("seed 0x{:016x} count {count}", seed);
+            println!("seed 0x{:016x}", seed);
 
             diff_stack.clear();
 
+            tries += 1;
+
             for i in 0..count {
                 let a = {
-                    let len = rng.gen_range(0.0f64..8.0).exp2() as usize;
-                    if pos + len > 0x2000 {
+                    let len = rng.gen_range(0.0f64..16.1).exp2() as usize;
+                    if pos + len > buf.len() {
                         count = i;
                         break;
                     }
@@ -349,7 +353,12 @@ mod test {
                     a
                 };
 
-                assert!(diff_stack.push(a));
+                if !diff_stack.push(a) {
+                    pos = d.pop().unwrap();
+                    overflow += 1;
+                    count = i;
+                    break;
+                }
             }
 
             for _ in (0..count).rev() {
@@ -364,5 +373,7 @@ mod test {
                 assert!(diff_stack.pop());
             }
         }
+
+        println!("overflows: {}%", overflow as f64 / tries as f64 * 100.0);
     }
 }

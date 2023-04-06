@@ -203,6 +203,17 @@ impl Cartridge {
             Ok(x) | Err((Some(x), _)) => x,
             Err((None, err)) => return Err(err),
         };
+
+        let rom_size = header.rom_size_in_bytes()?;
+
+        if rom_size != rom.len() {
+            return Err(format!(
+                "In the rom header the expected size is '{}' bytes, but the given rom has '{}' bytes",
+                rom_size,
+                rom.len()
+            ));
+        }
+
         // Cartridge Type
         let mbc_kind = header.cartridge_type;
         let mbc = match mbc_kind {
@@ -239,16 +250,6 @@ impl Cartridge {
             }
         };
 
-        let rom_size = header.rom_size_in_bytes()?;
-
-        if rom_size != rom.len() {
-            return Err(format!(
-                "In the rom header the expected size is '{}' bytes, but the given rom has '{}' bytes",
-                rom_size,
-                rom.len()
-            ));
-        }
-
         let ram_sizes = [
             0,
             0x800,
@@ -258,6 +259,7 @@ impl Cartridge {
             8 * 0x2000,
         ];
         let ram_size_type = header.ram_size;
+
         let ram_size = if let Mbc::Mbc2(_) = mbc {
             if ram_size_type != 0 {
                 return Err(format!("Cartridge use MBC2, with a integrated ram (type '00'), but report the ram type '{:02x}'", ram_size_type));

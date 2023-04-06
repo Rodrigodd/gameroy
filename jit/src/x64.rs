@@ -4,6 +4,7 @@ use dynasmrt::{
 };
 
 use gameroy::{
+    consts,
     gameboy::{
         cartridge::Cartridge,
         cpu::{Cpu, CpuState, ImeState},
@@ -40,6 +41,9 @@ struct Instr {
     bank: u16,
     label: DynamicLabel,
     curr_clock_count: u32,
+    /// Bitmask of flags set by this isntruction that will be observed by future instructions. In
+    /// the format 0b0000ZNHC.
+    used_flags: u8,
 }
 
 pub struct BlockCompiler<'gb> {
@@ -111,9 +115,12 @@ impl<'a> BlockCompiler<'a> {
                     pc,
                     bank,
                     curr_clock_count,
+                    used_flags: 0xf,
                 },
             )
             .collect();
+
+        self.flags_analysis();
 
         let push_rbp_offset;
         let push_rbx_offset;
@@ -274,6 +281,35 @@ impl<'a> BlockCompiler<'a> {
             ;; self.exit_block(ops)
             ;check_skip_exit:
         );
+    }
+
+    /// Analyzes which flag writes are observable.
+    pub fn flags_analysis(&mut self) {
+        // the analisis goes from end to start.
+
+        // on block exit, all flags can be observed.
+        let mut observed_flags = 0b1111;
+
+        for instr in self.instrs.iter_mut().rev() {
+            let (set_flags, read_flags) = if instr.op[0] == 0xcb {
+                (
+                    consts::CB_WRITE_FLAG[instr.op[1] as usize],
+                    consts::CB_READ_FLAG[instr.op[1] as usize],
+                )
+            } else {
+                (
+                    consts::WRITE_FLAG[instr.op[0] as usize],
+                    consts::READ_FLAG[instr.op[0] as usize],
+                )
+            };
+
+            instr.used_flags = observed_flags & set_flags;
+
+            // if a instruction set a flag, previous flag-writes are not observable.
+            observed_flags &= !set_flags;
+            // if a instruction reads a flag, previous flag-writes are observable.
+            observed_flags |= read_flags;
+        }
     }
 
     fn update_clock_count(&mut self, ops: &mut VecAssembler<X64Relocation>) {

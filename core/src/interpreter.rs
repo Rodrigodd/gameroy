@@ -1570,8 +1570,6 @@ impl Interpreter<'_> {
 
     pub fn load16(&mut self, dst: Reg16, src: Reg16) {
         let v = match src {
-            Reg16::BC => self.0.cpu.bc(),
-            Reg16::DE => self.0.cpu.de(),
             Reg16::HL => self.0.cpu.hl(),
             Reg16::SP => self.0.cpu.sp,
             Reg16::Im16 => self.read_next_pc16(),

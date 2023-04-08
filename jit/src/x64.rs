@@ -1371,7 +1371,7 @@ impl<'a> BlockCompiler<'a> {
                             ; mov WORD [rbx + dst_offset as i32], value as i16
                         );
                     }
-                    Reg16::BC | Reg16::DE | Reg16::HL => {
+                    Reg16::HL => {
                         if dst == Reg16::SP && src == Reg16::HL {
                             self.tick(4);
                         }

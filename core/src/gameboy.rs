@@ -261,7 +261,7 @@ impl GameBoy {
         self.joypad_io = 0xCF;
         self.serial.get_mut().reset();
         self.timer = Timer::after_boot(self.clock_count).into();
-        self.interrupt_flag = 0xE1.into();
+        self.interrupt_flag = 0.into();
         self.sound
             .get_mut()
             .load_state(ctx, &mut &include_bytes!("../after_boot/sound.sav")[..])

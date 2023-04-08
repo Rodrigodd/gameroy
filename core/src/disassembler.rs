@@ -35,7 +35,6 @@ impl Address {
             "address {:04x} is out of rom address range",
             address
         );
-        // assert!((bank == 0) == (address <= 0x3FFF));
         Self { bank, address }
     }
 
@@ -46,7 +45,6 @@ impl Address {
                 Some(Self::new(cart.bank0_from_bank(bank), address))
             } else if (0x4000..=0x7FFF).contains(&address) {
                 // it is in the switchable bank
-                assert!(bank != 0);
                 Some(Self::new(bank, address - 0x4000))
             } else {
                 // it isn't in the rom

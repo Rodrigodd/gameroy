@@ -545,7 +545,7 @@ impl Mbc1 {
         debug_assert!(bank & 0x1F != 0);
 
         // mask upper bits if the bank is out of bounds
-        (bank as usize % (rom.len() / 0x4000) as usize) as u16
+        (bank as usize % (rom.len() / 0x4000)) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -1141,7 +1141,7 @@ impl Mbc5 {
         match address {
             // ROM Bank 00
             0x0000..=0x3FFF => rom[address as usize],
-            // ROM Bank 01-0F
+            // ROM Bank 00-1FF
             0x4000..=0x7FFF => {
                 let bank = self.curr_bank(rom);
 

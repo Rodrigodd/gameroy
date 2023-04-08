@@ -3,7 +3,7 @@
 use libfuzzer_sys::fuzz_target;
 
 use gameroy::{
-    consts::{CLOCK_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH},
+    consts::CLOCK_SPEED,
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
 };

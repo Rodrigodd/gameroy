@@ -539,14 +539,13 @@ impl Mbc1 {
     }
 
     fn curr_bank(&self, rom: &[u8]) -> u16 {
-        let mut bank = self.selected_bank;
+        let bank = self.selected_bank;
 
         // cannot adress a bank where the 5-bit bank register is 0
         debug_assert!(bank & 0x1F != 0);
 
         // mask upper bits if the bank is out of bounds
-        bank %= (rom.len() / 0x4000) as u8;
-        bank as u16
+        (bank as usize % (rom.len() / 0x4000) as usize) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -697,11 +696,10 @@ impl Mbc1M {
     }
 
     fn curr_bank(&self, rom: &[u8]) -> u16 {
-        let mut bank = self.selected_bank;
+        let bank = self.selected_bank;
 
         // mask upper bits if the bank is out of bounds
-        bank %= (rom.len() / 0x4000) as u8;
-        bank as u16
+        (bank as usize % (rom.len() / 0x4000)) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -848,7 +846,7 @@ impl Mbc2 {
     }
     fn curr_bank(&self, rom: &[u8]) -> u16 {
         debug_assert!(self.selected_bank != 0);
-        (self.selected_bank % (rom.len() / 0x4000) as u8) as u16
+        (self.selected_bank as usize % (rom.len() / 0x4000)) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
@@ -956,14 +954,13 @@ impl Mbc3 {
     }
 
     fn curr_bank(&self, rom: &[u8]) -> u16 {
-        let mut bank = self.selected_bank;
+        let bank = self.selected_bank;
 
         // cannot adress a bank where the 7-bit bank register is 0
         debug_assert!(bank != 0);
 
         // mask upper bits if the bank is out of bounds
-        bank %= (rom.len() / 0x4000) as u8;
-        bank as u16
+        (bank as usize % (rom.len() / 0x4000)) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -1137,7 +1134,7 @@ impl Mbc5 {
         }
     }
     fn curr_bank(&self, rom: &[u8]) -> u16 {
-        self.selected_bank % (rom.len() / 0x4000) as u16
+        (self.selected_bank as usize % (rom.len() / 0x4000)) as u16
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {

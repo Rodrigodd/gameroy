@@ -1453,7 +1453,7 @@ impl Interpreter<'_> {
         let c = self.check_condition(c);
         let r8 = self.read_next_pc() as i8;
         if c {
-            let pc = (self.0.cpu.pc as i16 + r8 as i16) as u16;
+            let pc = self.0.cpu.pc.wrapping_add_signed(r8 as i16);
             self.jump_to(pc);
             self.0.tick(4); // Extra 1 M-cycle for jump
         }

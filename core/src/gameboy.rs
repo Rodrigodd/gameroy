@@ -310,7 +310,10 @@ impl GameBoy {
             address -= 0x2000;
         }
 
-        if self.ppu.get_mut().dma_running && self.dma as u16 == address >> 8 {
+        // When writing to the ppu, the ppu will already be updated, but with a special timing.
+        let will_write_ppu =
+            (0xff40..=0xff45).contains(&address) || (0xff47..=0xff4b).contains(&address);
+        if !will_write_ppu && self.ppu.get_mut().dma_running && self.dma as u16 == address >> 8 {
             self.update_ppu();
         }
 

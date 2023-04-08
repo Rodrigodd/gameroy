@@ -1871,7 +1871,7 @@ impl Interpreter<'_> {
             h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
             r = add16(self.0.cpu.sp, r8 as u16);
         } else {
-            r = sub16(self.0.cpu.sp, -r8 as u16);
+            r = self.0.cpu.sp.wrapping_add_signed(r8 as i16);
             c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
             h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
         }
@@ -2013,7 +2013,7 @@ impl Interpreter<'_> {
             h = ((self.0.cpu.sp & 0x0F) as u8 + (r8 as u8 & 0xF)) > 0x0F;
             r = add16(self.0.cpu.sp, r8 as u16);
         } else {
-            r = sub16(self.0.cpu.sp, -r8 as u16);
+            r = self.0.cpu.sp.wrapping_add_signed(r8 as i16);
             c = (r & 0xFF) <= (self.0.cpu.sp & 0xFF);
             h = (r & 0x0F) <= (self.0.cpu.sp & 0x0F);
         }

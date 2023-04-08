@@ -654,6 +654,15 @@ impl Interpreter<'_> {
                     self.0.tick(4); // 1 M-cycle with SP in address buss
                     self.0.write(sub16(self.0.cpu.sp, 1), msb);
 
+                    // NOTE: In this code we are doing two writes, and between them checking for
+                    // interrupts. However write to PPU have some weird timings (involving
+                    // time-travel), that makes necessary to always be some ticks between a write
+                    // and a ppu update.
+                    // As I don't know the precise timing of the interrupt read, I am updating the
+                    // interrupt (that in turn update the ppu) 2 cycles after the last write, and 2
+                    // cycles before the next one. This is enough to satify the weird timing needs.
+                    self.0.tick(2); // 1 M-cycle with SP-1 in address buss
+
                     self.0.update_interrupt();
                     if self.0.interrupt_flag.get() & self.0.interrupt_enabled != 0 {
                         interrupt = (self.0.interrupt_flag.get() & self.0.interrupt_enabled)
@@ -666,7 +675,9 @@ impl Interpreter<'_> {
                             0x60, // Joypad
                         ][interrupt];
                     }
-                    self.0.tick(4); // 1 M-cycle with SP-1 in address buss
+
+                    self.0.tick(2); // 1 M-cycle with SP-1 in address buss
+
                     self.0.write(sub16(self.0.cpu.sp, 2), lsb);
                     self.0.tick(4); // 1 M-cycle with SP-2 in address buss
                     self.0.cpu.sp = sub16(self.0.cpu.sp, 2);

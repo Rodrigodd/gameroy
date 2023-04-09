@@ -65,6 +65,12 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
             Some(step) if step.pc < 0x4000 || step.bank == Some(bank) => step,
             _ => break,
         };
+
+        let (op, len) = step.get_op(gb);
+        if step.pc + len as u16 > 0x8000 {
+            break;
+        }
+
         cursors.push(step);
 
         if jump.is_some() || [0x10, 0x76, 0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {

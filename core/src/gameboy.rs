@@ -296,12 +296,8 @@ impl GameBoy {
             0xFE00..=0xFE9F => Ppu::read_oam(self, address),
             // Not Usable
             0xFEA0..=0xFEFF => 0xff,
-            // I/O registers
-            0xFF00..=0xFF7F => self.read_io(address as u8),
-            // Hight RAM
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
-            // IE Register
-            0xFFFF => self.read_io(address as u8),
+            // I/O registers and Hight RAM
+            0xFF00..=0xFFFF => self.read_io(address as u8),
         }
     }
 
@@ -332,12 +328,8 @@ impl GameBoy {
             0xFE00..=0xFE9F => Ppu::write_oam(self, address, value),
             // Not Usable
             0xFEA0..=0xFEFF => {}
-            // I/O registers
-            0xFF00..=0xFF7F => self.write_io(address as u8, value),
-            // Hight RAM
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
-            // IE Register
-            0xFFFF => self.write_io(address as u8, value),
+            // I/O registers and High RAM
+            0xFF00..=0xFFFF => self.write_io(address as u8, value),
         }
     }
 
@@ -511,10 +503,7 @@ impl GameBoy {
             0x4e..=0x4f => 0xff,
             0x50 => 0xff,
             0x51..=0x7F => 0xff,
-            0x80..=0xfe => {
-                // high RAM, IF flag and IE flag
-                self.hram[address as usize - 0x80]
-            }
+            0x80..=0xfe => self.hram[address as usize - 0x80],
             0xff => self.interrupt_enabled,
         }
     }

@@ -603,6 +603,7 @@ pub fn compute_step(
                         None,
                     )
                 }
+                (None, 0x0000..=0x7FFF) => (None, None),
                 _ => (
                     Some(Cursor {
                         bank0,

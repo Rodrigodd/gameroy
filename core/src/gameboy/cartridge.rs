@@ -387,6 +387,11 @@ impl Cartridge {
                     };
                     (previous_bank & 0x60) | (value & 0x1F) as u16
                 }
+                // RAM Bank Number - or - Upper Bits of ROM Bank Number
+                0x4000..=0x5FFF => {
+                    // only higher 2 bits are written
+                    (previous_bank & 0x1F) | ((value as u16 & 0x3) << 5)
+                }
                 _ => previous_bank,
             },
             Mbc::Mbc1M(_) => match address {

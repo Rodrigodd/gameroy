@@ -10,7 +10,7 @@ use gameroy::{
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
-use crate::{trace_a_block, Block};
+use crate::{trace_a_block, Block, Instr};
 
 macro_rules! offset {
     (@ $parent:path, $field:tt) => {
@@ -35,11 +35,17 @@ pub struct BlockCompiler<'gb> {
     gb: &'gb GameBoy,
     /// The value of PC for the current instruction
     pc: u16,
+
+    /// The current instruction beign compiled
+    op: [u8; 3],
+
     length: u16,
     /// the accumulated clock count since the last write to GameBoy.clock_count
     accum_clock_count: u32,
     /// The ammount of cycles already compiled since the block start.
     curr_clock_count: u32,
+
+    instrs: Vec<Instr>,
 
     max_clock_cycles: u32,
     /// If the last call to compiled_opcode invoked a gb.write call.
@@ -53,10 +59,12 @@ pub struct BlockCompiler<'gb> {
 
 impl<'a> BlockCompiler<'a> {
     pub fn new(gb: &'a GameBoy) -> Self {
-        let (start, length, max_clock_cycles) = trace_a_block(gb, gb.cpu.pc);
+        let (instrs, length, max_clock_cycles) = trace_a_block(gb, gb.cpu.pc);
         Self {
             gb,
-            pc: start,
+            op: [0; 3],
+            pc: instrs[0].pc,
+            instrs,
             length,
             accum_clock_count: 0,
             curr_clock_count: 0,
@@ -97,11 +105,15 @@ impl<'a> BlockCompiler<'a> {
         );
 
         let start = self.pc;
-        let end = start + self.length;
         let mut last_one_was_compiled = false;
 
-        while self.pc < end {
-            let op = self.gb.read(self.pc);
+        let instrs = std::mem::take(&mut self.instrs);
+        for instr in instrs {
+            assert_eq!(self.pc, instr.pc);
+
+            // let op = self.gb.read(self.pc);
+            self.op = instr.op;
+            let op = instr.op[0];
 
             // if STOP or HALT, fallback to interpreter
             if op == 0x10 || op == 0x76 {
@@ -3064,16 +3076,16 @@ impl<'a> BlockCompiler<'a> {
 
     fn get_immediate(&mut self) -> u8 {
         self.tick(4);
-        let value = self.gb.read(self.pc);
+        let value = self.op[1];
         self.pc += 1;
         value
     }
 
     fn get_immediate16(&mut self) -> u16 {
         self.tick(8);
-        let l = self.gb.read(self.pc);
+        let l = self.op[1];
         self.pc += 1;
-        let h = self.gb.read(self.pc);
+        let h = self.op[2];
         self.pc += 1;
         u16::from_be_bytes([h, l])
     }

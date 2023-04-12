@@ -35,7 +35,12 @@ impl Block {
     }
 }
 
-fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
+struct Instr {
+    op: [u8; 3],
+    pc: u16,
+}
+
+fn trace_a_block(gb: &GameBoy, start_address: u16) -> (Vec<Instr>, u16, u32) {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
@@ -50,6 +55,8 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     let mut max_clock_cycles = 0;
     let mut length = 0;
 
+    let mut instrs = Vec::new();
+
     while let Some(cursor) = cursors.pop() {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
@@ -59,10 +66,14 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
             CLOCK[op[0] as usize] as u32
         };
 
+        instrs.push(Instr { op, pc: cursor.pc });
+
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, &gb.cartridge);
 
         let step = match step {
-            Some(step) if step.pc < 0x4000 || step.bank == Some(bank) => step,
+            Some(step) if step.pc < 0x4000 && step.bank0 == bank.0 || step.bank == Some(bank.1) => {
+                step
+            }
             _ => break,
         };
 
@@ -81,7 +92,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (u16, u16, u32) {
     // in case any of the instructions branches.
     max_clock_cycles += 12;
 
-    (start_address, length, max_clock_cycles)
+    (instrs, length, max_clock_cycles)
 }
 
 pub struct NoHashHasher(u64);

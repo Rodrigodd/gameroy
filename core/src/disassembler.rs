@@ -38,24 +38,21 @@ impl Address {
         Self { bank, address }
     }
 
-    pub fn from_pc(bank: Option<u16>, address: u16, cart: &Cartridge) -> Option<Self> {
-        if let Some(bank) = bank {
-            if address <= 0x3FFF {
-                // it is in the main bank
-                Some(Self::new(cart.bank0_from_bank(bank), address))
-            } else if (0x4000..=0x7FFF).contains(&address) {
-                // it is in the switchable bank
-                Some(Self::new(bank, address - 0x4000))
-            } else {
-                // it isn't in the rom
-                None
-            }
-        } else if address <= 0x3FFF {
-            // it is in the main bank
-            Some(Self::new(0, address))
-        } else {
-            // it isn't in the rom or the bank is unknow.
-            None
+    pub fn from_pc(
+        banks: (impl Into<Option<u16>>, impl Into<Option<u16>>),
+        pc: u16,
+    ) -> Option<Self> {
+        let banks = (banks.0.into(), banks.1.into());
+        match pc {
+            // lower bank
+            0x0000..=0x3FFF => banks.0.map(|bank| Self { bank, address: pc }),
+            // upper bank
+            0x4000..=0x7FFF => banks.1.map(|bank| Self {
+                bank,
+                address: pc - 0x4000,
+            }),
+            // out of ROM
+            _ => None,
         }
     }
 
@@ -75,6 +72,13 @@ impl Address {
             pc,
             reg_a: None,
         }
+    }
+
+    fn from_cursor(jump: &Cursor) -> Option<Self> {
+        let &Cursor {
+            bank0, bank, pc, ..
+        } = jump;
+        Self::from_pc((bank0, bank), pc)
     }
 }
 
@@ -106,7 +110,7 @@ pub struct Cursor {
 impl Cursor {
     /// Return the opcode, and the length
     pub fn get_op(&self, rom: &GameBoy) -> ([u8; 3], u8) {
-        let bank = self.bank.unwrap_or(0);
+        let bank = self.bank.unwrap_or(self.bank0);
 
         let read_pc = |of| {
             if self.pc.wrapping_add(of) < 0x7FFF {
@@ -144,13 +148,6 @@ pub struct Trace {
     pub labels: BTreeMap<Address, Label>,
     /// Map from a opcode (like jp or call) to another address
     pub jumps: BTreeMap<Address, Address>,
-
-    /// Ranges of ram memory where code is being executed
-    pub ram_code_ranges: Vec<Range<u16>>,
-    /// Disassembled directives in ram
-    pub ram_directives: BTreeSet<(u16, [u8; 3], u8)>,
-    /// Map between a ram address and a label
-    pub ram_labels: BTreeMap<u16, String>,
 }
 impl Default for Trace {
     fn default() -> Self {
@@ -164,22 +161,22 @@ impl Trace {
             code_ranges: Vec::new(),
             labels: Default::default(),
             jumps: Default::default(),
-            ram_code_ranges: Vec::new(),
-            ram_directives: BTreeSet::new(),
-            ram_labels: BTreeMap::new(),
         }
     }
 
     /// Disassembly some opcodes above and below, respecting `code_ranges`
     pub fn print_around(
         &mut self,
-        bank: u16,
-        curr: u16,
+        banks: (u16, u16),
+        pc: u16,
         rom: &GameBoy,
         w: &mut impl Write,
     ) -> fmt::Result {
-        self.trace_starting_at(rom, bank, curr, None);
-        let curr_range = match self.get_curr_code_range(bank, curr, &rom.cartridge) {
+        self.trace_starting_at(rom, banks, pc, None);
+
+        let curr = Address::from_pc(banks, pc).unwrap();
+
+        let curr_range = match self.get_curr_code_range(curr) {
             Some(x) => x,
             None => return writeln!(w, "Outside ROM..."),
         };
@@ -190,7 +187,6 @@ impl Trace {
         let mut i = 0;
         let mut c = 0;
         let mut pc = curr_range.start;
-        let curr = Address::from_pc(Some(bank), curr, &rom.cartridge).unwrap();
         while pc < curr {
             queue[i] = pc;
             i = (i + 1) % LOOK_ABOVE as usize;
@@ -243,29 +239,30 @@ impl Trace {
         Ok(())
     }
 
-    pub fn is_already_traced(&self, bank: u16, start: u16, cart: &Cartridge) -> bool {
-        start > 0x7FFF || self.get_curr_code_range(bank, start, cart).is_some()
+    pub fn is_already_traced(&self, address: Address) -> bool {
+        self.get_curr_code_range(address).is_some()
     }
 
     pub fn trace_starting_at(
         &mut self,
         gameboy: &GameBoy,
-        bank: u16,
+        banks: (u16, u16),
         start: u16,
         label: Option<String>,
     ) {
-        let cursor = Cursor {
-            bank0: gameboy.cartridge.bank0_from_bank(bank),
-            bank: Some(bank),
-            pc: start,
-            reg_a: None,
-        };
-
         if let Some(label) = label {
-            if let Some(x) = self.add_label(cursor.bank, start, &gameboy.cartridge) {
+            let address = Address::from_pc(banks, start).unwrap();
+            if let Some(x) = self.add_label(address) {
                 x.name = label
             }
         }
+
+        let cursor = Cursor {
+            bank0: banks.0,
+            bank: Some(banks.1),
+            pc: start,
+            reg_a: None,
+        };
 
         let mut cursors = vec![cursor];
         while !cursors.is_empty() {
@@ -273,8 +270,7 @@ impl Trace {
         }
     }
 
-    fn get_curr_code_range(&self, bank: u16, pc: u16, cart: &Cartridge) -> Option<Range<Address>> {
-        let address = Address::from_pc(Some(bank), pc, cart)?;
+    fn get_curr_code_range(&self, address: Address) -> Option<Range<Address>> {
         self.code_ranges
             .binary_search_by(|range| {
                 use std::cmp::Ordering;
@@ -335,70 +331,16 @@ impl Trace {
         }
     }
 
-    /// Every time that the code jumps out of ram, the ram disassembly is cleared because the ram
-    /// code could have changed (and I am not keeping track of the changes).
-    pub fn clear_ram_trace(&mut self) {
-        self.ram_directives.clear();
-        self.ram_code_ranges.clear();
+    fn add_label(&mut self, address: Address) -> Option<&mut Label> {
+        Some(
+            self.labels
+                .entry(address)
+                .or_insert_with(|| Label::new(address)),
+        )
     }
 
-    /// Insert a opcode to `Self::ram_code_ranges`.
-    /// Return true if the opcode was not added before.
-    fn add_ram_opcode(&mut self, address: u16, op_array: [u8; 3], len: u8) -> bool {
-        let i = self.ram_code_ranges.binary_search_by(|range| {
-            use std::cmp::Ordering;
-            if address < range.start {
-                Ordering::Greater
-            } else if address >= range.end {
-                Ordering::Less
-            } else {
-                Ordering::Equal
-            }
-        });
-        match i {
-            Ok(_) => false,
-            Err(i) => {
-                self.ram_directives.insert((address, op_array, len));
-
-                let address_end = address + len as u16;
-                let merge_previous = i > 0 && self.ram_code_ranges[i - 1].end >= address;
-                let merge_next = i + 1 < self.ram_code_ranges.len()
-                    && self.ram_code_ranges[i].start <= address_end;
-
-                if merge_previous && merge_next {
-                    self.ram_code_ranges[i - 1].end = self.ram_code_ranges[i].end;
-                    self.ram_code_ranges.remove(i);
-                } else if merge_previous {
-                    self.ram_code_ranges[i - 1].end = address_end;
-                } else if merge_next {
-                    self.ram_code_ranges[i].start = address;
-                } else {
-                    self.ram_code_ranges.insert(i, address..address_end);
-                }
-                true
-            }
-        }
-    }
-
-    fn add_label(&mut self, bank: Option<u16>, pc: u16, cart: &Cartridge) -> Option<&mut Label> {
-        // the address may not be in the rom
-        match Address::from_pc(bank, pc, cart) {
-            Some(address) => Some(
-                self.labels
-                    .entry(address)
-                    .or_insert_with(|| Label::new(address)),
-            ),
-            None => {
-                self.ram_labels
-                    .entry(pc)
-                    .or_insert_with(|| format!("R{:04x}", pc));
-                None
-            }
-        }
-    }
-
-    fn add_jump(&mut self, from: Address, bank: Option<u16>, pc: u16, cart: &Cartridge) {
-        if let Some(x) = self.add_label(bank, pc, cart) {
+    fn add_jump(&mut self, from: Address, to: Address) {
+        if let Some(x) = self.add_label(to) {
             let to = x.address;
             self.jumps.insert(from, to);
         }
@@ -407,52 +349,23 @@ impl Trace {
     /// Pop a PC from '`cursors`, compute next possible PC values, and push to 'cursors'
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
-        let Cursor { pc, bank, .. } = cursor;
-        match Address::from_pc(bank, pc, &rom.cartridge) {
-            Some(address) => {
-                let (op, len) = cursor.get_op(rom);
+        if let Some(address) = Address::from_cursor(&cursor) {
+            let (op, len) = cursor.get_op(rom);
 
-                if !self.add_opcode(address, &op[0..len as usize], len as u16) {
-                    return;
-                }
-
-                let cursors = &std::cell::RefCell::new(cursors);
-
-                let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
-                cursors.borrow_mut().extend(step);
-
-                let Some(jump) = jump else { return };
-
-                // jumps from rom to ram are ignored
-                if jump.pc > 0x7FFF {
-                    return;
-                }
-                self.add_jump(address, bank, jump.pc, &rom.cartridge);
-                cursors.borrow_mut().push(jump);
+            if !self.add_opcode(address, &op[0..len as usize], len as u16) {
+                return;
             }
-            None => {
-                if pc <= 0x7FFF {
-                    return;
-                }
-                // it is in ram
 
-                let (op, len) = cursor.get_op(rom);
+            let cursors = &std::cell::RefCell::new(cursors);
 
-                if len as u16 > 0xFFFF - pc {
-                    // It is unlikely that is a valid opcode
-                    return;
-                }
+            let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
+            cursors.borrow_mut().extend(step);
 
-                if !self.add_ram_opcode(pc, op, len) {
-                    return;
-                }
+            let Some(jump) = jump else { return };
 
-                let cursors = &std::cell::RefCell::new(cursors);
-
-                let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
-                cursors
-                    .borrow_mut()
-                    .extend([step, jump].into_iter().flatten());
+            if let Some(to) = Address::from_cursor(&jump) {
+                self.add_jump(address, to);
+                cursors.borrow_mut().push(jump);
             }
         }
     }

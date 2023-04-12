@@ -33,12 +33,13 @@ pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, 
     {
         let mut trace = game_boy.trace.borrow_mut();
 
-        trace.trace_starting_at(&game_boy, 0, 0x100, Some("entry point".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x40, Some("RST_0x40".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x48, Some("RST_0x48".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x50, Some("RST_0x50".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x58, Some("RST_0x58".into()));
-        trace.trace_starting_at(&game_boy, 0, 0x60, Some("RST_0x60".into()));
+        let banks = game_boy.cartridge.curr_bank();
+        trace.trace_starting_at(&game_boy, banks, 0x100, Some("entry point".into()));
+        trace.trace_starting_at(&game_boy, banks, 0x40, Some("RST_0x40".into()));
+        trace.trace_starting_at(&game_boy, banks, 0x48, Some("RST_0x48".into()));
+        trace.trace_starting_at(&game_boy, banks, 0x50, Some("RST_0x50".into()));
+        trace.trace_starting_at(&game_boy, banks, 0x58, Some("RST_0x58".into()));
+        trace.trace_starting_at(&game_boy, banks, 0x60, Some("RST_0x60".into()));
     }
     // GameBoy is too big to live on the stack.
     Ok(Box::new(game_boy))

@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use crate::{
     consts,
+    disassembler::Address,
     gameboy::{
         cpu::{CpuState, ImeState},
         GameBoy,
@@ -1418,34 +1419,35 @@ impl Interpreter<'_> {
     }
 
     /// Set the value of the cpu PC, but also update the disassembly tracing
-    pub fn jump_to(&mut self, address: u16) {
-        let pc = self.0.cpu.pc;
-        self.0.cpu.pc = address;
+    pub fn jump_to(&mut self, pc: u16) {
+        self.0.cpu.pc = pc;
 
         // don't trace RAM
-        if address > 0x7FFF {
+        if pc > 0x7FFF {
             return;
         }
 
         let bank = self.0.cartridge.curr_bank();
         let mut trace = self.0.trace.borrow_mut();
 
-        // check early if this address is already traced, and return if it is
-        if address <= 0x7FFF && trace.is_already_traced(bank, address, &self.0.cartridge) {
+        let Some(address) = Address::from_pc(bank, pc) else {
             return;
-        }
+        };
 
-        // NOTE: this block is dead code, but I am keeping it in case I want to trace RAM again.
-        if pc <= 0x7FFF && address > 0x7FFF {
-            // if it is entring the ram, clear its trace, because the ram could have changed
-            trace.clear_ram_trace();
+        // check early if this address is already traced, and return if it is
+        if pc <= 0x7FFF && trace.is_already_traced(address) {
+            return;
         }
 
         trace.trace_starting_at(
             self.0,
             bank,
-            address,
-            Some(format!("L{:02x}_{:04x}", bank, address)),
+            pc,
+            Some(format!(
+                "L{:02x}_{:04x}",
+                if pc <= 0x3FFF { bank.0 } else { bank.1 },
+                pc
+            )),
         );
     }
 

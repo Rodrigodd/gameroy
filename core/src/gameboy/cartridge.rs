@@ -312,10 +312,10 @@ impl Cartridge {
         }
     }
 
-    /// The current selected ROM bank
-    pub fn curr_bank(&self) -> u16 {
+    /// The current pair of ROM banks beign mapped to 0..=3FFF and 4000..=7FFF, respectvely.
+    pub fn curr_bank(&self) -> (u16, u16) {
         match &self.mbc {
-            Mbc::None(_) => 1,
+            Mbc::None(_) => (0, 1),
             Mbc::Mbc1(x) => x.curr_bank(&self.rom),
             Mbc::Mbc1M(x) => x.curr_bank(&self.rom),
             Mbc::Mbc2(x) => x.curr_bank(&self.rom),
@@ -543,14 +543,24 @@ impl Mbc1 {
         }
     }
 
-    fn curr_bank(&self, rom: &[u8]) -> u16 {
+    fn curr_bank(&self, rom: &[u8]) -> (u16, u16) {
         let bank = self.selected_bank;
 
         // cannot adress a bank where the 5-bit bank register is 0
         debug_assert!(bank & 0x1F != 0);
 
-        // mask upper bits if the bank is out of bounds
-        (bank as usize % (rom.len() / 0x4000)) as u16
+        let lower_bank = if self.mode {
+            self.selected_bank & 0x60
+        } else {
+            0
+        };
+
+        let upper_bank = {
+            // mask upper bits if the bank is out of bounds
+            (bank as usize % (rom.len() / 0x4000)) as u16
+        };
+
+        (lower_bank as u16, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -568,7 +578,7 @@ impl Mbc1 {
             }
             // ROM Bank 01-7F
             0x4000..=0x7FFF => {
-                let bank = self.curr_bank(rom);
+                let bank = self.curr_bank(rom).1;
 
                 let address_start = 0x4000 * bank as usize;
                 rom[address as usize - 0x4000 + address_start]
@@ -700,11 +710,24 @@ impl Mbc1M {
         }
     }
 
-    fn curr_bank(&self, rom: &[u8]) -> u16 {
+    fn curr_bank(&self, rom: &[u8]) -> (u16, u16) {
         let bank = self.selected_bank;
 
-        // mask upper bits if the bank is out of bounds
-        (bank as usize % (rom.len() / 0x4000)) as u16
+        // cannot adress a bank where the 5-bit bank register is 0
+        debug_assert!(bank & 0x1F != 0);
+
+        let lower_bank = if self.mode {
+            self.selected_bank & 0x60
+        } else {
+            0
+        };
+
+        let upper_bank = {
+            // mask upper bits if the bank is out of bounds
+            (bank as usize % (rom.len() / 0x4000)) as u16
+        };
+
+        (lower_bank as u16, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -722,7 +745,7 @@ impl Mbc1M {
             }
             // ROM Bank 01-7F
             0x4000..=0x7FFF => {
-                let bank = self.curr_bank(rom);
+                let bank = self.curr_bank(rom).1;
 
                 let address_start = 0x4000 * bank as usize;
                 rom[address as usize - 0x4000 + address_start]
@@ -849,9 +872,12 @@ impl Mbc2 {
             ram_enabled: false,
         }
     }
-    fn curr_bank(&self, rom: &[u8]) -> u16 {
+    fn curr_bank(&self, rom: &[u8]) -> (u16, u16) {
         debug_assert!(self.selected_bank != 0);
-        (self.selected_bank as usize % (rom.len() / 0x4000)) as u16
+        let lower_bank = 0;
+        let upper_bank = (self.selected_bank as usize % (rom.len() / 0x4000)) as u16;
+
+        (lower_bank, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
@@ -860,7 +886,7 @@ impl Mbc2 {
             0x0000..=0x3FFF => rom[address as usize],
             // ROM Bank 01-0F
             0x4000..=0x7FFF => {
-                let bank = self.curr_bank(rom);
+                let bank = self.curr_bank(rom).1;
 
                 // PERF: I could already store the start_address, instead of computing it every
                 // time. The same for write, and others MBC's.
@@ -958,14 +984,20 @@ impl Mbc3 {
         }
     }
 
-    fn curr_bank(&self, rom: &[u8]) -> u16 {
+    fn curr_bank(&self, rom: &[u8]) -> (u16, u16) {
         let bank = self.selected_bank;
 
         // cannot adress a bank where the 7-bit bank register is 0
         debug_assert!(bank != 0);
 
-        // mask upper bits if the bank is out of bounds
-        (bank as usize % (rom.len() / 0x4000)) as u16
+        let lower_bank = 0;
+
+        let upper_bank = {
+            // mask upper bits if the bank is out of bounds
+            (bank as usize % (rom.len() / 0x4000)) as u16
+        };
+
+        (lower_bank, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -974,7 +1006,7 @@ impl Mbc3 {
             0x0000..=0x3FFF => rom[address as usize],
             // ROM Bank 01-7F
             0x4000..=0x7FFF => {
-                let bank = self.curr_bank(rom);
+                let bank = self.curr_bank(rom).1;
 
                 let address_start = 0x4000 * bank as usize;
                 let i = address as usize - 0x4000 + address_start;
@@ -1138,8 +1170,10 @@ impl Mbc5 {
             ram_enabled: false,
         }
     }
-    fn curr_bank(&self, rom: &[u8]) -> u16 {
-        (self.selected_bank as usize % (rom.len() / 0x4000)) as u16
+    fn curr_bank(&self, rom: &[u8]) -> (u16, u16) {
+        let lower_bank = 0;
+        let upper_bank = (self.selected_bank as usize % (rom.len() / 0x4000)) as u16;
+        (lower_bank, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -1148,7 +1182,7 @@ impl Mbc5 {
             0x0000..=0x3FFF => rom[address as usize],
             // ROM Bank 00-1FF
             0x4000..=0x7FFF => {
-                let bank = self.curr_bank(rom);
+                let bank = self.curr_bank(rom).1;
 
                 let address_start = 0x4000 * bank as usize;
                 rom[address as usize - 0x4000 + address_start]

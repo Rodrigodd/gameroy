@@ -44,8 +44,8 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (Vec<Instr>, u16, u32) {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
-        bank0: gb.cartridge.bank0_from_bank(bank),
-        bank: Some(bank),
+        bank0: bank.0,
+        bank: Some(bank.1),
         pc: start_address,
         reg_a: Some(gb.cpu.a),
     };
@@ -150,7 +150,7 @@ impl JitCompiler {
             return None;
         }
 
-        let address = Address::from_pc(Some(bank), pc, &gb.cartridge)?;
+        let address = Address::from_pc(bank, pc)?;
         Some(
             self.blocks
                 .entry(address)
@@ -167,7 +167,17 @@ impl JitCompiler {
                 if gb.cpu.state == CpuState::Running
                     && (gb.clock_count + block.max_clock_cycles as u64 + 4) < next_interrupt =>
             {
-                // println!("running {:04x} ({})", block._start_address, gb.clock_count);
+                // let bank = gb.cartridge.curr_bank();
+                // println!(
+                //     "running {:02x} {:04x} ({})",
+                //     if block._start_address <= 0x3FFF {
+                //         bank.0
+                //     } else {
+                //         bank.1
+                //     },
+                //     block._start_address,
+                //     gb.clock_count
+                // );
                 block.call(gb);
                 debug_assert!(gb.clock_count - start_clock <= block.max_clock_cycles as u64);
                 debug_assert!(gb.clock_count != start_clock);

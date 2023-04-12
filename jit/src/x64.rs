@@ -77,9 +77,10 @@ impl<'a> BlockCompiler<'a> {
 
     /// Update self.pc to the next instruction
     pub fn compile_block(mut self) -> Block {
+        // let bank = self.gb.cartridge.curr_bank();
         // println!(
         //     "compiling {:02x}_{:04x} (len: {}, cycles: {})",
-        //     self.gb.cartridge.curr_bank(),
+        //     if self.pc <= 0x3FFF { bank.0 } else { bank.1 },
         //     self.pc,
         //     self.length,
         //     self.max_clock_cycles,

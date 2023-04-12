@@ -160,18 +160,11 @@ impl DissasemblerList {
                 .labels
                 .get(&curr)
                 .map(|x| x.name.as_str())
-                .or_else(|| trace.ram_labels.get(&curr.address).map(|x| x.as_str()))
                 .unwrap_or("")
         );
         let label = |pc, x| {
             if let Some(address) = trace.jumps.get(&pc) {
                 let mut name = trace.labels.get(address).unwrap().name.clone();
-                name.insert_str(0, "<l>");
-                name += "</l>";
-                return name;
-            }
-            if let Some(name) = trace.ram_labels.get(&x) {
-                let mut name = name.clone();
                 name.insert_str(0, "<l>");
                 name += "</l>";
                 return name;
@@ -330,29 +323,14 @@ impl ListBuilder for DissasemblerList {
             self.items_are_dirty = true;
             self.directives.clear();
             self.directives.extend(trace.directives.iter().cloned());
-            self.directives
-                .extend(trace.ram_directives.iter().map(|&(address, op, len)| {
-                    // TODO: I am violating my own rule about Address being only rom addresses.
-                    // Maybe I should not have this rule, or have multiple address Types.
-                    Directive {
-                        address: Address {
-                            bank: 0xFF,
-                            address,
-                        },
-                        len: len as u16,
-                        op,
-                    }
-                }));
             debug_assert!(self.directives.windows(2).all(|x| x[0] <= x[1]));
 
             let pc = cpu.pc;
             let bank = gb.cartridge.curr_bank();
-            self.pc = Some(
-                Address::from_pc(Some(bank), pc, &gb.cartridge).unwrap_or(Address {
-                    address: pc,
-                    bank: 0xFF,
-                }),
-            );
+            self.pc = Some(Address::from_pc(bank, pc).unwrap_or(Address {
+                address: pc,
+                bank: 0xFF,
+            }));
             let pc = self.pc.unwrap();
 
             let pos = self.directives.binary_search_by(|x| x.address.cmp(&pc));

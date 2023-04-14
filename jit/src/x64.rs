@@ -4,6 +4,7 @@ use dynasmrt::{
 
 use gameroy::{
     gameboy::{
+        cartridge::Cartridge,
         cpu::{Cpu, CpuState, ImeState},
         GameBoy,
     },
@@ -140,8 +141,9 @@ impl<'a> BlockCompiler<'a> {
                 break;
             }
 
-            // check if next_interrupt is not happening inside this block.
+            // the last write could have updated the next_interrupt or switched banks.
             if self.did_write {
+                // check if next_interrupt is not happening inside this block.
                 // next_interrupt - clock_count < max_clock_cycles - curr_clock_count
                 let clock_count = offset!(GameBoy, clock_count);
                 let next_interrupt = offset!(GameBoy, next_interrupt);
@@ -155,6 +157,21 @@ impl<'a> BlockCompiler<'a> {
                     ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
                     ;; self.exit_block(&mut ops)
                     ;skip_jump:
+                );
+
+                let bank = if instr.pc <= 0x3FFF {
+                    offset!(GameBoy, cartridge: Cartridge, lower_bank)
+                } else {
+                    offset!(GameBoy, cartridge: Cartridge, upper_bank)
+                };
+
+                dynasm!(ops
+                    ; mov	ax, WORD [rbx + bank as i32]
+                    ; cmp	ax, instr.bank as i16
+                    ; je	>skip_jump
+                    ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
+                    ;; self.exit_block(&mut ops)
+                    ; skip_jump:
                 );
             }
         }

@@ -38,6 +38,7 @@ impl Block {
 struct Instr {
     op: [u8; 3],
     pc: u16,
+    bank: u16,
 }
 
 fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
@@ -66,7 +67,15 @@ fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
             CLOCK[op[0] as usize] as u32
         };
 
-        instrs.push(Instr { op, pc: cursor.pc });
+        instrs.push(Instr {
+            op,
+            pc: cursor.pc,
+            bank: if cursor.pc <= 0x3FFF {
+                cursor.bank0
+            } else {
+                cursor.bank.unwrap()
+            },
+        });
 
         let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, &gb.cartridge);
 

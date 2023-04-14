@@ -47,7 +47,7 @@ fn trace_a_block(gb: &GameBoy, start_address: u16) -> (Vec<Instr>, u16, u32) {
         bank0: bank.0,
         bank: Some(bank.1),
         pc: start_address,
-        reg_a: Some(gb.cpu.a),
+        reg_a: None,
     };
 
     let mut cursors = vec![cursor];

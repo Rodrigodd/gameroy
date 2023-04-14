@@ -158,6 +158,10 @@ enum Mbc {
 #[derive(PartialEq, Eq, Clone)]
 pub struct Cartridge {
     pub header: CartridgeHeader,
+    /// The current bank of ROM mapped in 0000..=3FFF.
+    pub lower_bank: u16,
+    /// The current bank of ROM mapped in 4000..=7FFF.
+    pub upper_bank: u16,
     pub rom: Vec<u8>,
     pub ram: Vec<u8>,
     mbc: Mbc,
@@ -274,6 +278,8 @@ impl Cartridge {
 
         Ok(Self {
             header,
+            lower_bank: 0,
+            upper_bank: 1,
             rom,
             ram: vec![0; ram_size],
             mbc,
@@ -314,17 +320,16 @@ impl Cartridge {
 
     /// The current pair of ROM banks beign mapped to 0..=3FFF and 4000..=7FFF, respectvely.
     pub fn curr_bank(&self) -> (u16, u16) {
-        match &self.mbc {
-            Mbc::None(_) => (0, 1),
-            Mbc::Mbc1(x) => x.curr_bank(&self.rom),
-            Mbc::Mbc1M(x) => x.curr_bank(&self.rom),
-            Mbc::Mbc2(x) => x.curr_bank(&self.rom),
-            Mbc::Mbc3(x) => x.curr_bank(&self.rom),
-            Mbc::Mbc5(x) => x.curr_bank(&self.rom),
-        }
+        (self.lower_bank, self.upper_bank)
     }
 
     pub fn read(&self, address: u16) -> u8 {
+        if address <= 0x3FFF {
+            return self.rom[self.lower_bank as usize * 0x4000..][address as usize];
+        }
+        if address <= 0x7FFF {
+            return self.rom[self.upper_bank as usize * 0x4000..][(address - 0x4000) as usize];
+        }
         match &self.mbc {
             Mbc::None(x) => x.read(address, &self.rom, &self.ram),
             Mbc::Mbc1(x) => x.read(address, &self.rom, &self.ram),
@@ -343,6 +348,14 @@ impl Cartridge {
             Mbc::Mbc2(x) => x.write(address, value, &self.rom, &mut self.ram),
             Mbc::Mbc3(x) => x.write(address, value, &self.rom, &mut self.ram),
             Mbc::Mbc5(x) => x.write(address, value, &self.rom, &mut self.ram),
+        }
+        (self.lower_bank, self.upper_bank) = match &self.mbc {
+            Mbc::None(_) => (0, 1),
+            Mbc::Mbc1(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc1M(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc2(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc3(x) => x.curr_bank(&self.rom),
+            Mbc::Mbc5(x) => x.curr_bank(&self.rom),
         }
     }
 
@@ -549,18 +562,14 @@ impl Mbc1 {
         // cannot adress a bank where the 5-bit bank register is 0
         debug_assert!(bank & 0x1F != 0);
 
-        let lower_bank = if self.mode {
-            self.selected_bank & 0x60
-        } else {
-            0
-        };
+        // mask upper bits if the bank is out of bounds
+        let bank = (bank as usize % (rom.len() / 0x4000)) as u16;
 
-        let upper_bank = {
-            // mask upper bits if the bank is out of bounds
-            (bank as usize % (rom.len() / 0x4000)) as u16
-        };
+        let lower_bank = if self.mode { bank & 0x60 } else { 0 };
 
-        (lower_bank as u16, upper_bank)
+        let upper_bank = bank;
+
+        (lower_bank, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
@@ -713,21 +722,14 @@ impl Mbc1M {
     fn curr_bank(&self, rom: &[u8]) -> (u16, u16) {
         let bank = self.selected_bank;
 
-        // cannot adress a bank where the 5-bit bank register is 0
-        debug_assert!(bank & 0x1F != 0);
+        // mask upper bits if the bank is out of bounds
+        let bank = (bank as usize % (rom.len() / 0x4000)) as u16;
 
-        let lower_bank = if self.mode {
-            self.selected_bank & 0x60
-        } else {
-            0
-        };
+        let lower_bank = if self.mode { bank & 0x30 } else { 0 };
 
-        let upper_bank = {
-            // mask upper bits if the bank is out of bounds
-            (bank as usize % (rom.len() / 0x4000)) as u16
-        };
+        let upper_bank = bank;
 
-        (lower_bank as u16, upper_bank)
+        (lower_bank, upper_bank)
     }
 
     pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {

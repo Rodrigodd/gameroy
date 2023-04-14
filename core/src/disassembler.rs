@@ -545,10 +545,11 @@ pub fn compute_step(
         }
         x if x == 0x36
             || x & 0b1100_1111 == 0b0000_0010
-            || x != 0x76 && x & 0b1111_1000 == 0b0111_0000 =>
+            || x != 0x76 && x & 0b1111_1000 == 0b0111_0000
+            || [0xc5, 0xd5, 0xe5, 0xf5].contains(&x) =>
         {
-            // LD (?), ?
-            // this could switch bank, but is unlikely to happen when inside a switchable bank.
+            // LD (?), ? or PUSH ?
+            // this could switch banks, but is unlikely to happen when inside a switchable bank.
             let bank = if pc < 0x4000 { None } else { bank };
             (
                 Some(Cursor {

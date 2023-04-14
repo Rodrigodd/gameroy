@@ -59,7 +59,7 @@ pub struct BlockCompiler<'gb> {
 
 impl<'a> BlockCompiler<'a> {
     pub fn new(gb: &'a GameBoy) -> Self {
-        let (instrs, length, max_clock_cycles) = trace_a_block(gb, gb.cpu.pc);
+        let (instrs, length, max_clock_cycles) = trace_a_block(gb);
         Self {
             gb,
             op: [0; 3],

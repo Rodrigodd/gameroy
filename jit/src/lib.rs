@@ -40,13 +40,13 @@ struct Instr {
     pc: u16,
 }
 
-fn trace_a_block(gb: &GameBoy, start_address: u16) -> (Vec<Instr>, u16, u32) {
+fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
         bank0: bank.0,
         bank: Some(bank.1),
-        pc: start_address,
+        pc: gb.cpu.pc,
         reg_a: None,
     };
 

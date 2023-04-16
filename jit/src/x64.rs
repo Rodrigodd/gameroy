@@ -167,7 +167,7 @@ impl<'a> BlockCompiler<'a> {
 
                 dynasm!(ops
                     ; mov	ax, WORD [rbx + bank as i32]
-                    ; cmp	ax, instr.bank as i16
+                    ; cmp	ax, WORD instr.bank as i16
                     ; je	>skip_jump
                     ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
                     ;; self.exit_block(&mut ops)
@@ -1562,7 +1562,7 @@ impl<'a> BlockCompiler<'a> {
         } else {
             dynasm!(ops
                 ; movzx	eax, WORD [rbx + sp as i32]
-                ; mov	cl, BYTE value.wrapping_neg() as i8
+                ; mov	ecx, WORD value.wrapping_neg() as i8 as i32
                 ; mov	edx, eax
                 ; sub	edx, ecx
                 ; movzx	ecx, dl
@@ -1704,7 +1704,7 @@ impl<'a> BlockCompiler<'a> {
             dynasm!(ops
                 ; movzx	r9d, WORD [rbx + sp as i32]
                 ; movzx	ecx, r9b
-                ; mov	r8, BYTE value as i32
+                ; mov	r8, WORD value as i32
                 ; lea	esi, [rcx + r8]
                 ; cmp	esi, 256
                 ; setae	dl
@@ -1727,7 +1727,7 @@ impl<'a> BlockCompiler<'a> {
         } else {
             dynasm!(ops
                 ; movzx	eax, WORD [rbx + sp as i32]
-                ; mov	ecx, BYTE value.wrapping_neg() as i8 as i32
+                ; mov	ecx, WORD value.wrapping_neg() as i8 as i32
                 ; mov	edx, eax
                 ; sub	edx, ecx
                 ; movzx	ecx, dl

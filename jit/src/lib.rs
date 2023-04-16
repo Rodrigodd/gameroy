@@ -1,6 +1,6 @@
 use dynasmrt::ExecutableBuffer;
 use gameroy::{
-    consts::{CB_CLOCK, CLOCK},
+    consts::{CB_CLOCK, CLOCK, LEN},
     disassembler::{Address, Cursor},
     gameboy::{cpu::CpuState, GameBoy},
     interpreter::Interpreter,
@@ -156,6 +156,15 @@ impl JitCompiler {
 
         // if STOP or HALT, fallback to interpreter
         if op == 0x10 || op == 0x76 {
+            return None;
+        }
+
+        let len = LEN[op as usize];
+
+        if pc < 0x4000 && pc + len as u16 >= 0x4000 {
+            return None;
+        }
+        if pc + len as u16 >= 0x8000 {
             return None;
         }
 

@@ -417,10 +417,16 @@ pub fn compute_step(
         reg_a,
     } = curr;
     let step = move || {
+        if pc < 0x4000 && pc + len as u16 >= 0x4000 {
+            return None;
+        }
+        if pc + len as u16 >= 0x8000 {
+            return None;
+        }
         Some(Cursor {
             bank0,
             bank,
-            pc: pc.wrapping_add(len as u16),
+            pc: pc + len as u16,
             reg_a,
         })
     };

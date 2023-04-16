@@ -255,6 +255,12 @@ impl<'a> BlockCompiler<'a> {
             (Some(ime_state), _) => dynasm!(ops
                 ; mov	BYTE [rbx + ime as i32], ime_state as u8 as i8
             ),
+            (None, None) => dynasm!(ops
+                ; cmp	BYTE [rbx + ime as i32], ImeState::ToBeEnable as u8 as i8
+                ; jne	>skip
+                ; mov	BYTE [rbx + ime as i32], ImeState::Enabled as u8 as i8
+                ;skip:
+            ),
             _ => {}
         }
     }

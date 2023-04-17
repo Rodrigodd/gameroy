@@ -7,9 +7,13 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
+[features]
+io_trace = ["gameroy-core/io_trace", "gameroy-jit/io_trace"]
+
 [dependencies]
 libfuzzer-sys = "0.4"
 gameroy-core = { path = "../core" }
+gameroy-jit = { path = "../jit" }
 
 # Prevent this from interfering with workspaces
 [workspace]

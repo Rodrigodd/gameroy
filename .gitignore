@@ -11,3 +11,5 @@ android/app/release
 gameroy.log
 thumbnails
 jit/failed_test
+failed_test
+jit/reference.s

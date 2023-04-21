@@ -271,6 +271,20 @@ pub extern "sysv64" fn adc(cpu: &mut Cpu) {
     cpu.a = (r & 0xff) as u8;
 }
 
+pub extern "sysv64" fn adc_mem(cpu: &mut Cpu) {
+    let v = read(cpu, cpu.hl()) as u16;
+    let a = cpu.a as u16;
+    let c = ((cpu.f >> 4) & 1) as u16;
+    let r = a + v + c;
+
+    def_bit(&mut cpu.f, 7, r & 0xff == 0); // Z
+    def_bit(&mut cpu.f, 6, false); // N
+    def_bit(&mut cpu.f, 5, (a & 0xF) + (v & 0xF) + c > 0xF); // H
+    def_bit(&mut cpu.f, 4, r > 0xff); // C
+
+    cpu.a = (r & 0xff) as u8;
+}
+
 pub extern "sysv64" fn sbc(cpu: &mut Cpu) {
     let v = cpu.b as i16;
     let a = cpu.a as i16;

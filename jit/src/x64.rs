@@ -2446,7 +2446,7 @@ impl<'a> BlockCompiler<'a> {
         let r8 = self.get_immediate() as i8;
         self.check_condition(ops, c);
         dynasm!(ops
-            ; mov WORD [rbx + pc as i32], self.pc as i16 + r8 as i16
+            ; mov WORD [rbx + pc as i32], self.pc.wrapping_add_signed(r8 as i16) as i16
             ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
             ;; self.exit_block(ops)
             ; skip_jump:

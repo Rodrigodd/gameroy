@@ -1893,6 +1893,7 @@ impl<'a> BlockCompiler<'a> {
                 }
                 Reg::HL => {
                     dynasm!(ops
+                        ; movzx	rax, al
                         ; lea	ecx, [rax + rdx]
                         ; add	ecx, esi
                     );
@@ -1959,6 +1960,9 @@ impl<'a> BlockCompiler<'a> {
                 }
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, false);
+                    dynasm!(ops
+                        ; movzx	eax, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
@@ -2650,14 +2654,19 @@ impl<'a> BlockCompiler<'a> {
             ;; match reg {
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; movzx	ecx, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; mov	ecx, eax
+                    );
                 }
             }
             ; movzx	edx, BYTE [rbx + f as i32]
-            ; mov	ecx, eax
             ; ror	cl, 1
             ;; match reg {
                 Reg::HL => {}
@@ -2693,10 +2702,16 @@ impl<'a> BlockCompiler<'a> {
             ;; match reg {
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; movzx	ecx, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; mov	ecx, eax
+                    );
                 }
             }
             ; movzx	esi, BYTE [rbx + f as i32]
@@ -2704,7 +2719,6 @@ impl<'a> BlockCompiler<'a> {
             ; shr	dl, 4
             ; and	dl, 1
             ; and	sil, 15
-            ; mov	ecx, eax
             ; shr	cl, 3
             ; and	cl, 16
             ; or	cl, sil
@@ -2738,16 +2752,21 @@ impl<'a> BlockCompiler<'a> {
             ;; match reg {
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; movzx	esi, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; mov	esi, eax
+                    );
                 }
             }
             ; movzx	ecx, BYTE [rbx + f as i32]
             ; mov	edx, ecx
             ; and	dl, 15
-            ; mov	esi, eax
             ; shl	sil, 4
             ; and	sil, 16
             ; or	sil, dl
@@ -2782,15 +2801,20 @@ impl<'a> BlockCompiler<'a> {
             ;; match reg {
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; movzx	edx, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; mov	edx, eax
+                    );
                 }
             }
             ; movzx	ecx, BYTE [rbx + f as i32]
             ; and	cl, 15
-            ; mov	edx, eax
             ; shr	dl, 3
             ; and	dl, 16
             ; or	dl, cl
@@ -2830,11 +2854,18 @@ impl<'a> BlockCompiler<'a> {
             }
             ; movzx	ecx, BYTE [rbx + f as i32]
             ; and	cl, 15
-            ; mov	edx, eax
+            ;; match reg {
+                Reg::HL => dynasm!(ops; movzx	edx, al),
+                _ => dynasm!(ops; mov	edx, eax),
+
+            }
             ; shl	dl, 4
             ; and	dl, 16
             ; or	dl, cl
-            ; mov	ecx, eax
+            ;; match reg {
+                Reg::HL => dynasm!(ops; movzx	ecx, al),
+                _ => dynasm!(ops; mov	ecx, eax),
+            }
             ; and	cl, -128
             ; shr	al, 1
             ; or	al, cl
@@ -2865,13 +2896,18 @@ impl<'a> BlockCompiler<'a> {
             ;; match reg {
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; movzx	ecx, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; mov	ecx, eax
+                    );
                 }
             }
-            ; mov	ecx, eax
             ; rol	cl, 4
             ; movzx	edx, BYTE [rbx + f as i32]
             ; test	al, al
@@ -2903,14 +2939,19 @@ impl<'a> BlockCompiler<'a> {
             ;; match reg {
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, true);
+                    dynasm!(ops
+                        ; movzx	esi, al
+                    );
                 }
                 _ => {
                     let reg = reg_offset(reg);
-                    dynasm!(ops; movzx	eax, BYTE [rbx + reg as i32]);
+                    dynasm!(ops
+                        ; movzx	eax, BYTE [rbx + reg as i32]
+                        ; mov	esi, eax
+                    );
                 }
             }
             ; movzx	ecx, BYTE [rbx + f as i32]
-            ; mov	esi, eax
             ; shr	sil, 1
             ; cmp	al, 2
             ; setb	dl

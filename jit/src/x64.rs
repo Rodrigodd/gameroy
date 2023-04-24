@@ -1393,7 +1393,7 @@ impl<'a> BlockCompiler<'a> {
                 self.write_mem(ops);
                 dynasm!(ops
                     ; mov	rdi, rbx
-                    ; mov	esi, (dst + 1) as i32
+                    ; mov	esi, dst.wrapping_add(1) as i32
                     ; mov   edx, r12d
                 );
                 self.write_mem(ops);

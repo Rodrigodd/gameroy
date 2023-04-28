@@ -192,13 +192,15 @@ impl SaveState for Cartridge {
         // self.rom.load_state(data)?;
         self.ram.load_state(ctx, data)?;
         match &mut self.mbc {
-            Mbc::None(x) => x.load_state(ctx, data),
-            Mbc::Mbc1(x) => x.load_state(ctx, data),
-            Mbc::Mbc1M(x) => x.load_state(ctx, data),
-            Mbc::Mbc2(x) => x.load_state(ctx, data),
-            Mbc::Mbc3(x) => x.load_state(ctx, data),
-            Mbc::Mbc5(x) => x.load_state(ctx, data),
+            Mbc::None(x) => x.load_state(ctx, data)?,
+            Mbc::Mbc1(x) => x.load_state(ctx, data)?,
+            Mbc::Mbc1M(x) => x.load_state(ctx, data)?,
+            Mbc::Mbc2(x) => x.load_state(ctx, data)?,
+            Mbc::Mbc3(x) => x.load_state(ctx, data)?,
+            Mbc::Mbc5(x) => x.load_state(ctx, data)?,
         }
+        self.update_banks();
+        Ok(())
     }
 }
 impl Cartridge {
@@ -349,6 +351,10 @@ impl Cartridge {
             Mbc::Mbc3(x) => x.write(address, value, &self.rom, &mut self.ram),
             Mbc::Mbc5(x) => x.write(address, value, &self.rom, &mut self.ram),
         }
+        self.update_banks();
+    }
+
+    fn update_banks(&mut self) {
         (self.lower_bank, self.upper_bank) = match &self.mbc {
             Mbc::None(_) => (0, 1),
             Mbc::Mbc1(x) => x.curr_bank(&self.rom),

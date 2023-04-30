@@ -362,9 +362,11 @@ pub struct Emulator {
     // When true, the program will sync the time that passed, and the time that is emulated.
     frame_limit: bool,
     rewind: bool,
-    // The instant in time that the gameboy supposedly was turned on.
-    // Change when frame_limit is disabled.
-    start_time: Instant,
+    /// The instant when the gameboy emulation was unpaused. Used in combination with
+    /// `last_start_clock` to calculate the ammount of clocks to emulate.
+    last_start_time: Instant,
+    /// The clock_count when the gameboy emulation was unpaused. See `last_start_time`.
+    last_start_clock: u64,
 
     debugger: Arc<ParkMutex<Debugger>>,
 
@@ -451,7 +453,8 @@ impl Emulator {
                 }
             }));
         }
-        let start_time = Instant::now() - clock_to_duration(gb.lock().clock_count);
+        let last_start_time = Instant::now();
+        let last_start_clock = gb.lock().clock_count;
         Self {
             gb,
             proxy,
@@ -463,7 +466,10 @@ impl Emulator {
             state: EmulatorState::Idle,
             frame_limit: true,
             rewind: false,
-            start_time,
+
+            last_start_time,
+            last_start_clock,
+
             debugger,
             #[cfg(feature = "audio-engine")]
             sound,
@@ -514,6 +520,11 @@ impl Emulator {
         }
     }
 
+    fn update_start_time(&mut self, clock_count: u64) {
+        self.last_start_time = Instant::now();
+        self.last_start_clock = clock_count;
+    }
+
     /// Return true if should terminate event_loop.
     pub fn handle_event(&mut self, event: EmulatorEvent) -> bool {
         use EmulatorEvent::*;
@@ -552,8 +563,9 @@ impl Emulator {
                                 gb.load_state(&mut old_state.as_slice()).unwrap();
                             }
                         }
-                        self.start_time = recompute_start_time(gb.clock_count);
+                        let clock_count = gb.clock_count;
                         drop(gb);
+                        self.update_start_time(clock_count);
                         // send EmulatorPaused to trigger the EmulatorUpdated event.
                         self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
                         // and send Started again, because the emulation is not paused.
@@ -574,7 +586,8 @@ impl Emulator {
                 }
                 self.frame_limit = value;
                 if self.frame_limit {
-                    self.start_time = recompute_start_time(self.gb.lock().clock_count);
+                    let clock_count = self.gb.lock().clock_count;
+                    self.update_start_time(clock_count);
                 }
             }
             Rewind(value) => {
@@ -588,7 +601,8 @@ impl Emulator {
                     joypad.joypad_timeline.clear();
                 }
                 if !self.rewind {
-                    self.start_time = recompute_start_time(self.gb.lock().clock_count);
+                    let clock_count = self.gb.lock().clock_count;
+                    self.update_start_time(clock_count);
                 }
             }
             SetJoypad(joypad) => {
@@ -715,14 +729,17 @@ impl Emulator {
                     self.set_state(EmulatorState::WaitNextFrame);
                 } else if self.frame_limit {
                     let mut gb = self.gb.lock();
-                    let elapsed = self.start_time.elapsed();
-                    let mut target_clock = CLOCK_SPEED * elapsed.as_secs()
+                    let elapsed = self.last_start_time.elapsed();
+                    let elapsed_clock = CLOCK_SPEED * elapsed.as_secs()
                         + (CLOCK_SPEED as f64 * (elapsed.subsec_nanos() as f64 * 1e-9)) as u64;
+                    let mut target_clock = self.last_start_clock + elapsed_clock;
 
-                    // make sure that the target_clock don't increase indefinitely if the program can't keep up.
+                    // make sure that the target_clock don't increase indefinitely if the program
+                    // can't keep up.
                     if target_clock > gb.clock_count + CLOCK_SPEED / 30 {
                         target_clock = gb.clock_count + CLOCK_SPEED / 30;
-                        self.start_time = recompute_start_time(gb.clock_count);
+                        self.last_start_time = Instant::now();
+                        self.last_start_clock = gb.clock_count;
                     }
 
                     while gb.clock_count < target_clock {

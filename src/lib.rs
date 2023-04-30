@@ -408,6 +408,7 @@ struct EmulatorApp {
     emulator: Emulator,
     #[cfg(not(feature = "threads"))]
     recv: flume::Receiver<emulator::EmulatorEvent>,
+    update_frame: bool,
 }
 impl EmulatorApp {
     fn new(
@@ -479,6 +480,7 @@ impl EmulatorApp {
             emulator: Emulator::new(gb, debugger, proxy, movie, rom),
             #[cfg(not(feature = "threads"))]
             recv,
+            update_frame: true,
         }
     }
 
@@ -564,27 +566,33 @@ impl App for EmulatorApp {
                     }
                 }
             }
+            Event::MainEventsCleared => {
+                if self.update_frame {
+                    self.update_frame = false;
+                    let screen: &[u8] = &{
+                        let lock = self.lcd_screen.lock();
+                        *lock
+                    };
+                    const COLOR: [[u8; 3]; 4] =
+                        [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
+                    let mut img_data = vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
+                    for y in 0..SCREEN_HEIGHT {
+                        for x in 0..SCREEN_WIDTH {
+                            let i = (x + y * SCREEN_WIDTH) * 4;
+                            let c = screen[i / 4];
+                            img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
+                        }
+                    }
+                    ui.update_screen_texture(&img_data);
+
+                    ui.notify(event_table::FrameUpdated);
+                }
+            }
             Event::UserEvent(event) => {
                 use UserEvent::*;
                 match event {
                     FrameUpdated => {
-                        let screen: &[u8] = &{
-                            let lock = self.lcd_screen.lock();
-                            *lock
-                        };
-                        const COLOR: [[u8; 3]; 4] =
-                            [[255, 255, 255], [170, 170, 170], [85, 85, 85], [0, 0, 0]];
-                        let mut img_data = vec![255; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
-                        for y in 0..SCREEN_HEIGHT {
-                            for x in 0..SCREEN_WIDTH {
-                                let i = (x + y * SCREEN_WIDTH) * 4;
-                                let c = screen[i / 4];
-                                img_data[i..i + 3].copy_from_slice(&COLOR[c as usize]);
-                            }
-                        }
-                        ui.update_screen_texture(&img_data);
-
-                        ui.notify(event_table::FrameUpdated);
+                        self.update_frame = true;
                         window.request_redraw();
                     }
                     EmulatorStarted => {

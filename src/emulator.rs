@@ -618,6 +618,8 @@ impl Emulator {
                     self.set_state(EmulatorState::Idle);
                 } else {
                     self.set_state(EmulatorState::RunNoBreak);
+                    let clock_count = self.gb.lock().clock_count;
+                    self.update_start_time(clock_count);
                 }
             }
             Step => {

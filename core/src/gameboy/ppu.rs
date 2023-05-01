@@ -2068,9 +2068,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             for x in (0..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize] = color as u8;
-                lx += 1;
+                ppu.screen[scanline_start + lx as usize + (7 - x)] = color as u8;
             }
+            lx += 8;
             offset_x = (offset_x + 1) & 0x1F;
         }
         if lx < end {
@@ -2122,9 +2122,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             for x in (0..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize] = color as u8;
-                lx += 1;
+                ppu.screen[scanline_start + lx as usize + (7 - x)] = color as u8;
             }
+            lx += 8;
             offset_x = (offset_x + 1) & 0x1F;
         }
         if lx < end {

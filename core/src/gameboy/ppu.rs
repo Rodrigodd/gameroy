@@ -2007,82 +2007,144 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
 
 pub fn draw_scan_line(ppu: &mut Ppu) {
     let scanline_start = ppu.ly as usize * 160;
+
+    let window_enabled = ppu.is_in_window && ppu.lcdc & 0x01 != 0;
+    let dx = if ppu.wx != 0 {
+        7
+    } else {
+        // Similar array is show in state 27 of the PPU.
+        let cmp = [7u8, 9, 10, 11, 12, 13, 14, 14];
+        cmp[(ppu.scx % 8) as usize]
+    };
+    let wxs = ppu.wx.saturating_sub(dx);
+
     // Draw background
     if ppu.lcdc & 0x01 == 0 {
         ppu.screen[scanline_start..][..160].copy_from_slice(&[0; 160]);
     } else {
-        // (py, px) is a pixel in the background map
-        // (lx, ly) is a pixel in the lcd screen
         let py = ((ppu.scy as u16 + ppu.ly as u16) % 256) as u8;
-        for lx in 0..160 {
-            let px = ((lx as u16 + ppu.scx as u16) % 256) as u8;
+        let y = py % 8;
+        let end = if window_enabled { wxs } else { 160 };
 
-            let i = (px as usize / 8) + (py as usize / 8) * 32;
+        // BG Tile Map Select
+        let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
 
-            // BG Tile Map Select
-            let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
-            let mut tile = ppu.vram[address - 0x8000 + i] as usize;
+        let offset_y = address as usize - 0x8000 + (py as usize / 8) * 32;
+        let mut offset_x = ppu.scx / 8;
+
+        let mut lx = 0;
+        if ppu.scx % 8 != 0 {
+            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
 
             // if is using 8800 method
-            if ppu.lcdc & 0x10 == 0 {
+            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
                 tile += 0x100;
-                if tile >= 0x180 {
-                    tile -= 0x100;
-                }
             }
 
-            {
-                let i = tile * 0x10;
-                let y = py % 8;
-                let a = ppu.vram[i + y as usize * 2];
-                let b = ppu.vram[i + y as usize * 2 + 1];
-                let x = px % 8;
-                let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
+            let i = tile * 0x10;
+            let a = ppu.vram[i + y as usize * 2] as usize;
+            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
 
-                ppu.screen[scanline_start + lx as usize] = color;
-            };
+            for x in (0..(8 - ppu.scx % 8)).rev() {
+                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
+
+                ppu.screen[scanline_start + lx as usize] = color as u8;
+                lx += 1;
+            }
+            offset_x = (offset_x + 1) & 0x1F;
+        }
+        while lx + 8 <= end {
+            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
+
+            // if is using 8800 method
+            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
+                tile += 0x100;
+            }
+
+            let i = tile * 0x10;
+            let a = ppu.vram[i + y as usize * 2] as usize;
+            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
+
+            for x in (0..8).rev() {
+                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
+
+                ppu.screen[scanline_start + lx as usize] = color as u8;
+                lx += 1;
+            }
+            offset_x = (offset_x + 1) & 0x1F;
+        }
+        if lx < end {
+            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
+
+            // if is using 8800 method
+            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
+                tile += 0x100;
+            }
+
+            let i = tile * 0x10;
+            let a = ppu.vram[i + y as usize * 2] as usize;
+            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
+
+            for x in ((8 - (end - lx))..8).rev() {
+                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
+
+                ppu.screen[scanline_start + lx as usize] = color as u8;
+                lx += 1;
+            }
         }
     }
 
     // Draw window
-    if ppu.is_in_window && ppu.lcdc & 0x01 != 0 {
-        // (py, px) is a pixel in the window map
-        // (lx, ly) is a pixel in the lcd screen
+    if window_enabled {
         let py = ppu.wyc;
-        let dx = if ppu.wx != 0 {
-            7
-        } else {
-            // Similar array is show in state 27 of the PPU.
-            let cmp = [7u8, 9, 10, 11, 12, 13, 14, 14];
-            cmp[(ppu.scx % 8) as usize]
-        };
-        for lx in ppu.wx.saturating_sub(dx)..160 {
-            let px = lx + dx - ppu.wx;
+        let y = py % 8;
+        let end = 160;
 
-            let i = (px as usize / 8) + (py as usize / 8) * 32;
+        // BG Tile Map Select
+        let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
 
-            // BG Tile Map Select
-            let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
-            let mut tile = ppu.vram[address - 0x8000 + i] as usize;
+        let offset_y = address as usize - 0x8000 + (py as usize / 8) * 32;
+        let mut offset_x = (wxs + dx - ppu.wx) / 8;
+
+        let mut lx = wxs;
+        while lx + 8 <= end {
+            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
 
             // if is using 8800 method
-            if ppu.lcdc & 0x10 == 0 {
+            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
                 tile += 0x100;
-                if tile >= 0x180 {
-                    tile -= 0x100;
-                }
             }
 
-            {
-                let i = tile * 0x10;
-                let y = py % 8;
-                let a = ppu.vram[i + y as usize * 2];
-                let b = ppu.vram[i + y as usize * 2 + 1];
-                let x = px % 8;
-                let color = (((b >> (7 - x)) << 1) & 0b10) | ((a >> (7 - x)) & 0b1);
+            let i = tile * 0x10;
+            let a = ppu.vram[i + y as usize * 2] as usize;
+            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
 
-                ppu.screen[scanline_start + lx as usize] = color;
-            };
+            for x in (0..8).rev() {
+                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
+
+                ppu.screen[scanline_start + lx as usize] = color as u8;
+                lx += 1;
+            }
+            offset_x = (offset_x + 1) & 0x1F;
+        }
+        if lx < end {
+            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
+
+            // if is using 8800 method
+            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
+                tile += 0x100;
+            }
+
+            let i = tile * 0x10;
+            let a = ppu.vram[i + y as usize * 2] as usize;
+            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
+
+            for x in ((8 - (end - lx))..8).rev() {
+                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
+
+                ppu.screen[scanline_start + lx as usize] = color as u8;
+                lx += 1;
+            }
         }
     }
 
@@ -2142,7 +2204,6 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 let e = 8.min(168 - sx);
                 for x in s..e {
                     let lx = sx + x - 8;
-                    let p = &mut ppu.screen[scanline_start + lx as usize];
 
                     // X-Flip
                     let x = if flags & 0x20 != 0 { x } else { 7 - x };
@@ -2160,14 +2221,15 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                     // So instead I am writing to unused bits of the byte, and later writing them
                     // back to the screen.
                     //
-                    // When a sprite writes over another one, it overwritten the sprite pixels
-                    // before they are draw to the screen. This includes the background_priority,
-                    // so the a sprite could overwritte one, and later not be draw. So we need to
-                    // save the background_priority here, and only later check for background
-                    // priority.
+                    // When a sprite writes over another one, it overwrittes the sprite pixels on
+                    // the FIFO, before they are draw to the screen. This includes the
+                    // background_priority bit, so a future sprite could overwritte the bit, making
+                    // this sprite not be draw. So we need to save the background_priority here, and
+                    // only later check for background priority.
                     //
                     // TODO: This workaround is janky. Find a better way, maybe analogues to the
                     // sprite_fifo.
+                    let p = &mut ppu.screen[scanline_start + lx as usize];
                     *p = (*p & 0b11)
                         | (c << 2)
                         | ((flags & 0x80 != 0) as u8 * BACKGROUND_PRIORITY_FLAG)

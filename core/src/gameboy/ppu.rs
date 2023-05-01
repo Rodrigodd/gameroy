@@ -2018,6 +2018,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
     };
     let wxs = ppu.wx.saturating_sub(dx);
 
+    // bound-check just once.
+    let _ = &ppu.screen[scanline_start..][..160];
+
     // Draw background
     if ppu.lcdc & 0x01 == 0 {
         ppu.screen[scanline_start..][..160].copy_from_slice(&[0; 160]);
@@ -2064,6 +2067,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             let i = tile * 0x10;
             let a = ppu.vram[i + y as usize * 2] as usize;
             let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
+
+            // bound-check just once.
+            let _ = &ppu.screen[..scanline_start + lx as usize + 8];
 
             for x in (0..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
@@ -2118,6 +2124,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             let i = tile * 0x10;
             let a = ppu.vram[i + y as usize * 2] as usize;
             let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
+
+            // bound-check just once.
+            let _ = &ppu.screen[..scanline_start + lx as usize + 8];
 
             for x in (0..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);

@@ -2110,9 +2110,30 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
 
         let offset_y = address as usize - 0x8000 + (py as usize / 8) * 32;
-        let mut offset_x = (wxs + dx - ppu.wx) / 8;
+        let scx = wxs + dx - ppu.wx;
+        let mut offset_x = scx / 8;
 
         let mut lx = wxs;
+        if scx % 8 != 0 {
+            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
+
+            // if is using 8800 method
+            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
+                tile += 0x100;
+            }
+
+            let i = tile * 0x10;
+            let a = ppu.vram[i + y as usize * 2] as usize;
+            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
+
+            for x in (0..(8 - scx % 8)).rev() {
+                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
+
+                ppu.screen[scanline_start + lx as usize] = color as u8;
+                lx += 1;
+            }
+            offset_x = (offset_x + 1) & 0x1F;
+        }
         while lx + 8 <= end {
             let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
 
@@ -2134,7 +2155,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 ppu.screen[scanline_start + lx as usize + (7 - x)] = color as u8;
             }
             lx += 8;
-            offset_x = (offset_x + 1) & 0x1F;
+            offset_x += 1;
         }
         if lx < end {
             let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;

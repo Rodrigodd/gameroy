@@ -93,7 +93,7 @@ fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
 
         cursors.push(step);
 
-        if jump.is_some() || [0x10, 0x76, 0xc0, 0xc8, 0xc9, 0xd0, 0xd8, 0xd9].contains(&op[0]) {
+        if [0x10, 0x76].contains(&op[0]) {
             break;
         }
     }

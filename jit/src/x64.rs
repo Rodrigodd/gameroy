@@ -3,6 +3,7 @@ use dynasmrt::{
 };
 
 use gameroy::{
+    consts,
     gameboy::{
         cartridge::Cartridge,
         cpu::{Cpu, CpuState, ImeState},
@@ -11,7 +12,7 @@ use gameroy::{
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
-use crate::{trace_a_block, Block, Instr};
+use crate::{trace_a_block, Block, BlockTrace, Instr};
 
 macro_rules! offset {
     (@ $parent:path, $field:tt) => {
@@ -40,15 +41,13 @@ pub struct BlockCompiler<'gb> {
     /// The current instruction beign compiled
     op: [u8; 3],
 
-    length: u16,
     /// the accumulated clock count since the last write to GameBoy.clock_count
     accum_clock_count: u32,
     /// The ammount of cycles already compiled since the block start.
     curr_clock_count: u32,
 
-    instrs: Vec<Instr>,
+    block_trace: BlockTrace,
 
-    max_clock_cycles: u32,
     /// If the last call to compiled_opcode invoked a gb.write call.
     did_write: bool,
 
@@ -60,16 +59,14 @@ pub struct BlockCompiler<'gb> {
 
 impl<'a> BlockCompiler<'a> {
     pub fn new(gb: &'a GameBoy) -> Self {
-        let (instrs, length, max_clock_cycles) = trace_a_block(gb);
+        let block_trace = trace_a_block(gb);
         Self {
             gb,
             op: [0; 3],
-            pc: instrs[0].pc,
-            instrs,
-            length,
+            pc: block_trace.instrs[0].pc,
+            block_trace,
             accum_clock_count: 0,
             curr_clock_count: 0,
-            max_clock_cycles,
             did_write: false,
             ime_state: None,
             previous_ime_state: None,
@@ -80,11 +77,11 @@ impl<'a> BlockCompiler<'a> {
     pub fn compile_block(mut self) -> Block {
         // let bank = self.gb.cartridge.curr_bank();
         // println!(
-        //     "compiling {:02x}_{:04x} (len: {}, cycles: {})",
+        //     "compiling {:02x}_{:04x} (len: {})",
         //     if self.pc <= 0x3FFF { bank.0 } else { bank.1 },
         //     self.pc,
-        //     self.length,
-        //     self.max_clock_cycles,
+        //     self.block_trace.length,
+        //     // self.max_clock_cycles,
         // );
         let mut ops: dynasmrt::VecAssembler<X64Relocation> = dynasmrt::VecAssembler::new(0);
 
@@ -109,9 +106,16 @@ impl<'a> BlockCompiler<'a> {
         let start = self.pc;
         let mut last_one_was_compiled = false;
 
-        let instrs = std::mem::take(&mut self.instrs);
-        for instr in instrs {
+        let mut curr_check = 0;
+
+        let instrs = std::mem::take(&mut self.block_trace.instrs);
+        for (i, instr) in instrs.into_iter().enumerate() {
             assert_eq!(self.pc, instr.pc);
+            if curr_check + 1 < self.block_trace.interrupt_checks.len()
+                && i == self.block_trace.interrupt_checks[curr_check].0 as usize
+            {
+                curr_check += 1;
+            }
 
             // let op = self.gb.read(self.pc);
             self.op = instr.op;
@@ -137,22 +141,20 @@ impl<'a> BlockCompiler<'a> {
                 last_one_was_compiled = false;
             }
 
-            if ime_enabled {
-                break;
-            }
-
             // the last write could have updated the next_interrupt or switched banks.
             if self.did_write {
-                // check if next_interrupt is not happening inside this block.
-                // next_interrupt - clock_count < max_clock_cycles - curr_clock_count
+                // check if next_interrupt is not happening until the next check.
+                // next_interrupt - clock_count < next_check - curr_clock_count
                 let clock_count = offset!(GameBoy, clock_count);
                 let next_interrupt = offset!(GameBoy, next_interrupt);
                 self.update_clock_count(&mut ops);
+                let next_check = self.block_trace.interrupt_checks[curr_check].1;
+                let curr_clock_count = self.curr_clock_count;
                 dynasm!(ops
                     ;; self.update_pc(&mut ops)
                     ; mov	rax, QWORD [rbx + next_interrupt as i32]
                     ; sub	rax, QWORD [rbx + clock_count as i32]
-                    ; cmp	rax, (self.max_clock_cycles - self.curr_clock_count) as i32
+                    ; cmp	rax, (next_check - self.curr_clock_count) as i32
                     ; jg	>skip_jump
                     ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
                     ;; self.exit_block(&mut ops)
@@ -173,6 +175,10 @@ impl<'a> BlockCompiler<'a> {
                     ;; self.exit_block(&mut ops)
                     ; skip_jump:
                 );
+            }
+
+            if ime_enabled {
+                break;
             }
         }
 
@@ -215,8 +221,9 @@ impl<'a> BlockCompiler<'a> {
 
         Block {
             _start_address: start,
-            _length: self.length,
-            max_clock_cycles: self.max_clock_cycles,
+            _length: self.block_trace.length,
+            initial_block_clock_cycles: self.block_trace.interrupt_checks[0].1,
+            max_clock_cycles: self.block_trace.interrupt_checks.iter().map(|x| x.1).sum(),
             fn_ptr: unsafe { std::mem::transmute(compiled_code.as_ptr()) },
             _compiled_code: compiled_code,
         }
@@ -2450,7 +2457,10 @@ impl<'a> BlockCompiler<'a> {
             ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
             ;; self.exit_block(ops)
             ; skip_jump:
-        )
+        );
+        if let Condition::None = c {
+            self.tick(4);
+        }
     }
 
     pub fn jump(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
@@ -2464,7 +2474,10 @@ impl<'a> BlockCompiler<'a> {
             ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
             ;; self.exit_block(ops)
             ; skip_jump:
-        )
+        );
+        if let Condition::None = c {
+            self.tick(4);
+        }
     }
 
     pub fn jump_hl(&mut self, ops: &mut VecAssembler<X64Relocation>) {
@@ -2519,6 +2532,9 @@ impl<'a> BlockCompiler<'a> {
             ;; self.exit_block(ops)
             ; skip_jump:
         );
+        if let Condition::None = c {
+            self.tick(12);
+        }
     }
 
     pub fn rst(&mut self, ops: &mut VecAssembler<X64Relocation>, address: u8) {
@@ -2565,10 +2581,10 @@ impl<'a> BlockCompiler<'a> {
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
 
-        self.update_clock_count(ops);
         if c != Condition::None {
-            dynasm!(ops; add QWORD [rbx + clock_count_offset as i32], 4);
+            self.tick(4);
         }
+        self.update_clock_count(ops);
         self.check_condition(ops, c);
         dynasm!(ops
             // pop pc
@@ -2596,6 +2612,9 @@ impl<'a> BlockCompiler<'a> {
             ;; self.exit_block(ops)
             ; skip_jump:
         );
+        if let Condition::None = c {
+            self.tick(12);
+        }
     }
 
     pub fn reti(&mut self, ops: &mut VecAssembler<X64Relocation>) {

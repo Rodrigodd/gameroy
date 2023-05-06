@@ -1,6 +1,6 @@
 use dynasmrt::ExecutableBuffer;
 use gameroy::{
-    consts::{CB_CLOCK, CLOCK, LEN},
+    consts::{self, CB_CLOCK, CLOCK, LEN},
     disassembler::{Address, Cursor},
     gameboy::{cpu::CpuState, GameBoy},
     interpreter::Interpreter,
@@ -20,6 +20,7 @@ mod x64;
 pub struct Block {
     _start_address: u16,
     _length: u16,
+    initial_block_clock_cycles: u32,
     max_clock_cycles: u32,
     fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
     pub _compiled_code: ExecutableBuffer,
@@ -35,13 +36,22 @@ impl Block {
     }
 }
 
+/// A block of instruction to be compiled.
+struct BlockTrace {
+    instrs: Vec<Instr>,
+    length: u16,
+    // Pairs of (instr index, cycles count) of points where the next_interrupt is checked. It is
+    // often after a write.
+    interrupt_checks: Vec<(u16, u32)>,
+}
+
 struct Instr {
     op: [u8; 3],
     pc: u16,
     bank: u16,
 }
 
-fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
+fn trace_a_block(gb: &GameBoy) -> BlockTrace {
     let bank = gb.cartridge.curr_bank();
 
     let cursor = Cursor {
@@ -53,7 +63,14 @@ fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
 
     let mut cursors = vec![cursor];
 
-    let mut max_clock_cycles = 0;
+    let mut interrupt_checks = Vec::new();
+
+    let mut mark_check = |instrs: &Vec<Instr>, max_clock_cycles: &mut u32| {
+        // +12 in case the instructions branches.
+        interrupt_checks.push((instrs.len() as u16 - 1, *max_clock_cycles + 12));
+    };
+
+    let mut curr_clock_count = 0;
     let mut length = 0;
 
     let mut instrs = Vec::new();
@@ -61,7 +78,7 @@ fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
     while let Some(cursor) = cursors.pop() {
         let (op, len) = cursor.get_op(gb);
         length += len as u16;
-        max_clock_cycles += if op[0] == 0xcb {
+        curr_clock_count += if op[0] == 0xcb {
             CB_CLOCK[op[1] as usize] as u32
         } else {
             CLOCK[op[0] as usize] as u32
@@ -77,7 +94,20 @@ fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
             },
         });
 
-        let (step, jump) = gameroy::disassembler::compute_step(len, cursor, &op, &gb.cartridge);
+        // after writing to RAM, a next_interrupt check is emmited.
+        if consts::WRITE_RAM[op[0] as usize] {
+            mark_check(&instrs, &mut curr_clock_count);
+        }
+
+        if [
+            0x18, 0xc3, 0xc7, 0xc9, 0xcd, 0xcf, 0xd7, 0xd7, 0xe7, 0xe9, 0xef, 0xff, 0xff,
+        ]
+        .contains(&op[0])
+        {
+            break;
+        }
+
+        let (step, _jump) = gameroy::disassembler::compute_step(len, cursor, &op, &gb.cartridge);
 
         let step = match step {
             Some(step) if step.pc < 0x4000 && step.bank0 == bank.0 || step.bank == Some(bank.1) => {
@@ -91,17 +121,20 @@ fn trace_a_block(gb: &GameBoy) -> (Vec<Instr>, u16, u32) {
             break;
         }
 
-        cursors.push(step);
-
         if [0x10, 0x76].contains(&op[0]) {
             break;
         }
+
+        cursors.push(step);
     }
 
-    // in case any of the instructions branches.
-    max_clock_cycles += 12;
+    mark_check(&instrs, &mut curr_clock_count);
 
-    (instrs, length, max_clock_cycles)
+    BlockTrace {
+        instrs,
+        length,
+        interrupt_checks,
+    }
 }
 
 pub struct NoHashHasher(u64);
@@ -183,7 +216,8 @@ impl JitCompiler {
         match block {
             Some(block)
                 if gb.cpu.state == CpuState::Running
-                    && (gb.clock_count + block.max_clock_cycles as u64 + 4) < next_interrupt =>
+                    && (gb.clock_count + block.initial_block_clock_cycles as u64 + 4)
+                        < next_interrupt =>
             {
                 // let bank = gb.cartridge.curr_bank();
                 // println!(
@@ -194,11 +228,20 @@ impl JitCompiler {
                 //         bank.1
                 //     },
                 //     block._start_address,
-                //     gb.clock_count
+                //     gb.clock_count,
                 // );
                 block.call(gb);
                 debug_assert!(gb.clock_count - start_clock <= block.max_clock_cycles as u64);
                 debug_assert!(gb.clock_count != start_clock);
+
+                // assert that no interrupt happened inside the block (unless it happend in a write
+                // of the last instruction).
+                debug_assert!(
+                    gb.clock_count - 24 < gb.next_interrupt.get(),
+                    "{} < {}",
+                    gb.clock_count,
+                    next_interrupt
+                );
             }
             _ => {
                 // println!("interpr {:04x} ({})", gb.cpu.pc, gb.clock_count);

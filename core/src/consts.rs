@@ -80,3 +80,27 @@ pub const CB_CLOCK: [u8; 256] = [
     8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8, // Ex
     8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8, // Fx
 ];
+
+const F: bool = false;
+const T: bool = true;
+
+/// Instructions that may write in ROM
+pub const WRITE_RAM: [bool; 256] = [
+    // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+    F, F, T, F, F, F, F, F, T, F, F, F, F, F, F, F, // 0x
+    F, F, T, F, F, F, F, F, F, F, F, F, F, F, F, F, // 1x
+    F, F, T, F, F, F, F, F, F, F, F, F, F, F, F, F, // 2x
+    F, F, T, F, T, T, T, F, F, F, F, F, F, F, F, F, // 3x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 4x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 5x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 6x
+    T, T, T, T, T, T, F, T, F, F, F, F, F, F, F, F, // 7x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 8x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 9x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // Ax
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // Bx
+    F, F, F, F, T, T, F, T, F, F, F, F, T, T, F, T, // Cx
+    F, F, F, F, T, T, F, T, F, F, F, F, T, F, F, T, // Dx
+    T, F, T, F, F, T, F, T, F, F, T, F, F, F, F, T, // Ex
+    F, F, F, F, F, T, F, T, F, F, F, F, F, F, F, T, // Fx
+];

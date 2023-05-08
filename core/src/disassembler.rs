@@ -65,7 +65,7 @@ impl Address {
     }
 
     fn as_cursor(&self, cart: &Cartridge) -> Cursor {
-        let pc = if self.bank != 0 { 0x4000 } else { 0x0000 } + self.address;
+        let pc = self.to_pc();
         Cursor {
             bank0: cart.bank0_from_bank(self.bank),
             bank: Some(self.bank),

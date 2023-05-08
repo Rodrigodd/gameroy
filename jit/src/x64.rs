@@ -1,9 +1,9 @@
 use dynasmrt::{
-    dynasm, mmap::MutableBuffer, x64::X64Relocation, DynasmApi, DynasmLabelApi, VecAssembler,
+    dynasm, mmap::MutableBuffer, x64::X64Relocation, DynamicLabel, DynasmApi, DynasmLabelApi,
+    VecAssembler,
 };
 
 use gameroy::{
-    consts,
     gameboy::{
         cartridge::Cartridge,
         cpu::{Cpu, CpuState, ImeState},
@@ -12,7 +12,7 @@ use gameroy::{
     interpreter::{Condition, Interpreter, Reg, Reg16},
 };
 
-use crate::{trace_a_block, Block, BlockTrace, Instr};
+use crate::{trace_a_block, Block, BlockTrace};
 
 macro_rules! offset {
     (@ $parent:path, $field:tt) => {
@@ -33,6 +33,15 @@ macro_rules! offset {
     };
 }
 
+#[derive(Clone, Copy)]
+struct Instr {
+    op: [u8; 3],
+    pc: u16,
+    bank: u16,
+    label: DynamicLabel,
+    curr_clock_count: u32,
+}
+
 pub struct BlockCompiler<'gb> {
     gb: &'gb GameBoy,
     /// The value of PC for the current instruction
@@ -47,6 +56,8 @@ pub struct BlockCompiler<'gb> {
     curr_clock_count: u32,
 
     block_trace: BlockTrace,
+    instrs: Box<[Instr]>,
+    curr_instr: usize,
 
     /// If the last call to compiled_opcode invoked a gb.write call.
     did_write: bool,
@@ -65,6 +76,8 @@ impl<'a> BlockCompiler<'a> {
             op: [0; 3],
             pc: block_trace.instrs[0].pc,
             block_trace,
+            instrs: Default::default(),
+            curr_instr: 0,
             accum_clock_count: 0,
             curr_clock_count: 0,
             did_write: false,
@@ -84,6 +97,24 @@ impl<'a> BlockCompiler<'a> {
         //     // self.max_clock_cycles,
         // );
         let mut ops: dynasmrt::VecAssembler<X64Relocation> = dynasmrt::VecAssembler::new(0);
+
+        self.instrs = std::mem::take(&mut self.block_trace.instrs)
+            .into_iter()
+            .map(
+                |super::Instr {
+                     op,
+                     pc,
+                     bank,
+                     curr_clock_count,
+                 }| Instr {
+                    label: ops.new_dynamic_label(),
+                    op,
+                    pc,
+                    bank,
+                    curr_clock_count,
+                },
+            )
+            .collect();
 
         let push_rbp_offset;
         let push_rbx_offset;
@@ -108,8 +139,9 @@ impl<'a> BlockCompiler<'a> {
 
         let mut curr_check = 0;
 
-        let instrs = std::mem::take(&mut self.block_trace.instrs);
-        for (i, instr) in instrs.into_iter().enumerate() {
+        for i in 0..self.instrs.len() {
+            let instr = self.instrs[i];
+            self.curr_instr = i;
             assert_eq!(self.pc, instr.pc);
             if curr_check + 1 < self.block_trace.interrupt_checks.len()
                 && i == self.block_trace.interrupt_checks[curr_check].0 as usize
@@ -134,6 +166,9 @@ impl<'a> BlockCompiler<'a> {
 
             self.pc += 1;
 
+            self.update_clock_count(&mut ops);
+            dynasm!(ops; => instr.label);
+
             // if false, the opcode was compiled to a interpreter call.
             if self.compile_opcode(&mut ops, op) {
                 last_one_was_compiled = true;
@@ -143,23 +178,10 @@ impl<'a> BlockCompiler<'a> {
 
             // the last write could have updated the next_interrupt or switched banks.
             if self.did_write {
-                // check if next_interrupt is not happening until the next check.
-                // next_interrupt - clock_count < next_check - curr_clock_count
-                let clock_count = offset!(GameBoy, clock_count);
-                let next_interrupt = offset!(GameBoy, next_interrupt);
-                self.update_clock_count(&mut ops);
                 let next_check = self.block_trace.interrupt_checks[curr_check].1;
                 let curr_clock_count = self.curr_clock_count;
-                dynasm!(ops
-                    ;; self.update_pc(&mut ops)
-                    ; mov	rax, QWORD [rbx + next_interrupt as i32]
-                    ; sub	rax, QWORD [rbx + clock_count as i32]
-                    ; cmp	rax, (next_check - self.curr_clock_count) as i32
-                    ; jg	>skip_jump
-                    ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
-                    ;; self.exit_block(&mut ops)
-                    ;skip_jump:
-                );
+                self.update_pc(&mut ops);
+                self.check_interrupt(&mut ops, curr_clock_count, next_check);
 
                 let bank = if instr.pc <= 0x3FFF {
                     offset!(GameBoy, cartridge: Cartridge, lower_bank)
@@ -167,13 +189,14 @@ impl<'a> BlockCompiler<'a> {
                     offset!(GameBoy, cartridge: Cartridge, upper_bank)
                 };
 
+                let clock_count = offset!(GameBoy, clock_count);
                 dynasm!(ops
                     ; mov	ax, WORD [rbx + bank as i32]
                     ; cmp	ax, WORD instr.bank as i16
-                    ; je	>skip_jump
+                    ; je	>bank_skip_exit
                     ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
                     ;; self.exit_block(&mut ops)
-                    ; skip_jump:
+                    ; bank_skip_exit:
                 );
             }
 
@@ -229,6 +252,28 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
+    fn check_interrupt(
+        &mut self,
+        ops: &mut VecAssembler<X64Relocation>,
+        curr_clock_count: u32,
+        next_check: u32,
+    ) {
+        // check if next_interrupt is not happening until the next check.
+        // next_interrupt - clock_count < next_check - curr_clock_count
+        let clock_count = offset!(GameBoy, clock_count);
+        let next_interrupt = offset!(GameBoy, next_interrupt);
+        self.update_clock_count(ops);
+        dynasm!(ops
+            ; mov	rax, QWORD [rbx + next_interrupt as i32]
+            ; sub	rax, QWORD [rbx + clock_count as i32]
+            ; cmp	rax, (next_check - curr_clock_count) as i32
+            ; jg	>check_skip_exit
+            ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
+            ;; self.exit_block(ops)
+            ;check_skip_exit:
+        );
+    }
+
     fn update_clock_count(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         // add the accumulated clock_count
         if self.accum_clock_count != 0 {
@@ -272,6 +317,38 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
+    fn jump_to(&mut self, ops: &mut VecAssembler<X64Relocation>, address: u16) {
+        let clock_count = offset!(GameBoy, clock_count);
+        let pc = offset!(GameBoy, cpu: Cpu, pc);
+
+        // println!("jumpto: {:02x}", address);
+        dynasm!(ops
+            ; mov WORD [rbx + pc as i32], address as i16
+            ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
+        );
+
+        let curr_bank = self.instrs[self.curr_instr].bank;
+        let target = self
+            .instrs
+            .iter()
+            .find(|x| x.pc == address && x.bank == curr_bank)
+            .copied();
+
+        let Some(instr) = target else { return self.exit_block(ops) };
+
+        let next_check = self
+            .block_trace
+            .interrupt_checks
+            .iter()
+            .map(|x| x.1)
+            .find(|x| *x > instr.curr_clock_count);
+
+        let Some(next_check) = next_check else { return self.exit_block(ops) };
+
+        self.check_interrupt(ops, instr.curr_clock_count, next_check);
+
+        dynasm!(ops; jmp => instr.label)
+    }
     fn exit_block(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         // self.update_pc(ops);
         self.update_ime_state(ops);
@@ -2447,15 +2524,12 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn jump_rel(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
-        let clock_count = offset!(GameBoy, clock_count);
-        let pc = offset!(GameBoy, cpu: Cpu, pc);
-
         let r8 = self.get_immediate() as i8;
+        let address = self.pc.wrapping_add_signed(r8 as i16);
+        self.update_clock_count(ops);
         self.check_condition(ops, c);
         dynasm!(ops
-            ; mov WORD [rbx + pc as i32], self.pc.wrapping_add_signed(r8 as i16) as i16
-            ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
-            ;; self.exit_block(ops)
+            ;; self.jump_to(ops, address)
             ; skip_jump:
         );
         if let Condition::None = c {

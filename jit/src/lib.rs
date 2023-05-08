@@ -49,6 +49,7 @@ struct Instr {
     op: [u8; 3],
     pc: u16,
     bank: u16,
+    curr_clock_count: u32,
 }
 
 fn trace_a_block(gb: &GameBoy) -> BlockTrace {
@@ -66,8 +67,7 @@ fn trace_a_block(gb: &GameBoy) -> BlockTrace {
     let mut interrupt_checks = Vec::new();
 
     let mut mark_check = |instrs: &Vec<Instr>, max_clock_cycles: &mut u32| {
-        // +12 in case the instructions branches.
-        interrupt_checks.push((instrs.len() as u16 - 1, *max_clock_cycles + 12));
+        interrupt_checks.push((instrs.len() as u16 - 1, *max_clock_cycles));
     };
 
     let mut curr_clock_count = 0;
@@ -92,6 +92,7 @@ fn trace_a_block(gb: &GameBoy) -> BlockTrace {
             } else {
                 cursor.bank.unwrap()
             },
+            curr_clock_count,
         });
 
         // after writing to RAM, a next_interrupt check is emmited.
@@ -231,7 +232,6 @@ impl JitCompiler {
                 //     gb.clock_count,
                 // );
                 block.call(gb);
-                debug_assert!(gb.clock_count - start_clock <= block.max_clock_cycles as u64);
                 debug_assert!(gb.clock_count != start_clock);
 
                 // assert that no interrupt happened inside the block (unless it happend in a write

@@ -467,14 +467,14 @@ pub fn compute_step(
         0x18 => {
             // JR $rr
             let dest = pc
-                .wrapping_sub(len as u16)
+                .wrapping_add(len as u16)
                 .wrapping_add_signed(op[1] as i8 as i16);
             (step(), jump(dest))
         }
         x if x & 0b1110_0111 == 0b0010_0000 => {
             // JR cc, $rr
             let dest = pc
-                .wrapping_sub(len as u16)
+                .wrapping_add(len as u16)
                 .wrapping_add_signed(op[1] as i8 as i16);
             (step(), jump(dest))
         }

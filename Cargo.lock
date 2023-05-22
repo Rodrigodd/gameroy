@@ -2680,7 +2680,7 @@ dependencies = [
 [[package]]
 name = "sprite-render"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/sprite-render-rs#e3baa674872fd589dd4071406a35a95d9e835854"
+source = "git+https://github.com/Rodrigodd/sprite-render-rs#7d7032de91cb4ed0d877d43084cf01ddb98350e4"
 dependencies = [
  "cfg-if 1.0.0",
  "gl_generator",

@@ -47,7 +47,7 @@ Compiling and running for native, i.e, Windows and Linux (other platforms are
 untested), only needs cargo:
 
 ```shell
-cargo run --release -p gameroy_native
+cargo run --release -p gameroy-native
 ```
 
 ### WebAssembly
@@ -60,7 +60,7 @@ cd wasm
 wasm-pack build --target web
 ```
 
-After that, open a web server in the root folder that serves [wasm/index.html].
+After that, open a web server that serves [`wasm/index.html`](wasm/index.html).
 
 For example, you can use python's `http.server` module:
 
@@ -73,9 +73,9 @@ And access `localhost:8000` in a web browser.
 
 ### Android
 
-For building to android, you need to have [Anroid NDK](https://developer.android.com/ndk) installed.
+To build for android, you need to have [Anroid NDK](https://developer.android.com/ndk) installed.
 
-Gameroy uses [Gradle to build the android port](https://developer.android.com/studio/build/building-cmdline).
+GameRoy uses [Gradle to build the android port](https://developer.android.com/studio/build/building-cmdline).
 To build and install the .apk in a device:
 
 ```shell
@@ -113,7 +113,7 @@ The default keymap is:
 ## Debugger
 
 By pressing `F12` you can open/close the debug panel. There you can see a view
-to the disassembled code, a view to the ppu memory and state, the cpu
+to the disassembled code, a view to the PPU memory and state, the CPU
 registers, etc. At the bottom there is a text field for command input.
 
 ### Debugger commands
@@ -145,10 +145,15 @@ Pressing `Enter` with the text field empty will run a step.
 
 ## Test suite
 
-All test roms used were obtained from [https://github.com/c-sp/gameboy-test-roms/releases/tag/v3.2],
-but the emulator was only run against the following tests.
+All test roms used were obtained from [c-sp/gameboy-test-roms v.51](https://github.com/c-sp/gameboy-test-roms/releases/tag/v5.1),
+but the emulator was only run against the tests listed below.
 
-To run the tests, follow the instructions in [core/tests](core/tests/).
+To run all tests, download and extract the suite to `gameroy\core\tests\gameboy-test-roms`,
+then go to the project root and run the command:
+
+```shell
+cargo test -p gameroy-core
+```
 
 ### Blargg's tests
                              

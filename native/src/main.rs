@@ -10,6 +10,7 @@
 use std::path::PathBuf;
 
 use clap::{arg, Command};
+use gameroy_lib::config::parse_screen_size;
 use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile, VERSION};
 
 mod bench;
@@ -46,6 +47,8 @@ pub fn main() {
         .arg(arg!(--movie <PATH> "play the given .vbm file").required(false))
         .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
         .arg(arg!(--rom_folder <PATH> "specify the path of the folder for listing .gb roms").required(false))
+        .arg(arg!(--"screen-size" <WIDTHxHEIGHT> "the initial size of the window").required(false))
+        .arg(arg!(--"frame-skip" "if the emulation will start running at max speed").required(false))
         .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
         .subcommand(Command::new("bench")
             .about("Emulate a given rom for some ammount of frames, and give back the time runned.")
@@ -91,12 +94,19 @@ pub fn main() {
 
     let debug = matches.is_present("debug");
     let diss = matches.is_present("disassembly");
+    let frame_skip = matches.is_present("frame-skip");
     let boot_rom_path = matches.value_of("boot_rom");
     let rom_folder = matches.value_of("rom_folder");
     let rom_path = matches.value_of("ROM_PATH");
     let movie = matches.value_of("movie").map(|path| {
         let mut file = std::fs::File::open(path).unwrap();
         gameroy::parser::vbm(&mut file).unwrap()
+    });
+    let screen_size = matches.value_of("screen-size").map(|x| {
+        parse_screen_size(x).unwrap_or_else(|err| {
+            eprintln!("failed to parse screen-size: {}", err);
+            std::process::exit(1)
+        })
     });
 
     gameroy_lib::config::init_config({
@@ -108,6 +118,8 @@ pub fn main() {
             .rom_folder
             .or_else(|| rom_folder.map(|x| x.to_string()));
         config.boot_rom = boot_rom_path.map(|x| x.to_string());
+        config.frame_skip = frame_skip;
+        config.screen_size = screen_size.or(config.screen_size);
         config
     });
 

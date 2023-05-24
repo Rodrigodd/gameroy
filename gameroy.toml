@@ -10,6 +10,12 @@ rom_folder = "roms"
 # and the collumn title (`File`, `Header Name`, `Size` or `Last played`).
 sort_list = "+File"
 
+# the initial size of the window in format WIDTHxHEIGHT
+screen_size = "768x400"
+
+# if the emulation will start running at max speed.
+frame_skip = false
+
 [keymap]
 
 # KeyCode names came from this list: https://docs.rs/winit/0.26.1/winit/event/enum.VirtualKeyCode.html

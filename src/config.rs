@@ -1,3 +1,4 @@
+use std::eprintln;
 use std::path::{Path, PathBuf};
 
 use cfg_if::cfg_if;
@@ -100,7 +101,49 @@ pub struct Config {
     pub rom_folder: Option<String>,
     pub boot_rom: Option<String>,
     pub sort_list: Option<String>,
+    pub frame_skip: bool,
+    #[serde(deserialize_with = "screen_size_deser")]
+    pub screen_size: Option<(u32, u32)>,
     pub keymap: KeyMap,
+}
+
+pub fn parse_screen_size(value: &str) -> Result<(u32, u32), &'static str> {
+    let Some((width, height)) = value.split_once('x') else {
+        return Err("missing separator 'x'");
+    };
+    Ok((
+        width.parse().map_err(|_| "could not parse width")?,
+        height.parse().map_err(|_| "could not parse height")?,
+    ))
+}
+
+fn screen_size_deser<'de, D>(deserializer: D) -> Result<Option<(u32, u32)>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+    struct ScreenSizeVisitor;
+    impl<'de> de::Visitor<'de> for ScreenSizeVisitor {
+        type Value = Option<(u32, u32)>;
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            match parse_screen_size(v) {
+                Ok(x) => Ok(Some(x)),
+                Err(err) => {
+                    eprintln!("failed to parse screen size: {}", err);
+                    Ok(None)
+                }
+            }
+        }
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string in the format \"WIDTHxHEIGHT\"")
+        }
+    }
+    deserializer.deserialize_str(ScreenSizeVisitor)
 }
 
 impl Config {
@@ -218,6 +261,8 @@ const DEFAULT_CONFIG: Config = Config {
     rom_folder: None,
     boot_rom: None,
     sort_list: None,
+    frame_skip: false,
+    screen_size: None,
     keymap: DEFAULT_KEYMAP,
 };
 

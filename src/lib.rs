@@ -35,11 +35,13 @@ use parking_lot::Mutex;
 pub use rfd;
 pub use rom_loading::RomFile;
 use winit::{
-    dpi::PhysicalSize,
+    dpi::LogicalSize,
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopBuilder, EventLoopProxy},
     window::{Icon, Window, WindowBuilder},
 };
+
+use crate::config::config;
 
 use self::ui::RomEntries;
 
@@ -96,10 +98,12 @@ pub fn main(gb: Option<(RomFile, Box<GameBoy>)>, movie: Option<Vbm>) {
             .ok();
     };
 
+    let (width, height) = config().screen_size.unwrap_or((768, 400));
+
     // create winit's window and event_loop
     let event_loop = EventLoopBuilder::with_user_event().build();
     let wb = WindowBuilder::new()
-        .with_inner_size(PhysicalSize::new(768u32, 400))
+        .with_inner_size(LogicalSize::new(width, height))
         // wait every thing to be loaded before showing the window
         .with_visible(false)
         .with_window_icon(icon)

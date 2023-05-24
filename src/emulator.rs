@@ -15,7 +15,7 @@ use parking_lot::Mutex as ParkMutex;
 use winit::event_loop::EventLoopProxy;
 
 use super::UserEvent;
-use crate::rom_loading::RomFile;
+use crate::{config::config, rom_loading::RomFile};
 
 #[derive(Debug)]
 pub enum EmulatorEvent {
@@ -464,7 +464,7 @@ impl Emulator {
             rom,
             debug: false,
             state: EmulatorState::Idle,
-            frame_limit: true,
+            frame_limit: !config().frame_skip,
             rewind: false,
 
             last_start_time,

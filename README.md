@@ -196,7 +196,7 @@ Only tests that were expected to pass on DMG were tested.
 
 | Test | GameRoy |
 |------|---------|
-| ppu  | 3/25    |
+| ppu  | 15/25   |
 | mbc  | 0/1     |
 | dma  | N/A\*   |
 

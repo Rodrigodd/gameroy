@@ -799,16 +799,6 @@ impl Emulator {
     }
 }
 
-fn clock_to_duration(clock_count: u64) -> Duration {
-    let secs = clock_count / CLOCK_SPEED;
-    let nanos = (clock_count % CLOCK_SPEED) * 1_000_000_000 / CLOCK_SPEED;
-    Duration::new(secs, nanos as u32)
-}
-
-fn recompute_start_time(clock_count: u64) -> Instant {
-    Instant::now() - clock_to_duration(clock_count)
-}
-
 /// The number of milliseconds since UNIX_EPOCH.
 fn timestamp() -> Option<u64> {
     SystemTime::now()

@@ -1,3 +1,6 @@
+/// The current version of GameRoy.
+pub const VERSION: &str = "0.2.0";
+
 /// The number of cycles the gameboy runs per second.
 pub const CLOCK_SPEED: u64 = 4_194_304;
 

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use clap::{arg, Command};
 use gameroy_lib::config::parse_screen_size;
-use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile, VERSION};
+use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile};
 
 mod bench;
 
@@ -35,7 +35,7 @@ pub fn main() {
     gameroy_lib::log_panic();
 
     let matches = Command::new("GameRoy")
-        .version(VERSION)
+        .version(gameroy::consts::VERSION)
         .author("Rodrigo Moraes")
         .about("A Game Boy emulator and debugger (and disassembler?).")
         .arg(arg!(-d - -debug "start the emulation in debug mode").required(false))

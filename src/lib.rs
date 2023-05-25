@@ -29,6 +29,7 @@ use gameroy::{
     debugger::{Debugger, DebuggerEvent},
     gameboy::GameBoy,
     parser::Vbm,
+    consts::{SCREEN_WIDTH, SCREEN_HEIGHT, VERSION},
 };
 use parking_lot::Mutex;
 #[cfg(feature = "rfd")]
@@ -47,10 +48,6 @@ use self::ui::RomEntries;
 
 #[macro_use]
 extern crate giui;
-
-const SCREEN_WIDTH: usize = 160;
-const SCREEN_HEIGHT: usize = 144;
-pub const VERSION: &str = "0.2.0";
 
 pub fn log_panic() {
     let default_hook = std::panic::take_hook();

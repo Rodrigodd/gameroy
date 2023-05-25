@@ -22,9 +22,32 @@ const SCREEN_WIDTH: u32 = 160;
 const SCREEN_HEIGHT: u32 = 144;
 const SAMPLE_RATE: u64 = 44100;
 
+#[macro_export]
+macro_rules! concat {
+    ($($s:expr),+) => {{
+        const LEN: usize = $( $s.len() + )* 0;
+        const ARR: [u8; LEN] = {
+            let mut arr = [0; LEN];
+            let mut base: usize = 0;
+            $({
+                let mut i = 0;
+                let s = $s.as_bytes();
+                while i < s.len() {
+                    arr[base + i] = s[i];
+                    i += 1;
+                }
+                base += s.len();
+            })*
+            if base != LEN { panic!("invalid length"); }
+            arr
+        };
+        std::str::from_utf8(&ARR).unwrap()
+    }}
+}
+
 macro_rules! c_str {
-    ($x:literal) => {
-        concat!($x, "\0").as_ptr() as *const c_char
+    ($x:expr) => {
+        $crate::concat!($x, "\0").as_ptr() as *const c_char
     };
 }
 
@@ -116,7 +139,7 @@ pub extern "C" fn retro_get_system_info(info: &mut MaybeUninit<retro_system_info
     };
 
     info.library_name = c_str!("GameRoy");
-    info.library_version = c_str!("0.2.0");
+    info.library_version = c_str!(gameroy::consts::VERSION);
     info.valid_extensions = c_str!("gb");
     info.need_fullpath = false;
     info.block_extract = false;

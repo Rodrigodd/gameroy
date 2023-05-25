@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-jit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cfg-if 1.0.0",
  "dynasmrt",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-libretro"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "gameroy-core",
  "log",

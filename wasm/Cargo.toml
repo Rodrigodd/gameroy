@@ -1,10 +1,10 @@
 [package]
 name = "gameroy-wasm"
-version = "0.2.0"
-edition = "2021"
-authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/Rodrigodd/gameroy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -33,10 +33,10 @@ jobs:
       with: 
         repository: "c-sp/gameboy-test-roms"
         tag: "v5.1"
-        fileName: "gameboy-test-roms-v5.1.zip"
+        fileName: "game-boy-test-roms-v5.1.zip"
 
     - name: Unzip test roms
-      run: unzip gameboy-test-roms-v5.1.zip -d core/tests/gameboy-test-roms/
+      run: unzip game-boy-test-roms-v5.1.zip -d core/tests/gameboy-test-roms/
 
     - name: Run tests
       run: cargo test --verbose --workspace

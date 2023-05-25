@@ -1,5 +1,5 @@
 /// The current version of GameRoy.
-pub const VERSION: &str = "0.2.0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The number of cycles the gameboy runs per second.
 pub const CLOCK_SPEED: u64 = 4_194_304;

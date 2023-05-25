@@ -187,6 +187,7 @@ Only tests that were expected to pass on DMG were tested.
 | emulator_only\mbc1    | :+1:    |
 | emulator_only\mbc2    | :+1:    |
 | emulator_only\mbc5    | :+1:    |
+| manual-only\          | :+1:    |
 | other                 | N/A\*   |
 
 \* Not tested.

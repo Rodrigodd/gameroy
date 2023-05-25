@@ -708,6 +708,14 @@ mod mooneye {
         };
     }
 
+    screen! {
+        sprite_priority(
+            "mooneye-test-suite/manual-only/sprite_priority.gb",
+            "mooneye-test-suite/manual-only/sprite_priority-dmg.png",
+            24_174_324,
+        );
+    }
+
     registers! {
       add_sp_e_timing("acceptance/add_sp_e_timing", 120*CLOCK_SPEED);
       boot_div_dmg_abc_mgb("acceptance/boot_div-dmgABCmgb", 120*CLOCK_SPEED);

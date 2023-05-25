@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "audio-engine",
  "base64",
@@ -1171,7 +1171,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-android"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gameroy",
  "jni",
@@ -1181,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "image",
@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-jit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "cfg-if 1.0.0",
  "dynasmrt",
@@ -1203,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-libretro"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "gameroy-core",
  "log",
@@ -1212,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-native"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap 3.2.23",
  "embed-resource",
@@ -1225,7 +1225,7 @@ dependencies = [
 
 [[package]]
 name = "gameroy-wasm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "console_error_panic_hook",
  "gameroy",

@@ -32,8 +32,8 @@ jobs:
     - uses: robinraju/release-downloader@v1.5
       with: 
         repository: "c-sp/gameboy-test-roms"
-        tag: "v3.2"
-        fileName: "gameboy-test-roms-v3.2.zip"
+        tag: "v5.1"
+        fileName: "gameboy-test-roms-v5.1.zip"
 
     - name: Unzip test roms
       run: unzip gameboy-test-roms-v3.2.zip -d core/tests/gameboy-test-roms/

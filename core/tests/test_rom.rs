@@ -712,7 +712,7 @@ mod mooneye {
         sprite_priority(
             "mooneye-test-suite/manual-only/sprite_priority.gb",
             "mooneye-test-suite/manual-only/sprite_priority-dmg.png",
-            24_174_324,
+            24_200_000,
         );
     }
 

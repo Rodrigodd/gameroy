@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, io::Write, sync::Arc, time::Duration};
+use std::{collections::VecDeque, io::Write, sync::Arc};
 
 #[cfg(feature = "audio-engine")]
 use audio_engine::{AudioEngine, SoundSource};

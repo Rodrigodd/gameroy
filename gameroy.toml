@@ -6,6 +6,10 @@ start_in_debug = false
 # Only lists .gb files, and it doesn't search for subfolders.
 rom_folder = "roms"
 
+# the path to the boot rom. If not set, the emulator will load a state equivalent to
+# the one after the original boot rom is executed.
+# boot_rom = "path/to/boot_rom.gb"
+
 # the sorting that the rom list. Is formed by a direction (ascending `+` or descending `-`),
 # and the collumn title (`File`, `Header Name`, `Size` or `Last played`).
 sort_list = "+File"

@@ -763,15 +763,22 @@ impl Emulator {
                 } else {
                     // run 1.6ms worth of emulation, and check for events in the channel, in a loop
                     let mut gb = self.gb.lock();
-                    let mut inter = Interpreter(&mut gb);
-                    let target_clock = inter.0.clock_count + CLOCK_SPEED / 600;
+                    let target_clock = gb.clock_count + CLOCK_SPEED / 600;
 
-                    while inter.0.clock_count < target_clock {
-                        inter.interpret_op();
+                    while gb.clock_count < target_clock {
+                        #[cfg(target_arch = "x86_64")]
+                        if let Some(jit_compiler) = &mut self.jit_compiler {
+                            jit_compiler.interpret_block(&mut gb);
+                        } else {
+                            Interpreter(&mut gb).interpret_op();
+                        }
+                        #[cfg(not(target_arch = "x86_64"))]
+                        Interpreter(&mut gb).interpret_op();
                     }
+
                     // clear the audio output
-                    let clock_count = inter.0.clock_count;
-                    let _ = inter.0.sound.get_mut().get_output(clock_count);
+                    let clock_count = gb.clock_count;
+                    let _ = gb.sound.get_mut().get_output(clock_count);
 
                     return Control::Poll;
                 }

@@ -266,6 +266,9 @@ impl<'a> BlockCompiler<'a> {
             ; mov	rax, QWORD [rbx + next_interrupt as i32]
             ; sub	rax, QWORD [rbx + clock_count as i32]
             ; cmp	rax, (next_check - curr_clock_count) as i32
+            // ;; debug(ops, move |_gb| {
+            //     println!("{}: {}", _gb.next_interrupt.get() as isize - _gb.clock_count as isize, next_check as isize - curr_clock_count as isize)
+            // })
             ; jg	>check_skip_exit
             ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
             ;; self.exit_block(ops)
@@ -348,11 +351,20 @@ impl<'a> BlockCompiler<'a> {
 
         dynasm!(ops; jmp => instr.label)
     }
+
     fn exit_block(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         // self.update_pc(ops);
         self.update_ime_state(ops);
 
         dynasm!(ops
+            // ;; debug(ops, move |_gb| {
+            //     let next_interrupt = _gb.next_interrupt.get();
+            //     let next_interrupt = if next_interrupt == u64::MAX { i64::MAX as u64 } else { next_interrupt};
+            //     println!("exit {} ({} {})",
+            //         next_interrupt as isize - _gb.clock_count as isize,
+            //         _gb.next_interrupt.get() as isize, _gb.clock_count as isize,
+            //     )
+            // })
             ; pop r12
             ; pop rbx
             ; pop rbp
@@ -3246,6 +3258,43 @@ impl<'a> BlockCompiler<'a> {
         self.pc += 1;
         u16::from_be_bytes([h, l])
     }
+}
+
+#[allow(dead_code)]
+fn debug<F: Fn(&GameBoy) + 'static>(ops: &mut VecAssembler<X64Relocation>, f: F) {
+    extern "sysv64" fn call<F: Fn(&GameBoy) + 'static>(f: &'static F, gb: &'static GameBoy) {
+        f(gb)
+    }
+    let call_ptr: extern "sysv64" fn(&'static F, &'static GameBoy) = call::<F>;
+    let f = Box::into_raw(Box::new(f));
+    dynasm!(ops
+        ; pushfq
+        ; push rax
+        ; push rcx
+        ; push rdx
+        ; push rsi
+        ; push rdi
+        ; push r8
+        ; push r9
+        ; push r10
+        ; push r11
+
+        ; mov rax, QWORD call_ptr as usize as i64
+        ; mov rdi, QWORD f as usize as i64
+        ; mov rsi, rbx
+        ; call rax
+
+        ; pop r11
+        ; pop r10
+        ; pop r9
+        ; pop r8
+        ; pop rdi
+        ; pop rsi
+        ; pop rdx
+        ; pop rcx
+        ; pop rax
+        ; popfq
+    );
 }
 
 fn reg_offset16(reg: Reg16) -> usize {

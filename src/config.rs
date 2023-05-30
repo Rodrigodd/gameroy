@@ -148,6 +148,9 @@ where
 }
 
 impl Config {
+    /// Load the config from disk or wherever it is stored in the current platform.
+    ///
+    /// This don't update the global config.
     pub fn load() -> Result<Self, String> {
         load_config()
     }

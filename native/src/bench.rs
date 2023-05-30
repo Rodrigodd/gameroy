@@ -44,6 +44,7 @@ pub fn benchmark(
     timeout: u64,
     number_of_times: usize,
     predict_interrupt: bool,
+    interpreter: bool,
     jit: bool,
 ) {
     let len = number_of_times + 1;
@@ -66,6 +67,15 @@ pub fn benchmark(
     game_boy.reset();
     let start_clock_count = game_boy.clock_count;
 
+    if interpreter {
+        let mut times = run_interpreted(len, &mut game_boy, timeout);
+
+        // Remove first run, because in that one the code is compiled and traced.
+        times.remove(0);
+
+        print_stats(times, game_boy.clock_count - start_clock_count);
+    }
+
     if jit {
         #[cfg(not(target_arch = "x86_64"))]
         {
@@ -80,13 +90,6 @@ pub fn benchmark(
 
         print_stats(times, game_boy.clock_count - start_clock_count);
     }
-
-    let mut times = run_interpreted(len, &mut game_boy, timeout);
-
-    // Remove first run, because in that one the code is compiled and traced.
-    times.remove(0);
-
-    print_stats(times, game_boy.clock_count - start_clock_count);
 }
 
 fn print_stats(times: Vec<Duration>, clock_count: u64) {

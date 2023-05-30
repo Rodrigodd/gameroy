@@ -104,34 +104,34 @@ pub fn main() {
         );
     }
 
-    let debug = matches.is_present("debug");
-    let diss = matches.is_present("disassembly");
-    let frame_skip = matches.is_present("frame-skip");
-    let boot_rom_path = matches.value_of("boot_rom");
-    let rom_folder = matches.value_of("rom_folder");
-    let rom_path = matches.value_of("ROM_PATH");
-    let movie = matches.value_of("movie").map(|path| {
-        let mut file = std::fs::File::open(path).unwrap();
-        gameroy::parser::vbm(&mut file).unwrap()
-    });
-    let screen_size = matches.value_of("screen-size").map(|x| {
-        parse_screen_size(x).unwrap_or_else(|err| {
-            eprintln!("failed to parse screen-size: {}", err);
-            std::process::exit(1)
-        })
-    });
-
-    gameroy_lib::config::init_config({
+    {
         let mut config = config::Config::load()
             .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
             .unwrap_or_default();
-        config.start_in_debug |= debug;
-        config.rom_folder = config
-            .rom_folder
-            .or_else(|| rom_folder.map(|x| x.to_string()));
-        config.boot_rom = boot_rom_path.map(|x| x.to_string());
-        config.frame_skip = frame_skip;
-        config.screen_size = screen_size.or(config.screen_size);
+
+        config.start_in_debug |= matches.is_present("debug");
+
+        config.rom_folder = matches
+            .value_of("rom_folder")
+            .map(|x| x.to_string())
+            .or(config.rom_folder);
+
+        config.boot_rom = matches
+            .value_of("boot_rom")
+            .map(|x| x.to_string())
+            .or(config.boot_rom);
+
+        config.frame_skip |= matches.is_present("frame-skip");
+
+        config.screen_size = matches
+            .value_of("screen-size")
+            .map(|x| {
+                parse_screen_size(x).unwrap_or_else(|err| {
+                    eprintln!("failed to parse screen-size: {}", err);
+                    std::process::exit(1)
+                })
+            })
+            .or(config.screen_size);
 
         match (matches.is_present("interpreter"), matches.is_present("jit")) {
             (true, true) => {
@@ -143,7 +143,14 @@ pub fn main() {
             (false, false) => {}
         };
 
-        config
+        gameroy_lib::config::init_config(config);
+    }
+
+    let diss = matches.is_present("disassembly");
+    let rom_path = matches.value_of("ROM_PATH");
+    let movie = matches.value_of("movie").map(|path| {
+        let mut file = std::fs::File::open(path).unwrap();
+        gameroy::parser::vbm(&mut file).unwrap()
     });
 
     // dissasembly and return early

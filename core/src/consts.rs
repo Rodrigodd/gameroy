@@ -85,6 +85,7 @@ const F: bool = false;
 const T: bool = true;
 
 /// Instructions that may write in ROM
+// TODO: handle CB
 pub const WRITE_RAM: [bool; 256] = [
     // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
     F, F, T, F, F, F, F, F, T, F, F, F, F, F, F, F, // 0x

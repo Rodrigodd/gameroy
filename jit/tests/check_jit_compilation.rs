@@ -182,9 +182,6 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             let mut vblank = vblank.lock().unwrap();
             vblank.screen_a = Some(gb.ppu.borrow().screen);
             vblank.clock_count = Some(gb.clock_count);
-            if gb.clock_count == 81230904 {
-                println!("{:?}", *gb.ppu.borrow());
-            }
         }
     }));
     game_boy_a.serial.borrow_mut().serial_transfer_callback = None;
@@ -208,9 +205,6 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             }
 
             vblank.screen_b = Some(gb.ppu.borrow().screen);
-            if gb.clock_count == 81230904 {
-                println!("{:?}", *gb.ppu.borrow());
-            }
         }
     }));
     game_boy_b.serial.borrow_mut().serial_transfer_callback = None;

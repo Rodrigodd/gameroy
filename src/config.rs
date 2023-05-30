@@ -102,6 +102,7 @@ pub struct Config {
     pub boot_rom: Option<String>,
     pub sort_list: Option<String>,
     pub frame_skip: bool,
+    pub jit: bool,
     #[serde(deserialize_with = "screen_size_deser")]
     pub screen_size: Option<(u32, u32)>,
     pub keymap: KeyMap,
@@ -262,6 +263,7 @@ const DEFAULT_CONFIG: Config = Config {
     boot_rom: None,
     sort_list: None,
     frame_skip: false,
+    jit: true,
     screen_size: None,
     keymap: DEFAULT_KEYMAP,
 };

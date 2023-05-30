@@ -16,6 +16,9 @@ screen_size = "768x400"
 # if the emulation will start running at max speed.
 frame_skip = false
 
+# if the Just-in-time compiler will be used, if avaliable.
+jit = true
+
 [keymap]
 
 # KeyCode names came from this list: https://docs.rs/winit/0.26.1/winit/event/enum.VirtualKeyCode.html

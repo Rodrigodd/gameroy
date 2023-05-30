@@ -351,7 +351,7 @@ pub struct Emulator {
     proxy: EventLoopProxy<UserEvent>,
 
     #[cfg(target_arch = "x86_64")]
-    jit_compiler: gameroy_jit::JitCompiler,
+    jit_compiler: Option<gameroy_jit::JitCompiler>,
 
     joypad: Arc<ParkMutex<Timeline>>,
 
@@ -455,16 +455,17 @@ impl Emulator {
         }
         let last_start_time = Instant::now();
         let last_start_clock = gb.lock().clock_count;
+        let config = config();
         Self {
             gb,
             proxy,
             #[cfg(target_arch = "x86_64")]
-            jit_compiler: gameroy_jit::JitCompiler::new(),
+            jit_compiler: config.jit.then(gameroy_jit::JitCompiler::new),
             joypad,
             rom,
             debug: false,
             state: EmulatorState::Idle,
-            frame_limit: !config().frame_skip,
+            frame_limit: !config.frame_skip,
             rewind: false,
 
             last_start_time,
@@ -746,7 +747,11 @@ impl Emulator {
 
                     while gb.clock_count < target_clock {
                         #[cfg(target_arch = "x86_64")]
-                        self.jit_compiler.interpret_block(&mut gb);
+                        if let Some(jit_compiler) = &mut self.jit_compiler {
+                            jit_compiler.interpret_block(&mut gb);
+                        } else {
+                            Interpreter(&mut gb).interpret_op();
+                        }
                         #[cfg(not(target_arch = "x86_64"))]
                         Interpreter(&mut gb).interpret_op();
                     }

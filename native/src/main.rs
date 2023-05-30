@@ -50,6 +50,8 @@ pub fn main() {
         .arg(arg!(--"screen-size" <WIDTHxHEIGHT> "the initial size of the window").required(false))
         .arg(arg!(--"frame-skip" "if the emulation will start running at max speed").required(false))
         .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
+        .arg(arg!(--interpreter "run the emulator with the interpreter").required(false))
+        .arg(arg!(--jit "run the emulator with the Just-In-Time compiler").required(false))
         .subcommand(Command::new("bench")
             .about("Emulate a given rom for some ammount of frames, and give back the time runned.")
             .arg(arg!(-f --frames <NUMBER> "the number of frames to run for each run")
@@ -130,6 +132,17 @@ pub fn main() {
         config.boot_rom = boot_rom_path.map(|x| x.to_string());
         config.frame_skip = frame_skip;
         config.screen_size = screen_size.or(config.screen_size);
+
+        match (matches.is_present("interpreter"), matches.is_present("jit")) {
+            (true, true) => {
+                eprintln!("interpreter and jit are mutually exclusive");
+                std::process::exit(1)
+            }
+            (true, false) => config.jit = false,
+            (false, true) => config.jit = true,
+            (false, false) => {}
+        };
+
         config
     });
 

@@ -1,6 +1,6 @@
 use dynasmrt::ExecutableBuffer;
 use gameroy::{
-    consts::{self, CB_CLOCK, CLOCK, LEN},
+    consts::{self, CB_CLOCK, CLOCK, CLOCK_SPEED, LEN},
     disassembler::{Address, Cursor},
     gameboy::{cpu::CpuState, GameBoy},
     interpreter::Interpreter,
@@ -245,6 +245,10 @@ impl JitCompiler {
             }
             _ => {
                 // println!("interpr {:04x} ({})", gb.cpu.pc, gb.clock_count);
+
+                // avoid being stuck here for to long
+                let timeout = gb.clock_count + CLOCK_SPEED / 60;
+
                 let mut inter = Interpreter(gb);
                 loop {
                     let op = inter.0.read(inter.0.cpu.pc);
@@ -260,7 +264,10 @@ impl JitCompiler {
 
                     let is_interrupt = [0x40, 0x48, 0x50, 0x58, 0x60].contains(&inter.0.cpu.pc);
 
-                    if is_jump || is_interrupt || inter.0.cpu.state != CpuState::Running {
+                    if is_interrupt
+                        || is_jump && inter.0.cpu.pc < 0x8000
+                        || inter.0.clock_count > timeout
+                    {
                         break;
                     }
                 }

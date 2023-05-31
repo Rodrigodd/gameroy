@@ -624,7 +624,19 @@ impl Interpreter<'_> {
         }
 
         if self.0.cpu.state == CpuState::Halt {
-            self.0.tick(2);
+            let mut until_interrupt = self
+                .0
+                .next_interrupt
+                .get()
+                .saturating_sub(self.0.clock_count);
+
+            // TODO: ideally, this should be aware of the timeout of the main loop.
+            if until_interrupt > consts::CLOCK_SPEED / 60 {
+                until_interrupt = consts::CLOCK_SPEED / 60;
+            }
+
+            until_interrupt &= !0b11;
+            self.0.tick(until_interrupt + 2);
         }
 
         self.0.update_interrupt();

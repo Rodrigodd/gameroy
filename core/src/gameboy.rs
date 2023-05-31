@@ -334,8 +334,8 @@ impl GameBoy {
     }
 
     /// Advance the clock by 'count' cycles
-    pub fn tick(&mut self, count: u8) {
-        self.clock_count += count as u64;
+    pub fn tick(&mut self, count: u64) {
+        self.clock_count += count;
     }
 
     pub fn update_next_interrupt(&self) {

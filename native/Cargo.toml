@@ -29,7 +29,7 @@ gameroy = { path = "..", default-features = false }
 
 winit = "0.26.1"
 flexi_logger = "0.22.3"
-clap = "3.1.5"
+clap = { version = "4.3.0", features = ["derive"] }
 log = "0.4"
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]

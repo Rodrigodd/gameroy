@@ -12,6 +12,7 @@ license = "MIT OR Apache-2.0"
 [package]
 name = "gameroy"
 build = "build.rs"
+description = "A high precision, high performance Game Boy emulator and debugger."
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

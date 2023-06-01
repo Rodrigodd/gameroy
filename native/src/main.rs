@@ -9,11 +9,93 @@
 
 use std::path::PathBuf;
 
-use clap::{arg, Command};
+use clap::{Args, Parser, Subcommand};
 use gameroy_lib::config::parse_screen_size;
 use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile};
 
 mod bench;
+
+// this struct is a mirror of gameroy_lib::Config.
+#[derive(Parser)]
+#[command(
+    name = "GameRoy",
+    version,
+    author,
+    about = "A high precision, high performance Game Boy emulator and debugger."
+)]
+pub struct Cli {
+    /// Path to the game rom to be emulated
+    rom_path: Option<String>,
+
+    /// Start the emulator in debug mode
+    #[arg(short, long)]
+    debug: bool,
+
+    /// Output to stdout the dissasembly of the rom
+    //
+    // The disassembly produced follows no particular synxtax, and don't show all instructions or
+    // data. It only shows instructions that are statically reachable from the entry point.
+    #[arg(long)]
+    disassembly: bool,
+
+    /// Play the given .vbm file
+    #[arg(long)]
+    movie: Option<String>,
+
+    /// Specify the path of the folder for listing .gb roms
+    #[arg(long = "rom_folder", value_name = "PATH")]
+    rom_folder: Option<String>,
+
+    /// Dump of the bootrom to be used
+    #[arg(long = "boot_rom", value_name = "PATH")]
+    boot_rom: Option<String>,
+
+    /// If the emulation will start running at max speed
+    #[arg(long)]
+    frame_skip: bool,
+
+    /// Run the emulator with the Just-In-Time compiler
+    #[arg(long)]
+    jit: bool,
+
+    /// Run the emulator with the interpreter
+    #[arg(long)]
+    interpreter: bool,
+
+    /// The initial size of the window
+    #[arg(long, value_name = "WIDTHxHEIGHT")]
+    screen_size: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    // Emulate a given rom for some ammount of frames, and give back the time runned.
+    Bench(Bench),
+}
+
+#[derive(Args)]
+pub struct Bench {
+    /// path to the game rom to be emulated
+    rom_path: String,
+    /// the number of frames to run for each run
+    #[arg(short, long, default_value_t = 600)]
+    frames: u64,
+    /// the number of times run
+    #[arg(short, long, default_value_t = 10)]
+    times: usize,
+    /// disables interrupt prediction optimization
+    #[arg(long)]
+    no_prediction: bool,
+    /// run bench with the Just-In-Time compiler
+    #[arg(long)]
+    interpreter: bool,
+    /// run bench with the interpreter
+    #[arg(long)]
+    jit: bool,
+}
 
 pub fn main() {
     let _logger = flexi_logger::Logger::try_with_env_or_str("gameroy=info")
@@ -34,74 +116,10 @@ pub fn main() {
 
     gameroy_lib::log_panic();
 
-    let matches = Command::new("GameRoy")
-        .version(gameroy::consts::VERSION)
-        .author("Rodrigo Moraes")
-        .about("A Game Boy emulator and debugger (and disassembler?).")
-        .arg(arg!(-d - -debug "start the emulation in debug mode").required(false))
-        .arg(
-            arg!(--disassembly "output to stdout the dissasembly of the rom (it isn't working nor complete assembly)")
-                .required(false)
-                .requires("ROM_PATH"),
-        )
-        .arg(arg!(--movie <PATH> "play the given .vbm file").required(false))
-        .arg(arg!(--boot_rom <PATH> "dump of the bootrom to be used").required(false))
-        .arg(arg!(--rom_folder <PATH> "specify the path of the folder for listing .gb roms").required(false))
-        .arg(arg!(--"screen-size" <WIDTHxHEIGHT> "the initial size of the window").required(false))
-        .arg(arg!(--"frame-skip" "if the emulation will start running at max speed").required(false))
-        .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(false))
-        .arg(arg!(--interpreter "run the emulator with the interpreter").required(false))
-        .arg(arg!(--jit "run the emulator with the Just-In-Time compiler").required(false))
-        .subcommand(Command::new("bench")
-            .about("Emulate a given rom for some ammount of frames, and give back the time runned.")
-            .arg(arg!(-f --frames <NUMBER> "the number of frames to run for each run")
-                 .required(false)
-                 .default_value("600")
-                 .validator(|x| x.parse::<u64>())
-            )
-            .arg(arg!(-t --times <NUMBER> "the number of times run")
-                 .required(false)
-                 .default_value("10")
-                 .validator(|x| x.parse::<u64>())
-            )
-            .arg(arg!(--"no-prediction" "disables interrupt prediction optimization")
-                 .required(false)
-            )
-            .arg(arg!(--jit "run bench with the Just-In-Time compiler")
-                 .required(false)
-            )
-            .arg(arg!(--interpreter "run bench with the interpreter")
-                 .required(false)
-            )
-            .arg(arg!(<ROM_PATH> "path to the game rom to be emulated").required(true)))
-        .get_matches();
+    let args: Cli = Cli::parse();
 
-    if let Some(("bench", matches)) = matches.subcommand() {
-        let rom_path = matches.value_of("ROM_PATH").unwrap();
-        let frames: u64 = matches
-            .value_of("frames")
-            .and_then(|x| x.parse().ok())
-            .unwrap();
-        let number_of_times: usize = matches
-            .value_of("times")
-            .and_then(|x| x.parse().ok())
-            .unwrap();
-        let predict_interrupt = !matches.is_present("no-prediction");
-        let mut jit = matches.is_present("jit");
-        let interpreter = matches.is_present("interpreter");
-
-        if !jit && !interpreter {
-            jit = true;
-        }
-
-        return bench::benchmark(
-            rom_path,
-            frames * gameroy::consts::FRAME_CYCLES,
-            number_of_times,
-            predict_interrupt,
-            interpreter,
-            jit,
-        );
+    if let Some(Commands::Bench(bench)) = args.command {
+        return bench::benchmark(bench);
     }
 
     {
@@ -109,31 +127,25 @@ pub fn main() {
             .map_err(|e| log::error!("error loading config file 'gameroy.toml': {}", e))
             .unwrap_or_default();
 
-        config.start_in_debug |= matches.is_present("debug");
+        config.start_in_debug |= args.debug;
 
-        config.rom_folder = matches
-            .value_of("rom_folder")
-            .map(|x| x.to_string())
-            .or(config.rom_folder);
+        config.rom_folder = args.rom_folder.or(config.rom_folder);
 
-        config.boot_rom = matches
-            .value_of("boot_rom")
-            .map(|x| x.to_string())
-            .or(config.boot_rom);
+        config.boot_rom = args.boot_rom.or(config.boot_rom);
 
-        config.frame_skip |= matches.is_present("frame-skip");
+        config.frame_skip |= args.frame_skip;
 
-        config.screen_size = matches
-            .value_of("screen-size")
+        config.screen_size = args
+            .screen_size
             .map(|x| {
-                parse_screen_size(x).unwrap_or_else(|err| {
+                parse_screen_size(&x).unwrap_or_else(|err| {
                     eprintln!("failed to parse screen-size: {}", err);
                     std::process::exit(1)
                 })
             })
             .or(config.screen_size);
 
-        match (matches.is_present("interpreter"), matches.is_present("jit")) {
+        match (args.interpreter, args.jit) {
             (true, true) => {
                 eprintln!("interpreter and jit are mutually exclusive");
                 std::process::exit(1)
@@ -146,16 +158,16 @@ pub fn main() {
         gameroy_lib::config::init_config(config);
     }
 
-    let diss = matches.is_present("disassembly");
-    let rom_path = matches.value_of("ROM_PATH");
-    let movie = matches.value_of("movie").map(|path| {
+    let diss = args.disassembly;
+    let rom_path = args.rom_path;
+    let movie = args.movie.map(|path| {
         let mut file = std::fs::File::open(path).unwrap();
         gameroy::parser::vbm(&mut file).unwrap()
     });
 
     // dissasembly and return early
     if diss {
-        if let Some(rom_path) = rom_path {
+        if let Some(rom_path) = &rom_path {
             let rom = std::fs::read(rom_path);
 
             let rom = match rom {
@@ -181,7 +193,7 @@ pub fn main() {
     }
 
     // load rom if necesary
-    let gb = if let Some(rom_path) = rom_path {
+    let gb = if let Some(rom_path) = &rom_path {
         let rom = std::fs::read(rom_path);
 
         let rom = match rom {

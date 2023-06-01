@@ -9,6 +9,8 @@ use gameroy_lib::gameroy::{
     interpreter::Interpreter,
 };
 
+use crate::Bench;
+
 // Return the mean and standart error of the samples
 fn mean(samples: &[Duration]) -> (Duration, Duration) {
     let sum: Duration = samples.iter().sum();
@@ -40,13 +42,22 @@ fn print_val(val: f64, err: f64) -> String {
 }
 
 pub fn benchmark(
-    path: &str,
-    timeout: u64,
-    number_of_times: usize,
-    predict_interrupt: bool,
-    interpreter: bool,
-    jit: bool,
+    Bench {
+        rom_path: ref path,
+        frames,
+        times: number_of_times,
+        no_prediction,
+        interpreter,
+        mut jit,
+    }: Bench,
 ) {
+    let timeout = frames * gameroy_lib::gameroy::consts::FRAME_CYCLES;
+    let predict_interrupt = !no_prediction;
+
+    if !jit && !interpreter {
+        jit = true;
+    }
+
     let len = number_of_times + 1;
 
     let rom_path = PathBuf::from(path);

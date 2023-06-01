@@ -19,6 +19,10 @@ impl DiffStack {
         }
     }
 
+    pub fn capacity(&self) -> usize {
+        self.buffer.len()
+    }
+
     /// The number of elements stored.
     pub fn count(&self) -> usize {
         self.count

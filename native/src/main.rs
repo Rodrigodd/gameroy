@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{ArgAction, Args, Parser, Subcommand};
 use gameroy_lib::config::parse_screen_size;
 use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile};
 
@@ -49,6 +49,10 @@ pub struct Cli {
     /// Dump of the bootrom to be used
     #[arg(long = "boot_rom", value_name = "PATH")]
     boot_rom: Option<String>,
+
+    /// Enables/disables rewinding
+    #[arg(long, action = ArgAction::Set, value_name = "BOOL")]
+    rewinding: Option<bool>,
 
     /// If the emulation will start running at max speed
     #[arg(long)]
@@ -132,6 +136,8 @@ pub fn main() {
         config.rom_folder = args.rom_folder.or(config.rom_folder);
 
         config.boot_rom = args.boot_rom.or(config.boot_rom);
+
+        config.rewinding = args.rewinding.unwrap_or(config.rewinding);
 
         config.frame_skip |= args.frame_skip;
 

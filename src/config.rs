@@ -101,6 +101,7 @@ pub struct Config {
     pub rom_folder: Option<String>,
     pub boot_rom: Option<String>,
     pub sort_list: Option<String>,
+    pub rewinding: bool,
     pub frame_skip: bool,
     pub jit: bool,
     #[serde(deserialize_with = "screen_size_deser")]
@@ -265,6 +266,7 @@ const DEFAULT_CONFIG: Config = Config {
     rom_folder: None,
     boot_rom: None,
     sort_list: None,
+    rewinding: true,
     frame_skip: false,
     jit: true,
     screen_size: None,

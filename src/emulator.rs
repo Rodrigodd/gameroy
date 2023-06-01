@@ -244,21 +244,25 @@ struct Timeline {
     rewinding: bool,
 }
 impl Timeline {
-    fn new(current_frame: u32, joypad_timeline: Vec<u8>) -> Self {
+    fn new(current_frame: u32, joypad_timeline: Vec<u8>, capacity: usize) -> Self {
         let kib = 2usize.pow(10);
-        let mib = 2usize.pow(20);
         Self {
             buffer: Vec::with_capacity(64 * kib),
             current_frame,
             joypad_timeline,
-            save_states: DiffStack::new(16 * mib),
-            save_states2: DiffStack::new(16 * mib),
+            save_states: DiffStack::new(capacity / 2),
+            save_states2: DiffStack::new(capacity / 2),
             current_joypad: 0xff,
             rewinding: false,
         }
     }
 
     fn save_state(&mut self, gb: &GameBoy) {
+        // when the rewiding is disabled, save_state has zero capacity.
+        if self.save_states.capacity() == 0 {
+            return;
+        }
+
         self.buffer.clear();
         {
             self.buffer
@@ -435,9 +439,15 @@ impl Emulator {
                 })
                 .collect()
         });
+
+        let config = config();
+
+        let mib = 2usize.pow(20);
+        let capacity = if config.rewinding { 32 * mib } else { 0 };
         let joypad = Arc::new(ParkMutex::new(Timeline::new(
             current_frame,
             joypad_timeline,
+            capacity,
         )));
         {
             let game_boy = &mut gb.lock();
@@ -453,9 +463,9 @@ impl Emulator {
                 }
             }));
         }
+
         let last_start_time = Instant::now();
         let last_start_clock = gb.lock().clock_count;
-        let config = config();
         Self {
             gb,
             proxy,
@@ -592,6 +602,9 @@ impl Emulator {
                 }
             }
             Rewind(value) => {
+                if !config().rewinding {
+                    return false;
+                }
                 if self.rewind == value {
                     return false;
                 }

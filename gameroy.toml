@@ -21,6 +21,10 @@ screen_size = "768x400"
 # usge due to the constant doing of save states.
 rewinding = true
 
+# if interrupt prediction is enabled. Used for optimisation, no reason to
+# disable it, unless when measuring the optimisation impact.
+interrupt_prediction = true
+
 # if the emulation will start running at max speed.
 frame_skip = false
 

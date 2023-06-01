@@ -54,6 +54,10 @@ pub struct Cli {
     #[arg(long, action = ArgAction::Set, value_name = "BOOL")]
     rewinding: Option<bool>,
 
+    /// Enables/disables interrupt prediction
+    #[arg(long, action = ArgAction::Set, value_name = "BOOL")]
+    interrupt_prediction: Option<bool>,
+
     /// If the emulation will start running at max speed
     #[arg(long)]
     frame_skip: bool,
@@ -138,6 +142,10 @@ pub fn main() {
         config.boot_rom = args.boot_rom.or(config.boot_rom);
 
         config.rewinding = args.rewinding.unwrap_or(config.rewinding);
+
+        config.interrupt_prediction = args
+            .interrupt_prediction
+            .unwrap_or(config.interrupt_prediction);
 
         config.frame_skip |= args.frame_skip;
 

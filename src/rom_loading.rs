@@ -4,7 +4,7 @@ use gameroy::gameboy::{cartridge::Cartridge, GameBoy};
 use image::codecs::png::PngEncoder;
 use image::ImageEncoder;
 
-use crate::config::normalize_config_path;
+use crate::config::{config, normalize_config_path};
 
 cfg_if::cfg_if! {
     if #[cfg(target_os = "android")] {
@@ -29,7 +29,8 @@ pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, 
         cartridge.ram = ram;
     }
 
-    let game_boy = GameBoy::new(boot_rom, cartridge);
+    let mut game_boy = GameBoy::new(boot_rom, cartridge);
+    game_boy.predict_interrupt = config().interrupt_prediction;
     {
         let mut trace = game_boy.trace.borrow_mut();
 

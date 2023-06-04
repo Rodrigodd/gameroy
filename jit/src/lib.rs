@@ -160,8 +160,58 @@ impl BuildHasher for NoHashHasher {
     }
 }
 
+#[derive(Default)]
+struct Stats {
+    cycles_compiled: u64,
+    cycles_interpreted: u64,
+    cycles_on_ram: u64,
+    blocks_runned: u64,
+    fallbacks_on_ram: u64,
+    fallbacks_on_halt: u64,
+    fallbacks_on_interrupt: u64,
+    fallbacks_other: u64,
+}
+impl Drop for JitCompiler {
+    fn drop(&mut self) {
+        let total_cycles = self.stats.cycles_compiled + self.stats.cycles_interpreted;
+        let total_queries = self.stats.blocks_runned
+            + self.stats.fallbacks_on_ram
+            + self.stats.fallbacks_on_halt
+            + self.stats.fallbacks_on_interrupt
+            + self.stats.fallbacks_other;
+        println!(
+            r#"Statistics:
+    compiled:    {:10} cycles ({:.2}%)
+    interpreted: {:10} cycles ({:.2}%)
+    ram:         {:10} cycles ({:.2}%)
+    blocks runned:          {:10} ({:.2}%)
+    fallbacks on ram:       {:10} ({:.2}%)
+    fallbacks on halt:      {:10} ({:.2}%)
+    fallbacks on interrupt: {:10} ({:.2}%)
+    fallbacks on other:     {:10} ({:.2}%)"#,
+            self.stats.cycles_compiled,
+            100.0 * self.stats.cycles_compiled as f64 / total_cycles as f64,
+            self.stats.cycles_interpreted,
+            100.0 * self.stats.cycles_interpreted as f64 / total_cycles as f64,
+            self.stats.cycles_on_ram,
+            100.0 * self.stats.cycles_on_ram as f64 / total_cycles as f64,
+            self.stats.blocks_runned,
+            100.0 * self.stats.blocks_runned as f64 / total_queries as f64,
+            self.stats.fallbacks_on_ram,
+            100.0 * self.stats.fallbacks_on_ram as f64 / total_queries as f64,
+            self.stats.fallbacks_on_halt,
+            100.0 * self.stats.fallbacks_on_halt as f64 / total_queries as f64,
+            self.stats.fallbacks_on_interrupt,
+            100.0 * self.stats.fallbacks_on_interrupt as f64 / total_queries as f64,
+            self.stats.fallbacks_other,
+            100.0 * self.stats.fallbacks_other as f64 / total_queries as f64,
+        );
+    }
+}
+
 pub struct JitCompiler {
     pub blocks: HashMap<Address, Block, NoHashHasher>,
+    stats: Stats,
 }
 
 impl Default for JitCompiler {
@@ -174,6 +224,7 @@ impl JitCompiler {
     pub fn new() -> Self {
         Self {
             blocks: HashMap::with_hasher(NoHashHasher(0)),
+            stats: Stats::default(),
         }
     }
 
@@ -211,15 +262,42 @@ impl JitCompiler {
     }
 
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {
+        let on_ram = gb.cpu.pc >= 0x8000;
+
+        let mut stats = std::mem::take(&mut self.stats);
+
         let block = self.get_block(gb);
         let next_interrupt = gb.next_interrupt.get();
         let start_clock = gb.clock_count;
+
+        let block = match block {
+            Some(block) => 'block: {
+                if gb.cpu.state != CpuState::Running {
+                    stats.fallbacks_on_halt += 1;
+                    break 'block None;
+                }
+
+                let next_check = gb.clock_count + block.initial_block_clock_cycles as u64 + 4;
+                if next_interrupt <= next_check {
+                    stats.fallbacks_on_interrupt += 1;
+                    break 'block None;
+                }
+
+                stats.blocks_runned += 1;
+                Some(block)
+            }
+            None => {
+                if on_ram {
+                    stats.fallbacks_on_ram += 1;
+                } else {
+                    stats.fallbacks_other += 1;
+                }
+                None
+            }
+        };
+
         match block {
-            Some(block)
-                if gb.cpu.state == CpuState::Running
-                    && (gb.clock_count + block.initial_block_clock_cycles as u64 + 4)
-                        < next_interrupt =>
-            {
+            Some(block) => {
                 // let bank = gb.cartridge.curr_bank();
                 // println!(
                 //     "running {:02x} {:04x} ({})",
@@ -233,6 +311,8 @@ impl JitCompiler {
                 // );
                 block.call(gb);
                 debug_assert!(gb.clock_count != start_clock);
+
+                stats.cycles_compiled += gb.clock_count - start_clock;
 
                 // assert that no interrupt happened inside the block (unless it happend in a write
                 // of the last instruction).
@@ -249,11 +329,19 @@ impl JitCompiler {
                 // avoid being stuck here for to long
                 let timeout = gb.clock_count + CLOCK_SPEED / 60;
 
+                let mut on_halt = 0;
+
                 let mut inter = Interpreter(gb);
                 loop {
                     let op = inter.0.read(inter.0.cpu.pc);
 
+                    let now = inter.0.clock_count;
+                    let is_halt = inter.0.cpu.state == CpuState::Halt;
                     inter.interpret_op();
+                    let elapsed = inter.0.clock_count - now;
+                    if is_halt {
+                        on_halt += elapsed;
+                    }
 
                     let is_jump = [
                         0xc2, 0xc3, 0xca, 0xd2, 0xda, 0xe9, 0x18, 0x20, 0x28, 0x30, 0x38, 0xc4,
@@ -268,10 +356,16 @@ impl JitCompiler {
                         || is_jump && inter.0.cpu.pc < 0x8000
                         || inter.0.clock_count > timeout
                     {
+                        stats.cycles_interpreted += inter.0.clock_count - start_clock - on_halt;
+                        if on_ram {
+                            stats.cycles_on_ram += inter.0.clock_count - start_clock - on_halt;
+                        }
                         break;
                     }
                 }
             }
         }
+
+        self.stats = stats;
     }
 }

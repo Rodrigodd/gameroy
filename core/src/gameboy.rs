@@ -339,6 +339,11 @@ impl GameBoy {
     }
 
     pub fn update_next_interrupt(&self) {
+        if !self.predict_interrupt {
+            self.next_interrupt.set(self.clock_count + 4);
+            return;
+        }
+
         self.next_interrupt.set(
             self.ppu
                 .borrow()

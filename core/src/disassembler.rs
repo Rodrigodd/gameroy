@@ -349,24 +349,29 @@ impl Trace {
     /// Pop a PC from '`cursors`, compute next possible PC values, and push to 'cursors'
     fn trace_once(&mut self, rom: &GameBoy, cursors: &mut Vec<Cursor>) {
         let cursor = cursors.pop().unwrap();
-        if let Some(address) = Address::from_cursor(&cursor) {
-            let (op, len) = cursor.get_op(rom);
 
-            if !self.add_opcode(address, &op[0..len as usize], len as u16) {
-                return;
-            }
+        let Some(address) = Address::from_cursor(&cursor) else {
+            return
+        };
 
-            let cursors = &std::cell::RefCell::new(cursors);
+        let (op, len) = cursor.get_op(rom);
 
-            let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
-            cursors.borrow_mut().extend(step);
+        if !self.add_opcode(address, &op[0..len as usize], len as u16) {
+            return;
+        }
 
-            let Some(jump) = jump else { return };
+        let cursors = &std::cell::RefCell::new(cursors);
 
-            if let Some(to) = Address::from_cursor(&jump) {
-                self.add_jump(address, to);
-                cursors.borrow_mut().push(jump);
-            }
+        let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
+        cursors.borrow_mut().extend(step);
+
+        let Some(jump) = jump else {
+            return
+        };
+
+        if let Some(to) = Address::from_cursor(&jump) {
+            self.add_jump(address, to);
+            cursors.borrow_mut().push(jump);
         }
     }
 

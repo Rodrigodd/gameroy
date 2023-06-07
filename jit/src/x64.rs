@@ -322,7 +322,8 @@ impl<'a> BlockCompiler<'a> {
             } else {
                 (
                     consts::WRITE_FLAG[instr.op[0] as usize],
-                    consts::READ_FLAG[instr.op[0] as usize],
+                    consts::READ_FLAG[instr.op[0] as usize]
+                        | consts::WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[0] as usize],
                 )
             };
 

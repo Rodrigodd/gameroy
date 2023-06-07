@@ -1759,8 +1759,13 @@ impl<'a> BlockCompiler<'a> {
         let reg = reg_offset(reg);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
-        // uses rax, rcx, rdx
-        dynasm!(ops
+        let no_flags = (&self.instrs[self.curr_instr]).used_flags == 0;
+
+        dynasm_if!(no_flags, ops
+            ; inc	BYTE [rbx + reg as i32]
+        );
+
+        dynasm_if!(!no_flags, ops
             ; movzx	eax, BYTE [rbx + reg as i32] // load reg
             ; movzx	ecx, BYTE [rbx + f as i32]   // load f
             ; inc	al                           // increase reg
@@ -1812,7 +1817,13 @@ impl<'a> BlockCompiler<'a> {
         let reg = reg_offset(reg);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
-        dynasm!(ops
+        let no_flags = (&self.instrs[self.curr_instr]).used_flags == 0;
+
+        dynasm_if!(no_flags, ops
+            ; dec	BYTE [rbx + reg as i32]
+        );
+
+        dynasm_if!(!no_flags, ops
             ; movzx	eax, BYTE [rbx + reg as i32]
             ; movzx	ecx, BYTE [rbx + f as i32]
             ; and	cl, 31
@@ -2008,31 +2019,35 @@ impl<'a> BlockCompiler<'a> {
                 }
             }
             ; movzx	ecx, BYTE [rbx + a as i32]
-            ; movzx	r8d, BYTE [rbx + f as i32]
             ; mov	esi, ecx
             ; sub	sil, al
-            ; setb	dl
-            ; sete	r9b
-            ; and	r8b, 15
-            ; shl	r9b, 7
-            ; and	cl, 15
-            ; and	al, 15
-            ; cmp	cl, al
-            ; setb	al
-            ; shl	al, 5
-            ; or	al, r8b
-            ; shl	dl, 4
-            ; or	dl, al
-            ; or	dl, r9b
-            ; or	dl, 64
-            ; mov	BYTE [rbx + f as i32], dl
             ; mov	BYTE [rbx + a as i32], sil
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; movzx	r8d, BYTE [rbx + f as i32]
+                ; setb	dl
+                ; sete	r9b
+                ; and	r8b, 15
+                ; shl	r9b, 7
+                ; and	cl, 15
+                ; and	al, 15
+                ; cmp	cl, al
+                ; setb	al
+                ; shl	al, 5
+                ; or	al, r8b
+                ; shl	dl, 4
+                ; or	dl, al
+                ; or	dl, r9b
+                ; or	dl, 64
+                ; mov	BYTE [rbx + f as i32], dl
+            )
         )
     }
 
     pub fn adc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
+
+        let flags = self.instrs[self.curr_instr].used_flags != 0;
 
         let immediate = if reg == Reg::Im8 {
             self.get_immediate()
@@ -2044,8 +2059,10 @@ impl<'a> BlockCompiler<'a> {
         }
         dynasm!(ops
             ; movzx	edx, BYTE [rbx + a as i32]
-            ; movzx	r8d, BYTE [rbx + f as i32]
-            ; mov	esi, r8d
+            ; movzx	esi, BYTE [rbx + f as i32]
+            ;; dynasm_if!(flags, ops
+                ; mov	r8d, esi
+            )
             ; shr	esi, 4
             ; and	esi, 1
             ;; match reg {
@@ -2072,47 +2089,51 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
             }
-            ; test	cl, cl
-            ; sete	r9b
-            ; and	r8b, 15
-            ; shl	r9b, 7
-            ; and	edx, 15
-
-            ;; match reg {
-                Reg::Im8 => {
-                    let value = immediate;
-                    dynasm!(ops
-                        ; add	edx, (value & 0xF) as i32
-                        ; add	edx, esi
-                        ; cmp	dx, 16
-                    );
-                }
-                _ => {
-                    dynasm!(ops
-                        ; and	eax, 15
-                        ; add	eax, edx
-                        ; add	eax, esi
-                        ; cmp	ax, 16
-                    );
-                }
-            }
-
-            ; setae	al
-            ; shl	al, 5
-            ; cmp	ecx, 256
-            ; setae	dl
-            ; shl	dl, 4
-            ; or	dl, r8b
-            ; or	dl, r9b
-            ; or	dl, al
-            ; mov	BYTE [rbx + f as i32], dl
             ; mov	BYTE [rbx + a as i32], cl
+            ;; dynasm_if!(flags, ops
+                ; test	cl, cl
+                ; sete	r9b
+                ; and	r8b, 15
+                ; shl	r9b, 7
+                ; and	edx, 15
+
+                ;; match reg {
+                    Reg::Im8 => {
+                        let value = immediate;
+                        dynasm!(ops
+                            ; add	edx, (value & 0xF) as i32
+                            ; add	edx, esi
+                            ; cmp	dx, 16
+                        );
+                    }
+                    _ => {
+                        dynasm!(ops
+                            ; and	eax, 15
+                            ; add	eax, edx
+                            ; add	eax, esi
+                            ; cmp	ax, 16
+                        );
+                    }
+                }
+
+                ; setae	al
+                ; shl	al, 5
+                ; cmp	ecx, 256
+                ; setae	dl
+                ; shl	dl, 4
+                ; or	dl, r8b
+                ; or	dl, r9b
+                ; or	dl, al
+                ; mov	BYTE [rbx + f as i32], dl
+            )
         )
     }
 
     pub fn sbc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
+
+        let flags = self.instrs[self.curr_instr].used_flags != 0;
 
         dynasm!(ops
             ;; match reg {
@@ -2137,32 +2158,36 @@ impl<'a> BlockCompiler<'a> {
                 }
             }
             ; movzx	esi, BYTE [rbx + a as i32]
-            ; movzx	r8d, BYTE [rbx + f as i32]
-            ; mov	ecx, r8d
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ;; dynasm_if!(flags, ops
+                ; mov	r8d, ecx
+            )
             ; shr	ecx, 4
             ; and	ecx, 1
             ; mov	edx, esi
             ; sub	edx, eax
             ; sub	edx, ecx
-            ; test	dl, dl
-            ; sete	r9b
-            ; and	r8b, 15
-            ; shl	r9b, 7
-            ; and	esi, 15
-            ; and	eax, 15
-            ; add	eax, ecx
-            ; cmp	si, ax
-            ; setb	cl
-            ; shl	cl, 5
-            ; or	cl, r8b
-            ; or	cl, r9b
-            ; mov	eax, edx
-            ; shr	eax, 11
-            ; and	al, 16
-            ; or	al, cl
-            ; or	al, 64
-            ; mov	BYTE [rbx + f as i32], al
             ; mov	BYTE [rbx + a as i32], dl
+            ;; dynasm_if!(flags, ops
+                ; test	dl, dl
+                ; sete	r9b
+                ; and	r8b, 15
+                ; shl	r9b, 7
+                ; and	esi, 15
+                ; and	eax, 15
+                ; add	eax, ecx
+                ; cmp	si, ax
+                ; setb	cl
+                ; shl	cl, 5
+                ; or	cl, r8b
+                ; or	cl, r9b
+                ; mov	eax, edx
+                ; shr	eax, 11
+                ; and	al, 16
+                ; or	al, cl
+                ; or	al, 64
+                ; mov	BYTE [rbx + f as i32], al
+            )
         )
     }
 
@@ -2174,14 +2199,12 @@ impl<'a> BlockCompiler<'a> {
                 Reg::Im8 => {
                     let value = self.get_immediate();
                     dynasm!(ops
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; and	BYTE [rbx + a as i32], BYTE value as i8
                     );
                 }
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, false);
                     dynasm!(ops
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; and	BYTE [rbx + a as i32], al
                     );
                 }
@@ -2189,17 +2212,19 @@ impl<'a> BlockCompiler<'a> {
                     let reg = reg_offset(reg);
                     dynasm!(ops
                         ; movzx	eax, BYTE [rbx + reg as i32]
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; and	BYTE [rbx + a as i32], al
                     );
                 }
             }
-            ; setne	al
-            ; and	cl, 15
-            ; shl	al, 7
-            ; or	al, cl
-            ; add	al, -96
-            ; mov	BYTE [rbx + f as i32], al
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; setne	al
+                ; movzx	ecx, BYTE [rbx + f as i32]
+                ; and	cl, 15
+                ; shl	al, 7
+                ; or	al, cl
+                ; add	al, -96
+                ; mov	BYTE [rbx + f as i32], al
+            )
         )
     }
 
@@ -2211,14 +2236,12 @@ impl<'a> BlockCompiler<'a> {
                 Reg::Im8 => {
                     let value = self.get_immediate();
                     dynasm!(ops
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; xor	BYTE [rbx + a as i32], BYTE value as i8
                     );
                 }
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, false);
                     dynasm!(ops
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; xor	BYTE [rbx + a as i32], al
                     );
                 }
@@ -2226,16 +2249,18 @@ impl<'a> BlockCompiler<'a> {
                     let reg = reg_offset(reg);
                     dynasm!(ops
                         ; movzx	eax, BYTE [rbx + reg as i32]
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; xor	BYTE [rbx + a as i32], al
                     );
                 }
             }
-            ; sete	al
-            ; and	cl, 15
-            ; shl	al, 7
-            ; or	al, cl
-            ; mov	BYTE [rbx + f as i32], al
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; sete	al
+                ; movzx	ecx, BYTE [rbx + f as i32]
+                ; and	cl, 15
+                ; shl	al, 7
+                ; or	al, cl
+                ; mov	BYTE [rbx + f as i32], al
+            )
         )
     }
 
@@ -2247,14 +2272,12 @@ impl<'a> BlockCompiler<'a> {
                 Reg::Im8 => {
                     let value = self.get_immediate();
                     dynasm!(ops
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; or	BYTE [rbx + a as i32], BYTE value as i8
                     );
                 }
                 Reg::HL => {
                     self.read_mem_reg(ops, Reg::HL, false);
                     dynasm!(ops
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; or	BYTE [rbx + a as i32], al
                     );
                 }
@@ -2262,22 +2285,31 @@ impl<'a> BlockCompiler<'a> {
                     let reg = reg_offset(reg);
                     dynasm!(ops
                         ; movzx	eax, BYTE [rbx + reg as i32]
-                        ; movzx	ecx, BYTE [rbx + f as i32]
                         ; or	BYTE [rbx + a as i32], al
                     );
                 }
             }
-            ; sete	al
-            ; and	cl, 15
-            ; shl	al, 7
-            ; or	al, cl
-            ; mov	BYTE [rbx + f as i32], al
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; sete	al
+                ; movzx	ecx, BYTE [rbx + f as i32]
+                ; and	cl, 15
+                ; shl	al, 7
+                ; or	al, cl
+                ; mov	BYTE [rbx + f as i32], al
+            )
         )
     }
 
     pub fn cp(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
+
+        let no_flags = self.instrs[self.curr_instr].used_flags == 0;
+        if no_flags {
+            println!("CP with no flags?!");
+            return;
+        }
+
         dynasm!(ops
             ;; match reg {
                 Reg::Im8 => {

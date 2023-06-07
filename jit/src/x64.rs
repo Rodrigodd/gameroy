@@ -34,6 +34,14 @@ macro_rules! offset {
     };
 }
 
+macro_rules! dynasm_if {
+    ($cond:expr, $ops:ident $($asm:tt)*) => {
+        if $cond {
+            dynasm!($ops $($asm)*)
+        }
+    };
+}
+
 #[derive(Clone, Copy)]
 struct Instr {
     op: [u8; 3],
@@ -1929,26 +1937,28 @@ impl<'a> BlockCompiler<'a> {
                 }
             }
             ; movzx	ecx, BYTE [rbx + a as i32]
-            ; movzx	esi, BYTE [rbx + f as i32]
             ; mov	r8d, ecx
             ; add	r8b, al
-            ; setb	dl
-            ; and	sil, 15
-            ; test	r8b, r8b
-            ; sete	r9b
-            ; shl	r9b, 7
-            ; and	cl, 15
-            ; and	al, 15
-            ; add	al, cl
-            ; cmp	al, 16
-            ; setae	al
-            ; shl	al, 5
-            ; shl	dl, 4
-            ; or	dl, sil
-            ; or	dl, r9b
-            ; or	dl, al
-            ; mov	BYTE [rbx + f as i32], dl
             ; mov	BYTE [rbx + a as i32], r8b
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; movzx	esi, BYTE [rbx + f as i32]
+                ; setb	dl
+                ; and	sil, 15
+                ; test	r8b, r8b
+                ; sete	r9b
+                ; shl	r9b, 7
+                ; and	cl, 15
+                ; and	al, 15
+                ; add	al, cl
+                ; cmp	al, 16
+                ; setae	al
+                ; shl	al, 5
+                ; shl	dl, 4
+                ; or	dl, sil
+                ; or	dl, r9b
+                ; or	dl, al
+                ; mov	BYTE [rbx + f as i32], dl
+            )
         )
     }
 

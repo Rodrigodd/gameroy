@@ -70,6 +70,10 @@ pub struct BlockCompiler<'gb> {
     ime_state: Option<ImeState>,
     /// The ime_state of the current instruction, if known.
     previous_ime_state: Option<ImeState>,
+
+    cleared_flags: usize,
+    partially_cleared_flags: usize,
+    non_cleared_flags: usize,
 }
 
 impl<'a> BlockCompiler<'a> {
@@ -87,6 +91,9 @@ impl<'a> BlockCompiler<'a> {
             did_write: false,
             ime_state: None,
             previous_ime_state: None,
+            cleared_flags: 0,
+            partially_cleared_flags: 0,
+            non_cleared_flags: 0,
         }
     }
 
@@ -233,6 +240,8 @@ impl<'a> BlockCompiler<'a> {
 
         let code = ops.finalize().unwrap();
 
+        let bytes = code.len();
+
         cfg_if::cfg_if! {
             if #[cfg(target_os = "windows")] {
                 let buffer = crate::windows::to_mutable_buffer_with_unwin_info(
@@ -257,6 +266,10 @@ impl<'a> BlockCompiler<'a> {
             max_clock_cycles: self.block_trace.interrupt_checks.iter().map(|x| x.1).sum(),
             fn_ptr: unsafe { std::mem::transmute(compiled_code.as_ptr()) },
             _compiled_code: compiled_code,
+            bytes,
+            cleared_flags: self.cleared_flags,
+            partially_cleared_flags: self.partially_cleared_flags,
+            non_cleared_flags: self.non_cleared_flags,
         }
     }
 
@@ -306,6 +319,14 @@ impl<'a> BlockCompiler<'a> {
             };
 
             instr.used_flags = observed_flags & set_flags;
+
+            if instr.used_flags == 0 && set_flags != 0 {
+                self.cleared_flags += 1;
+            } else if instr.used_flags == set_flags {
+                self.non_cleared_flags += 1;
+            } else {
+                self.partially_cleared_flags += 1;
+            }
 
             // if a instruction set a flag, previous flag-writes are not observable.
             observed_flags &= !set_flags;

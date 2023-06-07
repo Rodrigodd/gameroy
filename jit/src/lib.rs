@@ -24,6 +24,11 @@ pub struct Block {
     max_clock_cycles: u32,
     fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
     pub _compiled_code: ExecutableBuffer,
+    bytes: usize,
+
+    cleared_flags: usize,
+    partially_cleared_flags: usize,
+    non_cleared_flags: usize,
 }
 
 impl Block {
@@ -183,6 +188,29 @@ impl Drop for JitCompiler {
             + self.stats.fallbacks_on_halt
             + self.stats.fallbacks_on_interrupt
             + self.stats.fallbacks_other;
+
+        let compiled_bytes = self.blocks.values().map(|block| block.bytes).sum::<usize>();
+
+        let cleared_flags = self
+            .blocks
+            .values()
+            .map(|block| block.cleared_flags)
+            .sum::<usize>();
+
+        let partially_cleared_flags = self
+            .blocks
+            .values()
+            .map(|block| block.partially_cleared_flags)
+            .sum::<usize>();
+
+        let non_cleared_flags = self
+            .blocks
+            .values()
+            .map(|block| block.non_cleared_flags)
+            .sum::<usize>();
+
+        let total_flags = cleared_flags + partially_cleared_flags + non_cleared_flags;
+
         println!(
             r#"Statistics:
     compiled:    {:10} cycles ({:.2}%)
@@ -192,7 +220,11 @@ impl Drop for JitCompiler {
     fallbacks on ram:       {:10} ({:.2}%)
     fallbacks on halt:      {:10} ({:.2}%)
     fallbacks on interrupt: {:10} ({:.2}%)
-    fallbacks on other:     {:10} ({:.2}%)"#,
+    fallbacks on other:     {:10} ({:.2}%)
+    compiled bytes:         {:10} bytes
+    cleared flags:          {:10} ({:.2}%)
+    partially cleared flags:{:10} ({:.2}%)
+    non cleared flags:      {:10} ({:.2}%)"#,
             self.stats.cycles_compiled,
             100.0 * self.stats.cycles_compiled as f64 / total_cycles as f64,
             self.stats.cycles_interpreted,
@@ -209,6 +241,13 @@ impl Drop for JitCompiler {
             100.0 * self.stats.fallbacks_on_interrupt as f64 / total_queries as f64,
             self.stats.fallbacks_other,
             100.0 * self.stats.fallbacks_other as f64 / total_queries as f64,
+            compiled_bytes,
+            cleared_flags,
+            100.0 * cleared_flags as f64 / total_flags as f64,
+            partially_cleared_flags,
+            100.0 * partially_cleared_flags as f64 / total_flags as f64,
+            non_cleared_flags,
+            100.0 * non_cleared_flags as f64 / total_flags as f64,
         );
     }
 }

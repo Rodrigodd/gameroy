@@ -803,7 +803,7 @@ impl<'a> BlockCompiler<'a> {
             // XOR (HL) 1:8 Z 0 0 0
             0xae => self.xor(ops, Reg::HL),
             // XOR A 1:4 Z 0 0 0
-            0xaf => self.xor(ops, Reg::A),
+            0xaf => self.xor_a(ops),
             // OR B 1:4 Z 0 0 0
             0xb0 => self.or(ops, Reg::B),
             // OR C 1:4 Z 0 0 0
@@ -2224,6 +2224,21 @@ impl<'a> BlockCompiler<'a> {
                 ; or	al, cl
                 ; add	al, -96
                 ; mov	BYTE [rbx + f as i32], al
+            )
+        )
+    }
+
+    // XOR A is the same as clear
+    pub fn xor_a(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+        dynasm!(ops
+            ; mov	BYTE [rdi + a as i32], 0
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; movzx	eax, BYTE [rdi + f as i32]
+                ; and	al, 15
+                ; or	al, -128
+                ; mov	BYTE [rdi + f as i32], al
             )
         )
     }

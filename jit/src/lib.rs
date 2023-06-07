@@ -45,6 +45,10 @@ struct BlockTrace {
     interrupt_checks: Vec<(u16, u32)>,
 }
 
+pub struct CompilerOpts {
+    pub flags_analysis: bool,
+}
+
 struct Instr {
     op: [u8; 3],
     pc: u16,
@@ -212,6 +216,7 @@ impl Drop for JitCompiler {
 pub struct JitCompiler {
     pub blocks: HashMap<Address, Block, NoHashHasher>,
     stats: Stats,
+    pub opts: CompilerOpts,
 }
 
 impl Default for JitCompiler {
@@ -225,6 +230,9 @@ impl JitCompiler {
         Self {
             blocks: HashMap::with_hasher(NoHashHasher(0)),
             stats: Stats::default(),
+            opts: CompilerOpts {
+                flags_analysis: true,
+            },
         }
     }
 
@@ -257,7 +265,7 @@ impl JitCompiler {
         Some(
             self.blocks
                 .entry(address)
-                .or_insert_with(|| BlockCompiler::new(gb).compile_block()),
+                .or_insert_with(|| BlockCompiler::new(gb).compile_block(&self.opts)),
         )
     }
 

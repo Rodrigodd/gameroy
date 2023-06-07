@@ -90,7 +90,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn compile_block(mut self) -> Block {
+    pub fn compile_block(mut self, opts: &super::CompilerOpts) -> Block {
         // let bank = self.gb.cartridge.curr_bank();
         // println!(
         //     "compiling {:02x}_{:04x} (len: {})",
@@ -120,7 +120,9 @@ impl<'a> BlockCompiler<'a> {
             )
             .collect();
 
-        self.flags_analysis();
+        if opts.flags_analysis {
+            self.flags_analysis();
+        }
 
         let push_rbp_offset;
         let push_rbx_offset;

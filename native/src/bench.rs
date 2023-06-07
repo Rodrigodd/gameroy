@@ -131,7 +131,15 @@ fn run_interpreted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Dura
 
 #[cfg(target_arch = "x86_64")]
 fn run_jitted(len: usize, game_boy: &mut GameBoy, timeout: u64) -> Vec<Duration> {
-    pre_run(game_boy, timeout, &mut gameroy_jit::JitCompiler::new());
+    pre_run(
+        game_boy,
+        timeout,
+        &mut {
+            let mut jit_compiler = gameroy_jit::JitCompiler::new();
+            jit_compiler.opts.flags_analysis = false;
+            jit_compiler
+        }
+    );
 
     let mut times = Vec::with_capacity(len);
     for _ in 0..len {

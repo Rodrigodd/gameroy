@@ -1798,16 +1798,18 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops
             ;; self.read_mem_reg(ops, Reg::HL, true)
             ; inc	al
-            ; sete	cl
-            ; movzx	edx, BYTE [rbx + f as i32]
-            ; and	dl, 31
-            ; shl	cl, 7
-            ; or	cl, dl
-            ; test	al, 15
-            ; sete	dl
-            ; shl	dl, 5
-            ; or	dl, cl
-            ; mov	BYTE [rbx + f as i32], dl
+            ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
+                ; sete	cl
+                ; movzx	edx, BYTE [rbx + f as i32]
+                ; and	dl, 31
+                ; shl	cl, 7
+                ; or	cl, dl
+                ; test	al, 15
+                ; sete	dl
+                ; shl	dl, 5
+                ; or	dl, cl
+                ; mov	BYTE [rbx + f as i32], dl
+            )
             ; movzx	edx, al
             ; mov	rdi, rbx
             ; mov	esi, r12d
@@ -1854,23 +1856,29 @@ impl<'a> BlockCompiler<'a> {
     pub fn dec_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
+        let flags = self.instrs[self.curr_instr].used_flags != 0;
+
         dynasm!(ops
             ;; self.read_mem_reg(ops, Reg::HL, true)
-            ; mov	esi, eax
-            ; dec	sil
-            ; sete	dl
-            ; movzx	ecx, BYTE [rbx + f as i32]
-            ; and	cl, 31
-            ; shl	dl, 7
-            ; neg	al
-            ; test	al, 15
-            ; sete	al
-            ; shl	al, 5
-            ; or	dl, cl
-            ; or	dl, al
-            ; or	dl, 64
-            ; mov	BYTE [rbx + f as i32], dl
-            ; movzx	edx, sil
+            ;; dynasm_if!(flags, ops
+                ; mov	esi, eax
+            )
+            ; dec	al
+            ;; dynasm_if!(flags, ops
+                ; sete	dl
+                ; movzx	ecx, BYTE [rbx + f as i32]
+                ; and	cl, 31
+                ; shl	dl, 7
+                ; neg	sil
+                ; test	sil, 15
+                ; sete	sil
+                ; shl	sil, 5
+                ; or	dl, cl
+                ; or	dl, sil
+                ; or	dl, 64
+                ; mov	BYTE [rbx + f as i32], dl
+            )
+            ; movzx	edx, al
             ; mov	rdi, rbx
             ; mov	esi, r12d
             ;; self.write_mem(ops)

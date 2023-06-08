@@ -2243,12 +2243,12 @@ impl<'a> BlockCompiler<'a> {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
-            ; mov	BYTE [rdi + a as i32], 0
+            ; mov	BYTE [rbx + a as i32], 0
             ;; dynasm_if!(self.instrs[self.curr_instr].used_flags != 0, ops
-                ; movzx	eax, BYTE [rdi + f as i32]
+                ; movzx	eax, BYTE [rbx + f as i32]
                 ; and	al, 15
                 ; or	al, -128
-                ; mov	BYTE [rdi + f as i32], al
+                ; mov	BYTE [rbx + f as i32], al
             )
         )
     }

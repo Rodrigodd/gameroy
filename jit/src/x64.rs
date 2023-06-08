@@ -317,7 +317,9 @@ impl<'a> BlockCompiler<'a> {
             let (set_flags, read_flags) = if instr.op[0] == 0xcb {
                 (
                     consts::CB_WRITE_FLAG[instr.op[1] as usize],
-                    consts::CB_READ_FLAG[instr.op[1] as usize],
+                    consts::CB_READ_FLAG[instr.op[1] as usize]
+                        | consts::CB_WRITE_RAM.map(|x| if x { 0xf } else { 0 })
+                            [instr.op[1] as usize],
                 )
             } else {
                 (

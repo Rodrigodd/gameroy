@@ -85,7 +85,6 @@ const F: bool = false;
 const T: bool = true;
 
 /// Instructions that may write in ROM
-// TODO: handle CB
 pub const WRITE_RAM: [bool; 256] = [
     // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
     F, F, T, F, F, F, F, F, T, F, F, F, F, F, F, F, // 0x
@@ -104,6 +103,26 @@ pub const WRITE_RAM: [bool; 256] = [
     F, F, F, F, T, T, F, T, F, F, F, F, T, F, F, T, // Dx
     T, F, T, F, F, T, F, T, F, F, T, F, F, F, F, T, // Ex
     F, F, F, F, F, T, F, T, F, F, F, F, F, F, F, T, // Fx
+];
+
+pub const CB_WRITE_RAM: [bool; 256] = [
+    // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 0x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 1x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 2x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 3x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 4x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 5x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 6x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 7x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 8x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 9x
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Ax
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Bx
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Cx
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Dx
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Ex
+    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Fx
 ];
 
 /// The flags changed by each opcode, in the format 0b0000ZNHC

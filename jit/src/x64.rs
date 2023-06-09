@@ -2525,6 +2525,10 @@ impl<'a> BlockCompiler<'a> {
         let flags = self.instrs[self.curr_instr].used_flags != 0;
         if !flags {
             println!("CP with no flags?!");
+            if reg == Reg::Im8 {
+                // advance pc
+                self.get_immediate();
+            }
             return;
         }
 

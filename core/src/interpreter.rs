@@ -2004,7 +2004,6 @@ impl Interpreter<'_> {
 
     pub fn invalid_opcode(&mut self, opcode: u8) {
         println!("executed invalid instructions: {opcode:02x}");
-        std::process::exit(1);
     }
 
     pub fn ei(&mut self) {

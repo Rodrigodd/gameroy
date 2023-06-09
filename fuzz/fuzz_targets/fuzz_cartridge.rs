@@ -61,7 +61,11 @@ fuzz_target!(|data: &[u8]| {
     // emulate 100 ms
     let target = start_clock + CLOCK_SPEED / 10;
 
-    if !test_interrupt_prediction(cartridge.clone(), target) || !test_jit(cartridge, target) {
+    if !test_interrupt_prediction(cartridge.clone(), target) {
+        panic!("CPU desync!");
+    }
+
+    if !test_jit(cartridge, target) {
         panic!("CPU desync!");
     }
 });

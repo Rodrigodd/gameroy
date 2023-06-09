@@ -86,7 +86,25 @@ pub struct BlockCompiler<'gb> {
 
 impl<'a> BlockCompiler<'a> {
     pub fn new(gb: &'a GameBoy) -> Self {
+        {
+            let pc = gb.cpu.pc;
+            let bank = gb.cartridge.curr_bank();
+            let mut trace = gb.trace.borrow_mut();
+
+            trace.trace_starting_at(
+                gb,
+                bank,
+                pc,
+                Some(format!(
+                    "L{:02x}_{:04x}",
+                    if pc <= 0x3FFF { bank.0 } else { bank.1 },
+                    pc
+                )),
+            );
+        }
+
         let block_trace = trace_a_block(gb);
+
         Self {
             gb,
             op: [0; 3],

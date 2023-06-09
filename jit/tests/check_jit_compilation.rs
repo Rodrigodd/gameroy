@@ -221,7 +221,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
 
         if !assert_equal(&game_boy_a, &game_boy_b, &vblank.lock().unwrap()) {
             let mut dissasembly = String::new();
-            game_boy_b
+            game_boy_a
                 .trace
                 .borrow_mut()
                 .fmt(&game_boy_b, &mut dissasembly)

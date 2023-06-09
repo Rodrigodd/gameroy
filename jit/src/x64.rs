@@ -199,6 +199,17 @@ impl<'a> BlockCompiler<'a> {
                 last_one_was_compiled = false;
             }
 
+            if curr_check > 0 {
+                debug_assert!(
+                    {
+                        let curr_check = self.block_trace.interrupt_checks[curr_check - 1];
+                        (curr_check.0 as usize == i) == self.did_write
+                    },
+                    "write RAM desync for opcode {:02x?}",
+                    self.op
+                );
+            }
+
             // the last write could have updated the next_interrupt or switched banks.
             if self.did_write {
                 let next_check = self.block_trace.interrupt_checks[curr_check].1;

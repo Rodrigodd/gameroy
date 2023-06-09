@@ -111,10 +111,10 @@ pub const CB_WRITE_RAM: [bool; 256] = [
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 1x
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 2x
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 3x
-    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 4x
-    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 5x
-    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 6x
-    F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 7x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 4x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 5x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 6x
+    F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // 7x
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 8x
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 9x
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // Ax

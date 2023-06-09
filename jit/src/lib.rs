@@ -26,8 +26,11 @@ pub struct Block {
     pub _compiled_code: ExecutableBuffer,
     bytes: usize,
 
+    #[cfg(feature = "statistics")]
     cleared_flags: usize,
+    #[cfg(feature = "statistics")]
     partially_cleared_flags: usize,
+    #[cfg(feature = "statistics")]
     non_cleared_flags: usize,
 }
 
@@ -175,7 +178,17 @@ impl BuildHasher for NoHashHasher {
     }
 }
 
+macro_rules! stat {
+    ($stats:expr) => {
+        #[cfg(features = "statistics")]
+        {
+            $stats
+        }
+    };
+}
+
 #[derive(Default)]
+#[cfg(features = "statistics")]
 struct Stats {
     cycles_compiled: u64,
     cycles_interpreted: u64,
@@ -186,6 +199,7 @@ struct Stats {
     fallbacks_on_interrupt: u64,
     fallbacks_other: u64,
 }
+#[cfg(features = "statistics")]
 impl Drop for JitCompiler {
     fn drop(&mut self) {
         let total_cycles = self.stats.cycles_compiled + self.stats.cycles_interpreted;
@@ -260,6 +274,7 @@ impl Drop for JitCompiler {
 
 pub struct JitCompiler {
     pub blocks: HashMap<Address, Block, NoHashHasher>,
+    #[cfg(features = "statistics")]
     stats: Stats,
     pub opts: CompilerOpts,
 }
@@ -274,6 +289,7 @@ impl JitCompiler {
     pub fn new() -> Self {
         Self {
             blocks: HashMap::with_hasher(NoHashHasher(0)),
+            #[cfg(features = "statistics")]
             stats: Stats::default(),
             opts: CompilerOpts {
                 flag_optimization: true,
@@ -317,6 +333,7 @@ impl JitCompiler {
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {
         let on_ram = gb.cpu.pc >= 0x8000;
 
+        #[cfg(features = "statistics")]
         let mut stats = std::mem::take(&mut self.stats);
 
         let block = self.get_block(gb);
@@ -326,25 +343,25 @@ impl JitCompiler {
         let block = match block {
             Some(block) => 'block: {
                 if gb.cpu.state != CpuState::Running {
-                    stats.fallbacks_on_halt += 1;
+                    stat!(stats.fallbacks_on_halt += 1);
                     break 'block None;
                 }
 
                 let next_check = gb.clock_count + block.initial_block_clock_cycles as u64 + 4;
                 if next_interrupt <= next_check {
-                    stats.fallbacks_on_interrupt += 1;
+                    stat!(stats.fallbacks_on_interrupt += 1);
                     break 'block None;
                 }
 
-                stats.blocks_runned += 1;
+                stat!(stats.blocks_runned += 1);
                 Some(block)
             }
             None => {
-                if on_ram {
+                stat!(if on_ram {
                     stats.fallbacks_on_ram += 1;
                 } else {
                     stats.fallbacks_other += 1;
-                }
+                });
                 None
             }
         };
@@ -365,7 +382,7 @@ impl JitCompiler {
                 block.call(gb);
                 debug_assert!(gb.clock_count != start_clock);
 
-                stats.cycles_compiled += gb.clock_count - start_clock;
+                stat!(stats.cycles_compiled += gb.clock_count - start_clock);
 
                 // assert that no interrupt happened inside the block (unless it happend in a write
                 // of the last instruction).
@@ -409,9 +426,13 @@ impl JitCompiler {
                         || is_jump && inter.0.cpu.pc < 0x8000
                         || inter.0.clock_count > timeout
                     {
-                        stats.cycles_interpreted += inter.0.clock_count - start_clock - on_halt;
+                        stat!(
+                            stats.cycles_interpreted += inter.0.clock_count - start_clock - on_halt
+                        );
                         if on_ram {
-                            stats.cycles_on_ram += inter.0.clock_count - start_clock - on_halt;
+                            stat!(
+                                stats.cycles_on_ram += inter.0.clock_count - start_clock - on_halt
+                            );
                         }
                         break;
                     }
@@ -419,6 +440,6 @@ impl JitCompiler {
             }
         }
 
-        self.stats = stats;
+        stat!(self.stats = stats);
     }
 }

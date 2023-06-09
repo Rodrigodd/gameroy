@@ -79,8 +79,11 @@ pub struct BlockCompiler<'gb> {
     /// The ime_state of the current instruction, if known.
     previous_ime_state: Option<ImeState>,
 
+    #[cfg(feature = "statistics")]
     cleared_flags: usize,
+    #[cfg(feature = "statistics")]
     partially_cleared_flags: usize,
+    #[cfg(feature = "statistics")]
     non_cleared_flags: usize,
 }
 
@@ -117,8 +120,11 @@ impl<'a> BlockCompiler<'a> {
             did_write: false,
             ime_state: None,
             previous_ime_state: None,
+            #[cfg(feature = "statistics")]
             cleared_flags: 0,
+            #[cfg(feature = "statistics")]
             partially_cleared_flags: 0,
+            #[cfg(feature = "statistics")]
             non_cleared_flags: 0,
         }
     }
@@ -304,8 +310,11 @@ impl<'a> BlockCompiler<'a> {
             fn_ptr: unsafe { std::mem::transmute(compiled_code.as_ptr()) },
             _compiled_code: compiled_code,
             bytes,
+            #[cfg(feature = "statistics")]
             cleared_flags: self.cleared_flags,
+            #[cfg(feature = "statistics")]
             partially_cleared_flags: self.partially_cleared_flags,
+            #[cfg(feature = "statistics")]
             non_cleared_flags: self.non_cleared_flags,
         }
     }
@@ -365,6 +374,7 @@ impl<'a> BlockCompiler<'a> {
 
             instr.used_flags = observed_flags & set_flags;
 
+            #[cfg(feature = "statistics")]
             if instr.used_flags == 0 && set_flags != 0 {
                 self.cleared_flags += 1;
             } else if instr.used_flags == set_flags {

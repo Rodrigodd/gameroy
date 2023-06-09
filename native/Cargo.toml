@@ -19,6 +19,7 @@ static = ["gameroy/static"]
 rfd = ["gameroy/rfd"]
 audio-engine = ["gameroy/audio-engine"]
 threads = ["gameroy/threads"]
+statistics = ["gameroy/statistics"]
 
 default = ["threads", "console", "audio-engine", "rfd"]
 

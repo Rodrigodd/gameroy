@@ -11,6 +11,8 @@ license.workspace = true
 [features]
 io_trace = ["gameroy-core/io_trace"]
 
+statistics = []
+
 [dependencies]
 gameroy-core = { path = "../core" }
 

@@ -325,18 +325,23 @@ impl<'a> BlockCompiler<'a> {
         let mut observed_flags = 0b1111;
 
         for instr in self.instrs.iter_mut().rev() {
+            // a write to RAM may trigger a interrupt, that may observed the flags of this and
+            // previous instructions.
+            observed_flags |= if instr.op[0] == 0xcb {
+                consts::CB_WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[1] as usize]
+            } else {
+                consts::WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[0] as usize]
+            };
+
             let (set_flags, read_flags) = if instr.op[0] == 0xcb {
                 (
                     consts::CB_WRITE_FLAG[instr.op[1] as usize],
-                    consts::CB_READ_FLAG[instr.op[1] as usize]
-                        | consts::CB_WRITE_RAM.map(|x| if x { 0xf } else { 0 })
-                            [instr.op[1] as usize],
+                    consts::CB_READ_FLAG[instr.op[1] as usize],
                 )
             } else {
                 (
                     consts::WRITE_FLAG[instr.op[0] as usize],
-                    consts::READ_FLAG[instr.op[0] as usize]
-                        | consts::WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[0] as usize],
+                    consts::READ_FLAG[instr.op[0] as usize],
                 )
             };
 

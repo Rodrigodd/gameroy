@@ -628,7 +628,7 @@ impl Interpreter<'_> {
                 .0
                 .next_interrupt
                 .get()
-                .saturating_sub(self.0.clock_count);
+                .saturating_sub(self.0.clock_count + 4);
 
             // TODO: ideally, this should be aware of the timeout of the main loop.
             if until_interrupt > consts::CLOCK_SPEED / 60 {

@@ -2315,6 +2315,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
                 Reg::HL => {
+                    self.read_mem_reg(ops, Reg::HL, false);
                     dynasm!(ops
                         ; movzx	ecx, BYTE [rbx + a as i32]
                         ; movzx	edx, BYTE [rbx + f as i32]
@@ -2338,6 +2339,7 @@ impl<'a> BlockCompiler<'a> {
                     );
                 }
             }
+            return;
         }
 
         dynasm!(ops

@@ -422,20 +422,24 @@ impl<'a> BlockCompiler<'a> {
             .find(|x| x.pc == address && x.bank == curr_bank)
             .copied();
 
-        let Some(instr) = target else { return self.exit_block(ops) };
+        let Some(target) = target else {
+            return self.exit_block(ops)
+        };
 
         let next_check = self
             .block_trace
             .interrupt_checks
             .iter()
             .map(|x| x.1)
-            .find(|x| *x > instr.curr_clock_count);
+            .find(|x| *x > target.curr_clock_count);
 
-        let Some(next_check) = next_check else { return self.exit_block(ops) };
+        let Some(next_check) = next_check else {
+            return self.exit_block(ops)
+        };
 
-        self.check_interrupt(ops, instr.curr_clock_count, next_check);
+        self.check_interrupt(ops, target.curr_clock_count, next_check);
 
-        dynasm!(ops; jmp => instr.label)
+        dynasm!(ops; jmp => target.label)
     }
 
     fn exit_block(&mut self, ops: &mut VecAssembler<X64Relocation>) {

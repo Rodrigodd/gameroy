@@ -153,7 +153,7 @@ impl<'a> BlockCompiler<'a> {
             )
             .collect();
 
-        if opts.flags_analysis {
+        if opts.flag_optimization {
             self.flags_analysis();
         }
 

@@ -88,21 +88,30 @@ enum Commands {
 pub struct Bench {
     /// path to the game rom to be emulated
     rom_path: String,
+
     /// the number of frames to run for each run
     #[arg(short, long, default_value_t = 600)]
     frames: u64,
+
     /// the number of times run
     #[arg(short, long, default_value_t = 10)]
     times: usize,
+
     /// disables interrupt prediction optimization
     #[arg(long)]
     no_prediction: bool,
+
     /// run bench with the Just-In-Time compiler
     #[arg(long)]
     interpreter: bool,
+
     /// run bench with the interpreter
     #[arg(long)]
     jit: bool,
+
+    /// Enables/disables flag optimization
+    #[arg(long, action = ArgAction::Set, value_name = "BOOL", default_value = "true")]
+    flag_optimization: bool,
 }
 
 pub fn main() {

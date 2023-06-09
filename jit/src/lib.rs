@@ -50,8 +50,9 @@ struct BlockTrace {
     interrupt_checks: Vec<(u16, u32)>,
 }
 
+#[derive(Clone)]
 pub struct CompilerOpts {
-    pub flags_analysis: bool,
+    pub flag_optimization: bool,
 }
 
 struct Instr {
@@ -275,7 +276,7 @@ impl JitCompiler {
             blocks: HashMap::with_hasher(NoHashHasher(0)),
             stats: Stats::default(),
             opts: CompilerOpts {
-                flags_analysis: true,
+                flag_optimization: true,
             },
         }
     }

@@ -307,10 +307,10 @@ impl<'a> BlockCompiler<'a> {
             _start_address: start,
             _length: self.block_trace.length,
             initial_block_clock_cycles: self.block_trace.interrupt_checks[0].1,
-            max_clock_cycles: self.block_trace.interrupt_checks.iter().map(|x| x.1).sum(),
+            _max_clock_cycles: self.block_trace.interrupt_checks.iter().map(|x| x.1).sum(),
             fn_ptr: unsafe { std::mem::transmute(compiled_code.as_ptr()) },
             _compiled_code: compiled_code,
-            bytes,
+            _bytes: bytes,
             #[cfg(feature = "statistics")]
             cleared_flags: self.cleared_flags,
             #[cfg(feature = "statistics")]

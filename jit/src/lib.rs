@@ -21,10 +21,10 @@ pub struct Block {
     _start_address: u16,
     _length: u16,
     initial_block_clock_cycles: u32,
-    max_clock_cycles: u32,
+    _max_clock_cycles: u32,
     fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
     pub _compiled_code: ExecutableBuffer,
-    bytes: usize,
+    _bytes: usize,
 
     #[cfg(feature = "statistics")]
     cleared_flags: usize,
@@ -209,7 +209,11 @@ impl Drop for JitCompiler {
             + self.stats.fallbacks_on_interrupt
             + self.stats.fallbacks_other;
 
-        let compiled_bytes = self.blocks.values().map(|block| block.bytes).sum::<usize>();
+        let compiled_bytes = self
+            .blocks
+            .values()
+            .map(|block| block._bytes)
+            .sum::<usize>();
 
         let cleared_flags = self
             .blocks
@@ -399,7 +403,7 @@ impl JitCompiler {
                 // avoid being stuck here for to long
                 let timeout = gb.clock_count + CLOCK_SPEED / 60;
 
-                let mut on_halt = 0;
+                let mut _on_halt = 0;
 
                 let mut inter = Interpreter(gb);
                 loop {
@@ -410,7 +414,7 @@ impl JitCompiler {
                     inter.interpret_op();
                     let elapsed = inter.0.clock_count - now;
                     if is_halt {
-                        on_halt += elapsed;
+                        _on_halt += elapsed;
                     }
 
                     let is_jump = [
@@ -427,11 +431,12 @@ impl JitCompiler {
                         || inter.0.clock_count > timeout
                     {
                         stat!(
-                            stats.cycles_interpreted += inter.0.clock_count - start_clock - on_halt
+                            stats.cycles_interpreted +=
+                                inter.0.clock_count - start_clock - _on_halt
                         );
                         if on_ram {
                             stat!(
-                                stats.cycles_on_ram += inter.0.clock_count - start_clock - on_halt
+                                stats.cycles_on_ram += inter.0.clock_count - start_clock - _on_halt
                             );
                         }
                         break;

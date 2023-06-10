@@ -258,6 +258,7 @@ impl<'a> BlockCompiler<'a> {
                 );
             }
 
+            // TODO: should replace this by a check_interrupt
             if ime_enabled {
                 break;
             }

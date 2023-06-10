@@ -2541,7 +2541,6 @@ impl<'a> BlockCompiler<'a> {
             if reg == Reg::HL {
                 self.tick(4);
             }
-            // println!("CP with no flags?!");
             return;
         }
 
@@ -2775,7 +2774,6 @@ impl<'a> BlockCompiler<'a> {
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
         if !flags {
-            println!("CCF with no flags?!");
             return;
         }
 
@@ -2792,7 +2790,6 @@ impl<'a> BlockCompiler<'a> {
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
         if !flags {
-            println!("SCF with no flags?!");
             return;
         }
 
@@ -3688,7 +3685,6 @@ impl<'a> BlockCompiler<'a> {
             if reg == Reg::HL {
                 self.tick(4);
             }
-            // println!("BIT with no flags!?");
             return;
         }
 

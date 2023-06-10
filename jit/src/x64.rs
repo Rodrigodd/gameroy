@@ -352,7 +352,11 @@ impl<'a> BlockCompiler<'a> {
         // on block exit, all flags can be observed.
         let mut observed_flags = 0b1111;
 
-        for instr in self.instrs.iter_mut().rev() {
+        for i in (0..self.instrs.len()).rev() {
+            let (previous, next) = self.instrs.split_at_mut(i);
+            let instr = &mut next[0];
+            let previous_instr = previous.last();
+
             // a write to RAM may trigger a interrupt, that may observed the flags of this and
             // previous instructions.
             observed_flags |= if instr.op[0] == 0xcb {
@@ -360,6 +364,11 @@ impl<'a> BlockCompiler<'a> {
             } else {
                 consts::WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[0] as usize]
             };
+
+            // The IE instruction may trigger a interrupt a instruction later, observing all flags
+            if previous_instr.map_or(false, |x| x.op[0] == 0xfb) {
+                observed_flags |= 0b1111;
+            }
 
             let (set_flags, read_flags) = if instr.op[0] == 0xcb {
                 (

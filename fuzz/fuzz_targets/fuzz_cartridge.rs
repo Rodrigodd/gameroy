@@ -108,12 +108,12 @@ fn test_interrupt_prediction(cartridge: Cartridge, target: u64) -> bool {
     }));
 
     while game_boy_a.clock_count < target {
-        print!("\u{001b}[37m");
+        // print!("\u{001b}[37m");
         {
             let mut inter = Interpreter(&mut game_boy_a);
             inter.interpret_op();
         }
-        print!("\u{001b}[0m");
+        // print!("\u{001b}[0m");
         // the gameboy with predict interrupt may skip most part of a halt.
         while game_boy_b.clock_count < game_boy_a.clock_count {
             let mut inter = Interpreter(&mut game_boy_b);

@@ -3176,7 +3176,7 @@ impl<'a> BlockCompiler<'a> {
                 _ => {
                     let reg = reg_offset(reg);
                     dynasm!(ops
-                        ; rol    BYTE [rbx + reg as i32], 1
+                        ; ror    BYTE [rbx + reg as i32], 1
                     );
                 }
             }

@@ -1572,8 +1572,8 @@ impl<'a> BlockCompiler<'a> {
         true
     }
 
-    pub fn invalid_opcode(&mut self, _ops: &mut VecAssembler<X64Relocation>, opcode: u8) {
-        println!("compiled invalid instructions: {opcode:02x}");
+    pub fn invalid_opcode(&mut self, _ops: &mut VecAssembler<X64Relocation>, _opcode: u8) {
+        // println!("compiled invalid instructions: {_opcode:02x}");
     }
 
     pub fn load_reg_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {

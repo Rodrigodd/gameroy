@@ -2002,8 +2002,8 @@ impl Interpreter<'_> {
         self.0.cpu.a = self.0.cpu.a.rotate_left(1);
     }
 
-    pub fn invalid_opcode(&mut self, opcode: u8) {
-        println!("executed invalid instructions: {opcode:02x}");
+    pub fn invalid_opcode(&mut self, _opcode: u8) {
+        // println!("executed invalid instructions: {_opcode:02x}");
     }
 
     pub fn ei(&mut self) {

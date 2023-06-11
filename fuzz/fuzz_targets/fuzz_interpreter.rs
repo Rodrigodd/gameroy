@@ -61,11 +61,7 @@ fuzz_target!(|data: &[u8]| {
     // emulate 100 ms
     let target = start_clock + CLOCK_SPEED / 10;
 
-    if !test_interrupt_prediction(cartridge.clone(), target) {
-        panic!("CPU desync!");
-    }
-
-    if !test_jit(cartridge, target) {
+    if !test_interrupt_prediction(cartridge, target) {
         panic!("CPU desync!");
     }
 });
@@ -121,95 +117,6 @@ fn test_interrupt_prediction(cartridge: Cartridge, target: u64) -> bool {
         }
 
         if !assert_equal(&game_boy_a, &game_boy_b, &vblank.lock().unwrap()) {
-            return false;
-        }
-
-        // 0x40 = LD B, B
-        if game_boy_b.read(game_boy_b.cpu.pc) == 0x40 {
-            break;
-        }
-    }
-    true
-}
-
-fn test_jit(cartridge: Cartridge, target: u64) -> bool {
-    let vblank = Arc::new(Mutex::new(VBlank::default()));
-
-    let mut jit_compiler = gameroy_jit::JitCompiler::new();
-
-    let mut game_boy_a = GameBoy::new(None, cartridge.clone());
-    game_boy_a.predict_interrupt = true;
-    game_boy_a.serial.borrow_mut().serial_transfer_callback = None;
-    game_boy_a.v_blank = Some(Box::new({
-        let vblank = vblank.clone();
-        move |gb| {
-            // press the start button, repeatedly
-            gb.joypad ^= 0x80;
-            let mut vblank = vblank.lock().unwrap();
-            vblank.screen_a = Some(gb.ppu.borrow().screen);
-            vblank.clock_count_a = Some(gb.clock_count);
-        }
-    }));
-
-    let mut game_boy_b = GameBoy::new(None, cartridge);
-    game_boy_b.predict_interrupt = true;
-    game_boy_b.serial.borrow_mut().serial_transfer_callback = None;
-    game_boy_b.v_blank = Some(Box::new({
-        let vblank = vblank.clone();
-        move |gb| {
-            // press the start button, repeatedly
-            gb.joypad ^= 0x80;
-            let mut vblank = vblank.lock().unwrap();
-            vblank.screen_b = Some(gb.ppu.borrow().screen);
-            vblank.clock_count_b = Some(gb.clock_count);
-        }
-    }));
-
-    while game_boy_a.clock_count < target {
-        // print!("\u{001b}[37m");
-        {
-            jit_compiler.interpret_block(&mut game_boy_a);
-        }
-        // print!("\u{001b}[0m");
-        while game_boy_b.clock_count < game_boy_a.clock_count {
-            Interpreter(&mut game_boy_b).interpret_op();
-        }
-
-        if !assert_equal(&game_boy_a, &game_boy_b, &vblank.lock().unwrap()) {
-            let mut dissasembly = String::new();
-            game_boy_b
-                .trace
-                .borrow_mut()
-                .fmt(&game_boy_b, &mut dissasembly)
-                .unwrap();
-
-            let h = &game_boy_b.cartridge.header;
-            let _ = std::fs::create_dir("failed_test");
-            let name = format!(
-                "{}_{:02x}",
-                h.title_as_string().split_whitespace().next().unwrap_or(""),
-                h.global_checksum
-            );
-            println!("dumping ROM in {name}.s");
-            std::fs::write("failed_test/".to_owned() + &name + ".s", dissasembly).unwrap();
-
-            let bin_dir = format!("failed_test/{}", name);
-            let _ = std::fs::remove_dir_all(&bin_dir);
-            let _ = std::fs::create_dir(&bin_dir);
-
-            // Dump compiled blocks.
-            // Can be inspected using `objdump -D -b binary -Mintel,x86-64 -m i386 <file>`.
-            for (address, block) in jit_compiler.blocks.iter() {
-                std::fs::write(
-                    format!(
-                        "failed_test/{}/{:02x}_{:04x}.bin",
-                        name, address.bank, address.address
-                    ),
-                    &*block._compiled_code,
-                )
-                .unwrap();
-            }
-
             return false;
         }
 

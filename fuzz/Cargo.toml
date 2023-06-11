@@ -23,7 +23,13 @@ members = ["."]
 debug = 1
 
 [[bin]]
-name = "fuzz_cartridge"
-path = "fuzz_targets/fuzz_cartridge.rs"
+name = "fuzz_jit"
+path = "fuzz_targets/fuzz_jit.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_interpreter"
+path = "fuzz_targets/fuzz_interpreter.rs"
 test = false
 doc = false

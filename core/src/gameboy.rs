@@ -62,6 +62,9 @@ pub struct GameBoy {
 
     /// Used to toggle the next interrupt prediction, to be able to test its correctness.
     pub predict_interrupt: bool,
+    /// Used to toggle the halt optimization, to allow interpreting with more granuallity.
+    pub halt_optimization: bool,
+
     /// The clock_count when the next interrupt may happen.
     pub next_interrupt: Cell<u64>,
 
@@ -166,6 +169,7 @@ impl GameBoy {
             v_blank_trigger: false.into(),
             v_blank: None,
             predict_interrupt: true,
+            halt_optimization: true,
             next_interrupt: 0.into(),
 
             #[cfg(feature = "io_trace")]

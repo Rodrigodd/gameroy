@@ -200,11 +200,6 @@ impl<'a> BlockCompiler<'a> {
             self.op = instr.op;
             let op = instr.op[0];
 
-            // if STOP or HALT, fallback to interpreter
-            if op == 0x10 || op == 0x76 {
-                break;
-            }
-
             let ime_enabled = self.ime_state == Some(ImeState::ToBeEnable);
             if ime_enabled {
                 self.previous_ime_state = self.ime_state;
@@ -258,9 +253,11 @@ impl<'a> BlockCompiler<'a> {
                 );
             }
 
-            // TODO: should replace this by a check_interrupt
             if ime_enabled {
-                break;
+                let next_check = self.block_trace.interrupt_checks[curr_check].1;
+                let curr_clock_count = self.curr_clock_count;
+                self.update_pc(&mut ops);
+                self.check_interrupt(&mut ops, curr_clock_count, next_check);
             }
         }
 

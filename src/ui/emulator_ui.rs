@@ -52,6 +52,7 @@ pub fn create_gui(
     gui.create_control_reserved(root)
         .behaviour(OnKeyboardEvent::new(move |event, _, ctx| {
             use giui::KeyboardEvent::*;
+            use winit::event::VirtualKeyCode::*;
             let sender = ctx.get::<flume::Sender<EmulatorEvent>>().clone();
             let debug = ctx.get::<crate::AppState>().debug;
             let app_state = ctx.get_mut::<crate::AppState>();
@@ -60,6 +61,7 @@ pub fn create_gui(
             };
             let km = &crate::config::config().keymap;
             match event {
+                Pressed(M) => open_menu(ctx, root),
                 Pressed(x) if x == km.right => set_key(0, true), // Left
                 Release(x) if x == km.right => set_key(0, false),
                 Pressed(x) if x == km.left => set_key(1, true), // Right
@@ -512,26 +514,32 @@ fn create_screen(
                     focus: style.button_panel.clone().with_alpha(150),
                 }),
                 true,
-                move |_, ctx| {
-                    let style = ctx.get::<Style>().clone();
-                    fn option(a: &str, b: impl FnMut(&mut Context) + 'static) -> MenuOption {
-                        (a, Box::new(b))
-                    }
-                    send_emu(ctx, EmulatorEvent::Pause);
-                    let options = vec![
-                        option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
-                        option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
-                        option("Reset", |ctx| send_emu(ctx, EmulatorEvent::Reset)),
-                        option("Exit Game", |ctx| {
-                            ctx.get::<EventLoopProxy<UserEvent>>()
-                                .send_event(UserEvent::PopApp)
-                                .unwrap();
-                        }),
-                    ];
-                    let on_close = |ctx: &mut Context| send_emu(ctx, EmulatorEvent::Resume);
-                    create_menu(options, on_close, ctx, &style);
-                },
+                move |_, ctx| open_menu(ctx, parent),
             ))
             .build(ctx);
     }
+}
+
+fn open_menu(ctx: &mut Context, root: Id) {
+    let style = ctx.get::<Style>().clone();
+    fn option(a: &str, b: impl FnMut(&mut Context) + 'static) -> MenuOption {
+        (a, Box::new(b))
+    }
+    send_emu(ctx, EmulatorEvent::Pause);
+    let options = vec![
+        option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
+        option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
+        option("Reset", |ctx| send_emu(ctx, EmulatorEvent::Reset)),
+        option("Exit Game", |ctx| {
+            ctx.get::<EventLoopProxy<UserEvent>>()
+                .send_event(UserEvent::PopApp)
+                .unwrap();
+        }),
+    ];
+    let on_close = move |ctx: &mut Context| {
+        ctx.set_focus(root);
+        send_emu(ctx, EmulatorEvent::Resume)
+    };
+    let menu = create_menu(options, on_close, ctx, &style);
+    ctx.set_focus(menu);
 }

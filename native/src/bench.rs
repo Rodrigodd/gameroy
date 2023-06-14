@@ -143,8 +143,6 @@ fn run_jitted(
     timeout: u64,
     opts: CompilerOpts,
 ) -> Vec<Duration> {
-    use gameroy_jit::CompilerOpts;
-
     pre_run(game_boy, timeout, &mut {
         let mut jit_compiler = gameroy_jit::JitCompiler::new();
         jit_compiler.opts = opts.clone();

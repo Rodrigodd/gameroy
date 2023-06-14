@@ -55,7 +55,7 @@ pub struct Debugger {
     pub skip_breakpoints_until_target_clock: bool,
 }
 impl Debugger {
-    pub fn execute_command<'a>(&mut self, gb: &GameBoy, args: &[&'a str]) -> Result<(), String> {
+    pub fn execute_command(&mut self, gb: &GameBoy, args: &[&str]) -> Result<(), String> {
         use DebuggerEvent::*;
         let callback = |a: &mut Debugger, b| {
             let mut callback = a.callback.take();

@@ -2212,45 +2212,43 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 ppu.obp0
             };
 
-            {
-                let y = py as usize % 8;
-                let i = t as usize * 0x10;
-                let a = ppu.vram[i + y * 2];
-                let b = ppu.vram[i + y * 2 + 1];
+            let y = py as usize % 8;
+            let i = t as usize * 0x10;
+            let a = ppu.vram[i + y * 2];
+            let b = ppu.vram[i + y * 2 + 1];
 
-                for x in 0..8 {
-                    let lx = Screen::LEFT_PAD as u8 + sx + x - 8;
+            for x in 0..8 {
+                let lx = Screen::LEFT_PAD as u8 + sx + x - 8;
 
-                    // X-Flip
-                    let x = if flags & 0x20 != 0 { x } else { 7 - x };
-                    let color = (((b >> x) << 1) & 0b10) | ((a >> x) & 0b1);
-                    let c = (palette >> (color * 2)) & 0b11;
+                // X-Flip
+                let x = if flags & 0x20 != 0 { x } else { 7 - x };
+                let color = (((b >> x) << 1) & 0b10) | ((a >> x) & 0b1);
+                let c = (palette >> (color * 2)) & 0b11;
 
-                    if color == 0 {
-                        continue;
-                    }
-
-                    // The sprite cannot be directly draw to the screen, because it would overwritte
-                    // the value of the background, that still could be used for next overlapping
-                    // sprites with background_priority on.
-                    //
-                    // So instead I am writing to unused bits of the byte, and later writing them
-                    // back to the screen.
-                    //
-                    // When a sprite writes over another one, it overwrittes the sprite pixels on
-                    // the FIFO, before they are draw to the screen. This includes the
-                    // background_priority bit, so a future sprite could overwritte the bit, making
-                    // this sprite not be draw. So we need to save the background_priority here, and
-                    // only later check for background priority.
-                    //
-                    // TODO: This workaround is janky. Find a better way, maybe analogues to the
-                    // sprite_fifo.
-                    let p = &mut scanline[lx as usize];
-                    *p = (*p & 0b11)
-                        | (c << 2)
-                        | ((flags & 0x80 != 0) as u8 * BACKGROUND_PRIORITY_FLAG)
-                        | SPRITE_DRAW_FLAG;
+                if color == 0 {
+                    continue;
                 }
+
+                // The sprite cannot be directly draw to the screen, because it would overwritte
+                // the value of the background, that still could be used for next overlapping
+                // sprites with background_priority on.
+                //
+                // So instead I am writing to unused bits of the byte, and later writing them
+                // back to the screen.
+                //
+                // When a sprite writes over another one, it overwrittes the sprite pixels on
+                // the FIFO, before they are draw to the screen. This includes the
+                // background_priority bit, so a future sprite could overwritte the bit, making
+                // this sprite not be draw. So we need to save the background_priority here, and
+                // only later check for background priority.
+                //
+                // TODO: This workaround is janky. Find a better way, maybe analogues to the
+                // sprite_fifo.
+                let p = &mut scanline[lx as usize];
+                *p = (*p & 0b11)
+                    | (c << 2)
+                    | ((flags & 0x80 != 0) as u8 * BACKGROUND_PRIORITY_FLAG)
+                    | SPRITE_DRAW_FLAG;
             }
         }
     }

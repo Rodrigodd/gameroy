@@ -2006,7 +2006,7 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
 }
 
 pub fn draw_scan_line(ppu: &mut Ppu) {
-    let scanline_start = ppu.ly as usize * 160;
+    let scanline = &mut ppu.screen[ppu.ly as usize * 160..][..160];
 
     let window_enabled = ppu.is_in_window && ppu.lcdc & 0x01 != 0;
     let dx = if ppu.wx != 0 {
@@ -2018,12 +2018,9 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
     };
     let wxs = ppu.wx.saturating_sub(dx);
 
-    // bound-check just once.
-    let _ = &ppu.screen[scanline_start..][..160];
-
     // Draw background
     if ppu.lcdc & 0x01 == 0 {
-        ppu.screen[scanline_start..][..160].copy_from_slice(&[0; 160]);
+        scanline.copy_from_slice(&[0; 160]);
     } else {
         let py = ((ppu.scy as u16 + ppu.ly as u16) % 256) as u8;
         let y = py % 8;
@@ -2051,7 +2048,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             for x in (0..(8 - ppu.scx % 8)).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize] = color as u8;
+                scanline[lx as usize] = color as u8;
                 lx += 1;
             }
             offset_x = (offset_x + 1) & 0x1F;
@@ -2069,12 +2066,12 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
 
             // bound-check just once.
-            let _ = &ppu.screen[..scanline_start + lx as usize + 8];
+            let _ = &scanline[..lx as usize + 8];
 
             for x in (0..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize + (7 - x)] = color as u8;
+                scanline[lx as usize + (7 - x)] = color as u8;
             }
             lx += 8;
             offset_x = (offset_x + 1) & 0x1F;
@@ -2094,7 +2091,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             for x in ((8 - (end - lx))..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize] = color as u8;
+                scanline[lx as usize] = color as u8;
                 lx += 1;
             }
         }
@@ -2129,7 +2126,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             for x in (0..(8 - scx % 8)).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize] = color as u8;
+                scanline[lx as usize] = color as u8;
                 lx += 1;
             }
             offset_x = (offset_x + 1) & 0x1F;
@@ -2147,12 +2144,12 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
 
             // bound-check just once.
-            let _ = &ppu.screen[..scanline_start + lx as usize + 8];
+            let _ = &scanline[..lx as usize + 8];
 
             for x in (0..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize + (7 - x)] = color as u8;
+                scanline[lx as usize + (7 - x)] = color as u8;
             }
             lx += 8;
             offset_x += 1;
@@ -2172,7 +2169,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             for x in ((8 - (end - lx))..8).rev() {
                 let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
 
-                ppu.screen[scanline_start + lx as usize] = color as u8;
+                scanline[lx as usize] = color as u8;
                 lx += 1;
             }
         }
@@ -2259,7 +2256,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                     //
                     // TODO: This workaround is janky. Find a better way, maybe analogues to the
                     // sprite_fifo.
-                    let p = &mut ppu.screen[scanline_start + lx as usize];
+                    let p = &mut scanline[lx as usize];
                     *p = (*p & 0b11)
                         | (c << 2)
                         | ((flags & 0x80 != 0) as u8 * BACKGROUND_PRIORITY_FLAG)
@@ -2269,7 +2266,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         }
     }
     // write sprite pixels to the screen, or apply the background pallete.
-    for x in ppu.screen[scanline_start..scanline_start + 160].iter_mut() {
+    for x in scanline.iter_mut() {
         let background_color = *x & 0b11;
         if *x & SPRITE_DRAW_FLAG != 0
             && !(*x & BACKGROUND_PRIORITY_FLAG != 0 && background_color != 0)

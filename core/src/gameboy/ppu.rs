@@ -206,10 +206,6 @@ impl Screen {
         }
         packed
     }
-
-    fn get_scanline(&mut self, ly: u8) -> &mut [u8] {
-        &mut self.screen[ly as usize * Self::STRIDE + Self::LEFT_PAD..][..SCREEN_WIDTH]
-    }
 }
 impl SaveState for Screen {
     fn save_state(
@@ -2080,7 +2076,7 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
 }
 
 pub fn draw_scan_line(ppu: &mut Ppu) {
-    let scanline = ppu.screen.get_scanline(ppu.ly);
+    let scanline = &mut ppu.screen.screen[ppu.ly as usize * Screen::STRIDE..][..Screen::STRIDE];
 
     let window_enabled = ppu.is_in_window && ppu.lcdc & 0x01 != 0;
     let dx = if ppu.wx != 0 {
@@ -2094,11 +2090,11 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
 
     // Draw background
     if ppu.lcdc & 0x01 == 0 {
-        scanline.copy_from_slice(&[0; 160]);
+        scanline[Screen::LEFT_PAD..][..SCREEN_WIDTH].copy_from_slice(&[0; 160]);
     } else {
         let py = ((ppu.scy as u16 + ppu.ly as u16) % 256) as u8;
         let y = py % 8;
-        let end = if window_enabled { wxs } else { 160 };
+        let end = if window_enabled { wxs } else { 160 } + Screen::LEFT_PAD as u8;
 
         // BG Tile Map Select
         let address = if ppu.lcdc & 0x08 != 0 { 0x9C00 } else { 0x9800 };
@@ -2106,28 +2102,8 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         let offset_y = address as usize - 0x8000 + (py as usize / 8) * 32;
         let mut offset_x = ppu.scx / 8;
 
-        let mut lx = 0;
-        if ppu.scx % 8 != 0 {
-            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
-
-            // if is using 8800 method
-            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
-                tile += 0x100;
-            }
-
-            let i = tile * 0x10;
-            let a = ppu.vram[i + y as usize * 2] as usize;
-            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
-
-            for x in (0..(8 - ppu.scx % 8)).rev() {
-                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
-
-                scanline[lx as usize] = color as u8;
-                lx += 1;
-            }
-            offset_x = (offset_x + 1) & 0x1F;
-        }
-        while lx + 8 <= end {
+        let mut lx = Screen::LEFT_PAD as u8 - ppu.scx % 8;
+        while lx < end {
             let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
 
             // if is using 8800 method
@@ -2150,32 +2126,13 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             lx += 8;
             offset_x = (offset_x + 1) & 0x1F;
         }
-        if lx < end {
-            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
-
-            // if is using 8800 method
-            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
-                tile += 0x100;
-            }
-
-            let i = tile * 0x10;
-            let a = ppu.vram[i + y as usize * 2] as usize;
-            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
-
-            for x in ((8 - (end - lx))..8).rev() {
-                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
-
-                scanline[lx as usize] = color as u8;
-                lx += 1;
-            }
-        }
     }
 
     // Draw window
     if window_enabled {
         let py = ppu.wyc;
         let y = py % 8;
-        let end = 160;
+        let end = 160 + Screen::LEFT_PAD as u8;
 
         // BG Tile Map Select
         let address = if ppu.lcdc & 0x40 != 0 { 0x9C00 } else { 0x9800 };
@@ -2184,28 +2141,8 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         let scx = wxs + dx - ppu.wx;
         let mut offset_x = scx / 8;
 
-        let mut lx = wxs;
-        if scx % 8 != 0 {
-            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
-
-            // if is using 8800 method
-            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
-                tile += 0x100;
-            }
-
-            let i = tile * 0x10;
-            let a = ppu.vram[i + y as usize * 2] as usize;
-            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
-
-            for x in (0..(8 - scx % 8)).rev() {
-                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
-
-                scanline[lx as usize] = color as u8;
-                lx += 1;
-            }
-            offset_x = (offset_x + 1) & 0x1F;
-        }
-        while lx + 8 <= end {
+        let mut lx = Screen::LEFT_PAD as u8 + wxs - scx % 8;
+        while lx < end {
             let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
 
             // if is using 8800 method
@@ -2227,25 +2164,6 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
             }
             lx += 8;
             offset_x += 1;
-        }
-        if lx < end {
-            let mut tile = ppu.vram[offset_y + offset_x as usize] as usize;
-
-            // if is using 8800 method
-            if ppu.lcdc & 0x10 == 0 && tile < 0x80 {
-                tile += 0x100;
-            }
-
-            let i = tile * 0x10;
-            let a = ppu.vram[i + y as usize * 2] as usize;
-            let b = (ppu.vram[i + y as usize * 2 + 1] as usize) << 1;
-
-            for x in ((8 - (end - lx))..8).rev() {
-                let color = ((b >> x) & 0b10) | ((a >> x) & 0b1);
-
-                scanline[lx as usize] = color as u8;
-                lx += 1;
-            }
         }
     }
 
@@ -2300,11 +2218,8 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                 let a = ppu.vram[i + y * 2];
                 let b = ppu.vram[i + y * 2 + 1];
 
-                // draw only visble part of the sprite
-                let s = if sx < 8 { 8 - sx } else { 0 };
-                let e = 8.min(168 - sx);
-                for x in s..e {
-                    let lx = sx + x - 8;
+                for x in 0..8 {
+                    let lx = Screen::LEFT_PAD as u8 + sx + x - 8;
 
                     // X-Flip
                     let x = if flags & 0x20 != 0 { x } else { 7 - x };
@@ -2340,7 +2255,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
         }
     }
     // write sprite pixels to the screen, or apply the background pallete.
-    for x in scanline.iter_mut() {
+    for x in scanline[Screen::LEFT_PAD..][..SCREEN_WIDTH].iter_mut() {
         let background_color = *x & 0b11;
         if *x & SPRITE_DRAW_FLAG != 0
             && !(*x & BACKGROUND_PRIORITY_FLAG != 0 && background_color != 0)

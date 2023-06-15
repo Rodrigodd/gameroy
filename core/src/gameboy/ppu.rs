@@ -2171,7 +2171,7 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
     const SPRITE_DRAW_FLAG: u8 = 0b10_0000;
 
     // Draw Sprites, if enabled
-    if ppu.lcdc & 0x02 != 0 {
+    if ppu.lcdc & 0x02 != 0 && ppu.sprite_buffer_len != 0 {
         let sprites = &&ppu.sprite_buffer[0..ppu.sprite_buffer_len as usize];
         for &Sprite {
             sy,
@@ -2251,15 +2251,21 @@ pub fn draw_scan_line(ppu: &mut Ppu) {
                     | SPRITE_DRAW_FLAG;
             }
         }
-    }
-    // write sprite pixels to the screen, or apply the background pallete.
-    for x in scanline[Screen::LEFT_PAD..][..SCREEN_WIDTH].iter_mut() {
-        let background_color = *x & 0b11;
-        if *x & SPRITE_DRAW_FLAG != 0
-            && !(*x & BACKGROUND_PRIORITY_FLAG != 0 && background_color != 0)
-        {
-            *x = (*x >> 2) & 0b11;
-        } else {
+        // write sprite pixels to the screen, or apply the background pallete.
+        for x in scanline[Screen::LEFT_PAD..][..SCREEN_WIDTH].iter_mut() {
+            let background_color = *x & 0b11;
+            if *x & SPRITE_DRAW_FLAG != 0
+                && !(*x & BACKGROUND_PRIORITY_FLAG != 0 && background_color != 0)
+            {
+                *x = (*x >> 2) & 0b11;
+            } else {
+                *x = (ppu.bgp >> ((background_color) * 2)) & 0b11;
+            }
+        }
+    } else {
+        // apply the background pallete.
+        for x in scanline[Screen::LEFT_PAD..][..SCREEN_WIDTH].iter_mut() {
+            let background_color = *x;
             *x = (ppu.bgp >> ((background_color) * 2)) & 0b11;
         }
     }

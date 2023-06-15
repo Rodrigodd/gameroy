@@ -47,7 +47,7 @@ fn test_screen(rom: &str, reference: &str, timeout: u64) {
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     let screen_clone = screen.clone();
     game_boy.v_blank = Some(Box::new(move |gb| {
-        *screen_clone.lock().unwrap() = gb.ppu.borrow().screen;
+        *screen_clone.lock().unwrap() = gb.ppu.borrow().screen.packed();
     }));
 
     let mut inter = Interpreter(&mut game_boy);
@@ -98,7 +98,7 @@ fn test_registers(rom: &str, timeout: u64) {
     let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     game_boy.v_blank = Some(Box::new(move |gb| {
-        *screen.lock().unwrap() = gb.ppu.borrow().screen;
+        *screen.lock().unwrap() = gb.ppu.borrow().screen.packed();
     }));
 
     let mut inter = Interpreter(&mut game_boy);

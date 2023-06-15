@@ -188,7 +188,7 @@ extern "C" fn retro_load_game(info: Option<&retro_game_info>) -> bool {
     let mut gb = GameBoy::new(None, cartridge);
     gb.sound.get_mut().sample_frequency = SAMPLE_RATE;
     gb.v_blank = Some(Box::new(|gb| {
-        core().screen_buffer = gb.ppu.get_mut().screen;
+        core().screen_buffer = gb.ppu.get_mut().screen.packed();
     }));
 
     core().state = Some(gb);

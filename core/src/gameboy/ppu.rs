@@ -1,5 +1,5 @@
 use crate::{
-    consts::{FRAME_CYCLES, SCANLINE_CYCLES, SCANLINE_PER_FRAME},
+    consts::{FRAME_CYCLES, SCANLINE_CYCLES, SCANLINE_PER_FRAME, SCREEN_HEIGHT, SCREEN_WIDTH},
     gameboy::GameBoy,
     save_state::{LoadStateError, SaveState, SaveStateContext},
 };
@@ -163,6 +163,78 @@ impl SaveState for Sprite {
     }
 }
 
+/// In some games, more than 30% of the entire CPU time is spent solely on the draw_scan_line
+/// function. So it is important to optimize this function as much as possible.
+///
+/// For this, each scanline is beign alined to a cache line, to decrease cache misses. Also, each
+/// scanline have some paddings on the left and right to allow overdrawing to it, avoiding writing
+/// logic for boundary cases, like a sprite in the very left of the screen.
+#[repr(align(64))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Screen {
+    pub screen: [u8; Self::STRIDE * SCREEN_HEIGHT],
+}
+
+impl Default for Screen {
+    fn default() -> Self {
+        Self {
+            screen: [0; Self::STRIDE * SCREEN_HEIGHT],
+        }
+    }
+}
+impl Screen {
+    /// The memory size of a scanline.
+    const STRIDE: usize = 192;
+
+    /// The number of extra bytes at the start of a scanline.
+    const LEFT_PAD: usize = 8;
+
+    fn set(&mut self, lx: u8, ly: u8, color: u8) {
+        let lx = lx as usize;
+        let ly = ly as usize;
+        debug_assert!(lx < SCREEN_WIDTH);
+        debug_assert!(ly < SCREEN_HEIGHT);
+        self.screen[ly * Self::STRIDE + Self::LEFT_PAD + lx] = color;
+    }
+
+    pub fn packed(&self) -> [u8; SCREEN_WIDTH * SCREEN_HEIGHT] {
+        let mut packed = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+        for y in 0..SCREEN_HEIGHT {
+            for x in 0..SCREEN_WIDTH {
+                packed[y * SCREEN_WIDTH + x] = self.screen[y * Self::STRIDE + Self::LEFT_PAD + x];
+            }
+        }
+        packed
+    }
+
+    fn get_scanline(&mut self, ly: u8) -> &mut [u8] {
+        &mut self.screen[ly as usize * Self::STRIDE + Self::LEFT_PAD..][..SCREEN_WIDTH]
+    }
+}
+impl SaveState for Screen {
+    fn save_state(
+        &self,
+        _: &mut SaveStateContext,
+        data: &mut impl std::io::Write,
+    ) -> Result<(), std::io::Error> {
+        for i in 0..SCREEN_HEIGHT {
+            data.write_all(&self.screen[i * Self::STRIDE + Self::LEFT_PAD..][..SCREEN_WIDTH])?;
+        }
+        Ok(())
+    }
+
+    fn load_state(
+        &mut self,
+        _: &mut SaveStateContext,
+        data: &mut impl std::io::Read,
+    ) -> Result<(), LoadStateError> {
+        for i in 0..SCREEN_HEIGHT {
+            data.read_exact(&mut self.screen[i * Self::STRIDE + Self::LEFT_PAD..][..SCREEN_WIDTH])?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub struct Ppu {
     /// 8000-9FFF: Video RAM
@@ -184,7 +256,7 @@ pub struct Ppu {
 
     /// The current screen been render.
     /// Each pixel is a shade of gray, from 0 to 3
-    pub screen: [u8; 144 * 160],
+    pub screen: Screen,
     /// sprites that will be rendered in the next mode 3 scanline
     pub sprite_buffer: [Sprite; 10],
     /// the length of the `sprite_buffer`
@@ -297,6 +369,9 @@ impl std::fmt::Debug for Ppu {
             .field("vram", &"[...]")
             .field("oam", &"[...]")
             .field("screen", &"[...]")
+            // .field("vram", &self.vram)
+            // .field("oam", &self.oam)
+            // .field("screen", &self.screen)
             .field("dma_started", &self.dma_started)
             .field("dma_running", &self.dma_running)
             .field("dma_block_oam", &self.dma_block_oam)
@@ -432,7 +507,7 @@ impl Default for Ppu {
             oam_write_block: false,
             vram_read_block: false,
             vram_write_block: false,
-            screen: [0; 144 * 160],
+            screen: Screen::default(),
             sprite_buffer: Default::default(),
             sprite_buffer_len: Default::default(),
             wyc: Default::default(),
@@ -503,7 +578,7 @@ impl Ppu {
             vram_read_block: false,
             vram_write_block: false,
             screen: {
-                let mut screen = [0; 0x5A00];
+                let mut screen = Screen::default();
                 screen.load_state(ctx, &mut ppu_state).unwrap();
                 screen
             },
@@ -1823,7 +1898,6 @@ fn output_pixel(ppu: &mut Ppu) {
             return;
         }
 
-        let i = (ppu.ly as usize) * 160 + ppu.screen_x as usize;
         let background_enable = ppu.lcdc & 0x01 != 0;
         let bcolor = if background_enable { pixel & 0b11 } else { 0 };
 
@@ -1844,7 +1918,7 @@ fn output_pixel(ppu: &mut Ppu) {
             }
         }
         debug_assert!(color < 4);
-        ppu.screen[i] = color;
+        ppu.screen.set(ppu.screen_x, ppu.ly, color);
         ppu.screen_x += 1;
         ppu.scanline_x += 1;
         ppu.is_window_being_fetched = false;
@@ -2006,7 +2080,7 @@ pub fn draw_screen(ppu: &Ppu, draw_pixel: &mut impl FnMut(i32, i32, u8)) {
 }
 
 pub fn draw_scan_line(ppu: &mut Ppu) {
-    let scanline = &mut ppu.screen[ppu.ly as usize * 160..][..160];
+    let scanline = ppu.screen.get_scanline(ppu.ly);
 
     let window_enabled = ppu.is_in_window && ppu.lcdc & 0x01 != 0;
     let dx = if ppu.wx != 0 {

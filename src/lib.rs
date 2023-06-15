@@ -26,10 +26,10 @@ use std::{any::Any, rc::Rc, sync::Arc, thread};
 use emulator::{Emulator, EmulatorEvent};
 pub use gameroy;
 use gameroy::{
+    consts::{SCREEN_HEIGHT, SCREEN_WIDTH, VERSION},
     debugger::{Debugger, DebuggerEvent},
     gameboy::GameBoy,
     parser::Vbm,
-    consts::{SCREEN_WIDTH, SCREEN_HEIGHT, VERSION},
 };
 use parking_lot::Mutex;
 #[cfg(feature = "rfd")]
@@ -428,7 +428,7 @@ impl EmulatorApp {
             move |gb| {
                 {
                     let img_data = &mut lcd_screen.lock();
-                    img_data.copy_from_slice(&gb.ppu.borrow().screen);
+                    img_data.copy_from_slice(&gb.ppu.borrow().screen.packed());
                 }
                 let _ = proxy.send_event(UserEvent::FrameUpdated);
             }

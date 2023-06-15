@@ -114,7 +114,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
         let vblank = vblank.clone();
         move |gb| {
             let mut vblank = vblank.lock().unwrap();
-            vblank.screen_a = Some(gb.ppu.borrow().screen);
+            vblank.screen_a = Some(gb.ppu.borrow().screen.packed());
             vblank.clock_count = Some(gb.clock_count);
             if gb.clock_count == 81230904 {
                 println!("{:?}", *gb.ppu.borrow());
@@ -135,7 +135,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
                 _ => panic!("Clock count don't match?!"),
             }
 
-            vblank.screen_b = Some(gb.ppu.borrow().screen);
+            vblank.screen_b = Some(gb.ppu.borrow().screen.packed());
             if gb.clock_count == 81230904 {
                 println!("{:?}", *gb.ppu.borrow());
             }

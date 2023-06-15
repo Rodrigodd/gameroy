@@ -180,7 +180,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
             // press the start button, repeatedly
             gb.joypad ^= 0x80;
             let mut vblank = vblank.lock().unwrap();
-            vblank.screen_a = Some(gb.ppu.borrow().screen);
+            vblank.screen_a = Some(gb.ppu.borrow().screen.packed());
             vblank.clock_count = Some(gb.clock_count);
         }
     }));
@@ -204,7 +204,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
                 ),
             }
 
-            vblank.screen_b = Some(gb.ppu.borrow().screen);
+            vblank.screen_b = Some(gb.ppu.borrow().screen.packed());
         }
     }));
     game_boy_b.serial.borrow_mut().serial_transfer_callback = None;

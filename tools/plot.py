@@ -44,8 +44,9 @@ KINDS: list[tuple[str, str, str]] = [
     ('#FF3F3F', 'compiled', '`0x'),
     ('#FF0F0F', 'compile_block', 'BlockCompiler::compile_block'),
 
-    ('#FFBF7F', 'PPU',  'Ppu::'),
+    ('#FF6F0F', 'search_objects',  'Ppu::search_objects'),
     ('#FF8F3F', 'draw_scan_line',  'ppu::draw_scan_line'),
+    ('#FFBF7F', 'PPU',  'Ppu::'),
 
     ('#5FAF5F', 'SoundController', 'SoundController::'),
     ('#3F9F3F', 'Timer', 'Timer'),

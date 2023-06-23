@@ -223,7 +223,7 @@ impl Cartridge {
         // Cartridge Type
         let mbc_kind = header.cartridge_type;
         let mbc = match mbc_kind {
-            0 => Mbc::None(Mbc0 {}),
+            0 | 8 | 9 => Mbc::None(Mbc0 {}),
             1 | 2 | 3 => 'mbc1: {
                 // Detect if it is a MBC1M card
                 if header.rom_size == 5 {

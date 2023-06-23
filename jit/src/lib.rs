@@ -180,7 +180,7 @@ impl BuildHasher for NoHashHasher {
 
 macro_rules! stat {
     ($stats:expr) => {
-        #[cfg(features = "statistics")]
+        #[cfg(feature = "statistics")]
         {
             $stats
         }
@@ -188,7 +188,7 @@ macro_rules! stat {
 }
 
 #[derive(Default)]
-#[cfg(features = "statistics")]
+#[cfg(feature = "statistics")]
 struct Stats {
     cycles_compiled: u64,
     cycles_interpreted: u64,
@@ -199,7 +199,7 @@ struct Stats {
     fallbacks_on_interrupt: u64,
     fallbacks_other: u64,
 }
-#[cfg(features = "statistics")]
+#[cfg(feature = "statistics")]
 impl Drop for JitCompiler {
     fn drop(&mut self) {
         let total_cycles = self.stats.cycles_compiled + self.stats.cycles_interpreted;
@@ -278,7 +278,7 @@ impl Drop for JitCompiler {
 
 pub struct JitCompiler {
     pub blocks: HashMap<Address, Block, NoHashHasher>,
-    #[cfg(features = "statistics")]
+    #[cfg(feature = "statistics")]
     stats: Stats,
     pub opts: CompilerOpts,
 }
@@ -293,7 +293,7 @@ impl JitCompiler {
     pub fn new() -> Self {
         Self {
             blocks: HashMap::with_hasher(NoHashHasher(0)),
-            #[cfg(features = "statistics")]
+            #[cfg(feature = "statistics")]
             stats: Stats::default(),
             opts: CompilerOpts {
                 flag_optimization: true,
@@ -337,7 +337,7 @@ impl JitCompiler {
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {
         let on_ram = gb.cpu.pc >= 0x8000;
 
-        #[cfg(features = "statistics")]
+        #[cfg(feature = "statistics")]
         let mut stats = std::mem::take(&mut self.stats);
 
         let block = self.get_block(gb);

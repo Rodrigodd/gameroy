@@ -354,12 +354,12 @@ impl<'a> BlockCompiler<'a> {
             let instr = &mut next[0];
             let previous_instr = previous.last();
 
-            // a write to RAM may trigger a interrupt, that may observed the flags of this and
-            // previous instructions.
-            observed_flags |= if instr.op[0] == 0xcb {
-                consts::CB_WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[1] as usize]
+            // a write may trigger a interrupt, that may observed the flags of this and previous
+            // instructions.
+            observed_flags |= if consts::may_change_interrupt(instr.op) {
+                0xf
             } else {
-                consts::WRITE_RAM.map(|x| if x { 0xf } else { 0 })[instr.op[0] as usize]
+                0x0
             };
 
             // The IE instruction may trigger a interrupt a instruction later, observing all flags
@@ -3829,7 +3829,22 @@ impl<'a> BlockCompiler<'a> {
             gb.write(address, value);
         }
 
-        self.did_write = true;
+        // write at immediate address may not affect interrupt estimation
+        if self.op[0] == 0xEA {
+            let address = u16::from_le_bytes([self.op[1], self.op[2]]);
+            match address {
+                // OAM table, currently don't affect interrupt estimation, but it may in the future
+                0xFE00..=0xFE9F => self.did_write = true,
+                // IO registers
+                0xFF00..=0xFF7F => self.did_write = true,
+                // IE
+                0xFFFF => self.did_write = true,
+                _ => {}
+            }
+        } else {
+            self.did_write = true;
+        }
+
         self.update_clock_count(ops);
         self.tick(4);
 

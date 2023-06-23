@@ -81,11 +81,46 @@ pub const CB_CLOCK: [u8; 256] = [
     8, 8, 8, 8, 8, 8, 16, 8, 8, 8, 8, 8, 8, 8, 16, 8, // Fx
 ];
 
-const F: bool = false;
-const T: bool = true;
+pub enum WriteIo {
+    /// Don't change the interrupt prediction.
+    False,
+    /// A write that may change the interrupt prediciton.
+    True,
+    /// Used for `LD (a16), A`, whose address can be check to not affect the interrupt prediction.
+    Maybe,
+}
+
+pub fn may_change_interrupt(op: [u8; 3]) -> bool {
+    if op[0] == 0xcb {
+        match CB_WRITE_RAM[op[1] as usize] {
+            WriteIo::True => true,
+            WriteIo::Maybe => unreachable!(),
+            WriteIo::False => false,
+        }
+    } else {
+        let address = u16::from_le_bytes([op[1], op[2]]);
+        match WRITE_RAM[op[0] as usize] {
+            WriteIo::True => true,
+            WriteIo::Maybe => match address {
+                // OAM table, currently don't affect interrupt estimation, but it may in the future
+                0xFE00..=0xFE9F => true,
+                // IO registers
+                0xFF00..=0xFF7F => true,
+                // IE
+                0xFFFF => true,
+                _ => false,
+            },
+            WriteIo::False => false,
+        }
+    }
+}
+
+const T: WriteIo = WriteIo::True;
+const M: WriteIo = WriteIo::Maybe;
+const F: WriteIo = WriteIo::False;
 
 /// Instructions that may write in ROM
-pub const WRITE_RAM: [bool; 256] = [
+pub const WRITE_RAM: [WriteIo; 256] = [
     // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
     F, F, T, F, F, F, F, F, T, F, F, F, F, F, F, F, // 0x
     F, F, T, F, F, F, F, F, F, F, F, F, F, F, F, F, // 1x
@@ -101,11 +136,11 @@ pub const WRITE_RAM: [bool; 256] = [
     F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, F, // Bx
     F, F, F, F, T, T, F, T, F, F, F, F, T, T, F, T, // Cx
     F, F, F, F, T, T, F, T, F, F, F, F, T, F, F, T, // Dx
-    T, F, T, F, F, T, F, T, F, F, T, F, F, F, F, T, // Ex
+    T, F, T, F, F, T, F, T, F, F, M, F, F, F, F, T, // Ex
     F, F, F, F, F, T, F, T, F, F, F, F, F, F, F, T, // Fx
 ];
 
-pub const CB_WRITE_RAM: [bool; 256] = [
+pub const CB_WRITE_RAM: [WriteIo; 256] = [
     // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 0x
     F, F, F, F, F, F, T, F, F, F, F, F, F, F, T, F, // 1x

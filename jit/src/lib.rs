@@ -108,13 +108,8 @@ fn trace_a_block(gb: &GameBoy) -> BlockTrace {
             curr_clock_count,
         });
 
-        // after writing to RAM, a next_interrupt check is emmited.
-        let write_ram = if op[0] == 0xcb {
-            consts::CB_WRITE_RAM[op[1] as usize]
-        } else {
-            consts::WRITE_RAM[op[0] as usize]
-        };
-        if write_ram {
+        // if change interrupt precition a 'next interrupt check' is emmited.
+        if consts::may_change_interrupt(op) {
             mark_check(&instrs, &mut curr_clock_count);
         }
 

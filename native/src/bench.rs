@@ -53,7 +53,6 @@ pub fn benchmark(
         flag_optimization,
     }: Bench,
 ) {
-    let timeout = frames * gameroy_lib::gameroy::consts::FRAME_CYCLES;
     let predict_interrupt = !no_prediction;
 
     if !jit && !interpreter {
@@ -79,6 +78,7 @@ pub fn benchmark(
 
     game_boy.reset();
     let start_clock_count = game_boy.clock_count;
+    let timeout = start_clock_count + frames * gameroy_lib::gameroy::consts::FRAME_CYCLES;
 
     if interpreter {
         let mut times = run_interpreted(len, &mut game_boy, timeout);
@@ -159,6 +159,7 @@ fn run_jitted(
             jit_compiler.interpret_block(game_boy);
         }
         times.push(start.elapsed());
+        drop(jit_compiler);
     }
     times
 }

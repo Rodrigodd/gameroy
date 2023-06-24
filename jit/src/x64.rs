@@ -978,7 +978,7 @@ impl<'a> BlockCompiler<'a> {
             // JP HL 1:4 - - - -
             0xe9 => self.jump_hl(ops),
             // LD (a16),A 3:16 - - - -
-            0xea => self.load_mem_reg(ops, Reg::Im16, Reg::A),
+            0xea => self.ld_imm_mem_a(ops),
             //
             0xeb => self.invalid_opcode(ops, op),
             //
@@ -1645,24 +1645,16 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match dst {
-            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
+            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
+                let address = reg_offset(dst);
                 dynasm!(ops
                     ; .arch x64
                     ; mov rdi, rbx
+                    ; mov si, WORD [rbx + address as i32]
                     ;; match dst {
-                        Reg::Im16 => {
-                            let address = self.get_immediate16();
-                            dynasm!(ops; mov si, WORD address as i16);
-                        },
-                        _ => {
-                            let address = reg_offset(dst);
-                            dynasm!(ops; mov si, WORD [rbx + address as i32]);
-                            match dst {
-                                Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
-                                Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
-                                _ => {}
-                            }
-                        }
+                        Reg::HLI => dynasm!(ops; inc WORD [rbx + address as i32]),
+                        Reg::HLD => dynasm!(ops; dec WORD [rbx + address as i32]),
+                        _ => {}
                     }
                     ;; match src {
                         Reg::Im8 => {
@@ -1679,6 +1671,67 @@ impl<'a> BlockCompiler<'a> {
             }
             _ => unreachable!(),
         };
+    }
+
+    // LD (a16), A
+    pub fn ld_imm_mem_a(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let src = reg_offset(Reg::A);
+
+        let mut address = self.get_immediate16();
+        if (0xE000..=0xFDFF).contains(&address) {
+            address -= 0x2000;
+        }
+
+        match address {
+            // Cartridge ROM
+            0x0000..=0x7FFF => {}
+            // Video RAM
+            0x8000..=0x9FFF => {}
+            // Cartridge RAM
+            0xA000..=0xBFFF => {}
+            // Work RAM
+            0xC000..=0xDFFF => {
+                let wram = offset!(GameBoy, wram);
+                let offset = wram + (address as usize - 0xC000);
+                debug_assert!(offset < wram + 0x2000);
+                dynasm!(ops
+                    ; .arch x64
+                    ; movzx	eax, BYTE [rbx + src as i32]
+                    ; mov	BYTE [rbx + offset as i32], al
+                );
+                self.tick(4);
+                return;
+            }
+            // ECHO RAM
+            0xE000..=0xFDFF => unreachable!(),
+            // Sprite Attribute table
+            0xFE00..=0xFE9F => {}
+            // Not Usable
+            0xFEA0..=0xFEFF => {}
+            // High RAM
+            0xFF80..=0xFFFE => {
+                let hram = offset!(GameBoy, hram);
+                let offset = hram + (address as usize - 0xFF80);
+                debug_assert!(offset < hram + 0x7F);
+                dynasm!(ops
+                    ; .arch x64
+                    ; movzx	eax, BYTE [rbx + src as i32]
+                    ; mov	BYTE [rbx + offset as i32], al
+                );
+                self.tick(4);
+                return;
+            }
+            // I/O registers and High RAM
+            0xFF00..=0xFFFF => {}
+        }
+
+        dynasm!(ops
+            ; .arch x64
+            ; mov rdi, rbx
+            ; mov si, WORD address as i16
+            ; mov dl, BYTE [rbx + src as i32]
+            ;; self.write_mem(ops)
+        );
     }
 
     pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {

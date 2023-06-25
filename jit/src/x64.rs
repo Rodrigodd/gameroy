@@ -1010,7 +1010,7 @@ impl<'a> BlockCompiler<'a> {
             // LD SP,HL 1:8 - - - -
             0xf9 => self.load16(ops, Reg16::SP, Reg16::HL),
             // LD A,(a16) 3:16 - - - -
-            0xfa => self.load_reg_mem(ops, Reg::A, Reg::Im16),
+            0xfa => self.ld_a_imm_mem(ops),
             // EI 1:4 - - - -
             0xfb => self.ei(ops),
             //
@@ -1736,7 +1736,7 @@ impl<'a> BlockCompiler<'a> {
 
     pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
         match src {
-            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD | Reg::Im16 => {
+            Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
                 self.read_mem_reg(ops, src, false);
 
                 let dst = reg_offset(dst);
@@ -1747,6 +1747,127 @@ impl<'a> BlockCompiler<'a> {
             }
             _ => unreachable!(),
         };
+    }
+
+    // LD A, (a16)
+    pub fn ld_a_imm_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+        let dst = reg_offset(Reg::A);
+
+        let mut address = self.get_immediate16();
+        if (0xE000..=0xFDFF).contains(&address) {
+            address -= 0x2000;
+        }
+
+        match address {
+            // Cartridge ROM, lower bank
+            0x0000..=0x3FFF => {
+                let curr_instr = self.instrs[self.curr_instr];
+                let is_here = matches!(curr_instr.pc, 0x0000..=0x3FFF);
+
+                let rom = offset!(GameBoy, cartridge: Cartridge, rom);
+                let vec_ptr = rom + get_vec_u8_fields_offset().0;
+
+                if is_here {
+                    let curr_bank = curr_instr.bank;
+                    let address = curr_bank as i32 * 0x4000 + address as i32;
+                    dynasm!(ops
+                        ; .arch x64
+                        ; mov	rax, QWORD [rbx + vec_ptr as i32]
+                        ; movzx	eax, BYTE [rax + address]
+                        ; mov	BYTE [rbx + dst as i32], al
+                    );
+                } else {
+                    let curr_bank = offset!(GameBoy, cartridge: Cartridge, lower_bank);
+                    dynasm!(ops
+                        ; .arch x64
+                        ; mov	rax, QWORD [rbx + vec_ptr as i32]
+                        ; movzx	ecx, WORD [rbx + curr_bank as i32]
+                        ; shl	rcx, 14
+                        ; movzx	eax, BYTE [rax + rcx + address as i32]
+                        ; mov	BYTE [rbx + dst as i32], al
+                    );
+                }
+                self.tick(4);
+                return;
+            }
+            // Cartridge ROM, upper bank
+            0x4000..=0x7FFF => {
+                let curr_instr = self.instrs[self.curr_instr];
+                let is_here = matches!(curr_instr.pc, 0x4000..=0x7FFF);
+
+                let rom = offset!(GameBoy, cartridge: Cartridge, rom);
+                let vec_ptr = rom + get_vec_u8_fields_offset().0;
+
+                if is_here {
+                    let curr_bank = curr_instr.bank;
+                    let address = curr_bank as i32 * 0x4000 + address as i32;
+                    dynasm!(ops
+                        ; .arch x64
+                        ; mov	rax, QWORD [rbx + vec_ptr as i32]
+                        ; movzx	eax, BYTE [rax + address]
+                        ; mov	BYTE [rbx + dst as i32], al
+                    );
+                } else {
+                    let curr_bank = offset!(GameBoy, cartridge: Cartridge, upper_bank);
+                    dynasm!(ops
+                        ; .arch x64
+                        ; mov	rax, QWORD [rbx + vec_ptr as i32]
+                        ; movzx	ecx, WORD [rbx + curr_bank as i32]
+                        ; shl	rcx, 14
+                        ; movzx	eax, BYTE [rax + rcx + address as i32]
+                        ; mov	BYTE [rbx + dst as i32], al
+                    );
+                }
+                self.tick(4);
+                return;
+            }
+            // Video RAM
+            0x8000..=0x9FFF => {}
+            // Cartridge RAM
+            0xA000..=0xBFFF => {}
+            // Work RAM
+            0xC000..=0xDFFF => {
+                let wram = offset!(GameBoy, wram);
+                let offset = wram + (address as usize - 0xC000);
+                debug_assert!(offset < wram + 0x2000);
+                dynasm!(ops
+                    ; .arch x64
+                    ; movzx	eax, BYTE [rbx + offset as i32]
+                    ; mov	BYTE [rbx + dst as i32], al
+                );
+                self.tick(4);
+                return;
+            }
+            // ECHO RAM
+            0xE000..=0xFDFF => unreachable!(),
+            // Sprite Attribute table
+            0xFE00..=0xFE9F => {}
+            // Not Usable
+            0xFEA0..=0xFEFF => {}
+            // High RAM
+            0xFF80..=0xFFFE => {
+                let hram = offset!(GameBoy, hram);
+                let offset = hram + (address as usize - 0xFF80);
+                debug_assert!(offset < hram + 0x7F);
+                dynasm!(ops
+                    ; .arch x64
+                    ; movzx	eax, BYTE [rbx + offset as i32]
+                    ; mov	BYTE [rbx + dst as i32], al
+                );
+                self.tick(4);
+                return;
+            }
+            // I/O registers and High RAM
+            0xFF00..=0xFFFF => {}
+        }
+
+        dynasm!(ops
+            ; mov rdi, rbx
+            ; mov si, WORD address as i16
+            ;; self.read_mem(ops)
+            ; .arch x64
+            ; mov BYTE [rbx + dst as i32], al
+        );
     }
 
     pub fn loadh(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
@@ -4024,6 +4145,36 @@ fn to_mutable_buffer(code: Vec<u8>) -> MutableBuffer {
     buffer.set_len(code.len());
     buffer[..].copy_from_slice(code.as_slice());
     buffer
+}
+
+/// Returns the offsets of the fields `ptr`, `length` and `capacity`.
+/// TODO: this is too hacky, replace the Vec with a struct with accessable fields instead.
+fn get_vec_u8_fields_offset() -> (usize, usize, usize) {
+    use std::mem::{align_of, size_of, transmute};
+
+    // build a vec with distincts ptr, length and capacity.
+    let mut vec: Vec<u8> = Vec::with_capacity(2);
+    vec.push(1);
+
+    // ensure they are distinct.
+    assert!(![0, 1, 2].contains(&(vec.as_ptr() as usize)));
+
+    // ensure the layout of Vec are 3 usize values.
+    assert_eq!(size_of::<*mut u8>(), size_of::<usize>());
+    assert_eq!(size_of::<Vec<u8>>(), size_of::<[usize; 3]>());
+    assert_eq!(align_of::<Vec<u8>>(), align_of::<[usize; 3]>());
+
+    // SAFETY: the checks above guarantees this is okay (not sure about lifetime)
+    let fields: &[usize; 3] = unsafe { transmute(&vec) };
+
+    // find the index of each field.
+    let len = fields.iter().position(|x| *x == 1).unwrap();
+    let cap = fields.iter().position(|x| *x == 2).unwrap();
+    let ptr = 1 + 2 - len - cap;
+
+    // convert the index to byte offset.
+    let s = size_of::<usize>();
+    (ptr * s, len * s, cap * s)
 }
 
 macro_rules! call {

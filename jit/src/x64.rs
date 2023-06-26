@@ -284,7 +284,7 @@ impl<'a> BlockCompiler<'a> {
         let bytes = code.len();
 
         cfg_if::cfg_if! {
-            if #[cfg(target_os = "windows")] {
+            if #[cfg(all(target_os = "windows", feature = "emit_debug_info"))] {
                 let buffer = crate::windows::to_mutable_buffer_with_unwin_info(
                     code,
                     prolog_len,

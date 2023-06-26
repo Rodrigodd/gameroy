@@ -13,6 +13,9 @@ io_trace = ["gameroy-core/io_trace"]
 
 statistics = []
 
+# On windows, enabled the emittion of unwind info using RtlAddFunctionTable
+emit_debug_info = []
+
 [dependencies]
 gameroy-core = { path = "../core" }
 

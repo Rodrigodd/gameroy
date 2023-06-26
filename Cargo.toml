@@ -34,8 +34,9 @@ static = []
 # Enable multithreading. Not support in wasm for example.
 threads = []
 
-# Enable multithreading. Not support in wasm for example.
 statistics = ["gameroy-jit/statistics"]
+
+emit_debug_info = ["gameroy-jit/emit_debug_info"]
 
 default = ["rfd", "audio-engine", "threads"]
 

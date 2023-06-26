@@ -13,7 +13,7 @@ use std::{
 use self::x64::BlockCompiler;
 
 #[cfg(target_os = "windows")]
-mod windows;
+pub mod windows;
 
 mod x64;
 

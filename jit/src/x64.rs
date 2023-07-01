@@ -51,6 +51,12 @@ struct Instr {
     bank: u16,
     label: DynamicLabel,
     curr_clock_count: u32,
+    /// The value of `accum_clock_count` when this instruction was compiled. Used to adjust the
+    /// clock count when jumping to this instruction.
+    ///
+    /// It is set to u32::MAX if a previous instruction jump to this, indicating that
+    /// `update_clock_count` should not be called.
+    accum_clock_count: u32,
     /// Bitmask of flags set by this isntruction that will be observed by future instructions. In
     /// the format 0b0000ZNHC.
     used_flags: u8,
@@ -155,6 +161,7 @@ impl<'a> BlockCompiler<'a> {
                     pc,
                     bank,
                     curr_clock_count,
+                    accum_clock_count: 0,
                     used_flags: 0xf,
                 },
             )
@@ -209,8 +216,11 @@ impl<'a> BlockCompiler<'a> {
 
             self.pc += 1;
 
-            self.update_clock_count(ops);
+            if instr.accum_clock_count == u32::MAX {
+                self.update_clock_count(ops);
+            }
             dynasm!(ops; => instr.label);
+            self.instrs[i].accum_clock_count = self.accum_clock_count;
 
             // if false, the opcode was compiled to a interpreter call.
             if self.compile_opcode(ops, op) {
@@ -243,12 +253,10 @@ impl<'a> BlockCompiler<'a> {
                     offset!(GameBoy, cartridge: Cartridge, upper_bank)
                 };
 
-                let clock_count = offset!(GameBoy, clock_count);
                 dynasm!(ops
                     ; mov	ax, WORD [rbx + bank as i32]
                     ; cmp	ax, WORD instr.bank as i16
                     ; je	>bank_skip_exit
-                    ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
                     ;; self.exit_block(ops)
                     ; bank_skip_exit:
                 );
@@ -332,7 +340,6 @@ impl<'a> BlockCompiler<'a> {
             //     println!("{}: {}", _gb.next_interrupt.get() as isize - _gb.clock_count as isize, next_check as isize - curr_clock_count as isize)
             // })
             ; jg	>check_skip_exit
-            ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
             ;; self.exit_block(ops)
             ;check_skip_exit:
         );
@@ -395,6 +402,12 @@ impl<'a> BlockCompiler<'a> {
 
     fn update_clock_count(&mut self, ops: &mut Assembler) {
         // add the accumulated clock_count
+        self.emit_update_clock_count(ops);
+        self.accum_clock_count = 0;
+    }
+
+    fn emit_update_clock_count(&mut self, ops: &mut Assembler) {
+        // add the accumulated clock_count
         if self.accum_clock_count != 0 {
             assert!(self.accum_clock_count <= i32::MAX as u32);
             let c = offset!(GameBoy, clock_count);
@@ -402,7 +415,6 @@ impl<'a> BlockCompiler<'a> {
                 ; .arch x64
                 ; add QWORD [rbx + c as i32], self.accum_clock_count as i32
             );
-            self.accum_clock_count = 0;
         }
     }
 
@@ -443,38 +455,47 @@ impl<'a> BlockCompiler<'a> {
         // println!("jumpto: {:02x}", address);
         dynasm!(ops
             ; mov WORD [rbx + pc as i32], address as i16
-            ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
         );
 
         let curr_bank = self.instrs[self.curr_instr].bank;
         let target = self
             .instrs
             .iter()
-            .find(|x| x.pc == address && x.bank == curr_bank)
-            .copied();
+            .position(|x| x.pc == address && x.bank == curr_bank);
 
         let Some(target) = target else {
             return self.exit_block(ops)
         };
+
+        let target_was_compiled = self.curr_instr >= target;
 
         let next_check = self
             .block_trace
             .interrupt_checks
             .iter()
             .map(|x| x.1)
-            .find(|x| *x > target.curr_clock_count);
+            .find(|x| *x > self.instrs[target].curr_clock_count);
 
         let Some(next_check) = next_check else {
             return self.exit_block(ops)
         };
 
-        self.check_interrupt(ops, target.curr_clock_count, next_check);
+        self.check_interrupt(ops, self.instrs[target].curr_clock_count, next_check);
 
-        dynasm!(ops; jmp => target.label)
+        if !target_was_compiled {
+            self.instrs[target].accum_clock_count = u32::MAX;
+        } else if self.instrs[target].accum_clock_count > 0 {
+            dynasm!(ops
+                ; sub QWORD [rbx + clock_count as i32], self.instrs[target].accum_clock_count as i32
+            );
+        }
+
+        dynasm!(ops; jmp =>self.instrs[target].label)
     }
 
     fn exit_block(&mut self, ops: &mut Assembler) {
         // self.update_pc(ops);
+        self.emit_update_clock_count(ops);
         self.update_ime_state(ops);
 
         dynasm!(ops
@@ -3084,29 +3105,46 @@ impl<'a> BlockCompiler<'a> {
     pub fn jump_rel(&mut self, ops: &mut Assembler, c: Condition) {
         let r8 = self.get_immediate() as i8;
         let address = self.pc.wrapping_add_signed(r8 as i16);
-        self.update_clock_count(ops);
+
+        let curr_clock_count = self.curr_clock_count;
+        let accum_clock_count = self.accum_clock_count;
         self.check_condition(ops, c);
+
         dynasm!(ops
+            ;; self.tick(4)
             ;; self.jump_to(ops, address)
             ; skip_jump:
         );
+
+        // revert clock count increases in tick, because they should be conditional.
+        self.curr_clock_count = curr_clock_count;
+        self.accum_clock_count = accum_clock_count;
+
         if let Condition::None = c {
             self.tick(4);
         }
     }
 
     pub fn jump(&mut self, ops: &mut Assembler, c: Condition) {
-        let clock_count = offset!(GameBoy, clock_count);
         let pc = offset!(GameBoy, cpu: Cpu, pc);
 
         let address = self.get_immediate16();
+
+        let curr_clock_count = self.curr_clock_count;
+        let accum_clock_count = self.accum_clock_count;
         self.check_condition(ops, c);
+
         dynasm!(ops
+            ;; self.tick(4)
             ; mov WORD [rbx + pc as i32], address as i16
-            ; add	QWORD [rbx + clock_count as i32], self.accum_clock_count as i32 + 4
             ;; self.exit_block(ops)
             ; skip_jump:
         );
+
+        // revert clock count increases in tick, because they should be conditional.
+        self.curr_clock_count = curr_clock_count;
+        self.accum_clock_count = accum_clock_count;
+
         if let Condition::None = c {
             self.tick(4);
         }
@@ -3115,10 +3153,8 @@ impl<'a> BlockCompiler<'a> {
     pub fn jump_hl(&mut self, ops: &mut Assembler) {
         let hl = reg_offset16(Reg16::HL);
         let pc = offset!(GameBoy, cpu: Cpu, pc);
-        let clock_count = offset!(GameBoy, clock_count);
 
         dynasm!(ops
-            ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
             ; movzx eax, WORD [rbx + hl as i32]
             ; mov WORD [rbx + pc as i32], ax
             ;; self.exit_block(ops)
@@ -3126,37 +3162,33 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn call(&mut self, ops: &mut Assembler, c: Condition) {
-        let clock_count_offset = offset!(GameBoy, clock_count);
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
 
         let address = self.get_immediate16();
         let pc = self.pc;
-        self.update_clock_count(ops);
+
+        let curr_clock_count = self.curr_clock_count;
+        let accum_clock_count = self.accum_clock_count;
         self.check_condition(ops, c);
+
         dynasm!(ops
             // push pc
-            ; add QWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
+            ;; self.tick(4)
             ; mov	edx, (pc >> 8) as i32
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; dec	eax
             ; movzx	esi, ax
             ; mov	rdi, rbx
             ;; self.write_mem(ops)
-            // revert clock count increases inside write_mem, because they should be conditional.
-            ;; self.tick(-4)
 
-            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; add	eax, -2
             ; mov	edx, (pc & 0xff) as i32
             ; movzx	esi, ax
             ; mov	rdi, rbx
             ;; self.write_mem(ops)
-            // revert clock count increases inside write_mem, because they should be conditional.
-            ;; self.tick(-4)
 
-            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; add	WORD [rbx + sp_offset as i32], -2
 
             ; mov WORD [rbx + pc_offset as i32], address as i16
@@ -3164,44 +3196,40 @@ impl<'a> BlockCompiler<'a> {
             ;; self.exit_block(ops)
             ; skip_jump:
         );
+
+        // revert clock count increases of write_mem, because they should be conditional.
+        self.curr_clock_count = curr_clock_count;
+        self.accum_clock_count = accum_clock_count;
+
         if let Condition::None = c {
             self.tick(12);
         }
     }
 
     pub fn rst(&mut self, ops: &mut Assembler, address: u8) {
-        let clock_count_offset = offset!(GameBoy, clock_count);
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
 
         let address = address as u16;
         let pc = self.pc;
-        self.update_clock_count(ops);
         dynasm!(ops
+            ;; self.tick(4)
             // push pc
-            ; add QWORD [rbx + clock_count_offset as i32], self.accum_clock_count as i32 + 4
             ; mov	edx, (pc >> 8) as i32
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; dec	eax
             ; movzx	esi, ax
             ; mov	rdi, rbx
             ;; self.write_mem(ops)
-            // revert clock count increases inside write_mem, because they should be conditional.
-            ;; self.tick(-4)
 
-            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; movzx	eax, WORD [rbx + sp_offset as i32]
             ; add	eax, -2
             ; mov	edx, (pc & 0xff) as i32
             ; movzx	esi, ax
             ; mov	rdi, rbx
             ;; self.write_mem(ops)
-            // revert clock count increases inside write_mem, because they should be conditional.
-            ;; self.tick(-4)
 
-            ; add QWORD [rbx + clock_count_offset as i32], 4
             ; add	WORD [rbx + sp_offset as i32], -2
-
             ; mov WORD [rbx + pc_offset as i32], address as i16
 
             ;; self.exit_block(ops)
@@ -3209,41 +3237,43 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn ret(&mut self, ops: &mut Assembler, c: Condition) {
-        let clock_count_offset = offset!(GameBoy, clock_count);
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
 
         if c != Condition::None {
             self.tick(4);
         }
-        self.update_clock_count(ops);
+
+        let curr_clock_count = self.curr_clock_count;
+        let accum_clock_count = self.accum_clock_count;
         self.check_condition(ops, c);
+
         dynasm!(ops
             // pop pc
             ; movzx	r12d, WORD [rbx + sp_offset as i32]
             ; mov	rdi, rbx
             ; mov	esi, r12d
             ;; self.read_mem(ops)
-            // revert clock count increases inside write_mem, because they should be conditional.
-            ;; self.tick(-4)
-            ; add QWORD [rbx + clock_count_offset as i32], 4
 
             ; mov	BYTE [rbx + pc_offset as i32], al
             ; lea	eax, [r12 + 1]
             ; movzx	esi, ax
             ; mov	rdi, rbx
             ;; self.read_mem(ops)
-            // revert clock count increases inside write_mem, because they should be conditional.
-            ;; self.tick(-4)
-            ; add QWORD [rbx + clock_count_offset as i32], 8
 
             ; add	r12d, 2
             ; mov	WORD [rbx + sp_offset as i32], r12w
             ; mov	BYTE [rbx + (pc_offset + 1) as i32], al
+            ;; self.tick(4)
 
             ;; self.exit_block(ops)
             ; skip_jump:
         );
+
+        // revert clock count increases of write_mem, because they should be conditional.
+        self.curr_clock_count = curr_clock_count;
+        self.accum_clock_count = accum_clock_count;
+
         if let Condition::None = c {
             self.tick(12);
         }

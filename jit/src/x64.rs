@@ -3,6 +3,8 @@ use dynasmrt::{
     VecAssembler,
 };
 
+pub type Assembler = VecAssembler<X64Relocation>;
+
 use gameroy::{
     consts,
     gameboy::{
@@ -129,7 +131,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn compile_block(mut self, opts: &super::CompilerOpts) -> Block {
+    pub fn compile_block(mut self, opts: &super::CompilerOpts, ops: &mut Assembler) -> Block {
         // let bank = self.gb.cartridge.curr_bank();
         // println!(
         //     "compiling {:02x}_{:04x} (len: {})",
@@ -138,7 +140,6 @@ impl<'a> BlockCompiler<'a> {
         //     self.block_trace.length,
         //     // self.max_clock_cycles,
         // );
-        let mut ops: dynasmrt::VecAssembler<X64Relocation> = dynasmrt::VecAssembler::new(0);
 
         self.instrs = std::mem::take(&mut self.block_trace.instrs)
             .into_iter()
@@ -208,11 +209,11 @@ impl<'a> BlockCompiler<'a> {
 
             self.pc += 1;
 
-            self.update_clock_count(&mut ops);
+            self.update_clock_count(ops);
             dynasm!(ops; => instr.label);
 
             // if false, the opcode was compiled to a interpreter call.
-            if self.compile_opcode(&mut ops, op) {
+            if self.compile_opcode(ops, op) {
                 last_one_was_compiled = true;
             } else {
                 last_one_was_compiled = false;
@@ -233,8 +234,8 @@ impl<'a> BlockCompiler<'a> {
             if self.did_write {
                 let next_check = self.block_trace.interrupt_checks[curr_check].1;
                 let curr_clock_count = self.curr_clock_count;
-                self.update_pc(&mut ops);
-                self.check_interrupt(&mut ops, curr_clock_count, next_check);
+                self.update_pc(ops);
+                self.check_interrupt(ops, curr_clock_count, next_check);
 
                 let bank = if instr.pc <= 0x3FFF {
                     offset!(GameBoy, cartridge: Cartridge, lower_bank)
@@ -248,7 +249,7 @@ impl<'a> BlockCompiler<'a> {
                     ; cmp	ax, WORD instr.bank as i16
                     ; je	>bank_skip_exit
                     ; add QWORD [rbx + clock_count as i32], self.accum_clock_count as i32
-                    ;; self.exit_block(&mut ops)
+                    ;; self.exit_block(ops)
                     ; bank_skip_exit:
                 );
             }
@@ -256,8 +257,8 @@ impl<'a> BlockCompiler<'a> {
             if ime_enabled {
                 let next_check = self.block_trace.interrupt_checks[curr_check].1;
                 let curr_clock_count = self.curr_clock_count;
-                self.update_pc(&mut ops);
-                self.check_interrupt(&mut ops, curr_clock_count, next_check);
+                self.update_pc(ops);
+                self.check_interrupt(ops, curr_clock_count, next_check);
             }
         }
 
@@ -266,11 +267,11 @@ impl<'a> BlockCompiler<'a> {
             ; ->exit:
             ;; {
                 if last_one_was_compiled {
-                    self.update_pc(&mut ops);
+                    self.update_pc(ops);
                 }
-                self.update_clock_count(&mut ops)
+                self.update_clock_count(ops)
             }
-            ;; self.update_ime_state(&mut ops)
+            ;; self.update_ime_state(ops)
             ; pop r12
             ; pop rbx
             ; pop rbp
@@ -279,7 +280,7 @@ impl<'a> BlockCompiler<'a> {
 
         // See: https://pmeerw.net/blog/programming/RtlAddFunctionTable.html
 
-        let code = ops.finalize().unwrap();
+        let code = ops.take().unwrap();
 
         let bytes = code.len();
 
@@ -317,12 +318,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    fn check_interrupt(
-        &mut self,
-        ops: &mut VecAssembler<X64Relocation>,
-        curr_clock_count: u32,
-        next_check: u32,
-    ) {
+    fn check_interrupt(&mut self, ops: &mut Assembler, curr_clock_count: u32, next_check: u32) {
         // check if next_interrupt is not happening until the next check.
         // next_interrupt - clock_count < next_check - curr_clock_count
         let clock_count = offset!(GameBoy, clock_count);
@@ -397,7 +393,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    fn update_clock_count(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    fn update_clock_count(&mut self, ops: &mut Assembler) {
         // add the accumulated clock_count
         if self.accum_clock_count != 0 {
             assert!(self.accum_clock_count <= i32::MAX as u32);
@@ -410,7 +406,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    fn update_pc(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    fn update_pc(&mut self, ops: &mut Assembler) {
         let pc = offset!(GameBoy, cpu: Cpu, pc);
         dynasm!(ops
             ; .arch x64
@@ -418,7 +414,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    fn update_ime_state(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    fn update_ime_state(&mut self, ops: &mut Assembler) {
         let ime = offset!(GameBoy, cpu: Cpu, ime);
         match (self.ime_state, self.previous_ime_state) {
             (Some(ImeState::ToBeEnable), None) => dynasm!(ops
@@ -440,7 +436,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    fn jump_to(&mut self, ops: &mut VecAssembler<X64Relocation>, address: u16) {
+    fn jump_to(&mut self, ops: &mut Assembler, address: u16) {
         let clock_count = offset!(GameBoy, clock_count);
         let pc = offset!(GameBoy, cpu: Cpu, pc);
 
@@ -477,7 +473,7 @@ impl<'a> BlockCompiler<'a> {
         dynasm!(ops; jmp => target.label)
     }
 
-    fn exit_block(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    fn exit_block(&mut self, ops: &mut Assembler) {
         // self.update_pc(ops);
         self.update_ime_state(ops);
 
@@ -504,7 +500,7 @@ impl<'a> BlockCompiler<'a> {
 
     /// Compile a Opcode. Return false if the compiled fallbacks to the interpreter (which means
     /// that clock_count were already updated).
-    fn compile_opcode(&mut self, ops: &mut VecAssembler<X64Relocation>, op: u8) -> bool {
+    fn compile_opcode(&mut self, ops: &mut Assembler, op: u8) -> bool {
         self.tick(4);
         self.did_write = false;
         use Condition::*;
@@ -1048,7 +1044,7 @@ impl<'a> BlockCompiler<'a> {
         true
     }
 
-    fn compile_opcode_cb(&mut self, ops: &mut VecAssembler<X64Relocation>) -> bool {
+    fn compile_opcode_cb(&mut self, ops: &mut Assembler) -> bool {
         let op = self.gb.read(self.pc);
         self.pc += 1;
         self.tick(4);
@@ -1569,11 +1565,11 @@ impl<'a> BlockCompiler<'a> {
         true
     }
 
-    pub fn invalid_opcode(&mut self, _ops: &mut VecAssembler<X64Relocation>, _opcode: u8) {
+    pub fn invalid_opcode(&mut self, _ops: &mut Assembler, _opcode: u8) {
         // println!("compiled invalid instructions: {_opcode:02x}");
     }
 
-    pub fn load_reg_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+    pub fn load_reg_reg(&mut self, ops: &mut Assembler, dst: Reg, src: Reg) {
         let dst = reg_offset(dst);
         match src {
             Reg::Im8 => {
@@ -1593,7 +1589,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn load16(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg16, src: Reg16) {
+    pub fn load16(&mut self, ops: &mut Assembler, dst: Reg16, src: Reg16) {
         match dst {
             Reg16::Im16 => {
                 let dst = self.get_immediate16();
@@ -1643,7 +1639,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn load_mem_reg(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+    pub fn load_mem_reg(&mut self, ops: &mut Assembler, dst: Reg, src: Reg) {
         match dst {
             Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
                 let address = reg_offset(dst);
@@ -1674,7 +1670,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     // LD (a16), A
-    pub fn ld_imm_mem_a(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn ld_imm_mem_a(&mut self, ops: &mut Assembler) {
         let src = reg_offset(Reg::A);
 
         let mut address = self.get_immediate16();
@@ -1734,7 +1730,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn load_reg_mem(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+    pub fn load_reg_mem(&mut self, ops: &mut Assembler, dst: Reg, src: Reg) {
         match src {
             Reg::BC | Reg::DE | Reg::HL | Reg::HLI | Reg::HLD => {
                 self.read_mem_reg(ops, src, false);
@@ -1750,7 +1746,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     // LD A, (a16)
-    pub fn ld_a_imm_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn ld_a_imm_mem(&mut self, ops: &mut Assembler) {
         let dst = reg_offset(Reg::A);
 
         let mut address = self.get_immediate16();
@@ -1870,7 +1866,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn loadh(&mut self, ops: &mut VecAssembler<X64Relocation>, dst: Reg, src: Reg) {
+    pub fn loadh(&mut self, ops: &mut Assembler, dst: Reg, src: Reg) {
         match src {
             Reg::A => {
                 let reg = reg_offset(Reg::A);
@@ -1929,7 +1925,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn ldhl_sp(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn ldhl_sp(&mut self, ops: &mut Assembler) {
         let sp = reg_offset16(Reg16::SP);
         let hl = reg_offset16(Reg16::HL);
         let f = offset!(GameBoy, cpu: Cpu, f);
@@ -1999,7 +1995,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn inc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn inc(&mut self, ops: &mut Assembler, reg: Reg) {
         let reg = reg_offset(reg);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2026,7 +2022,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn inc16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn inc16(&mut self, ops: &mut Assembler, reg: Reg) {
         self.tick(4);
         let reg = reg_offset(reg);
         dynasm!(ops
@@ -2034,7 +2030,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn inc_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn inc_mem(&mut self, ops: &mut Assembler) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         dynasm!(ops
@@ -2059,7 +2055,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn dec(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn dec(&mut self, ops: &mut Assembler, reg: Reg) {
         let reg = reg_offset(reg);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2087,7 +2083,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn dec16(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn dec16(&mut self, ops: &mut Assembler, reg: Reg) {
         self.tick(4);
         let reg = reg_offset(reg);
         dynasm!(ops
@@ -2095,7 +2091,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn dec_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn dec_mem(&mut self, ops: &mut Assembler) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -2127,7 +2123,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn add_sp(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn add_sp(&mut self, ops: &mut Assembler) {
         let sp = reg_offset16(Reg16::SP);
         let f = offset!(GameBoy, cpu: Cpu, f);
         let value = self.get_immediate();
@@ -2192,7 +2188,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn add(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn add(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2261,7 +2257,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn add16(&mut self, ops: &mut VecAssembler<X64Relocation>, src: Reg16) {
+    pub fn add16(&mut self, ops: &mut Assembler, src: Reg16) {
         let hl = reg_offset16(Reg16::HL);
         let src = reg_offset16(src);
         self.tick(4);
@@ -2296,7 +2292,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn sub(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn sub(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2364,7 +2360,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn adc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn adc(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2476,7 +2472,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn sbc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn sbc(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2575,7 +2571,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn and(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn and(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
@@ -2613,7 +2609,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     // XOR A is the same as clear
-    pub fn xor_a(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn xor_a(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
@@ -2627,7 +2623,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn xor(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn xor(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
@@ -2663,7 +2659,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn or(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn or(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
         dynasm!(ops
@@ -2699,7 +2695,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn cp(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn cp(&mut self, ops: &mut Assembler, reg: Reg) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2755,7 +2751,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn rlca(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn rlca(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2782,7 +2778,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn rrca(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn rrca(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2809,7 +2805,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn rla(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn rla(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2835,7 +2831,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn rra(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn rra(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2861,7 +2857,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn daa(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn daa(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2926,7 +2922,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn cpl(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn cpl(&mut self, ops: &mut Assembler) {
         let a = reg_offset(Reg::A);
         let f = offset!(GameBoy, cpu: Cpu, f);
 
@@ -2940,7 +2936,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn ccf(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn ccf(&mut self, ops: &mut Assembler) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -2956,7 +2952,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn scf(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn scf(&mut self, ops: &mut Assembler) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -2972,7 +2968,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn pop(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg16) {
+    pub fn pop(&mut self, ops: &mut Assembler, reg: Reg16) {
         let sp = reg_offset16(Reg16::SP);
         let reg_offset = reg_offset16(reg);
         dynasm!(ops
@@ -2998,7 +2994,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn push(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg16) {
+    pub fn push(&mut self, ops: &mut Assembler, reg: Reg16) {
         let sp = reg_offset16(Reg16::SP);
         let reg = reg_offset16(reg);
         self.tick(4);
@@ -3021,14 +3017,14 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn halt(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn halt(&mut self, ops: &mut Assembler) {
         let state = offset!(GameBoy, cpu: Cpu, state);
         dynasm!(ops
             ; mov BYTE [rbx + state as i32], CpuState::Halt as u8 as i8
         )
     }
 
-    pub fn stop(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn stop(&mut self, ops: &mut Assembler) {
         debug_assert_eq!(std::mem::size_of::<CpuState>(), 1);
         let state = offset!(GameBoy, cpu: Cpu, state);
         dynasm!(ops
@@ -3036,7 +3032,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn ei(&mut self, _ops: &mut VecAssembler<X64Relocation>) {
+    pub fn ei(&mut self, _ops: &mut Assembler) {
         match self.previous_ime_state {
             Some(ImeState::Enabled) => {}
             Some(ImeState::ToBeEnable) => {}
@@ -3047,12 +3043,12 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn di(&mut self, _ops: &mut VecAssembler<X64Relocation>) {
+    pub fn di(&mut self, _ops: &mut Assembler) {
         self.previous_ime_state = self.ime_state;
         self.ime_state = Some(ImeState::Disabled);
     }
 
-    fn check_condition(&self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+    fn check_condition(&self, ops: &mut Assembler, c: Condition) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         use Condition::*;
@@ -3085,7 +3081,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn jump_rel(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+    pub fn jump_rel(&mut self, ops: &mut Assembler, c: Condition) {
         let r8 = self.get_immediate() as i8;
         let address = self.pc.wrapping_add_signed(r8 as i16);
         self.update_clock_count(ops);
@@ -3099,7 +3095,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn jump(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+    pub fn jump(&mut self, ops: &mut Assembler, c: Condition) {
         let clock_count = offset!(GameBoy, clock_count);
         let pc = offset!(GameBoy, cpu: Cpu, pc);
 
@@ -3116,7 +3112,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn jump_hl(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn jump_hl(&mut self, ops: &mut Assembler) {
         let hl = reg_offset16(Reg16::HL);
         let pc = offset!(GameBoy, cpu: Cpu, pc);
         let clock_count = offset!(GameBoy, clock_count);
@@ -3129,7 +3125,7 @@ impl<'a> BlockCompiler<'a> {
         )
     }
 
-    pub fn call(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+    pub fn call(&mut self, ops: &mut Assembler, c: Condition) {
         let clock_count_offset = offset!(GameBoy, clock_count);
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
@@ -3173,7 +3169,7 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn rst(&mut self, ops: &mut VecAssembler<X64Relocation>, address: u8) {
+    pub fn rst(&mut self, ops: &mut Assembler, address: u8) {
         let clock_count_offset = offset!(GameBoy, clock_count);
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
@@ -3212,7 +3208,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn ret(&mut self, ops: &mut VecAssembler<X64Relocation>, c: Condition) {
+    pub fn ret(&mut self, ops: &mut Assembler, c: Condition) {
         let clock_count_offset = offset!(GameBoy, clock_count);
         let pc_offset = offset!(GameBoy, cpu: Cpu, pc);
         let sp_offset = reg_offset16(Reg16::SP);
@@ -3253,13 +3249,13 @@ impl<'a> BlockCompiler<'a> {
         }
     }
 
-    pub fn reti(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    pub fn reti(&mut self, ops: &mut Assembler) {
         self.previous_ime_state = self.ime_state;
         self.ime_state = Some(ImeState::Enabled);
         self.ret(ops, Condition::None);
     }
 
-    pub fn rlc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn rlc(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3325,7 +3321,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn rrc(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn rrc(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3396,7 +3392,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn rl(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn rl(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3478,7 +3474,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn rr(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn rr(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3560,7 +3556,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn sla(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn sla(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3629,7 +3625,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn sra(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn sra(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3711,7 +3707,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn swap(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn swap(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3778,7 +3774,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn srl(&mut self, ops: &mut VecAssembler<X64Relocation>, reg: Reg) {
+    pub fn srl(&mut self, ops: &mut Assembler, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3848,7 +3844,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn bit(&mut self, ops: &mut VecAssembler<X64Relocation>, bit: u8, reg: Reg) {
+    pub fn bit(&mut self, ops: &mut Assembler, bit: u8, reg: Reg) {
         let f = offset!(GameBoy, cpu: Cpu, f);
 
         let flags = self.instrs[self.curr_instr].used_flags != 0;
@@ -3885,7 +3881,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn res(&mut self, ops: &mut VecAssembler<X64Relocation>, bit: u8, reg: Reg) {
+    pub fn res(&mut self, ops: &mut Assembler, bit: u8, reg: Reg) {
         dynasm!(ops
             ;; match reg {
                 Reg::HL => {
@@ -3909,7 +3905,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    pub fn set(&mut self, ops: &mut VecAssembler<X64Relocation>, bit: u8, reg: Reg) {
+    pub fn set(&mut self, ops: &mut Assembler, bit: u8, reg: Reg) {
         dynasm!(ops
             ;; match reg {
                 Reg::HL => {
@@ -3933,12 +3929,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    fn read_mem_reg(
-        &mut self,
-        ops: &mut VecAssembler<X64Relocation>,
-        src: Reg,
-        preserve_in_r12: bool,
-    ) {
+    fn read_mem_reg(&mut self, ops: &mut Assembler, src: Reg, preserve_in_r12: bool) {
         dynasm!(ops
             ; .arch x64
             ; mov rdi, rbx
@@ -3964,7 +3955,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    fn read_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    fn read_mem(&mut self, ops: &mut Assembler) {
         extern "sysv64" fn read(gb: &mut GameBoy, address: u16) -> u8 {
             let start_next_interrupt = gb.next_interrupt.get();
             let value = gb.read(address);
@@ -3994,7 +3985,7 @@ impl<'a> BlockCompiler<'a> {
         );
     }
 
-    fn write_mem(&mut self, ops: &mut VecAssembler<X64Relocation>) {
+    fn write_mem(&mut self, ops: &mut Assembler) {
         extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) {
             #[cfg(feature = "io_trace")]
             gb.io_trace
@@ -4050,7 +4041,7 @@ impl<'a> BlockCompiler<'a> {
 }
 
 #[allow(dead_code)]
-fn debug<F: Fn(&GameBoy) + 'static>(ops: &mut VecAssembler<X64Relocation>, f: F) {
+fn debug<F: Fn(&GameBoy) + 'static>(ops: &mut Assembler, f: F) {
     extern "sysv64" fn call<F: Fn(&GameBoy) + 'static>(f: &'static F, gb: &'static GameBoy) {
         f(gb)
     }

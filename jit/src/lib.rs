@@ -276,6 +276,8 @@ pub struct JitCompiler {
     #[cfg(feature = "statistics")]
     stats: Stats,
     pub opts: CompilerOpts,
+    /// A VecAssembler, reused for each block compilation
+    assembler: x64::Assembler,
 }
 
 impl Default for JitCompiler {
@@ -293,6 +295,7 @@ impl JitCompiler {
             opts: CompilerOpts {
                 flag_optimization: true,
             },
+            assembler: x64::Assembler::new(0),
         }
     }
 
@@ -322,11 +325,9 @@ impl JitCompiler {
         }
 
         let address = Address::from_pc(bank, pc)?;
-        Some(
-            self.blocks
-                .entry(address)
-                .or_insert_with(|| BlockCompiler::new(gb).compile_block(&self.opts)),
-        )
+        Some(self.blocks.entry(address).or_insert_with(|| {
+            BlockCompiler::new(gb).compile_block(&self.opts, &mut self.assembler)
+        }))
     }
 
     pub fn interpret_block(&mut self, gb: &mut GameBoy) {

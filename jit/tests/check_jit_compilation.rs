@@ -293,8 +293,8 @@ fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> 
         || io_unsync
     {
         print!("\u{001b}[31m");
-        println!("{:>15}: {:x?}", game_boy_a.clock_count, game_boy_a.cpu);
-        println!("{:>15}: {:x?}", game_boy_b.clock_count, game_boy_b.cpu);
+        println!("{:>15} jit: {:x?}", game_boy_a.clock_count, game_boy_a.cpu);
+        println!("{:>15} int: {:x?}", game_boy_b.clock_count, game_boy_b.cpu);
 
         #[cfg(feature = "io_trace")]
         {

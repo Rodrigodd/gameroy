@@ -1699,6 +1699,27 @@ impl<'a> BlockCompiler<'a> {
             address -= 0x2000;
         }
 
+        #[cfg(feature = "io_trace")]
+        let mut io_trace = |ops: &mut Assembler, address: u16| {
+            extern "sysv64" fn trace_write(gb: &mut GameBoy, address: u16, value: u8) {
+                gb.io_trace.borrow_mut().push((
+                    1 | ((gb.clock_count & !3) as u8 >> 1),
+                    address,
+                    value,
+                ));
+            }
+
+            self.update_clock_count(ops);
+            dynasm!(ops
+                ; .arch x64
+                ; mov rax, QWORD trace_write as usize as i64
+                ; mov rdi, rbx
+                ; mov si, WORD address as i16
+                ; mov dl, BYTE [rbx + src as i32]
+                ; call rax
+            );
+        };
+
         match address {
             // Cartridge ROM
             0x0000..=0x7FFF => {}
@@ -1716,6 +1737,10 @@ impl<'a> BlockCompiler<'a> {
                     ; movzx	eax, BYTE [rbx + src as i32]
                     ; mov	BYTE [rbx + offset as i32], al
                 );
+
+                #[cfg(feature = "io_trace")]
+                io_trace(&mut *ops, address);
+
                 self.tick(4);
                 return;
             }
@@ -1735,6 +1760,10 @@ impl<'a> BlockCompiler<'a> {
                     ; movzx	eax, BYTE [rbx + src as i32]
                     ; mov	BYTE [rbx + offset as i32], al
                 );
+
+                #[cfg(feature = "io_trace")]
+                io_trace(ops, address);
+
                 self.tick(4);
                 return;
             }
@@ -1770,10 +1799,28 @@ impl<'a> BlockCompiler<'a> {
     pub fn ld_a_imm_mem(&mut self, ops: &mut Assembler) {
         let dst = reg_offset(Reg::A);
 
-        let mut address = self.get_immediate16();
-        if (0xE000..=0xFDFF).contains(&address) {
-            address -= 0x2000;
-        }
+        let address = self.get_immediate16();
+
+        #[cfg(feature = "io_trace")]
+        let mut io_trace = |this: &mut Self, ops: &mut Assembler, address: u16| {
+            extern "sysv64" fn trace_read(gb: &mut GameBoy, address: u16) {
+                let value = gb.read(address);
+                gb.io_trace.borrow_mut().push((
+                    0 | ((gb.clock_count & !3) as u8 >> 1),
+                    address,
+                    value,
+                ));
+            }
+
+            this.update_clock_count(ops);
+            dynasm!(ops
+                ; .arch x64
+                ; mov rax, QWORD trace_read as usize as i64
+                ; mov rdi, rbx
+                ; mov si, WORD address as i16
+                ; call rax
+            );
+        };
 
         match address {
             // Cartridge ROM, lower bank
@@ -1804,6 +1851,10 @@ impl<'a> BlockCompiler<'a> {
                         ; mov	BYTE [rbx + dst as i32], al
                     );
                 }
+
+                #[cfg(feature = "io_trace")]
+                io_trace(self, &mut *ops, address);
+
                 self.tick(4);
                 return;
             }
@@ -1835,6 +1886,10 @@ impl<'a> BlockCompiler<'a> {
                         ; mov	BYTE [rbx + dst as i32], al
                     );
                 }
+
+                #[cfg(feature = "io_trace")]
+                io_trace(self, &mut *ops, address);
+
                 self.tick(4);
                 return;
             }
@@ -1842,21 +1897,29 @@ impl<'a> BlockCompiler<'a> {
             0x8000..=0x9FFF => {}
             // Cartridge RAM
             0xA000..=0xBFFF => {}
-            // Work RAM
-            0xC000..=0xDFFF => {
+            // Work RAM or ECHO RAM
+            0xC000..=0xDFFF | 0xE000..=0xFDFF => {
+                let addr = if (0xE000..=0xFDFF).contains(&address) {
+                    address - 0x2000
+                } else {
+                    address
+                };
+
                 let wram = offset!(GameBoy, wram);
-                let offset = wram + (address as usize - 0xC000);
+                let offset = wram + (addr as usize - 0xC000);
                 debug_assert!(offset < wram + 0x2000);
                 dynasm!(ops
                     ; .arch x64
                     ; movzx	eax, BYTE [rbx + offset as i32]
                     ; mov	BYTE [rbx + dst as i32], al
                 );
+
+                #[cfg(feature = "io_trace")]
+                io_trace(self, &mut *ops, address);
+
                 self.tick(4);
                 return;
             }
-            // ECHO RAM
-            0xE000..=0xFDFF => unreachable!(),
             // Sprite Attribute table
             0xFE00..=0xFE9F => {}
             // Not Usable
@@ -1871,6 +1934,10 @@ impl<'a> BlockCompiler<'a> {
                     ; movzx	eax, BYTE [rbx + offset as i32]
                     ; mov	BYTE [rbx + dst as i32], al
                 );
+
+                #[cfg(feature = "io_trace")]
+                io_trace(self, &mut *ops, address);
+
                 self.tick(4);
                 return;
             }
@@ -2770,6 +2837,9 @@ impl<'a> BlockCompiler<'a> {
                 self.get_immediate();
             }
             if reg == Reg::HL {
+                #[cfg(feature = "io_trace")]
+                self.read_mem_reg(ops, Reg::HL, false);
+                #[cfg(not(feature = "io_trace"))]
                 self.tick(4);
             }
             return;
@@ -3923,6 +3993,9 @@ impl<'a> BlockCompiler<'a> {
         let flags = self.instrs[self.curr_instr].used_flags != 0;
         if !flags {
             if reg == Reg::HL {
+                #[cfg(feature = "io_trace")]
+                self.read_mem_reg(ops, Reg::HL, false);
+                #[cfg(not(feature = "io_trace"))]
                 self.tick(4);
             }
             return;

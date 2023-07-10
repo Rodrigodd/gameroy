@@ -923,7 +923,7 @@ impl<'a> BlockCompiler<'a> {
             // PUSH BC 1:16 - - - -
             0xc5 => self.push(ops, Reg16::BC),
             // ADD A,d8 2:8 Z 0 H C
-            0xc6 => self.add(ops, Reg::Im8),
+            0xc6 => self.add_imm(ops),
             // RST 00H 1:16 - - - -
             0xc7 => self.rst(ops, 0x00),
             // RET Z 1:20/8 - - - -
@@ -2275,6 +2275,49 @@ impl<'a> BlockCompiler<'a> {
             ; or	dl, r9b
             ; or	dl, al
             ; mov	BYTE [rbx + f as i32], dl
+        )
+    }
+
+    pub fn add_imm(&mut self, ops: &mut Assembler) {
+        let a = reg_offset(Reg::A);
+        let f = offset!(GameBoy, cpu: Cpu, f);
+
+        let flags = self.instrs[self.curr_instr].used_flags != 0;
+
+        let value = self.get_immediate();
+        if !flags {
+            dynasm!(ops; add	BYTE [rbx + a as i32], value as i8);
+            return;
+        }
+
+        dynasm!(ops
+            ; movzx	eax, BYTE [rbx + a as i32]
+            ; movzx	ecx, BYTE [rbx + f as i32]
+            ; mov	edx, eax
+            ; add	dl, value as i8
+            ; setb	sil
+            ; sete	r8b
+            ; and	cl, 15
+            ; shl	r8b, 7
+
+            // if value as i8 & 0xf == 0xf {
+            //     ; test	al, 15
+            //     ; setne	al
+            //     ; shl	al, 5
+            //     ; or	al, cl
+            // } else if value as i8 & 0xf != 0x0 {
+            ; and	al, 15
+            ; cmp	al, 0xf - (value as i8 & 0xf) + 1
+            ; setae	al
+            ; shl	al, 5
+            ; or	al, cl
+            // }
+
+            ; shl	sil, 4
+            ; or	sil, al
+            ; or	sil, r8b
+            ; mov	BYTE [rbx + f as i32], sil
+            ; mov	BYTE [rbx + a as i32], dl
         )
     }
 

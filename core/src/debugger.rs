@@ -188,6 +188,7 @@ impl Debugger {
 
                 self.add_watch(address);
             }
+            "echo" => println!("{}", args[1..].join(" ")),
             // write the currently dissasembly to a file
             "dump" => {
                 if args.len() != 2 {

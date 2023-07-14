@@ -161,6 +161,14 @@ macro_rules! save_state {
             }
         }
     };
+    // @save
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, @save) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $($save)*
+    };
+    // @load
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, @load) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $($load)*
+    };
     // const <expr>
     (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, const $e:expr; $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
         $crate::save_state!(
@@ -198,6 +206,14 @@ macro_rules! save_state {
             @accum ($n, $s, $ctx, $d, $($f)* )
             -> ($($save)* )
             -> ($($load)* ($e); )
+        );
+    };
+    // if <expr> { <save_state> }
+    (@accum ($n:ident, $s:ident, $ctx:ident, $d:ident, if $cond:expr => { $($inner:tt)* } $($f:tt)* ) -> ($($save:tt)*) -> ($($load:tt)*)) => {
+        $crate::save_state!(
+            @accum ($n, $s, $ctx, $d, $($f)* )
+            -> ($($save)* if $cond { $crate::save_state!( @accum ($n, $s, $ctx, $d, $($inner)* @save) -> () -> () ); } )
+            -> ($($load)* if $cond { $crate::save_state!( @accum ($n, $s, $ctx, $d, $($inner)* @load) -> () -> () ); } )
         );
     };
     // <expr>

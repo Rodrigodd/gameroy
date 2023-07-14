@@ -98,6 +98,7 @@ pub struct Cpu {
     pub pc: u16,
     pub ime: ImeState,
     pub state: CpuState,
+    pub halt_bug: bool,
 }
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -111,7 +112,7 @@ impl fmt::Display for Cpu {
     }
 }
 
-crate::save_state!(Cpu, self, data {
+crate::save_state!(Cpu, self, ctx, data {
     self.a;
     self.f.0;
     self.b;
@@ -124,6 +125,9 @@ crate::save_state!(Cpu, self, data {
     self.pc;
     self.ime;
     self.state;
+
+    if ctx.version < 3 => { on_load self.halt_bug = false; }
+    if ctx.version >= 3 => { bitset [self.halt_bug]; }
 });
 impl Cpu {
     pub fn af(&self) -> u16 {

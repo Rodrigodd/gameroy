@@ -56,7 +56,7 @@ impl Default for SaveStateContext {
 pub struct SaveStateHeader;
 impl SaveStateHeader {
     /// The current version of the save state format
-    const SAVE_STATE_VERSION: u32 = 2;
+    const SAVE_STATE_VERSION: u32 = 3;
 
     /// "GameRoy Save State" magic contant.
     const MAGIC_CONST: [u8; 4] = *b"GRST";

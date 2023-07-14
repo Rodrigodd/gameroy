@@ -199,6 +199,14 @@ mod blargg {
         (oam_bug, "oam_bug/oam_bug.gb", 83_000_000);
     }
 
+    screen! {
+        halt_bug(
+            "blargg/halt_bug.gb",
+            "blargg/halt_bug-dmg-cgb.png",
+            803_000_000,
+        );
+    }
+
     fn test_rom_serial(path: &str, timeout: u64) -> Result<(), String> {
         let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + path;
         let rom = std::fs::read(rom_path).unwrap();

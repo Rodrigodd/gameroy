@@ -1324,7 +1324,11 @@ impl Interpreter<'_> {
     pub fn read_next_pc(&mut self) -> u8 {
         let v = self.0.read(self.0.cpu.pc);
         self.0.tick(4);
-        self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+        if self.0.cpu.halt_bug {
+            self.0.cpu.halt_bug = false;
+        } else {
+            self.0.cpu.pc = add16(self.0.cpu.pc, 1);
+        }
         v
     }
 
@@ -1945,7 +1949,13 @@ impl Interpreter<'_> {
 
     #[inline(always)]
     pub fn halt(&mut self) {
-        self.0.cpu.state = CpuState::Halt;
+        if self.0.interrupt_flag.get() & self.0.interrupt_enabled != 0
+            && self.0.cpu.ime != ImeState::Enabled
+        {
+            self.0.cpu.halt_bug = true;
+        } else {
+            self.0.cpu.state = CpuState::Halt;
+        }
     }
 
     #[inline(always)]

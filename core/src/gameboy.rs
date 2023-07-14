@@ -249,6 +249,7 @@ impl GameBoy {
             sp: 0xfffe,
             pc: 0x0100,
             ime: cpu::ImeState::Disabled,
+            halt_bug: false,
             state: cpu::CpuState::Running,
         };
 

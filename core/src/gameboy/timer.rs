@@ -4,11 +4,12 @@ use crate::save_state::{LoadStateError, SaveState};
 pub struct Timer {
     /// FF04: DIV register
     ///
-    /// The intern counter of the Timer. Increases every cycle. Only the upper byte is readible.
+    /// The intern counter of the Timer. Increases every cycle. Only the upper byte is readable.
     pub div: u16,
     /// FF05: TIMA register
     ///
-    /// Count upwards. Generates a interrupt on overflow.
+    /// Count upwards on falling edges of a bit of DIV given by TAC. Generates a interrupt on
+    /// overflow, and resets to TMA.
     pub tima: u8,
     /// FF06: TMA register
     ///

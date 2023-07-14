@@ -32,10 +32,10 @@ fn test_all_files() -> Result<(), ()> {
     let mut roms = Vec::new();
     while let Some(entry) = tree.pop() {
         let entry = entry.unwrap();
-        println!("{:>4} {}", roms.len(), entry.path().display());
         if entry.file_type().unwrap().is_dir() {
             tree.extend(std::fs::read_dir(entry.path()).unwrap());
         } else if entry.path().extension().and_then(|x| x.to_str()) == Some("gb") {
+            println!("{:>4} {}", roms.len(), entry.path().display());
             roms.push(entry.path().to_str().unwrap().to_string());
         }
     }
@@ -63,7 +63,7 @@ fn test_all_files() -> Result<(), ()> {
                         false
                     }
                 };
-                (!ok).then_some(rom)
+                (!ok).then_some((i, rom))
             }
         })
         .collect();
@@ -74,8 +74,8 @@ fn test_all_files() -> Result<(), ()> {
 
     print!("\u{001b}[31m");
     println!("The following roms failed the test:");
-    for rom in failed {
-        println!("{rom}");
+    for (i, rom) in failed {
+        println!("{i}: {rom}");
     }
     print!("\u{001b}[0m");
 
@@ -318,7 +318,7 @@ fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> 
                         (kind & !1) << 1,
                     );
                 } else {
-                    print!("               | ");
+                    print!("                 | ");
                 }
 
                 if let Some((kind, address, value)) = b {
@@ -328,7 +328,7 @@ fn assert_equal(game_boy_a: &GameBoy, game_boy_b: &GameBoy, vblank: &VBlank) -> 
                         (kind & !1) << 1,
                     );
                 } else {
-                    println!("            ");
+                    println!("              ");
                 }
             }
         }

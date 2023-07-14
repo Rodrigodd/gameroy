@@ -3155,6 +3155,7 @@ impl<'a> BlockCompiler<'a> {
     }
 
     pub fn halt(&mut self, ops: &mut Assembler) {
+        // TODO: implement halt bug when a failing test csase is found.
         let state = offset!(GameBoy, cpu: Cpu, state);
         dynasm!(ops
             ; mov BYTE [rbx + state as i32], CpuState::Halt as u8 as i8

@@ -208,6 +208,8 @@ impl<'a> BlockCompiler<'a> {
             self.op = instr.op;
             let op = instr.op[0];
 
+            // println!("{:04x}: {:02x?}", self.pc, instr.op);
+
             let ime_enabled = self.ime_state == Some(ImeState::ToBeEnable);
             if ime_enabled {
                 self.previous_ime_state = self.ime_state;

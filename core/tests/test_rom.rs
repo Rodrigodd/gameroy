@@ -817,11 +817,45 @@ mod mooneye {
 mod age {
     use super::*;
 
+    fn test_age(rom: &str, timeout: u64) {
+        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+        let rom = std::fs::read(rom_path).unwrap();
+
+        let cartridge = Cartridge::new(rom).unwrap();
+
+        let mut game_boy = GameBoy::new(None, cartridge);
+        let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
+            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
+        game_boy.v_blank = Some(Box::new(move |gb| {
+            *screen.lock().unwrap() = gb.ppu.borrow().screen.packed();
+        }));
+
+        let mut inter = Interpreter(&mut game_boy);
+        while inter.0.clock_count < timeout {
+            inter.interpret_op();
+            // 0x40 = LD B, B
+            if inter.0.read(inter.0.cpu.pc) == 0x40 {
+                break;
+            }
+        }
+        println!("final clock_count: {}", inter.0.clock_count);
+
+        if inter.0.clock_count >= timeout {
+            panic!("reach timeout!!");
+        }
+        let regs = game_boy.cpu;
+
+        if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34
+        {
+            panic!("Hardware test failed");
+        }
+    }
+
     macro_rules! registers {
         { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $timeout:expr ); )* } => {
             $(#[test] $(#[$($attrib)*])*
             fn $test() {
-                test_registers(concat!("age-test-roms/", $rom, ".gb"), $timeout);
+                test_age(concat!("age-test-roms/", $rom, ".gb"), $timeout);
             })*
         };
     }
@@ -848,12 +882,20 @@ mod age {
 
     registers! {
         #[ignore]
-        ly("ly/ly-dmgC-cgbB", 120*CLOCK_SPEED);
+        ei_halt("halt/ei-halt-dmgC-cgbBCE", 120*CLOCK_SPEED);
         #[ignore]
-        stat_int("stat-interrupt/stat-int-dmgC-cgbBE", 120*CLOCK_SPEED);
+        halt_m0("halt/halt-m0-interrupt-dmgC-cgbBCE", 120*CLOCK_SPEED);
         #[ignore]
-        state_mode("stat-mode/stat-mode-dmgC-cgbB", 120*CLOCK_SPEED);
+        halt_prefetch("halt/halt-prefetch-dmgC-cgbBCE", 120*CLOCK_SPEED);
+        ly("ly/ly-dmgC-cgbBC", 120*CLOCK_SPEED);
+        oam_read("oam/oam-read-dmgC-cgbBC", 120*CLOCK_SPEED);
         #[ignore]
+        oam_write("oam/oam-write-dmgC", 120*CLOCK_SPEED);
+        #[ignore]
+        stat_interrupt("stat-interrupt/stat-int-dmgC-cgbBCE", 120*CLOCK_SPEED);
+        stat_mode("stat-mode/stat-mode-dmgC-cgbBC", 120*CLOCK_SPEED);
+        stat_mode_sprites("stat-mode-sprites/stat-mode-sprites-dmgC-cgbBCE", 120*CLOCK_SPEED);
+        stat_mode_window("stat-mode-window/stat-mode-window-dmgC", 120*CLOCK_SPEED);
         vram_read("vram/vram-read-dmgC", 120*CLOCK_SPEED);
     }
 }

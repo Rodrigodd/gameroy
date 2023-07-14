@@ -1879,12 +1879,13 @@ impl<'a> BlockCompiler<'a> {
                     );
                 } else {
                     let curr_bank = offset!(GameBoy, cartridge: Cartridge, upper_bank);
+                    let address = address as i32 - 0x4000;
                     dynasm!(ops
                         ; .arch x64
                         ; mov	rax, QWORD [rbx + vec_ptr as i32]
                         ; movzx	ecx, WORD [rbx + curr_bank as i32]
                         ; shl	rcx, 14
-                        ; movzx	eax, BYTE [rax + rcx + address as i32]
+                        ; movzx	eax, BYTE [rax + rcx + address]
                         ; mov	BYTE [rbx + dst as i32], al
                     );
                 }

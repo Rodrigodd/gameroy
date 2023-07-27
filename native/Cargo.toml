@@ -20,7 +20,7 @@ rfd = ["gameroy/rfd"]
 audio-engine = ["gameroy/audio-engine"]
 threads = ["gameroy/threads"]
 statistics = ["gameroy/statistics"]
-emit_debug_info = ["gameroy/statistics"]
+emit_debug_info = ["gameroy/emit_debug_info"]
 
 default = ["threads", "console", "audio-engine", "rfd"]
 

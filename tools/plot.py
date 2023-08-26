@@ -56,7 +56,7 @@ KINDS: list[tuple[str, str, str]] = [
 
     ('#FF6F0F', 'search_objects',  'Ppu::search_objects'),
     ('#FF8F3F', 'draw_scan_line',  'ppu::draw_scan_line'),
-    ('#FFBF7F', 'PPU',  'Ppu::'),
+    ('#FFBF7F', 'PPU',  'ppu::'),
 
     ('#5FAF5F', 'SoundController', 'SoundController::'),
     ('#3F9F3F', 'Timer', 'Timer'),
@@ -67,6 +67,10 @@ KINDS: list[tuple[str, str, str]] = [
     ('#BF7FFF', 'trace', 'Trace::'),
     ('#8F3FFF', 'format', 'fmt::format::format_inner'),
 ]
+
+# By default, the plot will use the filename as the title, but if it is in this
+# dictionary, it will use the value as the title instead.
+filename_to_title = {}
 
 files = sys.argv[1:]
 
@@ -168,9 +172,11 @@ for ax, filename in zip(axes, files):
             label.set_text('')
             pct_label.set_text('')
 
-    ax.set_title(filename)
+    title = filename_to_title.get(filename, filename)
+    ax.set_title(title)
 
-ax.legend(loc='center left', bbox_to_anchor=(-0.00, 0.5), bbox_transform=plt.gcf().transFigure)
-# fig.tight_layout()
-# plt.savefig("output.png", bbox_inches="tight")
+handles, labels = ax.get_legend_handles_labels()
+fig.legend(handles, labels, loc='center left', bbox_to_anchor=(-0.15, 0.50), bbox_transform=plt.gcf().transFigure)
+fig.tight_layout()
+plt.savefig("output.svg", bbox_inches="tight", transparent=True)
 plt.show()

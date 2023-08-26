@@ -51,6 +51,7 @@ pub fn benchmark(
         interpreter,
         mut jit,
         flag_optimization,
+        emit_perf_map,
     }: Bench,
 ) {
     let predict_interrupt = !no_prediction;
@@ -100,7 +101,11 @@ pub fn benchmark(
             len,
             &mut game_boy,
             timeout,
-            CompilerOpts { flag_optimization },
+            CompilerOpts {
+                flag_optimization,
+                #[cfg(target_os = "linux")]
+                emit_perf_map,
+            },
         );
 
         // Remove first run, because in that one the code is traced.

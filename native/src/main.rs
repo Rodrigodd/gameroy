@@ -112,6 +112,10 @@ pub struct Bench {
     /// Enables/disables flag optimization
     #[arg(long, action = ArgAction::Set, value_name = "BOOL", default_value = "true")]
     flag_optimization: bool,
+
+    /// Emmit symbol information to `/tmp/perf-$PID.map`, enabling `perf`'s JIT support.
+    #[arg(long)]
+    emit_perf_map: bool,
 }
 
 pub fn main() {

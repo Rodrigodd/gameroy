@@ -67,7 +67,7 @@ pub struct BlockCompiler<'gb> {
     /// The value of PC for the current instruction
     pc: u16,
 
-    /// The current instruction beign compiled
+    /// The current instruction being compiled
     op: [u8; 3],
 
     /// the accumulated clock count since the last write to GameBoy.clock_count
@@ -189,7 +189,7 @@ impl<'a> BlockCompiler<'a> {
             ; mov rbx, rdi
         );
 
-        let start = self.pc;
+        let start_address = self.pc;
         let mut last_one_was_compiled = false;
 
         let mut curr_check = 0;
@@ -311,8 +311,25 @@ impl<'a> BlockCompiler<'a> {
 
         let compiled_code = buffer.make_exec().unwrap();
 
+        #[cfg(target_os = "linux")]
+        if opts.emit_perf_map {
+            let bank = self.instrs[0].bank;
+            let symbol = format!("{:2x}_{:04x}", bank, start_address);
+            let res = crate::linux::write_to_perf_map(
+                &symbol,
+                compiled_code.as_ptr() as usize,
+                compiled_code.len(),
+            );
+            match res {
+                Ok(_) => {}
+                Err(err) => {
+                    println!("error writing to perf map: {}", err)
+                }
+            }
+        }
+
         Block {
-            _start_address: start,
+            _start_address: start_address,
             _length: self.block_trace.length,
             initial_block_clock_cycles: self.block_trace.interrupt_checks[0].1,
             _max_clock_cycles: self.block_trace.interrupt_checks.iter().map(|x| x.1).sum(),

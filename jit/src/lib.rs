@@ -12,6 +12,8 @@ use std::{
 
 use self::x64::BlockCompiler;
 
+#[cfg(target_os = "linux")]
+pub mod linux;
 #[cfg(target_os = "windows")]
 pub mod windows;
 
@@ -56,6 +58,10 @@ struct BlockTrace {
 #[derive(Clone)]
 pub struct CompilerOpts {
     pub flag_optimization: bool,
+    /// If true, the compiler will emit a `/tmp/perf-$PID.map` file, that allows `perf` to
+    /// identify JIT code.
+    #[cfg(target_os = "linux")]
+    pub emit_perf_map: bool,
 }
 
 struct Instr {
@@ -108,7 +114,7 @@ fn trace_a_block(gb: &GameBoy) -> BlockTrace {
             curr_clock_count,
         });
 
-        // if change interrupt precition a 'next interrupt check' is emmited.
+        // if change interrupt precition a 'next interrupt check' is emited.
         if consts::may_change_interrupt(op) {
             mark_check(&instrs, &mut curr_clock_count);
         }
@@ -295,6 +301,8 @@ impl JitCompiler {
             stats: Stats::default(),
             opts: CompilerOpts {
                 flag_optimization: true,
+                #[cfg(target_os = "linux")]
+                emit_perf_map: false,
             },
             assembler: x64::Assembler::new(0),
         }

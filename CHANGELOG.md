@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - Unreleased
+
+### Added
+
+- Implemented emulation for
+  [halt-bug](https://gbdev.io/pandocs/halt.html#halt-bug), passing one more of
+  blargg's tests.
+- Improved PPU performance.
+- Improved JIT compiler performance and correctness.
+- Added options to the `bench` subcommand for benchmarking only the interpreted
+  or the JIT compiled version of the emulator, and for enabling/disabling
+  optimizations.
+- Allowed emitting a `perf-$PID.map` file when running the JIT compiler to
+  enable profiling with JIT compiled code using perf.
+
 ## [0.3.0] - 2022-05-25
 
 ### Added

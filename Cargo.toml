@@ -38,7 +38,10 @@ statistics = ["gameroy-jit/statistics"]
 
 emit_debug_info = ["gameroy-jit/emit_debug_info"]
 
-default = ["rfd", "audio-engine", "threads"]
+default = ["rfd", "audio-engine" ]
+
+[build-dependencies]
+resvg = "0.35.0"
 
 [dev-dependencies]
 flexi_logger = "0.22.3"

@@ -567,6 +567,7 @@ impl App for EmulatorApp {
                     }
                 }
             }
+            #[cfg(feature = "threads")]
             Event::MainEventsCleared => {
                 if self.update_frame {
                     self.update_frame = false;

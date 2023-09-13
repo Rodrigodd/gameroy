@@ -1,5 +1,7 @@
 use giui::{Id, Layout, LayoutContext, MinSizeContext};
 
+use crate::config::config;
+
 pub struct ScreenLayout {
     size: (u32, u32),
     pub foward_button: Option<Id>,
@@ -43,10 +45,20 @@ impl Layout for ScreenLayout {
         let ratio = self.size.0 as f32 / self.size.1 as f32;
 
         if width / height < ratio {
-            des_width = self.size.0 as f32 * (width / self.size.0 as f32).floor();
+            let mut fraction = width / self.size.0 as f32;
+            if config().only_integer_scaling {
+                fraction = fraction.floor();
+            }
+
+            des_width = self.size.0 as f32 * fraction;
             des_height = (des_width / ratio).round();
         } else {
-            des_height = self.size.1 as f32 * (height / self.size.1 as f32).floor();
+            let mut fraction = height / self.size.1 as f32;
+            if config().only_integer_scaling {
+                fraction = fraction.floor();
+            }
+
+            des_height = self.size.1 as f32 * fraction;
             des_width = des_height * ratio;
         }
 

@@ -107,6 +107,7 @@ pub struct Config {
     pub jit: bool,
     #[serde(deserialize_with = "screen_size_deser")]
     pub screen_size: Option<(u32, u32)>,
+    pub only_integer_scaling: bool,
     pub keymap: KeyMap,
 }
 
@@ -272,6 +273,7 @@ const DEFAULT_CONFIG: Config = Config {
     frame_skip: false,
     jit: true,
     screen_size: None,
+    only_integer_scaling: false,
     keymap: DEFAULT_KEYMAP,
 };
 

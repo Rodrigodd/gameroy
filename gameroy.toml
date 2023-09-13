@@ -17,6 +17,10 @@ sort_list = "+File"
 # the initial size of the window in format WIDTHxHEIGHT
 screen_size = "768x400"
 
+# if true, the game screen will be scaled only by integer values, to keep
+# perfect pixel sizes.
+only_integer_scaling = true
+
 # if rewiding is enabled. This causes a small performance hit and higher memory
 # usge due to the constant doing of save states.
 rewinding = true

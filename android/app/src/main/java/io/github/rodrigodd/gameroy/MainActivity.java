@@ -153,8 +153,6 @@ public class MainActivity extends NativeActivity {
 
                 } while(c.moveToNext());
             }
-
-            return uris.toArray(new String[0]);
         } catch(Exception ex) {
             Log.e(TAG, "error listing child of uri: " + ex.toString());
             uris = null;

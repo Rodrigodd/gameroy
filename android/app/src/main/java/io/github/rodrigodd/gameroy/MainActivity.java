@@ -122,7 +122,13 @@ public class MainActivity extends NativeActivity {
         ContentResolver resolver = getContentResolver();
 
         int takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION;
-        resolver.takePersistableUriPermission(treeUri, takeFlags);
+
+        try {
+            resolver.takePersistableUriPermission(treeUri, takeFlags);
+        } catch (SecurityException exp) {
+            Log.e(TAG, "failed to take permission: " + exp.toString());
+            return null;
+        }
 
         Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
             treeUri, DocumentsContract.getTreeDocumentId(treeUri));

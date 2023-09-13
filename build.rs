@@ -8,6 +8,11 @@ fn cargo_rerun(path: &str) {
     println!("cargo:rerun-if-changed={}", path);
 }
 
+/// Avaliable scales for bitmaps.
+///
+/// These comes from Android's documentation: https://developer.android.com/training/multiscreen/screendensities#TaskProvideAltBmp
+const SCALES: &[f32] = &[0.75, 1.0, 1.5, 2.0, 3.0, 4.0];
+
 fn render_svg_assets() {
     let icons_svg = "assets/icons.svg";
     cargo_rerun(icons_svg);
@@ -25,20 +30,16 @@ fn render_svg_assets() {
 
     let tree = resvg::Tree::from_usvg(&tree);
 
-    let size = tree.size.to_int_size();
-    let zoom_size = size.scale_by(2.0).unwrap();
-    to_png(&tree, size, "assets/icons.png");
-    to_png(&tree, zoom_size, "assets/icons2x.png");
+    for &scale in SCALES {
+        to_png(&tree, scale, &format!("assets/icons{}x.png", scale));
+    }
 }
 
-fn to_png(tree: &resvg::Tree, size: resvg::tiny_skia::IntSize, png_file_name: &str) {
+fn to_png(tree: &resvg::Tree, scale: f32, png_file_name: &str) {
+    let size = tree.size.to_int_size().scale_by(scale).unwrap();
     let mut pixmap = resvg::tiny_skia::Pixmap::new(size.width(), size.height()).unwrap();
 
-    let size = size.to_size();
-    let transform = resvg::tiny_skia::Transform::from_scale(
-        size.width() / tree.size.width(),
-        size.height() / tree.size.height(),
-    );
+    let transform = resvg::tiny_skia::Transform::from_scale(scale, scale);
     tree.render(transform, &mut pixmap.as_mut());
 
     pixmap.save_png(png_file_name).unwrap();

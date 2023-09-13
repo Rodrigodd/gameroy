@@ -12,11 +12,59 @@ use sprite_render::SpriteRender;
 use crate::config;
 use crate::widget::fold_view::FoldIcon;
 
-pub struct Loader<'a> {
+/// Avaliable scales for bitmaps.
+///
+/// From Android's documentation: https://developer.android.com/training/multiscreen/screendensities#TaskProvideAltBmp
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u8)]
+enum ScaleFactor {
+    /// 0.75x scale
+    Mdpi,
+    /// 1x scale
+    Hdpi,
+    /// 1.5x scale
+    Xhdpi,
+    /// 2x scale
+    Xxhdpi,
+    /// 3x scale
+    Xxxhdpi,
+    /// 4x scale
+    Xxxxhdpi,
+}
+impl ScaleFactor {
+    fn to_float(self) -> f32 {
+        match self {
+            ScaleFactor::Mdpi => 0.75,
+            ScaleFactor::Hdpi => 1.0,
+            ScaleFactor::Xhdpi => 1.5,
+            ScaleFactor::Xxhdpi => 2.0,
+            ScaleFactor::Xxxhdpi => 3.0,
+            ScaleFactor::Xxxxhdpi => 4.0,
+        }
+    }
+
+    fn from_float(scale_factor: f64) -> Self {
+        if scale_factor <= 0.75 {
+            Self::Mdpi
+        } else if scale_factor <= 1.0 {
+            Self::Hdpi
+        } else if scale_factor <= 1.5 {
+            Self::Xhdpi
+        } else if scale_factor <= 2.0 {
+            Self::Xxhdpi
+        } else if scale_factor <= 3.0 {
+            Self::Xxxhdpi
+        } else {
+            Self::Xxxxhdpi
+        }
+    }
+}
+
+struct Loader<'a> {
     pub fonts: &'a mut Fonts,
     pub render: &'a mut (dyn SpriteRender + 'a),
     pub textures: HashMap<String, (u32, u32, u32)>,
-    pub scale_factor: f64,
+    pub scale_factor: ScaleFactor,
 }
 
 #[cfg(not(feature = "static"))]
@@ -29,12 +77,8 @@ mod loaded_files {
 
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {
-            let scale2x = self.scale_factor >= 1.5;
-
-            if scale2x {
-                if name == "icons.png" {
-                    name = "icons2x.png".to_string();
-                }
+            if name == "icons.png" {
+                name = format!("icons{}x.png", self.scale_factor.to_float()).to_string();
             }
 
             if let Some(texture) = self.textures.get(&name) {
@@ -83,26 +127,24 @@ mod loaded_files {
                 data.width(),
                 data.height(),
             );
-            if scale2x {
-                // unscale texture width and height
-                texture.1 /= 2;
-                texture.2 /= 2;
-            }
+
+            // unscale texture width and height
+            let scale_factor = self.scale_factor.to_float();
+            texture.1 = (texture.1 as f32 / scale_factor).ceil() as u32;
+            texture.2 = (texture.2 as f32 / scale_factor).ceil() as u32;
+
             self.textures.insert(name, texture);
             texture
         }
 
         fn modify_graphic(&mut self, graphic: &mut Graphic) {
+            let scale_factor = self.scale_factor.to_float();
             match graphic {
                 Graphic::Icon(icon) => {
-                    if self.scale_factor >= 1.5 {
-                        icon.size = icon.size.map(|x| 2.0 * x);
-                    }
+                    icon.size = icon.size.map(|x| scale_factor * x);
                 }
                 Graphic::Panel(panel) => {
-                    if self.scale_factor >= 1.5 {
-                        panel.border = panel.border.map(|x| 2.0 * x);
-                    }
+                    panel.border = panel.border.map(|x| scale_factor * x);
                 }
                 _ => (),
             }
@@ -130,22 +172,25 @@ mod static_files {
     pub struct StaticFiles {
         pub font: &'static [u8],
         pub style: &'static str,
-        pub icons_texture: &'static [u8],
-        pub icons2x_texture: &'static [u8],
+        pub icons_texture: &'static [&'static [u8]],
     }
     pub static FILES: StaticFiles = StaticFiles {
         font: include_bytes!("../assets/NotoSansMono.ttf"),
         style: include_str!("../assets/style.ron"),
-        icons_texture: include_bytes!("../assets/icons.png"),
-        icons2x_texture: include_bytes!("../assets/icons2x.png"),
+        icons_texture: &[
+            include_bytes!("../assets/icons0.75x.png"),
+            include_bytes!("../assets/icons1x.png"),
+            include_bytes!("../assets/icons1.5x.png"),
+            include_bytes!("../assets/icons2x.png"),
+            include_bytes!("../assets/icons3x.png"),
+            include_bytes!("../assets/icons4x.png"),
+        ],
     };
     impl<'a> StyleLoaderCallback for super::Loader<'a> {
         fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
             if let Some(texture) = self.textures.get(&name) {
                 return *texture;
             }
-
-            let scale2x = self.scale_factor >= 1.5;
 
             let data = 'data: {
                 let data = match name.as_str() {
@@ -156,13 +201,7 @@ mod static_files {
                             .for_each(|x| *x = Rgba::<u8>::from([255, 255, 255, 255]));
                         break 'data image_buffer;
                     }
-                    "icons.png" => {
-                        if scale2x {
-                            FILES.icons2x_texture
-                        } else {
-                            FILES.icons_texture
-                        }
-                    }
+                    "icons.png" => FILES.icons_texture[self.scale_factor as usize],
                     _ => panic!("unkown texture '{}'", name),
                 };
 
@@ -194,26 +233,24 @@ mod static_files {
                 data.width(),
                 data.height(),
             );
-            if scale2x {
-                // unscale texture width and height
-                texture.1 /= 2;
-                texture.2 /= 2;
-            }
+
+            // unscale texture width and height
+            let scale_factor = self.scale_factor.to_float();
+            texture.1 = (texture.1 as f32 / scale_factor).ceil() as u32;
+            texture.2 = (texture.2 as f32 / scale_factor).ceil() as u32;
+
             self.textures.insert(name, texture);
             texture
         }
 
         fn modify_graphic(&mut self, graphic: &mut Graphic) {
+            let scale_factor = self.scale_factor.to_float();
             match graphic {
                 Graphic::Icon(icon) => {
-                    if self.scale_factor >= 1.5 {
-                        icon.size = icon.size.map(|x| 2.0 * x);
-                    }
+                    icon.size = icon.size.map(|x| scale_factor * x);
                 }
                 Graphic::Panel(panel) => {
-                    if self.scale_factor >= 1.5 {
-                        panel.border = panel.border.map(|x| 2.0 * x);
-                    }
+                    panel.border = panel.border.map(|x| scale_factor * x);
                 }
                 _ => (),
             }
@@ -276,7 +313,7 @@ impl Style {
             fonts,
             render,
             textures: HashMap::default(),
-            scale_factor,
+            scale_factor: ScaleFactor::from_float(scale_factor),
         };
 
         #[cfg(not(feature = "static"))]

@@ -157,6 +157,7 @@ impl Ui {
             .set_position((size.width as f32) / 2.0, (size.height as f32) / 2.0);
 
         let scale_factor = window.scale_factor();
+        log::info!("scale factor: {}", scale_factor);
 
         self.gui.set_scale_factor(scale_factor);
 

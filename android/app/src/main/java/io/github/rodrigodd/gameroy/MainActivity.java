@@ -99,7 +99,7 @@ public class MainActivity extends NativeActivity {
         }
     }
 
-    /// If `bytes` is 0, read the entiry file. Otherwise read only the first `bytes` bytes.
+    /// If `bytes` is 0, read the entire file. Otherwise read only the first `bytes` bytes.
     public ByteBuffer readUri(String uriString, int bytes) {
         Log.d(TAG, "Read Uri: " + uriString);
         Uri uri = Uri.parse(uriString);

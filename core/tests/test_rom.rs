@@ -15,6 +15,11 @@ use rand::{Rng, SeedableRng};
 
 const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-test-roms/");
 
+/// The test run faster when not providing a boot rom (the emulator just skip to the state at the
+/// end of the boot rom execution), but it may be useful to include the boot rom execution in the
+/// test to check if a boot rom changes any behavior and it's a valid replacement for the original.
+const BOOT_ROM: Option<[u8; 256]> = None;
+
 macro_rules! screen {
     { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
         $(#[test] $(#[$($attrib)*])*
@@ -42,7 +47,7 @@ fn test_screen(rom: &str, reference: &str, timeout: u64) {
 
     let cartridge = Cartridge::new(rom).unwrap();
 
-    let mut game_boy = GameBoy::new(None, cartridge);
+    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
     let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     let screen_clone = screen.clone();
@@ -94,7 +99,7 @@ fn test_registers(rom: &str, timeout: u64) {
 
     let cartridge = Cartridge::new(rom).unwrap();
 
-    let mut game_boy = GameBoy::new(None, cartridge);
+    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
     let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
         Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
     game_boy.v_blank = Some(Box::new(move |gb| {
@@ -213,8 +218,8 @@ mod blargg {
 
         let cartridge = Cartridge::new(rom).unwrap();
 
-        let mut game_boy = GameBoy::new(None, cartridge);
-        // let mut game_boy = GameBoy::new(&vec![0; 256][..], rom_file);
+        let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
+
         let string = Arc::new(Mutex::new(String::new()));
         let string_clone = string.clone();
         let stop = Arc::new(AtomicBool::new(false));
@@ -253,7 +258,7 @@ mod blargg {
 
         let cartridge = Cartridge::new(rom).unwrap();
 
-        let mut game_boy = GameBoy::new(None, cartridge);
+        let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
 
         let mut inter = Interpreter(&mut game_boy);
         while inter.0.clock_count < timeout {
@@ -309,7 +314,7 @@ fn save_state1() {
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
-    let mut game_boy = GameBoy::new(None, cartridge);
+    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
 
     let mut inter = Interpreter(&mut game_boy);
     let timeout = 250_400_000;
@@ -333,7 +338,7 @@ fn save_state1() {
 
         // load state
         let cartridge = Cartridge::new(rom.clone()).unwrap();
-        let mut gb = GameBoy::new(None, cartridge);
+        let mut gb = GameBoy::new(BOOT_ROM, cartridge);
         gb.load_state(&mut Cursor::new(&mut vec)).unwrap();
 
         // compare
@@ -355,7 +360,7 @@ fn save_state2() {
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
-    let mut game_boy = GameBoy::new(None, cartridge);
+    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
 
     let mut inter = Interpreter(&mut game_boy);
     let timeout = 250_400_000;
@@ -379,7 +384,7 @@ fn save_state2() {
         // load state
         use std::io::Cursor;
         let cartridge = Cartridge::new(rom.clone()).unwrap();
-        let mut gb = GameBoy::new(None, cartridge);
+        let mut gb = GameBoy::new(BOOT_ROM, cartridge);
         gb.load_state(&mut Cursor::new(&mut save_state)).unwrap();
 
         // run same number of instructions
@@ -404,7 +409,7 @@ fn save_state3() {
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
-    let mut game_boy = GameBoy::new(None, cartridge);
+    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
 
     let v_blank_state = Arc::new(Mutex::new(None));
 
@@ -439,7 +444,7 @@ fn save_state3() {
         if let Some(save_state) = v_blank_state.lock().unwrap().take() {
             use std::io::Cursor;
             let cartridge = Cartridge::new(rom.clone()).unwrap();
-            let mut gb = GameBoy::new(None, cartridge);
+            let mut gb = GameBoy::new(BOOT_ROM, cartridge);
             gb.load_state(&mut Cursor::new(save_state)).unwrap();
 
             // run to the current state
@@ -831,7 +836,7 @@ mod age {
 
         let cartridge = Cartridge::new(rom).unwrap();
 
-        let mut game_boy = GameBoy::new(None, cartridge);
+        let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
         let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
             Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
         game_boy.v_blank = Some(Box::new(move |gb| {

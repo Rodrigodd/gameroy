@@ -368,7 +368,7 @@ impl GameBoy {
 
     pub fn update_interrupt(&self) {
         if !self.predict_interrupt {
-            self.update_all();
+            self.update_all_interrupts();
             return;
         }
 
@@ -384,10 +384,19 @@ impl GameBoy {
         self.update_next_interrupt();
     }
 
+    /// Update all components that can trigger an interrupt (PPU, Timer, Serial).
+    pub fn update_all_interrupts(&self) {
+        self.update_ppu();
+        self.update_timer();
+        self.update_serial();
+    }
+
+    /// Update all componets that are lazy updated (PPU, Timer, Serial, Sound).
     pub fn update_all(&self) {
         self.update_ppu();
         self.update_timer();
         self.update_serial();
+        self.update_sound();
     }
 
     fn update_ppu(&self) {
@@ -422,6 +431,10 @@ impl GameBoy {
         }
 
         self.update_next_interrupt();
+    }
+
+    fn update_sound(&self) {
+        self.sound.borrow_mut().update(self.clock_count);
     }
 
     pub fn read16(&self, address: u16) -> u16 {

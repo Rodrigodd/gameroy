@@ -68,7 +68,7 @@ impl Timer {
         Self {
             // Starting div with this value to make it have the correct DIV phase after boot
             // has finished. May change depending on changes in timing precision.
-            div: 0xFFE8,
+            div: 0x0008,
             tima: 0x00,
             tma: 0x00,
             tac: 0x00,
@@ -82,7 +82,7 @@ impl Timer {
     /// Return the state of timer just after the boot finished.
     pub fn after_boot(clock_count: u64) -> Self {
         Timer {
-            div: 0xabac,
+            div: 0xabcc,
             tima: 0x00,
             tma: 0x00,
             tac: 0x00,

@@ -180,6 +180,8 @@ impl GameBoy {
 
         if this.boot_rom.is_none() {
             this.reset_after_boot();
+        } else {
+            this.reset();
         }
 
         this

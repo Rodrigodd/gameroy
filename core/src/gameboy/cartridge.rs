@@ -2,6 +2,12 @@ use std::{convert::TryInto, io::Read};
 
 use crate::save_state::{LoadStateError, SaveState, SaveStateContext};
 
+const NINTENDOO_LOGO: [u8; 48] = [
+    0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
+    0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
+    0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
+];
+
 fn mbc_type_name(code: u8) -> &'static str {
     match code {
         0x00 => "ROM ONLY",
@@ -79,15 +85,18 @@ impl CartridgeHeader {
         };
 
         {
-            let check_sum = bytes[0x134..=0x014C]
-                .iter()
-                .fold(0u8, |x, &b| x.wrapping_add(!b));
-            if check_sum != this.header_checksum {
+            if Self::compute_check_sum(bytes) != this.header_checksum {
                 return Err((Some(this), "checksum don't match".to_string()));
             }
         }
 
         Ok(this)
+    }
+
+    pub fn compute_check_sum(bytes: &[u8]) -> u8 {
+        bytes[0x134..=0x014C]
+            .iter()
+            .fold(0u8, |x, &b| x.wrapping_add(!b))
     }
 
     /// Return  Err(Some(Self)) if the load was sucessful but the checksum don't match.
@@ -102,12 +111,6 @@ impl CartridgeHeader {
 
     /// Return true if it has the correct values for the first  0x18  bytes of the Nintendo logo.
     pub fn check_logo(&self) -> bool {
-        #[rustfmt::skip]
-        const NINTENDOO_LOGO: [u8; 48] = [
-            0xCE ,0xED ,0x66 ,0x66 ,0xCC ,0x0D ,0x00 ,0x0B ,0x03 ,0x73 ,0x00 ,0x83 ,0x00 ,0x0C ,0x00 ,0x0D ,
-            0x00 ,0x08 ,0x11 ,0x1F ,0x88 ,0x89 ,0x00 ,0x0E ,0xDC ,0xCC ,0x6E ,0xE6 ,0xDD ,0xDD ,0xD9 ,0x99 ,
-            0xBB ,0xBB ,0x67 ,0x63 ,0x6E ,0x0E ,0xEC ,0xCC ,0xDD ,0xDC ,0x99 ,0x9F ,0xBB ,0xB9 ,0x33 ,0x3E ,
-        ];
         self.logo[..0x18] == NINTENDOO_LOGO[..0x18]
     }
 
@@ -295,6 +298,10 @@ impl Cartridge {
 
         // fill header with zeros
         rom[0x100..0x150].iter_mut().for_each(|x| *x = 0);
+
+        // fill with nintendo logo and the correct check sum, to make it look like a valid rom
+        rom[0x104..=0x133].copy_from_slice(&NINTENDOO_LOGO);
+        rom[0x14D] = CartridgeHeader::compute_check_sum(&rom);
 
         let this = Self::new(rom).unwrap();
 

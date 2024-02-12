@@ -170,9 +170,21 @@ impl SaveState for Sprite {
 /// scanline have some paddings on the left and right to allow overdrawing to it, avoiding writing
 /// logic for boundary cases, like a sprite in the very left of the screen.
 #[repr(align(64))]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Eq)]
 pub struct Screen {
     pub screen: [u8; Self::STRIDE * SCREEN_HEIGHT],
+}
+
+impl std::hash::Hash for Screen {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.row_iter().for_each(|row| row.hash(state));
+    }
+}
+
+impl PartialEq for Screen {
+    fn eq(&self, other: &Self) -> bool {
+        self.row_iter().zip(other.row_iter()).all(|(a, b)| a == b)
+    }
 }
 
 impl Default for Screen {
@@ -195,6 +207,12 @@ impl Screen {
         debug_assert!(lx < SCREEN_WIDTH);
         debug_assert!(ly < SCREEN_HEIGHT);
         self.screen[ly * Self::STRIDE + Self::LEFT_PAD + lx] = color;
+    }
+
+    fn row_iter(&self) -> impl Iterator<Item = &[u8]> + '_ {
+        self.screen
+            .chunks_exact(Screen::STRIDE)
+            .map(|x| &x[Screen::LEFT_PAD..][..SCREEN_WIDTH])
     }
 
     pub fn packed(&self) -> [u8; SCREEN_WIDTH * SCREEN_HEIGHT] {

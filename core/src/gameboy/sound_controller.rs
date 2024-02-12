@@ -316,8 +316,8 @@ impl SoundController {
         std::mem::take(&mut self.output)
     }
 
-    /// Emulator the sound controller until to the currently `clock_count`, since the `clock_count` of
-    /// the last update.
+    /// Emulate the sound controller until to the currently `clock_count`, since the `clock_count`
+    /// of the last update.
     pub fn update(&mut self, clock_count: u64) {
         debug_assert!(clock_count >= self.last_clock_count);
         if clock_count <= self.last_clock_count {

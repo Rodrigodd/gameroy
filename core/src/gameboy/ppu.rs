@@ -613,7 +613,11 @@ impl Ppu {
                 oam.load_state(ctx, &mut ppu_state).unwrap();
                 oam
             },
-            dma_started: 0x7fff_ffff_ffff_ffff,
+            dma_started: {
+                let mut dma_started = 0x7fff_ffff_ffff_ffff;
+                dma_started.load_state(ctx, &mut ppu_state).unwrap();
+                dma_started
+            },
             dma_running: false,
             dma_block_oam: false,
             oam_read_block: false,
@@ -627,7 +631,7 @@ impl Ppu {
             },
             sprite_buffer: [Sprite::default(); 10],
             sprite_buffer_len: 0,
-            wyc: 0,
+            wyc: 0xFF,
             lcdc: 0x91,
             stat: 0x05,
             scy: 0,
@@ -643,15 +647,19 @@ impl Ppu {
             ly_for_compare: 0,
 
             last_clock_count: 23_440_324,
-            next_clock_count: 23_440_377,
-            line_start_clock_count: 23_435_361,
-            next_interrupt: 23_440_324,
+            next_clock_count: 23_440_376,
+            line_start_clock_count: 23_435_360,
+            next_interrupt: 0,
 
-            background_fifo: PixelFifo::default(),
+            background_fifo: PixelFifo {
+                queue: [0; 16],
+                head: 0,
+                tail: 8,
+            },
             sprite_fifo: PixelFifo::default(),
 
-            fetcher_step: 0x03,
-            fetcher_x: 0x14,
+            fetcher_step: 0,
+            fetcher_x: 0,
             fetch_tile_number: 0,
             fetch_tile_data_low: 0,
             fetch_tile_data_hight: 0,
@@ -673,7 +681,7 @@ impl Ppu {
             wx_just_changed: false,
 
             screen_x: 0xa0,
-            scanline_x: 0x00,
+            scanline_x: 0xA0,
         }
     }
     pub fn write(gb: &mut GameBoy, address: u8, value: u8) {

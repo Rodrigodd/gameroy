@@ -82,10 +82,10 @@ impl Timer {
     /// Return the state of timer just after the boot finished.
     pub fn after_boot(clock_count: u64) -> Self {
         Timer {
-            div: 0xabcc,
+            div: 0xabac,
             tima: 0x00,
             tma: 0x00,
-            tac: 0xf8,
+            tac: 0x00,
             last_counter_bit: false,
             last_clock_count: clock_count,
             loading: 0,

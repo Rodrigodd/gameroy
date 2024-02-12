@@ -18,6 +18,7 @@ const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-
 /// The test run faster when not providing a boot rom (the emulator just skip to the state at the
 /// end of the boot rom execution), but it may be useful to include the boot rom execution in the
 /// test to check if a boot rom changes any behavior and it's a valid replacement for the original.
+// const BOOT_ROM: Option<[u8; 256]> = Some(*include_bytes!("../../boot/dmg_boot.bin"));
 const BOOT_ROM: Option<[u8; 256]> = None;
 
 macro_rules! screen {

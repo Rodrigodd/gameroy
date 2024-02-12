@@ -99,12 +99,14 @@ impl std::fmt::Debug for GameBoy {
 impl Eq for GameBoy {}
 impl PartialEq for GameBoy {
     fn eq(&self, other: &Self) -> bool {
+        self.update_all();
+
         // self.trace == other.trace &&
         self.cpu == other.cpu
             && self.cartridge == other.cartridge
             && self.wram == other.wram
             && self.hram == other.hram
-            && self.boot_rom == other.boot_rom
+            // && self.boot_rom == other.boot_rom
             && self.boot_rom_active == other.boot_rom_active
             && self.clock_count == other.clock_count
             && self.timer == other.timer
@@ -161,7 +163,7 @@ impl GameBoy {
             ppu: Ppu::default().into(),
 
             joypad: 0xFF,
-            joypad_io: 0x00,
+            joypad_io: 0xCF,
             serial: Serial::new().into(),
             interrupt_flag: 0.into(),
             dma: 0xff,
@@ -227,7 +229,7 @@ impl GameBoy {
         self.sound = RefCell::new(SoundController::default());
         self.ppu = Ppu::default().into();
         self.joypad = 0xFF;
-        self.joypad_io = 0x00;
+        self.joypad_io = 0xCF;
 
         self.next_interrupt = 0.into();
         self.update_next_interrupt();

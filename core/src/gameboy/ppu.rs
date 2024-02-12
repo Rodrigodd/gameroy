@@ -377,12 +377,37 @@ pub struct Ppu {
     scanline_x: u8,
 }
 
+fn dbg_fmt_hash<T: std::hash::Hash>(value: &T) -> impl std::fmt::Debug {
+    use std::hash::Hasher;
+
+    struct MyHasher(u64);
+    impl Hasher for MyHasher {
+        fn finish(&self) -> u64 {
+            self.0
+        }
+        fn write(&mut self, bytes: &[u8]) {
+            for byte in bytes {
+                self.0 = self.0.wrapping_mul(31).wrapping_add(*byte as u64);
+            }
+        }
+    }
+    impl std::fmt::Debug for MyHasher {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "hash:{:08x}", self.0 as u32)
+        }
+    }
+
+    let mut hasher = MyHasher(0);
+    (*value).hash(&mut hasher);
+    hasher
+}
+
 impl std::fmt::Debug for Ppu {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Ppu")
-            .field("vram", &"[...]")
-            .field("oam", &"[...]")
-            .field("screen", &"[...]")
+            .field("vram", &dbg_fmt_hash(&self.vram))
+            .field("oam", &dbg_fmt_hash(&self.oam))
+            .field("screen", &dbg_fmt_hash(&self.screen))
             // .field("vram", &self.vram)
             // .field("oam", &self.oam)
             // .field("screen", &self.screen)
@@ -569,7 +594,11 @@ impl Default for Ppu {
 
 impl Ppu {
     pub fn reset_after_boot(&mut self) {
+        // Only the VRAM, OAM and screen will be read from the save state, as these are too large
+        // to store in source code. (dma_started is also read, because it is store before the
+        // screen.
         let mut ppu_state = &include_bytes!("../../after_boot/ppu.sav")[..];
+
         let ctx = &mut SaveStateContext::default();
         *self = Self {
             #[rustfmt::skip]

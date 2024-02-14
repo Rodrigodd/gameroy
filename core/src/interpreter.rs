@@ -99,6 +99,10 @@ impl Interpreter<'_> {
                 self.0.cpu.l,
             );
         }
+        #[cfg(feature = "vcd_trace")]
+        {
+            self.0.vcd_writer.trace(self.0).unwrap();
+        }
         match op {
             // NOP 1:4 - - - -
             0x00 => self.nop(),

@@ -71,6 +71,10 @@ pub struct GameBoy {
     /// trace of reads and writes. (kind | ((clock_count & !3) >> 1), address, value), kind: 0=GameBoy::IO_READ,1=GameBoy::IO_WRITE
     #[cfg(feature = "io_trace")]
     pub io_trace: RefCell<Vec<(u8, u16, u8)>>,
+
+    /// VCD writer for the waveform tracing.
+    #[cfg(feature = "vcd_trace")]
+    pub(crate) vcd_writer: crate::vcd_writer::VcdWriter,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -181,13 +185,18 @@ impl GameBoy {
 
             #[cfg(feature = "io_trace")]
             io_trace: Vec::new().into(),
+
+            #[cfg(feature = "vcd_trace")]
+            vcd_writer: crate::vcd_writer::VcdWriter::new().unwrap(),
         };
 
-        if this.boot_rom.is_none() {
-            this.reset_after_boot();
-        } else {
-            this.reset();
+        #[cfg(feature = "vcd_trace")]
+        {
+            this.reset_at_power_on();
+            this.vcd_writer.trace(&this).unwrap();
         }
+
+        this.reset();
 
         this
     }
@@ -226,6 +235,14 @@ impl GameBoy {
             self.reset_after_boot();
             return;
         }
+        self.reset_at_power_on();
+    }
+
+    /// Reset the gameboy to its state after powering on, before the boot rom is executed, even if
+    /// there is no boot rom present.
+    ///
+    /// Only used internally for setting a trace point in clock_count = 0.
+    pub(crate) fn reset_at_power_on(&mut self) {
         // TODO: Maybe I should reset the cartridge
         self.cpu = Cpu::default();
         self.wram = [0xFF; 0x2000];

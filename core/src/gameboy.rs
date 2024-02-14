@@ -71,6 +71,10 @@ pub struct GameBoy {
     /// trace of reads and writes. (kind | ((clock_count & !3) >> 1), address, value), kind: 0=GameBoy::IO_READ,1=GameBoy::IO_WRITE
     #[cfg(feature = "io_trace")]
     pub io_trace: RefCell<Vec<(u8, u16, u8)>>,
+
+    /// VCD writer for the waveform tracing.
+    #[cfg(feature = "wave_trace")]
+    pub vcd_writer: crate::wave_trace::WaveTrace,
 }
 
 impl std::fmt::Debug for GameBoy {
@@ -181,13 +185,12 @@ impl GameBoy {
 
             #[cfg(feature = "io_trace")]
             io_trace: Vec::new().into(),
+
+            #[cfg(feature = "wave_trace")]
+            vcd_writer: crate::wave_trace::WaveTrace::new().unwrap(),
         };
 
-        if this.boot_rom.is_none() {
-            this.reset_after_boot();
-        } else {
-            this.reset();
-        }
+        this.reset();
 
         this
     }
@@ -226,6 +229,14 @@ impl GameBoy {
             self.reset_after_boot();
             return;
         }
+        self.reset_at_power_on();
+    }
+
+    /// Reset the gameboy to its state after powering on, before the boot rom is executed, even if
+    /// there is no boot rom present.
+    ///
+    /// Only used internally for setting a trace point in clock_count = 0.
+    pub(crate) fn reset_at_power_on(&mut self) {
         // TODO: Maybe I should reset the cartridge
         self.cpu = Cpu::default();
         self.wram = [0xFF; 0x2000];
@@ -260,6 +271,9 @@ impl GameBoy {
             ime: cpu::ImeState::Disabled,
             halt_bug: false,
             state: cpu::CpuState::Running,
+
+            #[cfg(feature = "wave_trace")]
+            op: 0,
         };
 
         self.wram = [0xFF; 0x2000];
@@ -349,6 +363,12 @@ impl GameBoy {
 
     /// Advance the clock by 'count' cycles
     pub fn tick(&mut self, count: u64) {
+        #[cfg(feature = "wave_trace")]
+        {
+            self.vcd_writer
+                .trace_gameboy(self.clock_count, self)
+                .unwrap();
+        }
         self.clock_count += count;
     }
 
@@ -406,6 +426,11 @@ impl GameBoy {
         self.update_timer();
         self.update_serial();
         self.update_sound();
+
+        #[cfg(feature = "wave_trace")]
+        self.vcd_writer
+            .trace_gameboy(self.clock_count, self)
+            .unwrap();
     }
 
     fn update_ppu(&self) {
@@ -424,7 +449,11 @@ impl GameBoy {
     }
 
     fn update_timer(&self) {
-        if self.timer.borrow_mut().update(self.clock_count) {
+        if self.timer.borrow_mut().update(
+            self.clock_count,
+            #[cfg(feature = "wave_trace")]
+            &self.vcd_writer,
+        ) {
             self.interrupt_flag
                 .set(self.interrupt_flag.get() | (1 << 2));
         }

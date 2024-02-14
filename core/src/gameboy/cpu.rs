@@ -99,6 +99,10 @@ pub struct Cpu {
     pub ime: ImeState,
     pub state: CpuState,
     pub halt_bug: bool,
+
+    /// The current opcode being executed. This is only used for debugging in the VCD trace.
+    #[cfg(feature = "wave_trace")]
+    pub op: u8,
 }
 impl fmt::Display for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -97,7 +97,15 @@ impl Timer {
     ///
     /// Update the Timer to the given `clock_count`, in O(1). See [Timer::update_cycle_by_cycle] for
     /// a more straigh-forward implementation.
-    pub fn update(&mut self, clock_count: u64) -> bool {
+    #[cfg_attr(feature = "wave_trace", allow(unreachable_code))]
+    pub fn update(
+        &mut self,
+        clock_count: u64,
+        #[cfg(feature = "wave_trace")] vcd_writer: &crate::wave_trace::WaveTrace,
+    ) -> bool {
+        #[cfg(feature = "wave_trace")]
+        return self.update_cycle_by_cycle(clock_count, vcd_writer);
+
         debug_assert!(clock_count >= self.last_clock_count);
         if clock_count <= self.last_clock_count {
             self.next_interrupt = self.estimate_next_interrupt();
@@ -189,7 +197,11 @@ impl Timer {
     /// Return true if there is a interrupt
     ///
     /// Reference implementation to [Self::update]. Slower, but less prone to bugs.
-    pub fn update_cycle_by_cycle(&mut self, clock_count: u64) -> bool {
+    pub fn update_cycle_by_cycle(
+        &mut self,
+        clock_count: u64,
+        #[cfg(feature = "wave_trace")] vcd_writer: &crate::wave_trace::WaveTrace,
+    ) -> bool {
         let mut interrupt = false;
 
         for _clock in self.last_clock_count..clock_count {
@@ -219,6 +231,9 @@ impl Timer {
             }
 
             self.last_counter_bit = counter_bit;
+
+            #[cfg(feature = "wave_trace")]
+            vcd_writer.trace_timer(_clock, self).unwrap();
         }
 
         self.last_clock_count = clock_count;
@@ -305,7 +320,7 @@ impl Timer {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "wave_trace")))]
 mod tests {
     use super::*;
     use rand::Rng;

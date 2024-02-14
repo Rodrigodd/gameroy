@@ -5,10 +5,10 @@ use gameroy::{
 };
 
 fn parse_timeout(timeout: &str) -> Option<u64> {
-    Some(if timeout.ends_with("s") {
-        timeout[..timeout.len() - 1].parse::<u64>().ok()? * CLOCK_SPEED
-    } else if timeout.ends_with("ms") {
-        timeout[..timeout.len() - 2].parse::<u64>().ok()? * CLOCK_SPEED / 1000
+    Some(if let Some(value) = timeout.strip_suffix("s") {
+        value.parse::<u64>().ok()? * CLOCK_SPEED
+    } else if let Some(value) = timeout.strip_suffix("ms") {
+        value.parse::<u64>().ok()? * CLOCK_SPEED / 1000
     } else {
         timeout.parse::<u64>().ok()?
     })
@@ -68,5 +68,11 @@ fn main() {
             println!("LD B, B detected, stopping");
             break;
         }
+    }
+    #[cfg(feature = "wave_trace")]
+    {
+        inter.0.update_all();
+        println!("VCD committed on end: {}", inter.0.clock_count);
+        inter.0.vcd_writer.commit().unwrap();
     }
 }

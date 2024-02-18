@@ -21,6 +21,12 @@ const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-
 // const BOOT_ROM: Option<[u8; 256]> = Some(*include_bytes!("../../boot/dmg_boot.bin"));
 const BOOT_ROM: Option<[u8; 256]> = None;
 
+macro_rules! log {
+    ($rom:expr, $str:literal $($t:tt)*) => {
+        println!(concat!("\"{}\" ", $str), $rom $($t)*);
+    }
+}
+
 macro_rules! screen {
     { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
         $(#[test] $(#[$($attrib)*])*
@@ -41,43 +47,97 @@ fn lcd_to_rgb(screen: &[u8; 144 * 160], img_data: &mut [u8]) {
     }
 }
 
-fn test_screen(rom: &str, reference: &str, timeout: u64) {
-    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+fn rgb_to_lcd(screen: &[u8], img_data: &mut [u8; 144 * 160]) {
+    for y in 0..SCREEN_HEIGHT {
+        for x in 0..SCREEN_WIDTH {
+            let i = (x + y * SCREEN_WIDTH) * 3;
+            let r = screen[i];
+            let g = screen[i + 1];
+            let b = screen[i + 2];
+            let intensity = r.max(g).max(b);
+            // these intervals are arbitrary, it just need to work with the lcd_to_rgb above
+            let c = match intensity {
+                0..=39 => 3,    // 0
+                40..=119 => 2,  // 85
+                120..=219 => 1, // 170
+                220..=255 => 0, // 255
+            };
+            img_data[i / 3] = c;
+        }
+    }
+}
+
+fn test_screen(romstr: &str, reference: &str, timeout: u64) {
+    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + romstr).into();
     let reference_path = TEST_ROM_PATH.to_string() + reference;
     let rom = std::fs::read(&rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom).unwrap();
 
     let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
-    let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
-        Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-    let screen_clone = screen.clone();
-    game_boy.v_blank = Some(Box::new(move |gb| {
-        *screen_clone.lock().unwrap() = gb.ppu.borrow().screen.packed();
+
+    let screen = Arc::new(Mutex::new([0u8; SCREEN_WIDTH * SCREEN_HEIGHT]));
+    let matched = Arc::new(AtomicBool::new(false));
+
+    let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
+    let mut reference_screen = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+    rgb_to_lcd(reference_img_data, &mut reference_screen);
+
+    game_boy.v_blank = Some(Box::new({
+        let matched = matched.clone();
+        let screen = screen.clone();
+        move |gb| {
+            screen
+                .lock()
+                .unwrap()
+                .copy_from_slice(&gb.ppu.borrow().screen.packed());
+            if reference_screen == gb.ppu.borrow().screen.packed() {
+                matched.store(true, Ordering::Relaxed);
+            }
+        }
     }));
 
     let mut inter = Interpreter(&mut game_boy);
-    while inter.0.clock_count < timeout {
+
+    while inter.0.clock_count < timeout && !matched.load(Ordering::Relaxed) {
         inter.interpret_op();
         // 0x40 = LD B, B
         if inter.0.read(inter.0.cpu.pc) == 0x40 {
             break;
         }
     }
-    println!("final clock_count: {}", inter.0.clock_count);
+    log!(romstr, "final clock_count: {}", inter.0.clock_count);
 
     if inter.0.clock_count >= timeout {
-        println!("reach timeout!!");
+        log!(romstr, "reach timeout!!");
     }
 
-    let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
-    lcd_to_rgb(&screen.lock().unwrap(), &mut img_data);
-    let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
+    if !matched.load(Ordering::Relaxed) {
+        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+        lcd_to_rgb(&screen.lock().unwrap(), &mut img_data);
 
-    if img_data != reference_img_data {
         let path: PathBuf = ("test_output/".to_string()
             + &rom_path.file_stem().unwrap().to_string_lossy()
             + "_output.png")
+            .into();
+        if let Some(x) = path.parent() {
+            std::fs::create_dir_all(x).unwrap()
+        }
+        image::save_buffer(
+            &path,
+            &img_data,
+            SCREEN_WIDTH as u32,
+            SCREEN_HEIGHT as u32,
+            image::ColorType::Rgb8,
+        )
+        .unwrap();
+
+        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+        lcd_to_rgb(&reference_screen, &mut img_data);
+
+        let path: PathBuf = ("test_output/".to_string()
+            + &rom_path.file_stem().unwrap().to_string_lossy()
+            + "_expected.png")
             .into();
         if let Some(x) = path.parent() {
             std::fs::create_dir_all(x).unwrap()
@@ -94,8 +154,8 @@ fn test_screen(rom: &str, reference: &str, timeout: u64) {
     }
 }
 
-fn test_registers(rom: &str, timeout: u64) {
-    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+fn test_registers(romstr: &str, timeout: u64) {
+    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + romstr).into();
     let rom = std::fs::read(rom_path).unwrap();
 
     let cartridge = Cartridge::new(rom).unwrap();
@@ -115,7 +175,7 @@ fn test_registers(rom: &str, timeout: u64) {
             break;
         }
     }
-    println!("final clock_count: {}", inter.0.clock_count);
+    log!(romstr, "final clock_count: {}", inter.0.clock_count);
 
     if inter.0.clock_count >= timeout {
         panic!("reach timeout!!");
@@ -213,8 +273,8 @@ mod blargg {
         );
     }
 
-    fn test_rom_serial(path: &str, timeout: u64) -> Result<(), String> {
-        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + path;
+    fn test_rom_serial(romstr: &str, timeout: u64) -> Result<(), String> {
+        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + romstr;
         let rom = std::fs::read(rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();
@@ -242,6 +302,8 @@ mod blargg {
                 break;
             }
         }
+        log!(romstr, "final clock_count: {}", inter.0.clock_count);
+
         // panic!("ahh");
         if stop.load(Ordering::Relaxed) {
             Ok(())
@@ -253,8 +315,8 @@ mod blargg {
         }
     }
 
-    fn test_rom_memory(path: &str, timeout: u64) -> Result<(), String> {
-        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + path;
+    fn test_rom_memory(romstr: &str, timeout: u64) -> Result<(), String> {
+        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + romstr;
         let rom = std::fs::read(rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();
@@ -265,6 +327,7 @@ mod blargg {
         while inter.0.clock_count < timeout {
             inter.interpret_op();
         }
+        log!(romstr, "final clock_count: {}", inter.0.clock_count);
 
         let signature = [
             inter.0.read(0xA001),
@@ -311,8 +374,8 @@ mod blargg {
 /// Run cpu_instrs for a random ammount of instructions, do a save state, and compare the load
 /// state with the original. They should always be equal.
 fn save_state1() {
-    let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
-    let rom = std::fs::read(rom_path).unwrap();
+    let romstr = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
+    let rom = std::fs::read(&romstr).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
     let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
@@ -320,7 +383,7 @@ fn save_state1() {
     let mut inter = Interpreter(&mut game_boy);
     let timeout = 250_400_000;
     let seed = rand::random();
-    println!("test seed: {:08x}", seed);
+    log!(romstr, "test seed: {:08x}", seed);
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut count = 0;
 
@@ -349,7 +412,7 @@ fn save_state1() {
 
         count += 1;
     }
-    println!("number of loads: {}", count);
+    log!(romstr, "number of loads: {}", count);
 }
 
 #[test]
@@ -357,8 +420,8 @@ fn save_state1() {
 /// run the same ammount of instructions, and compare with the first one. They should always be
 /// equal.
 fn save_state2() {
-    let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
-    let rom = std::fs::read(rom_path).unwrap();
+    let romstr = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
+    let rom = std::fs::read(&romstr).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
     let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
@@ -366,7 +429,7 @@ fn save_state2() {
     let mut inter = Interpreter(&mut game_boy);
     let timeout = 250_400_000;
     let seed = rand::random();
-    println!("test seed: {:08x}", seed);
+    log!(romstr, "test seed: {:08x}", seed);
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut count = 0;
 
@@ -377,7 +440,7 @@ fn save_state2() {
 
         // run random number of instructions
         let r = rng.gen_range(100_000..300_000);
-        println!("steps: {}", r);
+        log!(romstr, "steps: {}", r);
         for _ in 0..r {
             inter.interpret_op();
         }
@@ -399,15 +462,15 @@ fn save_state2() {
         }
         count += 1;
     }
-    println!("number of loads: {}", count);
+    log!(romstr, "number of loads: {}", count);
 }
 #[test]
 /// Do a save state in the v_blank callback, run a random number of instructions, load that save
 /// state, run the same number of instructions, and compare with the first one. They should always
 /// be equal.
 fn save_state3() {
-    let rom_path = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
-    let rom = std::fs::read(rom_path).unwrap();
+    let romstr = TEST_ROM_PATH.to_string() + "blargg/cpu_instrs/cpu_instrs.gb";
+    let rom = std::fs::read(&romstr).unwrap();
 
     let cartridge = Cartridge::new(rom.clone()).unwrap();
     let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
@@ -429,14 +492,14 @@ fn save_state3() {
     let mut inter = Interpreter(&mut game_boy);
     let timeout = 250_400_000;
     let seed = rand::random();
-    println!("test seed: {:08x}", seed);
+    log!(romstr, "test seed: {:08x}", seed);
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let mut count = 0;
 
     while inter.0.clock_count < timeout {
         // run random number of instructions
         let r = rng.gen_range(100_000..300_000);
-        println!("steps: {}", r);
+        log!(romstr, "steps: {}", r);
         for _ in 0..r {
             inter.interpret_op();
         }
@@ -460,7 +523,7 @@ fn save_state3() {
             count += 1;
         }
     }
-    println!("number of loads: {}", count);
+    log!(romstr, "number of loads: {}", count);
 }
 
 fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
@@ -831,8 +894,8 @@ mod mooneye {
 mod age {
     use super::*;
 
-    fn test_age(rom: &str, timeout: u64) {
-        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom).into();
+    fn test_age(romstr: &str, timeout: u64) {
+        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + romstr).into();
         let rom = std::fs::read(rom_path).unwrap();
 
         let cartridge = Cartridge::new(rom).unwrap();
@@ -852,7 +915,7 @@ mod age {
                 break;
             }
         }
-        println!("final clock_count: {}", inter.0.clock_count);
+        log!(romstr, "final clock_count: {}", inter.0.clock_count);
 
         if inter.0.clock_count >= timeout {
             panic!("reach timeout!!");

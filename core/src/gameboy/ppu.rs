@@ -1812,7 +1812,7 @@ fn update_lcdc(ppu: &mut Ppu, old_value: u8, clock_count: u64) {
 /// is properly updated in the following cycle.
 ///
 /// Maybe because of a imprecision in the PPU timing, the write is happening two cycles in the past,
-/// so we need to relie on the lazy updating of the PPU.
+/// so we need to rely on the lazy updating of the PPU.
 ///
 /// I got this from SameBoy: https://github.com/LIJI32/SameBoy/blob/aa8b7b0c03aaae327bfb30e241b965ba055d175a/Core/sm83_cpu.c#L175-L188
 fn write_pallete_conflict<F: Fn(&mut Ppu) -> &mut u8>(gb: &mut GameBoy, value: u8, field: F) {

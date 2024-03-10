@@ -153,8 +153,8 @@ impl GameBoy {
             trace: RefCell::new(Trace::new()),
             cpu: Cpu::default(),
             cartridge,
-            wram: [0; 0x2000],
-            hram: [0; 0x7F],
+            wram: [0xFF; 0x2000],
+            hram: [0xFF; 0x7F],
             boot_rom,
             boot_rom_active: true,
             clock_count: 0,
@@ -223,8 +223,8 @@ impl GameBoy {
         }
         // TODO: Maybe I should reset the cartridge
         self.cpu = Cpu::default();
-        self.wram = [0; 0x2000];
-        self.hram = [0; 0x7F];
+        self.wram = [0xFF; 0x2000];
+        self.hram = [0xFF; 0x7F];
         self.boot_rom_active = true;
         self.clock_count = 0;
         self.timer = Timer::new().into();
@@ -257,8 +257,8 @@ impl GameBoy {
             state: cpu::CpuState::Running,
         };
 
-        self.wram = [0; 0x2000];
-        self.hram = [0; 0x7F];
+        self.wram = [0xFF; 0x2000];
+        self.hram = [0xFF; 0x7F];
         self.hram[0x7a..=0x7c].copy_from_slice(&[0x39, 0x01, 0x2e]);
 
         self.boot_rom_active = false;

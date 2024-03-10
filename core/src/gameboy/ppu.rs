@@ -537,8 +537,8 @@ crate::save_state!(Ppu, self, ctx, data {
 impl Default for Ppu {
     fn default() -> Self {
         Self {
-            vram: [0; 0x2000],
-            oam: [0; 0xA0],
+            vram: [0xFF; 0x2000],
+            oam: [0xFF; 0xA0],
             dma_started: 0x7fff_ffff_ffff_ffff,
             dma_running: false,
             dma_block_oam: false,
@@ -603,13 +603,13 @@ impl Ppu {
         *self = Self {
             #[rustfmt::skip]
             vram: {
-                let mut vram = [0; 0x2000];
+                let mut vram = [0xFF; 0x2000];
                 vram.load_state(ctx, &mut ppu_state).unwrap();
                 vram
 
             },
             oam: {
-                let mut oam = [0; 0xA0];
+                let mut oam = [0xFF; 0xA0];
                 oam.load_state(ctx, &mut ppu_state).unwrap();
                 oam
             },

@@ -320,11 +320,11 @@ pub struct Ppu {
     pub state: u8,
     /// When making the LY==LYC comparison, uses this value instead of ly to control the comparison
     /// timing. This is 0xFF if this will not update the stat.
-    ly_for_compare: u8,
+    pub ly_for_compare: u8,
 
     /// A rising edge on this signal causes a STAT interrupt.
-    stat_signal: bool,
-    ly_compare_signal: bool,
+    pub stat_signal: bool,
+    pub ly_compare_signal: bool,
     /// use this value instead of the current stat mode when controlling the stat interrupt signal,
     /// to control the timing. 0xff means that this will not trigger a interrupt.
     ///
@@ -332,7 +332,7 @@ pub struct Ppu {
     /// Mode 1 - Vertical Blank
     /// Mode 2 - OAM Search
     /// Mode 3 - Drawing pixels
-    stat_mode_for_interrupt: u8,
+    pub stat_mode_for_interrupt: u8,
 
     /// Which clock cycle the PPU where last updated
     pub last_clock_count: u64,
@@ -374,7 +374,7 @@ pub struct Ppu {
     /// The x position in the current scanline, from -(8 + scx%8) to 160. Negative values
     /// (represented by positives between 241 and 255) are use for detecting sprites that starts
     /// to the left of the screen, and for discarding pixels for scrolling.
-    scanline_x: u8,
+    pub scanline_x: u8,
 }
 
 fn dbg_fmt_hash<T: std::hash::Hash>(value: &T) -> impl std::fmt::Debug {
@@ -942,6 +942,9 @@ impl Ppu {
         // Writing to wx do some time traveling shenanigans. Make sure they are not observable.
         debug_assert!(ppu.last_clock_count <= gb.clock_count);
 
+        #[cfg(feature = "vcd_trace")]
+        gb.vcd_writer.trace_ppu(ppu.last_clock_count, ppu).unwrap();
+
         ppu.last_clock_count = gb.clock_count;
 
         if ppu.lcdc & 0x80 == 0 {
@@ -959,9 +962,15 @@ impl Ppu {
 
         if ppu.next_clock_count >= gb.clock_count {
             Self::update_dma(gb, ppu, gb.clock_count);
+
+            #[cfg(feature = "vcd_trace")]
+            gb.vcd_writer.trace_ppu(gb.clock_count, ppu).unwrap();
         }
 
         while ppu.next_clock_count < gb.clock_count {
+            #[cfg(feature = "vcd_trace")]
+            let curr_ppu_clock_count = ppu.next_clock_count;
+
             Self::update_dma(gb, ppu, ppu.next_clock_count);
             // println!("state: {}", state);
             match ppu.state {
@@ -1026,7 +1035,10 @@ impl Ppu {
                 6 => {
                     ppu.line_start_clock_count = ppu.next_clock_count;
                     ppu.screen_x = 0;
-                    if gb.clock_count > ppu.next_clock_count + 456 {
+
+                    let use_optimization = !cfg!(feature = "vcd_trace");
+
+                    if use_optimization && gb.clock_count > ppu.next_clock_count + 456 {
                         if ppu.wy == ppu.ly {
                             ppu.reach_window = true;
                         }
@@ -1518,6 +1530,9 @@ impl Ppu {
                 }
                 _ => unreachable!(),
             }
+
+            #[cfg(feature = "vcd_trace")]
+            gb.vcd_writer.trace_ppu(curr_ppu_clock_count, ppu).unwrap();
         }
 
         Self::update_dma(gb, ppu, gb.clock_count);

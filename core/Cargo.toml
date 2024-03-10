@@ -20,7 +20,7 @@ harness = false
 io_trace = []
 vcd_trace = ["dep:vcd"]
 
-# default = ["vcd_trace"]
+default = ["vcd_trace"]
 
 [dependencies]
 vcd = { version = "0.7.0", optional = true }

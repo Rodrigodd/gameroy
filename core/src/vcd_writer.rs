@@ -1,60 +1,96 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::fs::File;
 use std::io::BufWriter;
 
+use crate::gameboy::cpu::Cpu;
+use crate::gameboy::ppu::Ppu;
 use crate::gameboy::GameBoy;
 
 // NOTE: The actual clock period should be 1/(2^22 Hz) = 476.837 ns, but msinger's
 // dmg-sim (the verilog simulation I am comparing to) uses a period of 244 ns.
-const CYCLE_PERIOD: u64 = 244;
+const TIMESCALE: u64 = 122; // ns
+const CYCLE_PERIOD: u64 = 244 / TIMESCALE;
 
-macro_rules! replace_expr {
-    ($_t:tt $sub:expr) => {
-        $sub
+const OFFSET: u64 = (31999502 - 976) / TIMESCALE;
+
+type MaxWidth = u16;
+
+macro_rules! decl_regs {
+    ($name:ident, $module:literal, $var:ident : $type:ty, $($reg:ident, $width:expr => $value:expr;)*) => {
+        pub struct $name {
+            $($reg: Wire,)*
+        }
+        impl $name {
+            fn new(writer: &mut MyWriter) -> std::io::Result<Self> {
+                writer.add_module($module)?;
+                let this = Self {
+                    $($reg: writer.add_wire($width, stringify!($reg))?,)*
+                };
+                writer.close_module()?;
+                Ok(this)
+            }
+
+            fn trace(&self, writer: &mut MyWriter, $var: $type) -> std::io::Result<()> {
+                $(writer.change(&self.$reg, ($value) as MaxWidth)?;)*
+                Ok(())
+            }
+        }
     };
 }
 
-// declare a const array, while deducing the length from the number of elements.
-macro_rules! const_array {
-    ($ident:ident: $type:ty, $($value:expr,)*) => {
-        const $ident: [$type; {0usize $(+ replace_expr!($value 1usize))*}]= [$($value),*];
-    };
+decl_regs! {
+    GameboyRegs, "gameboy", gb: &GameBoy,
+    joypad_io, 8 => gb.joypad_io;
+    joypad, 8 => gb.joypad;
+    interrupt_flag, 8 => gb.interrupt_flag.get();
+    dma, 8 => gb.dma;
+    interrupt_enabled, 8 => gb.interrupt_enabled;
+    v_blank_trigger, 1 => gb.v_blank_trigger.get() as u8;
 }
 
-const_array!(
-    PPU_REGS: (u16, &str),
-    (0xff40, "LCDC_ff40"),
-    (0xff41, "STAT_ff41"),
-    (0xff42, "SCY_ff42"),
-    (0xff43, "SCX_ff43"),
-    (0xff44, "LY_ff44"),
-    (0xff45, "LYC_ff45"),
-    // (0xff47, "BGP_ff47"),
-    // (0xff48, "OBP0_ff48"),
-    // (0xff49, "OBP1_ff49"),
-    // (0xff4a, "WY_ff4a"),
-    // (0xff4b, "WX_ff4b"),
-);
+decl_regs! {
+    CpuRegs, "cpu", cpu: &Cpu,
+    f, 8 => cpu.f.0;
+    a, 8 => cpu.a;
+    c, 8 => cpu.c;
+    b, 8 => cpu.b;
+    e, 8 => cpu.e;
+    d, 8 => cpu.d;
+    l, 8 => cpu.l;
+    h, 8 => cpu.h;
+    sp, 16 => cpu.sp;
+    pc, 16 => cpu.pc;
+    ime, 2 => cpu.ime;
+    state, 2 => cpu.state;
+    halt_bug, 1 => cpu.halt_bug;
+    op, 8 => cpu.op;
+}
 
-pub struct CpuRegs {
-    f: Wire,
-    a: Wire,
-    c: Wire,
-    b: Wire,
-    e: Wire,
-    d: Wire,
-    l: Wire,
-    h: Wire,
-    sp: Wire,
-    pc: Wire,
-    ime: Wire,
-    state: Wire,
-    halt_bug: Wire,
+decl_regs! {
+    PpuRegs, "ppu", ppu: &Ppu,
+    lcdc, 8 => ppu.lcdc;
+    stat, 8 => ppu.stat;
+    scy, 8 => ppu.scy;
+    scx, 8 => ppu.scx;
+    ly, 8 => ppu.ly;
+    lyc, 8 => ppu.lyc;
+    bgp, 8 => ppu.bgp;
+    obp0, 8 => ppu.obp0;
+    obp1, 8 => ppu.obp1;
+    wy, 8 => ppu.wy;
+    wx, 8 => ppu.wx;
+
+    state, 8 => ppu.state;
+    ly_for_compare, 8 => ppu.ly_for_compare;
+    stat_signal, 1 => ppu.stat_signal;
+    ly_compare_signal, 1 => ppu.ly_compare_signal;
+    stat_mode_for_interrupt, 2 => ppu.stat_mode_for_interrupt;
+    scanline_x, 8 => ppu.scanline_x;
 }
 
 struct Wire {
     id: vcd::IdCode,
-    value: std::cell::Cell<u16>,
+    value: std::cell::Cell<MaxWidth>,
     width: u8,
 }
 
@@ -67,8 +103,8 @@ impl MyWriter {
         let buf = std::io::BufWriter::new(file);
         let mut writer = vcd::Writer::new(buf);
 
-        writer.timescale(CYCLE_PERIOD as u32, vcd::TimescaleUnit::NS)?; // 4.096 MHz
-                                                                        //
+        writer.timescale(TIMESCALE as u32, vcd::TimescaleUnit::NS)?;
+
         Ok(Self { writer })
     }
 
@@ -89,7 +125,7 @@ impl MyWriter {
         })
     }
 
-    fn change(&mut self, wire: &Wire, value: u16) -> std::io::Result<()> {
+    fn change(&mut self, wire: &Wire, value: MaxWidth) -> std::io::Result<()> {
         if wire.value.get() == value {
             return Ok(());
         }
@@ -104,8 +140,8 @@ impl MyWriter {
         Ok(())
     }
 
-    fn timestamp(&mut self, time: u64) -> std::io::Result<()> {
-        self.writer.timestamp(time)
+    fn timestamp(&mut self, clock_count: u64) -> std::io::Result<()> {
+        self.writer.timestamp(OFFSET + clock_count * CYCLE_PERIOD)
     }
 
     fn begin(&mut self) -> std::io::Result<()> {
@@ -117,8 +153,11 @@ impl MyWriter {
 
 pub(crate) struct VcdWriter {
     writer: RefCell<MyWriter>,
+    last_clock_count: Cell<u64>,
+    clk: Wire,
+    gameboy_regs: GameboyRegs,
     cpu_regs: CpuRegs,
-    ppu_regs: [(u16, Wire); PPU_REGS.len()],
+    ppu_regs: PpuRegs,
 }
 impl VcdWriter {
     pub fn new() -> std::io::Result<Self> {
@@ -136,32 +175,11 @@ impl VcdWriter {
 
         writer.add_module("gameroy")?;
 
-        writer.add_module("cpu")?;
-        let cpu_regs = CpuRegs {
-            f: writer.add_wire(8, "f")?,
-            a: writer.add_wire(8, "a")?,
-            c: writer.add_wire(8, "c")?,
-            b: writer.add_wire(8, "b")?,
-            e: writer.add_wire(8, "e")?,
-            d: writer.add_wire(8, "d")?,
-            l: writer.add_wire(8, "l")?,
-            h: writer.add_wire(8, "h")?,
-            sp: writer.add_wire(16, "sp")?,
-            pc: writer.add_wire(16, "pc")?,
-            ime: writer.add_wire(2, "ime")?,
-            state: writer.add_wire(2, "state")?,
-            halt_bug: writer.add_wire(1, "halt_bug")?,
-        };
-        writer.close_module()?;
+        let clk = writer.add_wire(1, "clk")?;
 
-        writer.add_module("ppu")?;
-
-        let ppu_regs = PPU_REGS.map(|(addr, name)| {
-            let id = writer.add_wire(8, name).unwrap();
-            (addr, id)
-        });
-
-        writer.close_module()?;
+        let gameboy_regs = GameboyRegs::new(&mut writer)?;
+        let cpu_regs = CpuRegs::new(&mut writer)?;
+        let ppu_regs = PpuRegs::new(&mut writer)?;
 
         writer.close_module()?;
 
@@ -169,6 +187,9 @@ impl VcdWriter {
 
         let this = Self {
             writer: RefCell::new(writer),
+            last_clock_count: u64::MAX.into(),
+            clk,
+            gameboy_regs,
             cpu_regs,
             ppu_regs,
         };
@@ -176,36 +197,40 @@ impl VcdWriter {
         Ok(this)
     }
 
-    pub fn trace(&self, gb: &GameBoy) -> std::io::Result<()> {
+    pub fn trace_gameboy(&self, clock_count: u64, gameboy: &GameBoy) -> std::io::Result<()> {
         let mut writer = self.writer.borrow_mut();
 
-        writer.timestamp(gb.clock_count)?;
-
-        {
-            let cpu = &gb.cpu;
-            writer.change(&self.cpu_regs.f, cpu.f.0 as u16)?;
-            writer.change(&self.cpu_regs.a, cpu.a as u16)?;
-            writer.change(&self.cpu_regs.c, cpu.c as u16)?;
-            writer.change(&self.cpu_regs.b, cpu.b as u16)?;
-            writer.change(&self.cpu_regs.e, cpu.e as u16)?;
-            writer.change(&self.cpu_regs.d, cpu.d as u16)?;
-            writer.change(&self.cpu_regs.l, cpu.l as u16)?;
-            writer.change(&self.cpu_regs.h, cpu.h as u16)?;
-            writer.change(&self.cpu_regs.sp, cpu.sp)?;
-            writer.change(&self.cpu_regs.pc, cpu.pc)?;
-            writer.change(&self.cpu_regs.ime, cpu.ime as u16)?;
-            writer.change(&self.cpu_regs.state, cpu.state as u16)?;
-            writer.change(&self.cpu_regs.halt_bug, cpu.halt_bug as u16)?;
+        if self.last_clock_count.get() != u64::MAX {
+            for c in self.last_clock_count.get()..clock_count {
+                writer.writer.timestamp(OFFSET + c * CYCLE_PERIOD + 1)?;
+                writer.change(&self.clk, 0)?;
+                writer.writer.timestamp(OFFSET + (c + 1) * CYCLE_PERIOD)?;
+                writer.change(&self.clk, 1)?;
+            }
+        } else {
+            writer.timestamp(clock_count)?;
+            writer.change(&self.clk, 1)?;
         }
 
-        for (addr, id) in self.ppu_regs.iter() {
-            writer.change(id, gb.read(*addr) as u16)?;
-        }
+        self.last_clock_count.set(clock_count);
+
+        self.gameboy_regs.trace(&mut writer, gameboy)?;
+        self.cpu_regs.trace(&mut writer, &gameboy.cpu)?;
+
+        Ok(())
+    }
+
+    pub fn trace_ppu(&self, clock_count: u64, ppu: &Ppu) -> std::io::Result<()> {
+        let mut writer = self.writer.borrow_mut();
+
+        writer.timestamp(clock_count)?;
+
+        self.ppu_regs.trace(&mut writer, ppu)?;
 
         Ok(())
     }
 }
 
-fn to_bits(n: u8, value: u16) -> impl Iterator<Item = vcd::Value> {
+fn to_bits(n: u8, value: MaxWidth) -> impl Iterator<Item = vcd::Value> {
     (0..n).rev().map(move |i| ((value >> i) & 1 == 1).into())
 }

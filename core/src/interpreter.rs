@@ -80,8 +80,13 @@ impl Interpreter<'_> {
             return;
         }
 
-        use Condition::*;
+        #[cfg(feature = "vcd_trace")]
+        {
+            self.0.cpu.op = self.0.read(self.0.cpu.pc);
+        }
+
         let op = self.read_next_pc();
+
         let trace = false;
         if trace {
             println!(
@@ -99,10 +104,8 @@ impl Interpreter<'_> {
                 self.0.cpu.l,
             );
         }
-        #[cfg(feature = "vcd_trace")]
-        {
-            self.0.vcd_writer.trace(self.0).unwrap();
-        }
+
+        use Condition::*;
         match op {
             // NOP 1:4 - - - -
             0x00 => self.nop(),

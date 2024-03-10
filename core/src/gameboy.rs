@@ -190,12 +190,6 @@ impl GameBoy {
             vcd_writer: crate::vcd_writer::VcdWriter::new().unwrap(),
         };
 
-        #[cfg(feature = "vcd_trace")]
-        {
-            this.reset_at_power_on();
-            this.vcd_writer.trace(&this).unwrap();
-        }
-
         this.reset();
 
         this
@@ -277,6 +271,9 @@ impl GameBoy {
             ime: cpu::ImeState::Disabled,
             halt_bug: false,
             state: cpu::CpuState::Running,
+
+            #[cfg(feature = "vcd_trace")]
+            op: 0,
         };
 
         self.wram = [0xFF; 0x2000];
@@ -366,6 +363,12 @@ impl GameBoy {
 
     /// Advance the clock by 'count' cycles
     pub fn tick(&mut self, count: u64) {
+        #[cfg(feature = "vcd_trace")]
+        {
+            self.vcd_writer
+                .trace_gameboy(self.clock_count, self)
+                .unwrap();
+        }
         self.clock_count += count;
     }
 

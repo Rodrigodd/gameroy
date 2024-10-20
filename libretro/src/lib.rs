@@ -1,4 +1,5 @@
 use std::{
+    cell::{Cell, RefCell, RefMut},
     ffi::{c_char, c_void},
     io::Write,
     mem::MaybeUninit,
@@ -53,15 +54,20 @@ macro_rules! c_str {
 
 /// The Core global state.
 struct Core {
-    env_callback: retro_environment_t,
-    video_callback: retro_video_refresh_t,
-    audio_callback: retro_audio_sample_batch_t,
-    input_poll_callback: retro_input_poll_t,
-    input_state_callback: retro_input_state_t,
-    state: Option<GameBoy>,
+    env_callback: Cell<retro_environment_t>,
+    video_callback: Cell<retro_video_refresh_t>,
+    audio_callback: Cell<retro_audio_sample_batch_t>,
+    input_poll_callback: Cell<retro_input_poll_t>,
+    input_state_callback: Cell<retro_input_state_t>,
+    state: RefCell<Option<GameBoy>>,
 
     // A double buffer of the lcd screen pixels. Updated on vblank.
-    screen_buffer: [u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize],
+    screen_buffer: RefCell<[u8; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize]>,
+
+    #[cfg(debug_assertions)]
+    /// Use to assert that the libretro API is single-threaded. (Maybe libretro can call the API
+    /// from multiple threads, but let's assume it doesn't)
+    owner_thread: std::thread::ThreadId,
 }
 impl Default for Core {
     fn default() -> Self {
@@ -72,24 +78,32 @@ impl Default for Core {
             input_poll_callback: Default::default(),
             input_state_callback: Default::default(),
             state: Default::default(),
-            screen_buffer: [0; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize],
+            screen_buffer: [0; SCREEN_WIDTH as usize * SCREEN_HEIGHT as usize].into(),
+
+            #[cfg(debug_assertions)]
+            owner_thread: std::thread::current().id(),
         }
+    }
+}
+impl Core {
+    fn state_mut(&self) -> RefMut<GameBoy> {
+        RefMut::map(self.state.borrow_mut(), |x| x.as_mut().unwrap())
     }
 }
 
 static mut CORE: Option<Core> = None;
 
-fn core() -> &'static mut Core {
-    // RetroLib promises that it will not call the API from multiple threads, so this is safe, right?
-    // Actually this is unsafe because the caller could leak the mutable reference. This should be a
-    // RefCell or something.
-    // In fact, I am already doing UB, because I am calling core() in retro_run and in the
-    // v_blank_callback, creating two mutable references to CORE at the same time!
+fn core() -> &'static Core {
+    // SAFETY: the libretro API is single-threaded, so we can garantee there is no concurrent acess
+    // to this function. CORE is never mutate after being initialized, so subsequent calls to this
+    // function will not invalidate previous returned references.
     unsafe {
-        if CORE.is_none() {
-            CORE = Some(Core::default());
-        }
-        CORE.as_mut().unwrap()
+        let core = CORE.get_or_insert_with(Core::default);
+
+        // assert this is single-threaded
+        debug_assert_eq!(core.owner_thread, std::thread::current().id());
+
+        core
     }
 }
 
@@ -100,7 +114,7 @@ pub extern "C" fn retro_api_version() -> u32 {
 
 #[no_mangle]
 pub extern "C" fn retro_set_environment(callback: retro_environment_t) {
-    core().env_callback = callback;
+    core().env_callback.set(callback);
     let mut log_callback: retro_log_callback = retro_log_callback { log: None };
 
     if let Some(callback) = callback {
@@ -192,10 +206,10 @@ extern "C" fn retro_load_game(info: Option<&retro_game_info>) -> bool {
     let mut gb = GameBoy::new(None, cartridge);
     gb.sound.get_mut().sample_frequency = SAMPLE_RATE;
     gb.v_blank = Some(Box::new(|gb| {
-        core().screen_buffer = gb.ppu.get_mut().screen.packed();
+        *core().screen_buffer.borrow_mut() = gb.ppu.get_mut().screen.packed();
     }));
 
-    core().state = Some(gb);
+    *core().state.borrow_mut() = Some(gb);
 
     true
 }
@@ -203,15 +217,16 @@ extern "C" fn retro_load_game(info: Option<&retro_game_info>) -> bool {
 #[no_mangle]
 pub extern "C" fn retro_run() {
     let core = core();
-    let Some(state) = &mut core.state else {
-        log::error!("GameBoy is not loaded?");
-        return;
-    };
+    // let Some(state) = &mut core.state else {
+    //     log::error!("GameBoy is not loaded?");
+    //     return;
+    // };
 
-    state.joypad = 0xff;
-    if let (Some(input_poll), Some(input_state)) =
-        (core.input_poll_callback, core.input_state_callback)
-    {
+    core.state_mut().joypad = 0xff;
+    if let (Some(input_poll), Some(input_state)) = (
+        core.input_poll_callback.get(),
+        core.input_state_callback.get(),
+    ) {
         let key_map = [
             RETRO_DEVICE_ID_JOYPAD_RIGHT,
             RETRO_DEVICE_ID_JOYPAD_LEFT,
@@ -229,18 +244,18 @@ pub extern "C" fn retro_run() {
         for (i, id) in key_map.iter().copied().enumerate() {
             let value = unsafe { input_state(0, RETRO_DEVICE_JOYPAD, 0, id) };
             if value != 0 {
-                state.joypad &= !(1 << i);
+                core.state_mut().joypad &= !(1 << i);
             }
         }
     }
 
-    let target = state.clock_count + gameroy::consts::FRAME_CYCLES;
-    while state.clock_count < target {
-        Interpreter(state).interpret_op();
+    let target = core.state_mut().clock_count + gameroy::consts::FRAME_CYCLES;
+    while core.state_mut().clock_count < target {
+        Interpreter(&mut core.state_mut()).interpret_op();
     }
 
-    if let Some(callback) = core.video_callback {
-        let frame = core.screen_buffer.map(|c| {
+    if let Some(callback) = core.video_callback.get() {
+        let frame = core.screen_buffer.borrow_mut().map(|c| {
             /// 0RGB1555 format
             /// FIXME: this format is deprecated
             #[allow(clippy::unusual_byte_groupings)]
@@ -262,9 +277,10 @@ pub extern "C" fn retro_run() {
         }
     }
 
-    if let Some(callback) = core.audio_callback {
+    if let Some(callback) = core.audio_callback.get() {
         unsafe {
-            let buffer = state.sound.get_mut().get_output(state.clock_count);
+            let clock_count = core.state_mut().clock_count;
+            let buffer = core.state_mut().sound.get_mut().get_output(clock_count);
             let buffer: Vec<i16> = buffer.into_iter().map(|x| (x as i16 - 128) * 30).collect();
             (callback)(buffer.as_ptr(), buffer.len() as u64 / 2);
         }
@@ -274,25 +290,25 @@ pub extern "C" fn retro_run() {
 #[no_mangle]
 pub extern "C" fn retro_set_video_refresh(callback: retro_video_refresh_t) {
     log::info!("set video refresh");
-    core().video_callback = callback;
+    core().video_callback.set(callback);
 }
 
 #[no_mangle]
 pub extern "C" fn retro_set_audio_sample_batch(callback: retro_audio_sample_batch_t) {
     log::info!("set audio sample batch");
-    core().audio_callback = callback;
+    core().audio_callback.set(callback);
 }
 
 #[no_mangle]
 pub extern "C" fn retro_set_input_poll(callback: retro_input_poll_t) {
     log::info!("set input poll");
-    core().input_poll_callback = callback;
+    core().input_poll_callback.set(callback);
 }
 
 #[no_mangle]
 pub extern "C" fn retro_set_input_state(callback: retro_input_state_t) {
     log::info!("set input state");
-    core().input_state_callback = callback;
+    core().input_state_callback.set(callback);
 }
 
 #[no_mangle]

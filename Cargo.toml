@@ -23,7 +23,7 @@ license.workspace = true
 
 [lib]
 name = "gameroy_lib"
-crate_type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [features]
@@ -38,7 +38,7 @@ statistics = ["gameroy-jit/statistics"]
 
 emit_debug_info = ["gameroy-jit/emit_debug_info"]
 
-default = ["rfd", "audio-engine" ]
+default = ["rfd", "audio-engine"]
 
 [build-dependencies]
 resvg = "0.35.0"
@@ -62,21 +62,21 @@ audio-engine = { version = "0.4.2", optional = true }
 
 rfd = { version = "0.9.1", optional = true, features = ["file-handle-inner"] }
 
-serde = { version = "1", features = ["derive"] }
-ron = "0.6"
+serde = { version = "1.0.210", features = ["derive"] }
+ron = "0.8.1"
 
 winit = { version = "0.27.5", features = ["serde"] }
-log = "0.4.14"
+log = "0.4.22"
 
-image = { version = "0.24.3", default-features = false, features = ["png"] }
-parking_lot = "0.11"
-once_cell = "1.10.0"
+image = { version = "0.25.4", default-features = false, features = ["png"] }
+parking_lot = "0.12.3"
+once_cell = "1.20.2"
 instant = { version = "0.1.12", features = ["wasm-bindgen"] }
-flume = { version = "0.10.12", default-features = false }
+flume = { version = "0.11.1", default-features = false }
 cfg-if = "1.0.0"
-toml = "0.5.9"
-flate2 = "1.0.24"
-ureq = { version = "2.6.2", default-features = false }
+toml = "0.8.19"
+flate2 = "1.0.34"
+ureq = { version = "2.10.1", default-features = false }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 
@@ -84,20 +84,20 @@ gameroy-jit = { path = "jit" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 
-wasm-bindgen = "0.2.80"
-js-sys = "0.3"
+wasm-bindgen = "0.2.95"
+js-sys = "0.3.72"
 wasm-bindgen-futures = "0.4"
-base64 = "0.13"
+base64 = "0.22.1"
 [target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-version = "0.3"
+version = "0.3.72"
 features = ['Document', 'Element', 'Storage', 'Window', 'File', 'FileReader']
 
 [target.'cfg(target_os = "android")'.dependencies]
 
-ndk-glue = { version = "0.7", features = ["logger"] }
+ndk-glue = { version = "0.7.0", features = ["logger"] }
 ndk-context = { version = "0.1.1" }
-jni = "0.19.0"
-urlencoding = "2.1"
+jni = "0.21.0"
+urlencoding = "2.1.3"
 
 [patch.crates-io]
 
@@ -129,8 +129,6 @@ opt-level = 3
 [profile.dev.package.png]
 opt-level = 3
 [profile.dev.package.miniz_oxide]
-opt-level = 3
-[profile.dev.package.adler]
 opt-level = 3
 [profile.dev.package.flate2]
 opt-level = 3

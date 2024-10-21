@@ -7,7 +7,7 @@ use giui::{
     widgets::{ListBuilder, ScrollBar, ScrollView, ViewLayout},
     BuilderContext, ControlBuilder, Gui, GuiRender, Id,
 };
-use sprite_render::{Camera, NoopSpriteRender, SpriteInstance, SpriteRender, Texture, TextureId};
+use sprite_render::{Camera, SpriteInstance, SpriteRender, Texture, TextureId};
 use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
@@ -21,7 +21,7 @@ mod emulator_ui;
 pub use emulator_ui::create_emulator_ui;
 
 mod rom_loading_ui;
-pub use rom_loading_ui::{create_rom_loading_ui, RomEntries, RomEntry};
+pub use rom_loading_ui::{create_rom_loading_ui, RomEntries};
 
 struct Render<'a>(&'a mut dyn SpriteRender);
 impl<'a> GuiRenderer for Render<'a> {
@@ -79,10 +79,10 @@ impl Ui {
             .map(|x| Box::new(x) as Box<dyn SpriteRender>)
             .unwrap_or_else(|err| {
                 log::error!("failed to create GlSpriteRender: {:?}", err);
-                Box::new(NoopSpriteRender)
+                Box::new(sprite_render::NoopSpriteRender)
             });
         #[cfg(target_arch = "wasm32")]
-        let mut render = Box::new(sprite_render::WebGLSpriteRender::new(window));
+        let render = Box::new(sprite_render::WebGLSpriteRender::new(window));
 
         log::info!("loading graphics");
 
@@ -157,7 +157,6 @@ impl Ui {
             .set_position((size.width as f32) / 2.0, (size.height as f32) / 2.0);
 
         let scale_factor = window.scale_factor();
-        log::info!("scale factor: {}", scale_factor);
 
         self.gui.set_scale_factor(scale_factor);
 
@@ -210,6 +209,7 @@ impl Ui {
         }
     }
 
+    #[cfg(feature = "threads")]
     pub fn update_screen_texture(&mut self, img_data: &[u8]) {
         self.render
             .update_texture(TextureId(self.textures.screen), Some(img_data), None)

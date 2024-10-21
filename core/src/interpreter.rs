@@ -1294,7 +1294,7 @@ impl Interpreter<'_> {
         let value = self.0.read(address);
         #[cfg(feature = "io_trace")]
         self.0.io_trace.borrow_mut().push((
-            0 | ((self.0.clock_count & !3) as u8 >> 1),
+            GameBoy::IO_READ | ((self.0.clock_count & !3) as u8 >> 1),
             address,
             value,
         ));
@@ -1304,7 +1304,7 @@ impl Interpreter<'_> {
     fn gb_write(&mut self, address: u16, value: u8) {
         #[cfg(feature = "io_trace")]
         self.0.io_trace.borrow_mut().push((
-            1 | ((self.0.clock_count & !3) as u8 >> 1),
+            GameBoy::IO_WRITE | ((self.0.clock_count & !3) as u8 >> 1),
             address,
             value,
         ));

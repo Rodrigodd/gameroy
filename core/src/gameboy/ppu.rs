@@ -1596,6 +1596,7 @@ impl Ppu {
 
         // The ly becomes 0, 6 cycles after becoming 153
         let ly = if self.ly == 0 {
+            #[allow(clippy::manual_range_patterns)]
             match self.state {
                 19 | 20 | 21 | 22 | 23 => 153,
                 _ => 0,

@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, io::Write, sync::Arc};
+use std::{io::Write, sync::Arc};
 
 #[cfg(feature = "audio-engine")]
 use audio_engine::{AudioEngine, SoundSource};
@@ -50,7 +50,7 @@ enum EmulatorState {
 
 #[cfg(feature = "audio-engine")]
 struct Buffer {
-    buffer: Arc<ParkMutex<VecDeque<i16>>>,
+    buffer: Arc<ParkMutex<std::collections::VecDeque<i16>>>,
     sample_rate: u32,
 }
 #[cfg(feature = "audio-engine")]
@@ -346,7 +346,7 @@ impl Timeline {
 #[cfg(feature = "audio-engine")]
 struct SoundBackend {
     _audio_engine: AudioEngine,
-    audio_buffer: Arc<ParkMutex<VecDeque<i16>>>,
+    audio_buffer: Arc<ParkMutex<std::collections::VecDeque<i16>>>,
     last_buffer_len: usize,
 }
 
@@ -397,7 +397,8 @@ impl Emulator {
         #[cfg(feature = "audio-engine")]
         let sound = match AudioEngine::new() {
             Ok(audio_engine) => {
-                let audio_buffer = Arc::new(ParkMutex::new(VecDeque::<i16>::new()));
+                let audio_buffer =
+                    Arc::new(ParkMutex::new(std::collections::VecDeque::<i16>::new()));
                 let buffer = Buffer {
                     buffer: audio_buffer.clone(),
                     sample_rate: audio_engine.sample_rate(),
@@ -432,7 +433,7 @@ impl Emulator {
         let joypad_timeline = movie.map_or(Vec::new(), |m| {
             (0..BOOT_FRAMES)
                 .map(|_| 0)
-                .chain(m.controller_data.into_iter())
+                .chain(m.controller_data)
                 .map(|x| {
                     let joy = !(x as u8);
                     ((joy & 0x0F) << 4) | (joy >> 4)
@@ -650,7 +651,7 @@ impl Emulator {
                     let mut gb = self.gb.lock();
                     let mut joypad = self.joypad.lock();
                     loop {
-                        let Some(last_clock_count) = joypad.last_frame_clock_count()  else {
+                        let Some(last_clock_count) = joypad.last_frame_clock_count() else {
                             log::warn!("there is no last frame");
                             break;
                         };
@@ -802,9 +803,6 @@ impl Emulator {
     }
 
     fn update_audio(&mut self) {
-        let mut gb = self.gb.lock();
-        let clock_count = gb.clock_count;
-        let buffer = gb.sound.get_mut().get_output(clock_count);
         #[cfg(feature = "audio-engine")]
         if let Some(SoundBackend {
             audio_buffer,
@@ -812,6 +810,10 @@ impl Emulator {
             ..
         }) = &mut self.sound
         {
+            let mut gb = self.gb.lock();
+            let clock_count = gb.clock_count;
+            let buffer = gb.sound.get_mut().get_output(clock_count);
+
             let mut lock = audio_buffer.lock();
             if lock.len() == 0 {
                 // if the buffer is empty, add zeros to increase it

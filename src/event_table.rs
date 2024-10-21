@@ -10,10 +10,6 @@ use giui::{Context, Id};
 
 pub trait Event: Clone + 'static {}
 
-#[derive(Clone)]
-pub struct Debug(pub bool);
-impl Event for Debug {}
-
 #[derive(Clone, Copy)]
 pub struct FrameUpdated;
 impl Event for FrameUpdated {}
@@ -90,7 +86,7 @@ impl EventTable {
         let list = self.listeners.entry(TypeId::of::<E>()).or_insert_with(|| {
             Rc::new(List::<E> {
                 listeners: Default::default(),
-                _event: PhantomData::default(),
+                _event: PhantomData,
             })
         });
         list.clone().downcast::<List<E>>().unwrap()

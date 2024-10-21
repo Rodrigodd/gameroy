@@ -225,11 +225,7 @@ impl<'a> BlockCompiler<'a> {
             self.instrs[i].accum_clock_count = self.accum_clock_count;
 
             // if false, the opcode was compiled to a interpreter call.
-            if self.compile_opcode(ops, op) {
-                last_one_was_compiled = true;
-            } else {
-                last_one_was_compiled = false;
-            }
+            last_one_was_compiled = self.compile_opcode(ops, op);
 
             if curr_check > 0 {
                 debug_assert!(
@@ -333,7 +329,15 @@ impl<'a> BlockCompiler<'a> {
             _length: self.block_trace.length,
             initial_block_clock_cycles: self.block_trace.interrupt_checks[0].1,
             _max_clock_cycles: self.block_trace.interrupt_checks.iter().map(|x| x.1).sum(),
-            fn_ptr: unsafe { std::mem::transmute(compiled_code.as_ptr()) },
+
+            // SAFETY: The pointer points to executable memory, containing valid machine code,
+            // complying with the function ABI.
+            fn_ptr: unsafe {
+                std::mem::transmute::<*const u8, unsafe extern "sysv64" fn(&mut GameBoy)>(
+                    compiled_code.as_ptr(),
+                )
+            },
+
             _compiled_code: compiled_code,
             _bytes: bytes,
             #[cfg(feature = "statistics")]
@@ -483,7 +487,7 @@ impl<'a> BlockCompiler<'a> {
             .position(|x| x.pc == address && x.bank == curr_bank);
 
         let Some(target) = target else {
-            return self.exit_block(ops)
+            return self.exit_block(ops);
         };
 
         let target_was_compiled = self.curr_instr >= target;
@@ -496,7 +500,7 @@ impl<'a> BlockCompiler<'a> {
             .find(|x| *x > self.instrs[target].curr_clock_count);
 
         let Some(next_check) = next_check else {
-            return self.exit_block(ops)
+            return self.exit_block(ops);
         };
 
         self.check_interrupt(ops, self.instrs[target].curr_clock_count, next_check);
@@ -1719,16 +1723,16 @@ impl<'a> BlockCompiler<'a> {
         }
 
         #[cfg(feature = "io_trace")]
-        let mut io_trace = |ops: &mut Assembler, address: u16| {
+        let io_trace = |this: &mut Self, ops: &mut Assembler, address: u16| {
             extern "sysv64" fn trace_write(gb: &mut GameBoy, address: u16, value: u8) {
                 gb.io_trace.borrow_mut().push((
-                    1 | ((gb.clock_count & !3) as u8 >> 1),
+                    GameBoy::IO_WRITE | ((gb.clock_count & !3) as u8 >> 1),
                     address,
                     value,
                 ));
             }
 
-            self.update_clock_count(ops);
+            this.update_clock_count(ops);
             dynasm!(ops
                 ; .arch x64
                 ; mov rax, QWORD trace_write as usize as i64
@@ -1758,7 +1762,7 @@ impl<'a> BlockCompiler<'a> {
                 );
 
                 #[cfg(feature = "io_trace")]
-                io_trace(&mut *ops, address);
+                io_trace(self, &mut *ops, address);
 
                 self.tick(4);
                 return;
@@ -1781,7 +1785,7 @@ impl<'a> BlockCompiler<'a> {
                 );
 
                 #[cfg(feature = "io_trace")]
-                io_trace(ops, address);
+                io_trace(self, ops, address);
 
                 self.tick(4);
                 return;
@@ -1821,11 +1825,11 @@ impl<'a> BlockCompiler<'a> {
         let address = self.get_immediate16();
 
         #[cfg(feature = "io_trace")]
-        let mut io_trace = |this: &mut Self, ops: &mut Assembler, address: u16| {
+        let io_trace = |this: &mut Self, ops: &mut Assembler, address: u16| {
             extern "sysv64" fn trace_read(gb: &mut GameBoy, address: u16) {
                 let value = gb.read(address);
                 gb.io_trace.borrow_mut().push((
-                    0 | ((gb.clock_count & !3) as u8 >> 1),
+                    GameBoy::IO_READ | ((gb.clock_count & !3) as u8 >> 1),
                     address,
                     value,
                 ));
@@ -1841,6 +1845,7 @@ impl<'a> BlockCompiler<'a> {
             );
         };
 
+        #[allow(clippy::manual_range_patterns)]
         match address {
             // Cartridge ROM, lower bank
             0x0000..=0x3FFF => {
@@ -4127,9 +4132,11 @@ impl<'a> BlockCompiler<'a> {
             let start_next_interrupt = gb.next_interrupt.get();
             let value = gb.read(address);
             #[cfg(feature = "io_trace")]
-            gb.io_trace
-                .borrow_mut()
-                .push((0 | ((gb.clock_count & !3) as u8 >> 1), address, value));
+            gb.io_trace.borrow_mut().push((
+                GameBoy::IO_READ | ((gb.clock_count & !3) as u8 >> 1),
+                address,
+                value,
+            ));
             debug_assert!(
                 gb.next_interrupt.get() >= start_next_interrupt,
                 "{} >= {} (read {:04x})",
@@ -4155,9 +4162,11 @@ impl<'a> BlockCompiler<'a> {
     fn write_mem(&mut self, ops: &mut Assembler) {
         extern "sysv64" fn write(gb: &mut GameBoy, address: u16, value: u8) {
             #[cfg(feature = "io_trace")]
-            gb.io_trace
-                .borrow_mut()
-                .push((1 | ((gb.clock_count & !3) as u8 >> 1), address, value));
+            gb.io_trace.borrow_mut().push((
+                GameBoy::IO_WRITE | ((gb.clock_count & !3) as u8 >> 1),
+                address,
+                value,
+            ));
             gb.write(address, value);
         }
 

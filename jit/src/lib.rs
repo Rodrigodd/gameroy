@@ -24,7 +24,15 @@ pub struct Block {
     _length: u16,
     initial_block_clock_cycles: u32,
     _max_clock_cycles: u32,
+
+    /// The function pointer to the compiled code. Points into `_compiled_code`'s' buffer, so its
+    /// lifetime is associated with that one.
+    ///
+    /// # SAFETY
+    ///
+    /// Must not be called after `_compiled_code` is dropped.
     fn_ptr: unsafe extern "sysv64" fn(&mut GameBoy),
+
     pub _compiled_code: ExecutableBuffer,
     _bytes: usize,
 
@@ -39,9 +47,7 @@ pub struct Block {
 impl Block {
     #[inline(never)]
     fn call(&self, gb: &mut GameBoy) {
-        // SAFETY: As long as `Block`s are only generated from BlockCompiler::compile, and
-        // Self::_compiled_code is not mutated, self.fn_ptr should be pointing to a valid x64
-        // function.
+        // SAFETY: `_compiled_code` is still a valid executable buffer.
         unsafe { (self.fn_ptr)(gb) }
     }
 }

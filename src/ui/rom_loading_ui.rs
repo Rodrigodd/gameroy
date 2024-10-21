@@ -12,7 +12,7 @@ use giui::{
     widgets::{Button, ListBuilder},
     Id,
 };
-use winit::{event_loop::EventLoopProxy, window::Window};
+use winit::event_loop::EventLoopProxy;
 
 use crate::{
     config::config,
@@ -622,7 +622,7 @@ pub fn create_rom_loading_ui(
             style.delete_button.clone(),
             true,
             move |_, ctx| {
-                let handle = ctx.get::<std::rc::Rc<Window>>().clone();
+                let handle = ctx.get::<std::rc::Rc<winit::window::Window>>().clone();
                 let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
                 let task = async move {
                     let handle = &*handle;
@@ -676,7 +676,7 @@ pub fn create_rom_loading_ui(
             style.delete_button.clone(),
             true,
             move |_, ctx| {
-                let handle = ctx.get::<std::rc::Rc<Window>>().clone();
+                let handle = ctx.get::<std::rc::Rc<winit::window::Window>>().clone();
                 let proxy = ctx.get::<EventLoopProxy<UserEvent>>().clone();
                 let task = async move {
                     let handle = &*handle;

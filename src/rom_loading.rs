@@ -88,7 +88,7 @@ pub fn get_thumb(file_name: &str) -> Result<Vec<u8>, String> {
             image.as_raw().as_slice(),
             image.width(),
             image.height(),
-            image::ColorType::Rgba8,
+            image::ExtendedColorType::Rgba8,
         )
         .map_err(|err| format!("failed to png encode thumbnail: {}", err))?;
 

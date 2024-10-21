@@ -11,7 +11,7 @@ cargo-fuzz = true
 io_trace = ["gameroy-core/io_trace", "gameroy-jit/io_trace"]
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = "0.4.7"
 gameroy-core = { path = "../core" }
 gameroy-jit = { path = "../jit" }
 

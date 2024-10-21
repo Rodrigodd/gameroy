@@ -85,13 +85,13 @@ mod loaded_files {
                 return *texture;
             }
 
-            let data = loop {
+            let data = 'data: {
                 if name == "white.png" {
                     let mut image_buffer = ImageBuffer::new(1, 1);
                     image_buffer
                         .pixels_mut()
                         .for_each(|x| *x = Rgba::<u8>::from([255, 255, 255, 255]));
-                    break image_buffer;
+                    break 'data image_buffer;
                 }
 
                 let mut path = config::base_folder().unwrap();
@@ -105,9 +105,8 @@ mod loaded_files {
                         return (0, 0, 0);
                     }
                 };
-                let data = data.to_rgba8();
 
-                break data;
+                data.to_rgba8()
             };
 
             // FIXME: this is vunerable to hash collisions, and relies on how TextureId is used
@@ -296,7 +295,12 @@ pub struct Style {
     pub fold_icon: FoldIcon,
     pub button_panel: Graphic,
     pub delete_icon: Graphic,
+    #[cfg_attr(
+        not(all(feature = "rfd", not(target_arch = "wasm32"))),
+        allow(dead_code)
+    )]
     pub open_icon: Graphic,
+    #[cfg_attr(not(feature = "rfd"), allow(dead_code))]
     pub file_icon: Graphic,
     pub menu_icon: Graphic,
     pub forward_icon: Graphic,

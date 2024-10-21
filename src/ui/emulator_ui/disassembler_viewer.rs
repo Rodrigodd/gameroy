@@ -1,4 +1,4 @@
-use std::{any::Any, ops::Range, sync::Arc, usize};
+use std::{any::Any, ops::Range, sync::Arc};
 
 use gameroy::{
     debugger::{break_flags, Debugger},

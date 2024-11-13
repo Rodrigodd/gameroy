@@ -24,11 +24,6 @@ jobs:
     - name: Install depencies
       run: sudo apt-get install libasound2-dev libgtk-3-dev
 
-    - name: Install resvg
-      run: cargo install resvg
-    - name: Install cargo-about
-      run: cargo install cargo-about
-
     - uses: robinraju/release-downloader@v1.5
       with: 
         repository: "c-sp/gameboy-test-roms"
@@ -51,6 +46,9 @@ jobs:
         cargo build --profile=fast --verbose -p gameroy-native
         --target=x86_64-unknown-linux-gnu 
         --features=static
+
+    - name: Install cargo-about
+      run: cargo install cargo-about
 
     - name: Cargo About
       run: cargo about generate -m native/Cargo.toml -c license/about-linux.toml license/about.hbs > license/license.html
@@ -93,8 +91,6 @@ jobs:
 
     - uses: Swatinem/rust-cache@v2
 
-    - name: Install resvg
-      run: cargo install resvg
     - name: Install cargo-about
       run: cargo install cargo-about
 
@@ -154,8 +150,6 @@ jobs:
         i686-linux-android
         x86_64-linux-android
 
-    - name: Install resvg
-      run: cargo install resvg
     - name: Install cargo-about
       run: cargo install cargo-about
 

@@ -531,6 +531,9 @@ fn diff<T: std::fmt::Debug>(a: &T, b: &T) {
 }
 
 fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
+    a.update_all();
+    b.update_all();
+
     if a != b {
         println!();
         println!();

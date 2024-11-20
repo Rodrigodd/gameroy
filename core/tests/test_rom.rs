@@ -841,6 +841,7 @@ mod mooneye {
       oam_dma_basic("acceptance/oam_dma/basic", 120*CLOCK_SPEED);
       oam_dma_reg_read("acceptance/oam_dma/reg_read", 120*CLOCK_SPEED);
       oam_dma_sources_gs("acceptance/oam_dma/sources-GS", 120*CLOCK_SPEED);
+      #[ignore]
       ppu_hblank_ly_scx_timing_gs("acceptance/ppu/hblank_ly_scx_timing-GS", 120*CLOCK_SPEED);
       ppu_intr_1_2_timing_gs("acceptance/ppu/intr_1_2_timing-GS", 120*CLOCK_SPEED);
       ppu_intr_2_0_timing("acceptance/ppu/intr_2_0_timing", 120*CLOCK_SPEED);

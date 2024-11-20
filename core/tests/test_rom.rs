@@ -526,13 +526,17 @@ fn save_state3() {
     log!(romstr, "number of loads: {}", count);
 }
 
+fn diff<T: std::fmt::Debug>(a: &T, b: &T) {
+    text_diff::print_diff(&format!("{:#?}", a), &format!("{:#?}", b), "\n");
+}
+
 fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
     if a != b {
         println!();
         println!();
         if a.cpu != b.cpu {
-            println!("cpu don't match: {:?}", a.cpu);
-            println!("                 {:?}", b.cpu);
+            println!("cpu don't match:");
+            diff(&a.cpu, &b.cpu);
         }
         if a.cartridge != b.cartridge {
             println!("cartridge don't match")
@@ -550,15 +554,15 @@ fn assert_gb_eq(a: &GameBoy, b: &GameBoy) -> bool {
             println!("clock_count don't match")
         }
         if a.timer != b.timer {
-            println!("timer don't match: {:?}", a.timer);
-            println!("                   {:?}", b.timer);
+            println!("timer don't match:");
+            diff(&a.timer, &b.timer);
         }
         if a.sound != b.sound {
             println!("sound don't match")
         }
         if a.ppu != b.ppu {
-            println!("ppu don't match: {:?}", a.ppu);
-            println!("                 {:?}", b.ppu);
+            println!("ppu don't match:");
+            diff(&a.ppu, &b.ppu);
         }
         if a.joypad != b.joypad {
             println!("joypad don't match: {:02x}", a.joypad);

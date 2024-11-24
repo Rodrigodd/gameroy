@@ -10,172 +10,190 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  linux-build-and-test:
 
+  linux-cargo-clippy:
     runs-on: ubuntu-20.04
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-    - name: Update apt
-      run: sudo apt update
-    - name: Install depencies
-      run: sudo apt-get install libasound2-dev libgtk-3-dev
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt-get install libasound2-dev libgtk-3-dev
+          rustup target add wasm32-unknown-unknown
 
-    - name: Install resvg
-      run: cargo install resvg
-    - name: Install cargo-about
-      run: cargo install cargo-about
+      - name: Clippy All Features
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-    - uses: robinraju/release-downloader@v1.5
-      with: 
-        repository: "c-sp/gameboy-test-roms"
-        tag: "v5.1"
-        fileName: "game-boy-test-roms-v5.1.zip"
+      - name: Clippy No Features
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
-    - name: Unzip test roms
-      run: unzip game-boy-test-roms-v5.1.zip -d core/tests/gameboy-test-roms/
+      - name: Clippy Wasm
+        run: cargo clippy --target wasm32-unknown-unknown -p gameroy-wasm --all-features -- -D warnings
 
-    - name: Run tests
-      run: cargo test --verbose --workspace
-
-    - uses: jetli/wasm-pack-action@v0.3.0
-      with:
-        # Optional version of wasm-pack to install(eg. 'v0.9.1', 'latest')
-        version: 'latest'
-
-    - name: Build Linux
-      run: >
-        cargo build --profile=fast --verbose -p gameroy-native
-        --target=x86_64-unknown-linux-gnu 
-        --features=static
-
-    - name: Cargo About
-      run: cargo about generate -m native/Cargo.toml -c license/about-linux.toml license/about.hbs > license/license.html
-
-    - name: Form a Package
-      run: |
-        mkdir package
-        cp target/x86_64-unknown-linux-gnu/fast/gameroy-native package/gameroy.exe
-        cp license/license.html package/
-        cp gameroy.toml package/
-
-    - name: Archive Linux
-      uses: actions/upload-artifact@v3
-      with:
-        name: gameroy-x86_64-unknown-linux-gnu
-        path: package/
-
-    - name: Build Wasm
-      run: |
-        cd wasm
-        wasm-pack build --target web
-        cp ../license/license.html .
-
-    - name: Archive Web
-      uses: actions/upload-artifact@v3
-      with:
-        name: gameroy-wasm
-        path: |
-          wasm/index.html
-          wasm/license.html
-          wasm/pkg/gameroy_wasm_bg.wasm
-          wasm/pkg/gameroy_wasm.js
-
-  windows-build:
-
-    runs-on: windows-latest
+  linux-build-and-test:
+    runs-on: ubuntu-20.04
+    needs: linux-cargo-clippy
 
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-    - name: Install resvg
-      run: cargo install resvg
-    - name: Install cargo-about
-      run: cargo install cargo-about
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt-get install libasound2-dev libgtk-3-dev
 
-    - name: Build Windows
-      run: >
-        cargo build -p gameroy-native --profile=fast --verbose
-        --target=x86_64-pc-windows-msvc  
-        --no-default-features --features=static,rfd,audio-engine,threads
+      - uses: robinraju/release-downloader@v1.5
+        with: 
+          repository: "c-sp/gameboy-test-roms"
+          tag: "v5.1"
+          fileName: "game-boy-test-roms-v5.1.zip"
 
-    - name: Cargo About
-      run: cargo about generate -m native\Cargo.toml -c license\about-windows.toml license\about.hbs > license\license.html
+      - name: Unzip test roms
+        run: unzip game-boy-test-roms-v5.1.zip -d core/tests/gameboy-test-roms/
 
-    - name: Form a Package
-      run: |
-        mkdir package
-        copy target\x86_64-pc-windows-msvc\fast\gameroy-native.exe package\gameroy.exe
-        copy license\license.html package\
-        copy gameroy.toml package\
+      - name: Run tests
+        run: cargo test --verbose --workspace
+
+      - uses: jetli/wasm-pack-action@v0.3.0
+        with:
+          # Optional version of wasm-pack to install(eg. 'v0.9.1', 'latest')
+          version: 'latest'
+
+      - name: Build Linux
+        run: >
+          cargo build --profile=fast --verbose -p gameroy-native
+          --target=x86_64-unknown-linux-gnu 
+          --features=static
+
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.6.6
+
+      - name: Cargo About
+        run: cargo about generate -m native/Cargo.toml -c license/about-linux.toml license/about.hbs -o license/license.html
+
+      - name: Form a Package
+        run: |
+          mkdir package
+          cp target/x86_64-unknown-linux-gnu/fast/gameroy-native package/gameroy.exe
+          cp license/license.html package/
+          cp gameroy.toml package/
+
+      - name: Archive Linux
+        uses: actions/upload-artifact@v3
+        with:
+          name: gameroy-x86_64-unknown-linux-gnu
+          path: package/
+
+      - name: Build Wasm
+        run: |
+          cd wasm
+          wasm-pack build --target web
+          cp ../license/license.html .
+
+      - name: Archive Web
+        uses: actions/upload-artifact@v3
+        with:
+          name: gameroy-wasm
+          path: |
+            wasm/index.html
+            wasm/license.html
+            wasm/pkg/gameroy_wasm_bg.wasm
+            wasm/pkg/gameroy_wasm.js
+
+  windows-build:
+    runs-on: windows-latest
+    needs: linux-cargo-clippy
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-about
+        run: cargo install cargo-about
+
+      - name: Build Windows
+        run: >
+          cargo build -p gameroy-native --profile=fast --verbose
+          --target=x86_64-pc-windows-msvc  
+          --no-default-features --features=static,rfd,audio-engine,threads
+
+      - name: Cargo About
+        run: cargo about generate -m native\Cargo.toml -c license\about-windows.toml license\about.hbs -o license\license.html
+
+      - name: Form a Package
+        run: |
+          mkdir package
+          copy target\x86_64-pc-windows-msvc\fast\gameroy-native.exe package\gameroy.exe
+          copy license\license.html package\
+          copy gameroy.toml package\
 
 
-    - name: Archive Windows
-      uses: actions/upload-artifact@v3
-      with:
-        name: gameroy-x86_64-pc-windows-msvc 
-        path: package/
+      - name: Archive Windows
+        uses: actions/upload-artifact@v3
+        with:
+          name: gameroy-x86_64-pc-windows-msvc 
+          path: package/
 
   android-build:
-
     runs-on: ubuntu-latest
+    needs: linux-cargo-clippy
 
     defaults:
       run:
         working-directory: ./android
     steps:
 
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
 
-    - name: set up JDK 11
-      uses: actions/setup-java@v3
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: gradle
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: adopt
+          cache: gradle
 
-    - name: Update apt
-      run: sudo apt update
-    - name: Install depencies
-      run: sudo apt-get install libasound2-dev libgtk-3-dev
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt-get install libasound2-dev libgtk-3-dev
 
-    - name: Install android targets
-      run: >-
-        rustup target install
-        aarch64-linux-android
-        armv7-linux-androideabi
-        i686-linux-android
-        x86_64-linux-android
+      - name: Install android targets
+        run: >-
+          rustup target install
+          aarch64-linux-android
+          armv7-linux-androideabi
+          i686-linux-android
+          x86_64-linux-android
 
-    - name: Install resvg
-      run: cargo install resvg
-    - name: Install cargo-about
-      run: cargo install cargo-about
+      - name: Install cargo-about
+        run: cargo install cargo-about
 
-    - name: Write Keystore.properties
-      env:
-        KEYSTORE_PROPERTIES: ${{ secrets.KEYSTORE_PROPERTIES }}
-      run: echo "$KEYSTORE_PROPERTIES" > keystore.properties
+      - name: Write Keystore.properties
+        env:
+          KEYSTORE_PROPERTIES: ${{ secrets.KEYSTORE_PROPERTIES }}
+        run: echo "$KEYSTORE_PROPERTIES" > keystore.properties
 
-    - name: Write keystore.jks
-      env:
-        ENCODED_KEYSTORE: ${{ secrets.KEYSTORE }}
-      run: echo $ENCODED_KEYSTORE | base64 -di > keystore.jks
+      - name: Write keystore.jks
+        env:
+          ENCODED_KEYSTORE: ${{ secrets.KEYSTORE }}
+        run: echo $ENCODED_KEYSTORE | base64 -di > keystore.jks
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-    - name: Build Android
-      run: ./gradlew build
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+      - name: Build Android
+        run: ./gradlew assembleRelease
 
-    - name: Archive release APK
-      uses: actions/upload-artifact@v3
-      with:
-        name: gameroy-android
-        path: android/app/build/outputs/apk/release/app-release.apk
+      - name: Archive release APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: gameroy-android
+          path: android/app/build/outputs/apk/release/app-release.apk

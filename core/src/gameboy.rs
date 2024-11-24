@@ -68,7 +68,7 @@ pub struct GameBoy {
     /// The clock_count when the next interrupt may happen.
     pub next_interrupt: Cell<u64>,
 
-    /// trace of reads and writes. (kind | ((clock_count & !3) >> 1), address, value), kind: 0=read,1=write
+    /// trace of reads and writes. (kind | ((clock_count & !3) >> 1), address, value), kind: 0=GameBoy::IO_READ,1=GameBoy::IO_WRITE
     #[cfg(feature = "io_trace")]
     pub io_trace: RefCell<Vec<(u8, u16, u8)>>,
 }
@@ -148,6 +148,11 @@ crate::save_state!(GameBoy, self, ctx, data {
     on_load self.update_next_interrupt();
 });
 impl GameBoy {
+    #[cfg(feature = "io_trace")]
+    pub const IO_READ: u8 = 0;
+    #[cfg(feature = "io_trace")]
+    pub const IO_WRITE: u8 = 1;
+
     pub fn new(boot_rom: Option<[u8; 0x100]>, cartridge: Cartridge) -> Self {
         let mut this = Self {
             trace: RefCell::new(Trace::new()),

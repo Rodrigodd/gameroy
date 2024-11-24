@@ -148,6 +148,7 @@ impl CartridgeHeader {
     }
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(PartialEq, Eq, Clone)]
 enum Mbc {
     None(Mbc0),
@@ -227,7 +228,7 @@ impl Cartridge {
         let mbc_kind = header.cartridge_type;
         let mbc = match mbc_kind {
             0 | 8 | 9 => Mbc::None(Mbc0 {}),
-            1 | 2 | 3 => 'mbc1: {
+            1..=3 => 'mbc1: {
                 // Detect if it is a MBC1M card
                 if header.rom_size == 5 {
                     let mut number_of_games = 0;
@@ -248,8 +249,8 @@ impl Cartridge {
                 Mbc::Mbc1(Mbc1::new())
             }
             5 | 6 => Mbc::Mbc2(Mbc2::new()),
-            0x0F | 0x10 | 0x11 | 0x12 | 0x13 => Mbc::Mbc3(Mbc3::new()),
-            0x19 | 0x1A | 0x1B | 0x1C | 0x1D | 0x1E => Mbc::Mbc5(Mbc5::new()),
+            0x0F..=0x13 => Mbc::Mbc3(Mbc3::new()),
+            0x19..=0x1E => Mbc::Mbc5(Mbc5::new()),
             _ => {
                 return Err(format!(
                     "MBC type '{}' ({:02x}) is not supported",
@@ -585,7 +586,7 @@ impl Mbc1 {
         (lower_bank, upper_bank)
     }
 
-    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+    pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
         match address {
             // ROM Bank X0
             0x0000..=0x3FFF => {
@@ -631,7 +632,7 @@ impl Mbc1 {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8, rom: &[u8], ram: &mut Vec<u8>) {
+    pub fn write(&mut self, address: u16, value: u8, rom: &[u8], ram: &mut [u8]) {
         match address {
             // RAM Enable
             0x0000..=0x1FFF => {
@@ -745,7 +746,7 @@ impl Mbc1M {
         (lower_bank, upper_bank)
     }
 
-    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+    pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
         match address {
             // ROM Bank X0
             0x0000..=0x3FFF => {
@@ -791,7 +792,7 @@ impl Mbc1M {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8, rom: &[u8], ram: &mut Vec<u8>) {
+    pub fn write(&mut self, address: u16, value: u8, rom: &[u8], ram: &mut [u8]) {
         match address {
             // RAM Enable
             0x0000..=0x1FFF => {
@@ -1015,7 +1016,7 @@ impl Mbc3 {
         (lower_bank, upper_bank)
     }
 
-    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+    pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
         match address {
             // ROM Bank 00
             0x0000..=0x3FFF => rom[address as usize],
@@ -1060,7 +1061,7 @@ impl Mbc3 {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut Vec<u8>) {
+    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut [u8]) {
         match address {
             // RAM Enable
             0x0000..=0x1FFF => {
@@ -1191,7 +1192,7 @@ impl Mbc5 {
         (lower_bank, upper_bank)
     }
 
-    pub fn read(&self, address: u16, rom: &[u8], ram: &Vec<u8>) -> u8 {
+    pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
         match address {
             // ROM Bank 00
             0x0000..=0x3FFF => rom[address as usize],
@@ -1214,7 +1215,7 @@ impl Mbc5 {
         }
     }
 
-    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut Vec<u8>) {
+    pub fn write(&mut self, address: u16, value: u8, _rom: &[u8], ram: &mut [u8]) {
         match address {
             // RAM Enable
             0x0000..=0x1FFF => {

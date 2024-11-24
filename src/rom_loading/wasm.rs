@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use gameroy::gameboy::cartridge::CartridgeHeader;
+use base64::engine::{general_purpose::STANDARD as BASE64, Engine};
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 
 pub fn load_roms(_roms_path: &str) -> Result<Vec<RomFile>, String> {
@@ -22,7 +22,9 @@ pub fn load_file(file_name: &str) -> Result<Vec<u8>, String> {
         .map_err(|_| "error getting item from local storage".to_string())?
         .ok_or_else(|| "save not found".to_string())?;
 
-    base64::decode(save).map_err(|err| format!("failed decoding save: {}", err.to_string()))
+    BASE64
+        .decode(save)
+        .map_err(|err| format!("failed decoding save: {}", err))
 }
 
 pub fn save_file(file_name: &str, data: &[u8]) -> Result<(), String> {
@@ -32,7 +34,7 @@ pub fn save_file(file_name: &str, data: &[u8]) -> Result<(), String> {
         .map_err(|_| "error getting local storage".to_string())?
         .ok_or_else(|| "local storage is null".to_string())?;
 
-    let save = base64::encode(data);
+    let save = BASE64.encode(data);
 
     local_storage
         .set_item(file_name, &save)

@@ -22,7 +22,8 @@ io_trace = []
 [dependencies]
 
 [dev-dependencies]
-image = { version = "0.24", default-features = false, features = ["png"] }
+image = { version = "0.25.4", default-features = false, features = ["png"] }
 rand = "0.8.4"
-criterion = "0.4"
-rayon = "1.6.1"
+criterion = "0.5.1"
+rayon = "1.10.0"
+text-diff = "0.4.0"

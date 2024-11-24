@@ -63,7 +63,7 @@ impl Layout for SplitView {
 
         let left = ctx
             .get_active_children(this)
-            .get(0)
+            .first()
             .map(|&id| ctx.get_min_size(id))
             .unwrap_or([0.0, 0.0]);
         let right = ctx
@@ -96,7 +96,7 @@ impl Layout for SplitView {
             return;
         }
 
-        let left_child = ctx.get_active_children(this).get(0).copied();
+        let left_child = ctx.get_active_children(this).first().copied();
         let right_child = ctx.get_active_children(this).get(1).copied();
 
         let rect = ctx.get_layouting(this);

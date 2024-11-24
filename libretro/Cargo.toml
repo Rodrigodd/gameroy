@@ -14,4 +14,4 @@ crate-type = ["cdylib"]
 [dependencies]
 rust-libretro-sys = "0.1.5"
 gameroy-core = { path = "../core", default-features = false }
-log = "0.4.17"
+log = "0.4.22"

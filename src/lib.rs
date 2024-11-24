@@ -1,3 +1,6 @@
+// To minimize changes between platforms, we still use Arc-Mutex on Wasm.
+#![allow(clippy::arc_with_non_send_sync)]
+
 #[cfg(target_arch = "wasm32")]
 pub static RESIZE: parking_lot::Mutex<Option<(u32, u32)>> = parking_lot::const_mutex(None);
 
@@ -222,7 +225,7 @@ fn start_event_loop(
                     } => {
                         log::debug!("clear ui");
                         ui.clear();
-                        ui.reload_graphics(&*window);
+                        ui.reload_graphics(&window);
                         log::debug!("build ui");
                         last(app).build_ui(&mut ui);
                     }
@@ -260,7 +263,7 @@ fn start_event_loop(
                 {
                     if let Some((width, height)) = RESIZE.lock().take() {
                         let size = winit::dpi::PhysicalSize { width, height };
-                        ui.resize(size.clone(), &window);
+                        ui.resize(size, &window);
                         window.set_inner_size(size);
                     }
                 }
@@ -347,8 +350,6 @@ trait App: Any {
     );
 
     fn build_ui(&self, ui: &mut ui::Ui);
-
-    fn as_any(&mut self) -> &mut dyn Any;
 }
 
 struct RomLoadingApp;
@@ -392,13 +393,10 @@ impl App for RomLoadingApp {
         let style = &gui.get::<style::Style>().clone();
         ui::create_rom_loading_ui(gui, style, ui.event_table.clone());
     }
-
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
 struct EmulatorApp {
+    #[cfg(feature = "threads")]
     lcd_screen: Arc<
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
@@ -473,7 +471,9 @@ impl EmulatorApp {
         };
 
         EmulatorApp {
+            #[cfg(feature = "threads")]
             lcd_screen,
+
             emu_channel,
             #[cfg(feature = "threads")]
             emu_thread,
@@ -611,7 +611,6 @@ impl App for EmulatorApp {
                     WatchsUpdated => ui.notify(event_table::WatchsUpdated),
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
-                        ui.notify(event_table::Debug(value));
                         self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
                     }
                     _ => {}
@@ -619,10 +618,6 @@ impl App for EmulatorApp {
             }
             _ => {}
         }
-    }
-
-    fn as_any(&mut self) -> &mut dyn Any {
-        self
     }
 }
 

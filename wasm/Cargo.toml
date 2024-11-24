@@ -10,7 +10,7 @@ license.workspace = true
 
 [lib]
 name = "gameroy_wasm"
-crate_type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [features]
@@ -23,6 +23,6 @@ default = ["audio-engine", "static", "rfd"]
 
 [dependencies]
 gameroy = { path = "..", default-features = false }
-wasm-bindgen = "0.2.80"
+wasm-bindgen = "0.2.95"
 console_error_panic_hook = "0.1.7"
 wasm-logger = "0.2.0"

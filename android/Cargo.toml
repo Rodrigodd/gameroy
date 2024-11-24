@@ -10,7 +10,7 @@ license.workspace = true
 
 [lib]
 name = "gameroy_android"
-crate_type = ["cdylib", "rlib"]
+crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [features]
@@ -24,8 +24,8 @@ default = ["threads", "audio-engine", "static", "rfd"]
 
 [dependencies]
 gameroy = { path = "..", default-features = false }
-log = "0.4.14"
+log = "0.4.22"
 jni = "0.19.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
-ndk-glue = { version = "0.7", features = ["logger"] }
+ndk-glue = { version = "0.7.0", features = ["logger"] }

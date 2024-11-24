@@ -72,7 +72,7 @@ impl SaveState for SaveStateHeader {
         if let Some(time) = ctx.time {
             time.save_state(ctx, data)?;
         } else {
-            u64::max_value().save_state(ctx, data)?;
+            u64::MAX.save_state(ctx, data)?;
         }
         Ok(())
     }
@@ -93,7 +93,7 @@ impl SaveState for SaveStateHeader {
         if ctx.version > 1 {
             let mut time = 0;
             time.load_state(ctx, data)?;
-            ctx.time = (time != u64::max_value()).then_some(time);
+            ctx.time = (time != u64::MAX).then_some(time);
         } else {
             ctx.time = None;
         }

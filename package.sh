@@ -2,7 +2,7 @@
 
 # a script for packaging the app for linux release.
 
-cargo about generate -m native\Cargo.toml -c license\about-linux.toml license\about.hbs > license\license.html
+cargo about generate -m native/Cargo.toml -c license/about-linux.toml license/about.hbs -o license/license.html
 cargo build --profile minsize --features=static,rfd,audio-engine
 
 mkdir package

@@ -174,12 +174,16 @@ extern "C" fn retro_load_game(info: Option<&retro_game_info>) -> bool {
     log::info!("retro load game");
 
     // load rom data into core
-    let Some(info) = info else { return false } ;
+    let Some(info) = info else { return false };
 
     let data = unsafe { std::slice::from_raw_parts(info.data as *const u8, info.size as usize) };
     let cartridge = match Cartridge::new(data.to_vec()) {
-        Ok(x) => x,
-        Err(err) => {
+        Ok(rom) => rom,
+        Err((err, Some(rom))) => {
+            log::warn!("Warnings when loading rom: {}", err);
+            rom
+        }
+        Err((err, None)) => {
             log::error!("Error loading rom: {}", err);
             return false;
         }
@@ -371,7 +375,10 @@ impl log::Log for RetroLogger {
             let Ok(mut file) = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
-                .open(path) else { return };
+                .open(path)
+            else {
+                return;
+            };
 
             let _ = writeln!(
                 &mut file,

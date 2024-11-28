@@ -22,7 +22,15 @@ cfg_if::cfg_if! {
 pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, String> {
     let boot_rom = load_boot_rom();
 
-    let mut cartridge = Cartridge::new(rom)?;
+    let mut cartridge = match Cartridge::new(rom) {
+        Ok(rom) => Ok(rom),
+        Err((warn, Some(rom))) => {
+            println!("Warning: {}", warn);
+            log::error!("{}", warn);
+            Ok(rom)
+        }
+        Err((err, None)) => Err(err),
+    }?;
     log::info!("Cartridge type: {}", cartridge.kind_name());
 
     if let Some(ram) = ram {

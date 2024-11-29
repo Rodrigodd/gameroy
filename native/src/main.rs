@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use clap::{ArgAction, Args, Parser, Subcommand};
 use gameroy_lib::config::parse_screen_size;
-use gameroy_lib::{config, gameroy, rom_loading::load_gameboy, RomFile};
+use gameroy_lib::{config, gameroy, rom_loading::load_gameboy_with_spec, RomFile};
 
 mod bench;
 
@@ -35,7 +35,7 @@ pub struct Cli {
     //
     // The disassembly produced follows no particular synxtax, and don't show all instructions or
     // data. It only shows instructions that are statically reachable from the entry point.
-    #[arg(long)]
+    #[arg(long, requires("rom_path"))]
     disassembly: bool,
 
     /// Play the given .vbm file
@@ -73,6 +73,17 @@ pub struct Cli {
     /// The initial size of the window
     #[arg(long, value_name = "WIDTHxHEIGHT")]
     screen_size: Option<String>,
+
+    /// The MBC type of the rom
+    ///
+    /// Overrides the MBC type of the rom, useful in case its is not correctly detected. Must be a
+    /// string in the format "<type>,<rom_sise>,<ram_size>", where <type> is the MBC type (either
+    /// "MBC1", "MBC1M", "MBC2", "MBC3" or "MBC5"), <rom_size> is the size of the rom in bytes, and
+    /// <ram_size> is the size of the ram in bytes. The sizes must be a power of 2 multiple of
+    /// 0x4000. The size can be in decimal or hexadecimal format, and can have a suffix of "B",
+    ///
+    #[arg(long)]
+    mbc: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -202,7 +213,7 @@ pub fn main() {
                 Err(e) => return eprintln!("failed to load '{}': {}", rom_path, e),
             };
 
-            let gb = load_gameboy(rom, None);
+            let gb = load_gameboy_with_spec(rom, None, args.mbc.as_deref());
             let mut gb = match gb {
                 Ok(x) => x,
                 Err(e) => return eprintln!("failed to load rom: {}", e),
@@ -230,7 +241,7 @@ pub fn main() {
 
         let file = RomFile::from_path(PathBuf::from(rom_path));
 
-        let gb = load_gameboy(rom, None);
+        let gb = load_gameboy_with_spec(rom, None, args.mbc.as_deref());
         match gb {
             Ok(x) => Some((file, x)),
             Err(e) => return eprintln!("failed to load rom: {}", e),

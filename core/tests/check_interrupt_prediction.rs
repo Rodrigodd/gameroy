@@ -100,7 +100,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     let rom = std::fs::read(rom_path).unwrap();
     let cartridge = match Cartridge::new(rom) {
         Ok(x) => x,
-        Err(x) => {
+        Err((x, _)) => {
             eprintln!("Error reading rom: {}", x);
             return true;
         }

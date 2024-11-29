@@ -1,5 +1,12 @@
 ignore-dev-dependencies = true
 ignore-build-dependencies = true
-accepted = ["Apache-2.0", "MIT", "Unicode-DFS-2016", "ISC", "BSD-3-Clause"]
+accepted = [
+    "Apache-2.0",
+    "MIT",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "ISC",
+    "BSD-3-Clause",
+]
 
 targets = ["aarch64-linux-android"]

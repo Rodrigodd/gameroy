@@ -20,9 +20,25 @@ cfg_if::cfg_if! {
 }
 
 pub fn load_gameboy(rom: Vec<u8>, ram: Option<Vec<u8>>) -> Result<Box<GameBoy>, String> {
+    load_gameboy_with_spec(rom, ram, None)
+}
+
+pub fn load_gameboy_with_spec(
+    rom: Vec<u8>,
+    ram: Option<Vec<u8>>,
+    spec: Option<&str>,
+) -> Result<Box<GameBoy>, String> {
     let boot_rom = load_boot_rom();
 
-    let mut cartridge = Cartridge::new(rom)?;
+    let mut cartridge = match Cartridge::new_with_spec_str(rom, spec) {
+        Ok(rom) => Ok(rom),
+        Err((warn, Some(rom))) => {
+            println!("Warning: {}", warn.strip_suffix('\n').unwrap_or(&warn));
+            log::warn!("{}", warn);
+            Ok(rom)
+        }
+        Err((err, None)) => Err(err),
+    }?;
     log::info!("Cartridge type: {}", cartridge.kind_name());
 
     if let Some(ram) = ram {

@@ -1,4 +1,4 @@
-use std::{convert::TryInto, io::Read};
+use std::{convert::TryInto, fmt::Write, io::Read};
 
 use crate::save_state::{LoadStateError, SaveState, SaveStateContext};
 
@@ -6,6 +6,31 @@ const NINTENDOO_LOGO: [u8; 48] = [
     0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
     0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
     0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
+];
+
+// The size of the ROM in bytes, for each type of ROM size.
+const ROM_SIZES: &[usize] = &[
+    2 * 0x4000, // no ROM Banking
+    4 * 0x4000,
+    8 * 0x4000,
+    16 * 0x4000,
+    32 * 0x4000,
+    64 * 0x4000,
+    128 * 0x4000,
+    256 * 0x4000,
+    512 * 0x4000,
+    // 72 * 0x2000,
+    // 80 * 0x2000,
+    // 96 * 0x2000,
+];
+
+const RAM_SIZES: &[usize] = &[
+    0,
+    0x800,
+    0x2000, // Single Bank
+    4 * 0x2000,
+    16 * 0x2000,
+    8 * 0x2000,
 ];
 
 fn mbc_type_name(code: u8) -> &'static str {
@@ -114,27 +139,9 @@ impl CartridgeHeader {
         self.logo[..0x18] == NINTENDOO_LOGO[..0x18]
     }
 
-    pub fn rom_size_in_bytes(&self) -> Result<usize, String> {
-        let rom_sizes = [
-            2 * 0x4000, // no ROM Banking
-            4 * 0x4000,
-            8 * 0x4000,
-            16 * 0x4000,
-            32 * 0x4000,
-            64 * 0x4000,
-            128 * 0x4000,
-            256 * 0x4000,
-            512 * 0x4000,
-            // 72 * 0x2000,
-            // 80 * 0x2000,
-            // 96 * 0x2000,
-        ];
+    pub fn rom_size_in_bytes(&self) -> Option<usize> {
         let rom_size_type = self.rom_size;
-        let rom_size = rom_sizes
-            .get(rom_size_type as usize)
-            .copied()
-            .ok_or_else(|| format!("Rom size '{:02x}' is no supported", rom_size_type))?;
-        Ok(rom_size)
+        ROM_SIZES.get(rom_size_type as usize).copied()
     }
 
     pub fn title_as_string(&self) -> String {
@@ -159,6 +166,174 @@ enum Mbc {
     Mbc5(Mbc5),
 }
 
+enum MbcKind {
+    Mbc0,
+    Mbc1,
+    Mbc1M,
+    Mbc2,
+    Mbc3,
+    Mbc5,
+}
+
+pub struct MbcSpecification {
+    // The mbc type, as indicated in the cartridge header.
+    kind: MbcKind,
+    // The rom size, in bytes. Should be a value in ROM_SIZES.
+    rom_size: usize,
+    // The ram size, in bytes. Should be a value in RAM_SIZES.
+    ram_size: usize,
+}
+
+impl MbcSpecification {
+    fn from_str(string: &str) -> Result<Self, String> {
+        let mut parts = string.split(',');
+
+        let error_message = "expected 3 comma separated values";
+
+        let kind = parts.next().ok_or(error_message)?;
+        let rom_size = parts.next().ok_or(error_message)?;
+        let ram_size = parts.next().ok_or(error_message)?;
+
+        if parts.next().is_some() {
+            return Err(error_message.to_string());
+        }
+
+        let kind = match kind {
+            "MBC1" => MbcKind::Mbc1,
+            "MBC1M" => MbcKind::Mbc1M,
+            "MBC2" => MbcKind::Mbc2,
+            "MBC3" => MbcKind::Mbc3,
+            "MBC5" => MbcKind::Mbc5,
+            _ => return Err(format!("invalid mbc type '{}'", kind)),
+        };
+
+        let rom_size = crate::parser::parse_size(rom_size)
+            .ok()
+            .or_else(|| crate::parser::parse_number(rom_size).ok())
+            .ok_or_else(|| format!("invalid rom size '{}'", rom_size))?
+            as usize;
+
+        ROM_SIZES
+            .iter()
+            .find(|&&x| x == rom_size)
+            .ok_or_else(|| format!("invalid rom size '{}'", rom_size))?;
+
+        let ram_size = crate::parser::parse_size(ram_size)
+            .ok()
+            .or_else(|| crate::parser::parse_number(ram_size).ok())
+            .ok_or_else(|| format!("invalid ram size '{}'", ram_size))?
+            as usize;
+
+        RAM_SIZES
+            .iter()
+            .find(|&&x| x == ram_size)
+            .ok_or_else(|| format!("invalid ram size '{}'", ram_size))?;
+
+        Ok(Self {
+            kind,
+            rom_size,
+            ram_size,
+        })
+    }
+
+    fn from_header(header: &CartridgeHeader, error: &mut String, rom: &[u8]) -> Option<Self> {
+        let rom_size = header
+            .rom_size_in_bytes()
+            .ok_or_else(|| format!("Rom size type '{:02x}' is not supported", header.rom_size));
+
+        let rom_size = match rom_size {
+            Ok(rom_size) if rom_size != rom.len() => {
+                let size = *ROM_SIZES.iter().find(|&&x| x >= rom.len()).unwrap();
+                writeln!(
+                    error,
+                    "The ROM header expected rom size as '{}' bytes, but the given rom has '{}' bytes. Deducing size from ROM size as {}.",
+                    rom_size,
+                    rom.len(),
+                    size,
+                ).unwrap();
+                size
+            }
+            Ok(size) => size,
+            Err(err) => {
+                let size = *ROM_SIZES.iter().find(|&&x| x >= rom.len()).unwrap();
+                writeln!(error, "{}, deducing size from ROM size as {}", err, size,).unwrap();
+                size
+            }
+        };
+
+        // Cartridge Type
+        let mbc_kind = header.cartridge_type;
+        let kind = match mbc_kind {
+            0 | 8 | 9 => MbcKind::Mbc0,
+            1..=3 => 'mbc1: {
+                // Detect if it is a MBC1M card
+                if header.rom_size == 5 {
+                    let mut number_of_games = 0;
+                    for i in 0..4 {
+                        let header = match CartridgeHeader::from_bytes(&rom[i * 0x40000..]) {
+                            Ok(x) | Err((Some(x), _)) => x,
+                            Err((None, _)) => continue,
+                        };
+                        if header.check_logo() {
+                            number_of_games += 1;
+                        }
+                    }
+                    // multicarts will have, at least, a game selecion screen, and two other games.
+                    if number_of_games >= 3 {
+                        break 'mbc1 MbcKind::Mbc1M;
+                    }
+                }
+                MbcKind::Mbc1
+            }
+            5 | 6 => MbcKind::Mbc2,
+            0x0F..=0x13 => MbcKind::Mbc3,
+            0x19..=0x1E => MbcKind::Mbc5,
+            _ => {
+                writeln!(
+                    error,
+                    "MBC type '{}' ({:02x}) is not supported",
+                    mbc_type_name(mbc_kind),
+                    mbc_kind
+                )
+                .unwrap();
+                return None;
+            }
+        };
+
+        let ram_size_type = header.ram_size;
+
+        let ram_size = if let MbcKind::Mbc2 = kind {
+            if ram_size_type != 0 {
+                writeln!(
+                    error,
+                    "Cartridge use MBC2, with a integrated ram (type '00'), but report the ram type '{:02x}'",
+                    ram_size_type,
+                ).unwrap();
+            }
+            0x200
+        } else {
+            match RAM_SIZES.get(ram_size_type as usize).copied() {
+                Some(x) => x,
+                None => {
+                    writeln!(
+                        error,
+                        "Ram size type '{:02x}' is not supported, using RAM size as 0x2000",
+                        ram_size_type,
+                    )
+                    .unwrap();
+                    0x2000
+                }
+            }
+        };
+
+        Some(Self {
+            kind,
+            rom_size,
+            ram_size,
+        })
+    }
+}
+
 #[derive(PartialEq, Eq, Clone)]
 pub struct Cartridge {
     pub header: CartridgeHeader,
@@ -170,6 +345,21 @@ pub struct Cartridge {
     pub ram: Vec<u8>,
     mbc: Mbc,
 }
+
+impl std::fmt::Debug for Cartridge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cartridge")
+            // .field("header", &self.header)
+            .field("lower_bank", &self.lower_bank)
+            .field("upper_bank", &self.upper_bank)
+            .field("rom.len()", &self.rom.len())
+            .field("ram.len()", &self.ram.len())
+            // .field("mbc", &self.mbc)
+            .field("kind_name", &self.kind_name())
+            .finish()
+    }
+}
+
 impl SaveState for Cartridge {
     fn save_state(
         &self,
@@ -207,89 +397,79 @@ impl SaveState for Cartridge {
         Ok(())
     }
 }
+
+#[allow(clippy::result_large_err)]
 impl Cartridge {
-    pub fn new(rom: Vec<u8>) -> Result<Self, String> {
+    pub fn new(rom: Vec<u8>) -> Result<Self, (String, Option<Self>)> {
+        Self::new_maybe_with_spec(rom, None)
+    }
+
+    pub fn new_with_spec_str(
+        rom: Vec<u8>,
+        spec: Option<&str>,
+    ) -> Result<Self, (String, Option<Self>)> {
+        Self::new_maybe_with_spec(
+            rom,
+            match spec {
+                None => None,
+                Some(spec) => Some(MbcSpecification::from_str(spec).map_err(|x| (x, None))?),
+            },
+        )
+    }
+
+    /// Create a new cartridge from the given ROM. If the ROM is invalid, return the a error
+    /// message and a deduced cartridge, if possible.
+    fn new_maybe_with_spec(
+        mut rom: Vec<u8>,
+        spec: Option<MbcSpecification>,
+    ) -> Result<Self, (String, Option<Self>)> {
+        let mut error = String::new();
+
         let header = match CartridgeHeader::from_bytes(&rom) {
-            Ok(x) | Err((Some(x), _)) => x,
-            Err((None, err)) => return Err(err),
+            Ok(x) => x,
+            Err((Some(x), err)) => {
+                writeln!(&mut error, "{}", err).unwrap();
+                x
+            }
+            Err((None, err)) => return Err((err, None)),
         };
 
-        let rom_size = header.rom_size_in_bytes()?;
-
-        if rom_size != rom.len() {
-            return Err(format!(
-                "In the rom header the expected size is '{}' bytes, but the given rom has '{}' bytes",
-                rom_size,
-                rom.len()
-            ));
-        }
-
-        // Cartridge Type
-        let mbc_kind = header.cartridge_type;
-        let mbc = match mbc_kind {
-            0 | 8 | 9 => Mbc::None(Mbc0 {}),
-            1..=3 => 'mbc1: {
-                // Detect if it is a MBC1M card
-                if header.rom_size == 5 {
-                    let mut number_of_games = 0;
-                    for i in 0..4 {
-                        let header = match CartridgeHeader::from_bytes(&rom[i * 0x40000..]) {
-                            Ok(x) | Err((Some(x), _)) => x,
-                            Err((None, _)) => continue,
-                        };
-                        if header.check_logo() {
-                            number_of_games += 1;
-                        }
-                    }
-                    // multicarts will have, at least, a game selecion screen, and two other games.
-                    if number_of_games >= 3 {
-                        break 'mbc1 Mbc::Mbc1M(Mbc1M::new());
-                    }
-                }
-                Mbc::Mbc1(Mbc1::new())
-            }
-            5 | 6 => Mbc::Mbc2(Mbc2::new()),
-            0x0F..=0x13 => Mbc::Mbc3(Mbc3::new()),
-            0x19..=0x1E => Mbc::Mbc5(Mbc5::new()),
-            _ => {
-                return Err(format!(
-                    "MBC type '{}' ({:02x}) is not supported",
-                    mbc_type_name(mbc_kind),
-                    mbc_kind
-                ))
-            }
+        let spec = match spec {
+            Some(spec) => spec,
+            None => match MbcSpecification::from_header(&header, &mut error, &rom) {
+                Some(v) => v,
+                None => return Err((error, None)),
+            },
         };
 
-        let ram_sizes = [
-            0,
-            0x800,
-            0x2000, // Single Bank
-            4 * 0x2000,
-            16 * 0x2000,
-            8 * 0x2000,
-        ];
-        let ram_size_type = header.ram_size;
+        let rom_size = spec.rom_size;
 
-        let ram_size = if let Mbc::Mbc2(_) = mbc {
-            if ram_size_type != 0 {
-                return Err(format!("Cartridge use MBC2, with a integrated ram (type '00'), but report the ram type '{:02x}'", ram_size_type));
-            }
-            0x200
-        } else {
-            ram_sizes
-                .get(ram_size_type as usize)
-                .copied()
-                .ok_or_else(|| format!("Ram size '{:02x}' is no supported", ram_size_type))?
+        // resize the rom in case the header expected a different size
+        rom.resize(rom_size, 0);
+
+        let mbc = match spec.kind {
+            MbcKind::Mbc0 => Mbc::None(Mbc0 {}),
+            MbcKind::Mbc1 => Mbc::Mbc1(Mbc1::new()),
+            MbcKind::Mbc1M => Mbc::Mbc1M(Mbc1M::new()),
+            MbcKind::Mbc2 => Mbc::Mbc2(Mbc2::new()),
+            MbcKind::Mbc3 => Mbc::Mbc3(Mbc3::new()),
+            MbcKind::Mbc5 => Mbc::Mbc5(Mbc5::new()),
         };
 
-        Ok(Self {
+        let cartridge = Self {
             header,
             lower_bank: 0,
             upper_bank: 1,
             rom,
-            ram: vec![0; ram_size],
+            ram: vec![0; spec.ram_size],
             mbc,
-        })
+        };
+
+        if !error.is_empty() {
+            return Err((error, Some(cartridge)));
+        }
+
+        Ok(cartridge)
     }
 
     /// A Cartridge filled with HALT instructions. Used as a test cartridge, when the CPU does not

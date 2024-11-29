@@ -1,5 +1,9 @@
 use std::io::{Read, Seek, SeekFrom};
 
+mod size;
+
+pub use size::{parse_number, parse_size};
+
 fn read_u32(file: &mut impl Read) -> Result<u32, std::io::Error> {
     let mut value = [0; 4];
     file.read_exact(&mut value)?;

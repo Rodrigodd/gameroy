@@ -162,7 +162,7 @@ fn test_interrupt_prediction(rom: &str, timeout: u64) -> bool {
     };
     let cartridge = match Cartridge::new(rom) {
         Ok(x) => x,
-        Err(x) => {
+        Err((x, _)) => {
             eprintln!("Error reading rom: {}", x);
             return true;
         }

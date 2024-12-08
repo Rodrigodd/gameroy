@@ -255,9 +255,16 @@ impl MbcSpecification {
             }
             Ok(size) => size,
             Err(err) => {
-                let size = *ROM_SIZES.iter().find(|&&x| x >= rom.len()).unwrap();
-                writeln!(error, "{}, deducing size from ROM size as {}", err, size,).unwrap();
-                size
+                match ROM_SIZES.iter().copied().find(|&x| x >= rom.len()) {
+                    Some(size) => {
+                        writeln!(error, "{}, deducing size from ROM size as {}", err, size,).unwrap();
+                        size
+                    }
+                    None => {
+                        writeln!(error, "{}", err).unwrap();
+                        return None;
+                    }
+                }
             }
         };
 

@@ -82,6 +82,13 @@ impl Interpreter<'_> {
 
         #[cfg(feature = "vcd_trace")]
         {
+            const MB: usize = 1024 * 1024;
+            if self.0.vcd_writer.buffer_size() > 8 * MB {
+                self.0.update_all();
+                println!("VCD committed");
+                self.0.vcd_writer.commit().unwrap();
+            }
+
             self.0.cpu.op = self.0.read(self.0.cpu.pc);
         }
 

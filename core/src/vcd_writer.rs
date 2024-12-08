@@ -13,12 +13,18 @@ const CYCLE_PERIOD: u64 = 244 / TIMESCALE;
 
 const OFFSET: u64 = (31999502 - 976) / TIMESCALE;
 
+// Convert clock count to timestamp
+fn clock_to_timestamp(clock: u64) -> u64 {
+    OFFSET + clock * CYCLE_PERIOD
+}
+
 type MaxWidth = u16;
+type WireIndex = u8;
 
 macro_rules! decl_regs {
     ($name:ident, $module:literal, $var:ident : $type:ty, $($reg:ident, $width:expr => $value:expr;)*) => {
         pub struct $name {
-            $($reg: Wire,)*
+            $($reg: WireIndex,)*
         }
         impl $name {
             fn new(writer: &mut MyWriter) -> std::io::Result<Self> {
@@ -30,8 +36,8 @@ macro_rules! decl_regs {
                 Ok(this)
             }
 
-            fn trace(&self, writer: &mut MyWriter, $var: $type) -> std::io::Result<()> {
-                $(writer.change(&self.$reg, ($value) as MaxWidth)?;)*
+            fn trace(&self, timestamp: u64, writer: &mut MyWriter, $var: $type) -> std::io::Result<()> {
+                $(writer.change(timestamp, self.$reg, ($value) as MaxWidth)?;)*
                 Ok(())
             }
         }
@@ -92,10 +98,15 @@ struct Wire {
     id: vcd::IdCode,
     value: std::cell::Cell<MaxWidth>,
     width: u8,
+    name: String,
 }
 
 struct MyWriter {
     writer: vcd::Writer<BufWriter<File>>,
+    // Buffer of (timestamp, wire, value)
+    buffer: Vec<(u64, WireIndex, MaxWidth)>,
+    wires: Vec<Wire>,
+    last_commit: u64,
 }
 impl MyWriter {
     fn new(filename: &str) -> std::io::Result<Self> {
@@ -105,7 +116,12 @@ impl MyWriter {
 
         writer.timescale(TIMESCALE as u32, vcd::TimescaleUnit::NS)?;
 
-        Ok(Self { writer })
+        Ok(Self {
+            writer,
+            buffer: Vec::new(),
+            wires: Vec::new(),
+            last_commit: 0,
+        })
     }
 
     fn add_module(&mut self, name: &str) -> std::io::Result<()> {
@@ -116,32 +132,67 @@ impl MyWriter {
         self.writer.upscope()
     }
 
-    fn add_wire(&mut self, width: u8, name: &str) -> std::io::Result<Wire> {
+    fn add_wire(&mut self, width: u8, name: &str) -> std::io::Result<WireIndex> {
         let id = self.writer.add_wire(width as u32, name)?;
-        Ok(Wire {
+        let index = self.wires.len();
+
+        if index > WireIndex::MAX as usize {
+            panic!("Too many wires");
+        }
+
+        let wire = Wire {
             id,
             width,
             value: 0x8000.into(),
-        })
+            name: name.to_string(),
+        };
+
+        self.wires.push(wire);
+
+        Ok(index as WireIndex)
     }
 
-    fn change(&mut self, wire: &Wire, value: MaxWidth) -> std::io::Result<()> {
+    fn change(
+        &mut self,
+        clock_count: u64,
+        index: WireIndex,
+        value: MaxWidth,
+    ) -> std::io::Result<()> {
+        let timestamp = clock_to_timestamp(clock_count);
+        self.change_ns(timestamp, index, value)
+    }
+
+    #[inline(never)]
+    fn change_ns(
+        &mut self,
+        timestamp: u64,
+        index: WireIndex,
+        value: MaxWidth,
+    ) -> std::io::Result<()> {
+        let wire = self.wires.get(index as usize).unwrap();
+        debug_assert!(
+            self.last_commit <= timestamp,
+            "{} < {} at {}",
+            self.last_commit,
+            timestamp,
+            wire.name
+        );
+
         if wire.value.get() == value {
             return Ok(());
         }
         wire.value.set(value);
 
-        if wire.width == 1 {
-            self.writer.change_scalar(wire.id, value != 0)?;
-        } else {
-            self.writer
-                .change_vector(wire.id, to_bits(wire.width, value))?;
+        if self
+            .buffer
+            .last()
+            .map_or(false, |&(t, i, _)| t == timestamp && i == index)
+        {
+            self.buffer.pop();
         }
-        Ok(())
-    }
+        self.buffer.push((timestamp, index, value));
 
-    fn timestamp(&mut self, clock_count: u64) -> std::io::Result<()> {
-        self.writer.timestamp(OFFSET + clock_count * CYCLE_PERIOD)
+        Ok(())
     }
 
     fn begin(&mut self) -> std::io::Result<()> {
@@ -149,12 +200,40 @@ impl MyWriter {
         self.writer.begin(vcd::SimulationCommand::Dumpvars)?;
         Ok(())
     }
+
+    fn commit(&mut self) -> std::io::Result<()> {
+        self.buffer
+            .sort_unstable_by_key(|(timestamp, _, _)| *timestamp);
+
+        for (timestamp, index, value) in self.buffer.drain(..) {
+            if timestamp != self.last_commit {
+                debug_assert!(
+                    self.last_commit <= timestamp,
+                    "{} < {}",
+                    self.last_commit,
+                    timestamp
+                );
+                self.writer.timestamp(timestamp)?;
+                self.last_commit = timestamp;
+            }
+
+            let wire = self.wires.get(index as usize).unwrap();
+            if wire.width == 1 {
+                self.writer.change_scalar(wire.id, value == 1)?;
+            } else {
+                self.writer
+                    .change_vector(wire.id, to_bits(wire.width, value))?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 pub(crate) struct VcdWriter {
     writer: RefCell<MyWriter>,
     last_clock_count: Cell<u64>,
-    clk: Wire,
+    clk: WireIndex,
     gameboy_regs: GameboyRegs,
     cpu_regs: CpuRegs,
     ppu_regs: PpuRegs,
@@ -202,20 +281,20 @@ impl VcdWriter {
 
         if self.last_clock_count.get() != u64::MAX {
             for c in self.last_clock_count.get()..clock_count {
-                writer.writer.timestamp(OFFSET + c * CYCLE_PERIOD + 1)?;
-                writer.change(&self.clk, 0)?;
-                writer.writer.timestamp(OFFSET + (c + 1) * CYCLE_PERIOD)?;
-                writer.change(&self.clk, 1)?;
+                let t = clock_to_timestamp(c);
+                let delta = CYCLE_PERIOD / 2;
+                writer.change_ns(t + delta, self.clk, 0)?;
+                writer.change_ns(t + 2*delta, self.clk, 1)?;
             }
         } else {
-            writer.timestamp(clock_count)?;
-            writer.change(&self.clk, 1)?;
+            writer.change(clock_count, self.clk, 1)?;
         }
 
         self.last_clock_count.set(clock_count);
 
-        self.gameboy_regs.trace(&mut writer, gameboy)?;
-        self.cpu_regs.trace(&mut writer, &gameboy.cpu)?;
+        self.gameboy_regs.trace(clock_count, &mut writer, gameboy)?;
+        self.cpu_regs
+            .trace(clock_count, &mut writer, &gameboy.cpu)?;
 
         Ok(())
     }
@@ -223,11 +302,17 @@ impl VcdWriter {
     pub fn trace_ppu(&self, clock_count: u64, ppu: &Ppu) -> std::io::Result<()> {
         let mut writer = self.writer.borrow_mut();
 
-        writer.timestamp(clock_count)?;
-
-        self.ppu_regs.trace(&mut writer, ppu)?;
+        self.ppu_regs.trace(clock_count, &mut writer, ppu)?;
 
         Ok(())
+    }
+
+    pub fn buffer_size(&self) -> usize {
+        self.writer.borrow().buffer.len() * std::mem::size_of::<(u64, WireIndex, MaxWidth)>()
+    }
+
+    pub fn commit(&self) -> std::io::Result<()> {
+        self.writer.borrow_mut().commit()
     }
 }
 

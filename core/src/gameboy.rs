@@ -426,6 +426,9 @@ impl GameBoy {
         self.update_timer();
         self.update_serial();
         self.update_sound();
+
+        #[cfg(feature = "vcd_trace")]
+        self.vcd_writer.trace_gameboy(self.clock_count, self).unwrap();
     }
 
     fn update_ppu(&self) {

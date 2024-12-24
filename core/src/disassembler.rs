@@ -360,18 +360,14 @@ impl Trace {
             return;
         }
 
-        let cursors = &std::cell::RefCell::new(cursors);
-
         let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
-        cursors.borrow_mut().extend(step);
+        cursors.extend(step);
 
-        let Some(jump) = jump else {
-            return
-        };
+        let Some(jump) = jump else { return };
 
         if let Some(to) = Address::from_cursor(&jump) {
             self.add_jump(address, to);
-            cursors.borrow_mut().push(jump);
+            cursors.push(jump);
         }
     }
 
@@ -527,7 +523,15 @@ pub fn compute_step(
                         None,
                     )
                 }
-                (None, 0x0000..=0x7FFF) => (None, None),
+                (None, 0x0000..=0x7FFF) => (
+                    Some(Cursor {
+                        bank0,
+                        bank,
+                        pc: pc.wrapping_add(len as u16),
+                        reg_a: None,
+                    }),
+                    None,
+                ),
                 _ => (
                     Some(Cursor {
                         bank0,

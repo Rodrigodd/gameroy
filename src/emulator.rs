@@ -362,6 +362,7 @@ pub struct Emulator {
     rom: RomFile,
 
     debug: bool,
+    debug_halt: bool,
     state: EmulatorState,
     // When true, the program will sync the time that passed, and the time that is emulated.
     frame_limit: bool,
@@ -475,6 +476,7 @@ impl Emulator {
             joypad,
             rom,
             debug: false,
+            debug_halt: false,
             state: EmulatorState::Idle,
             frame_limit: !config.frame_skip,
             rewind: false,
@@ -590,6 +592,8 @@ impl Emulator {
             RunFrame => {
                 if !self.debug {
                     self.set_state(EmulatorState::RunNoBreak);
+                } else if !self.debug_halt {
+                    self.set_state(EmulatorState::Run);
                 }
             }
             FrameLimit(value) => {
@@ -628,6 +632,7 @@ impl Emulator {
                     return false;
                 }
                 self.debug = value;
+                self.debug_halt = value;
                 if self.debug {
                     self.debugger.lock().last_op_clock = None;
                     self.set_state(EmulatorState::Idle);
@@ -644,6 +649,7 @@ impl Emulator {
                         self.debugger.lock().step(gb);
                     }
                     self.set_state(EmulatorState::Idle);
+                    self.debug_halt = true;
                 }
             }
             StepBack => {
@@ -684,6 +690,7 @@ impl Emulator {
             Run => {
                 if self.debug {
                     self.set_state(EmulatorState::Run);
+                    self.debug_halt = false;
                     // Run a single step, to ignore the current breakpoint
                     let gb = &mut *self.gb.lock();
                     self.debugger.lock().step(gb);
@@ -713,16 +720,18 @@ impl Emulator {
                     let mut gb = self.gb.lock();
                     let mut debugger = self.debugger.lock();
                     use RunResult::*;
-                    match debugger.run_for(&mut gb, CLOCK_SPEED / 600) {
+                    match debugger.run_for(&mut gb, CLOCK_SPEED / 180) {
                         ReachBreakpoint | ReachTargetAddress | ReachTargetClock => {
                             drop(gb);
                             drop(debugger);
                             self.set_state(EmulatorState::Idle);
+                            self.debug_halt = true;
                             return Control::Wait;
                         }
                         TimeOut => {}
                     }
                 }
+                self.set_state(EmulatorState::WaitNextFrame);
                 return Control::Poll;
             }
             EmulatorState::RunNoBreak => {

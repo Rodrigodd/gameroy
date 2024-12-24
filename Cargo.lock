@@ -1201,6 +1201,7 @@ dependencies = [
 name = "gameroy-android"
 version = "0.3.1"
 dependencies = [
+ "android-activity",
  "gameroy",
  "jni",
  "log",

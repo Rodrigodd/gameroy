@@ -29,7 +29,7 @@ default = ["threads", "console", "audio-engine", "rfd"]
 
 gameroy = { path = "..", default-features = false }
 
-winit = "0.26.1"
+winit = "0.28.7"
 flexi_logger = "0.29.3"
 clap = { version = "4.5.20", features = ["derive"] }
 log = "0.4"

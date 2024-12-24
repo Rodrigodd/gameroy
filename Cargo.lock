@@ -1354,13 +1354,12 @@ dependencies = [
 [[package]]
 name = "giui"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#0ca02cfd232afef19be98d5d1752e146ebdfe02e"
+source = "git+https://github.com/Rodrigodd/giui#4788a4150ee8db1853822ccd42b936504555ee60"
 dependencies = [
  "ab_glyph",
  "bitflags 1.3.2",
  "copypasta",
  "giui-derive",
- "glutin",
  "instant",
  "keyed_priority_queue",
  "log",
@@ -1374,7 +1373,7 @@ dependencies = [
 [[package]]
 name = "giui-derive"
 version = "0.1.0"
-source = "git+https://github.com/Rodrigodd/giui#0ca02cfd232afef19be98d5d1752e146ebdfe02e"
+source = "git+https://github.com/Rodrigodd/giui#4788a4150ee8db1853822ccd42b936504555ee60"
 dependencies = [
  "proc-macro2",
  "quote",

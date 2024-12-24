@@ -527,7 +527,15 @@ pub fn compute_step(
                         None,
                     )
                 }
-                (None, 0x0000..=0x7FFF) => (None, None),
+                (None, 0x0000..=0x7FFF) => (
+                    Some(Cursor {
+                        bank0,
+                        bank,
+                        pc: pc.wrapping_add(len as u16),
+                        reg_a: None,
+                    }),
+                    None,
+                ),
                 _ => (
                     Some(Cursor {
                         bank0,

@@ -8,14 +8,14 @@ use crate::gameboy::GameBoy;
 
 // NOTE: The actual clock period should be 1/(2^22 Hz) = 476.837 ns, but msinger's
 // dmg-sim (the verilog simulation I am comparing to) uses a period of 244 ns.
-const TIMESCALE: u64 = 122; // ns
-const CYCLE_PERIOD: u64 = 244 / TIMESCALE;
+const TIMESCALE: u64 = 120; // ns
+const CYCLE_PERIOD: u64 = 240 / TIMESCALE;
 
-const OFFSET: u64 = (31999502 - 976) / TIMESCALE;
+const OFFSET: i64 = (7680 - 5625677760 + 30968640 - 960) / TIMESCALE as i64;
 
 // Convert clock count to timestamp
 fn clock_to_timestamp(clock: u64) -> u64 {
-    OFFSET + clock * CYCLE_PERIOD
+    (clock * CYCLE_PERIOD).saturating_add_signed(OFFSET)
 }
 
 type MaxWidth = u16;
@@ -36,8 +36,8 @@ macro_rules! decl_regs {
                 Ok(this)
             }
 
-            fn trace(&self, timestamp: u64, writer: &mut MyWriter, $var: $type) -> std::io::Result<()> {
-                $(writer.change(timestamp, self.$reg, ($value) as MaxWidth)?;)*
+            fn trace(&self, clock_count: u64, writer: &mut MyWriter, $var: $type) -> std::io::Result<()> {
+                $(writer.change(clock_count, self.$reg, ($value) as MaxWidth)?;)*
                 Ok(())
             }
         }
@@ -284,7 +284,7 @@ impl VcdWriter {
                 let t = clock_to_timestamp(c);
                 let delta = CYCLE_PERIOD / 2;
                 writer.change_ns(t + delta, self.clk, 0)?;
-                writer.change_ns(t + 2*delta, self.clk, 1)?;
+                writer.change_ns(t + 2 * delta, self.clk, 1)?;
             }
         } else {
             writer.change(clock_count, self.clk, 1)?;

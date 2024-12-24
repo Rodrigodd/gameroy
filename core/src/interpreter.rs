@@ -85,7 +85,7 @@ impl Interpreter<'_> {
             const MB: usize = 1024 * 1024;
             if self.0.vcd_writer.buffer_size() > 8 * MB {
                 self.0.update_all();
-                println!("VCD committed");
+                println!("VCD committed: {}", self.0.clock_count);
                 self.0.vcd_writer.commit().unwrap();
             }
 

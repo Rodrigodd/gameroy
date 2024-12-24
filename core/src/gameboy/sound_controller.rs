@@ -406,8 +406,7 @@ impl SoundController {
                 u64::MAX
             } else {
                 let fs = self.sample_frequency;
-                let next_sample = clock + (((CLOCK_SPEED - self.sample_mod) + fs - 1) / fs);
-                // round up
+                let next_sample = clock + (CLOCK_SPEED - self.sample_mod).div_ceil(fs);
                 next_sample + (next_sample % 2 != 0) as u64
             };
             debug_assert!(clock < next_step);

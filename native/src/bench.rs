@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[cfg(target_arch = "x86_64")]
 use gameroy_jit::CompilerOpts;
 use gameroy_lib::gameroy::{
     consts::CLOCK_SPEED,
@@ -42,6 +43,7 @@ fn print_val(val: f64, err: f64) -> String {
     format!("{:.p$} +/- {:.p$}", val, err, p = p)
 }
 
+#[allow(unused_variables)]
 pub fn benchmark(
     Bench {
         rom_path: ref path,
@@ -109,9 +111,12 @@ pub fn benchmark(
         );
 
         // Remove first run, because in that one the code is traced.
-        times.remove(0);
+        #[cfg(target_arch = "x86_64")]
+        {
+            times.remove(0);
 
-        print_stats(times, game_boy.clock_count - start_clock_count);
+            print_stats(times, game_boy.clock_count - start_clock_count);
+        }
     }
 }
 
@@ -169,6 +174,7 @@ fn run_jitted(
     times
 }
 
+#[cfg(target_arch = "x86_64")]
 #[inline(never)]
 fn pre_run(game_boy: &mut GameBoy, timeout: u64, jit_compiler: &mut gameroy_jit::JitCompiler) {
     game_boy.reset();

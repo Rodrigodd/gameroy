@@ -98,6 +98,7 @@ fn core() -> &'static Core {
     // to this function. CORE is never mutate after being initialized, so subsequent calls to this
     // function will not invalidate previous returned references.
     unsafe {
+        #[allow(static_mut_refs)]
         let core = CORE.get_or_insert_with(Core::default);
 
         // assert this is single-threaded

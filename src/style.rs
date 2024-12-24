@@ -75,7 +75,7 @@ mod loaded_files {
 
     use super::config;
 
-    impl<'a> StyleLoaderCallback for super::Loader<'a> {
+    impl StyleLoaderCallback for super::Loader<'_> {
         fn load_texture(&mut self, mut name: String) -> (u32, u32, u32) {
             if name == "icons.png" {
                 name = format!("icons{}x.png", self.scale_factor.to_float()).to_string();
@@ -185,7 +185,7 @@ mod static_files {
             include_bytes!("../assets/icons4x.png"),
         ],
     };
-    impl<'a> StyleLoaderCallback for super::Loader<'a> {
+    impl StyleLoaderCallback for super::Loader<'_> {
         fn load_texture(&mut self, name: String) -> (u32, u32, u32) {
             if let Some(texture) = self.textures.get(&name) {
                 return *texture;

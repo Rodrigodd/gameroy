@@ -24,7 +24,7 @@ mod rom_loading_ui;
 pub use rom_loading_ui::{create_rom_loading_ui, RomEntries};
 
 struct Render<'a>(&'a mut dyn SpriteRender);
-impl<'a> GuiRenderer for Render<'a> {
+impl GuiRenderer for Render<'_> {
     fn update_font_texture(&mut self, font_texture: u32, rect: [u32; 4], data_tex: &[u8]) {
         let mut data = Vec::with_capacity(data_tex.len() * 4);
         for byte in data_tex.iter() {

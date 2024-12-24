@@ -1,5 +1,7 @@
 // To minimize changes between platforms, we still use Arc-Mutex on Wasm.
 #![allow(clippy::arc_with_non_send_sync)]
+// My deserializer macro triggers this warning, need to fix it in the dependency later.
+#![allow(non_local_definitions)]
 
 #[cfg(target_arch = "wasm32")]
 pub static RESIZE: parking_lot::Mutex<Option<(u32, u32)>> = parking_lot::const_mutex(None);

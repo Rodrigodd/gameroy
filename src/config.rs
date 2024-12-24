@@ -127,7 +127,7 @@ where
 {
     use serde::de;
     struct ScreenSizeVisitor;
-    impl<'de> de::Visitor<'de> for ScreenSizeVisitor {
+    impl de::Visitor<'_> for ScreenSizeVisitor {
         type Value = Option<(u32, u32)>;
 
         fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>

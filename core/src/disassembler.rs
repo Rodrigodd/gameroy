@@ -360,18 +360,14 @@ impl Trace {
             return;
         }
 
-        let cursors = &std::cell::RefCell::new(cursors);
-
         let (step, jump) = compute_step(len, cursor, &op, &rom.cartridge);
-        cursors.borrow_mut().extend(step);
+        cursors.extend(step);
 
-        let Some(jump) = jump else {
-            return
-        };
+        let Some(jump) = jump else { return };
 
         if let Some(to) = Address::from_cursor(&jump) {
             self.add_jump(address, to);
-            cursors.borrow_mut().push(jump);
+            cursors.push(jump);
         }
     }
 

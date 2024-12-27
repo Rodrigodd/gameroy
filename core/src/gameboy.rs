@@ -447,7 +447,11 @@ impl GameBoy {
     }
 
     fn update_timer(&self) {
-        if self.timer.borrow_mut().update(self.clock_count) {
+        if self.timer.borrow_mut().update(
+            self.clock_count,
+            #[cfg(feature = "vcd_trace")]
+            &self.vcd_writer,
+        ) {
             self.interrupt_flag
                 .set(self.interrupt_flag.get() | (1 << 2));
         }

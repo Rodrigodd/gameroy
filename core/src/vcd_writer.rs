@@ -4,6 +4,7 @@ use std::io::BufWriter;
 
 use crate::gameboy::cpu::Cpu;
 use crate::gameboy::ppu::Ppu;
+use crate::gameboy::timer::Timer;
 use crate::gameboy::GameBoy;
 
 // NOTE: The actual clock period should be 1/(2^22 Hz) = 476.837 ns, but msinger's
@@ -11,7 +12,7 @@ use crate::gameboy::GameBoy;
 const TIMESCALE: u64 = 120; // ns
 const CYCLE_PERIOD: u64 = 240 / TIMESCALE;
 
-const OFFSET: i64 = (7680 - 5625677760 + 30968640 - 960) / TIMESCALE as i64;
+const OFFSET: i64 = (7680 - 5625677760 + 30968640 - 960 - 207360 - 9366720 + 11816545 - 2880) / TIMESCALE as i64;
 
 // Convert clock count to timestamp
 fn clock_to_timestamp(clock: u64) -> u64 {
@@ -46,6 +47,8 @@ macro_rules! decl_regs {
 
 decl_regs! {
     GameboyRegs, "gameboy", gb: &GameBoy,
+    serial_data, 8 => gb.serial.borrow().serial_data;
+    serial_control, 8 => gb.serial.borrow().serial_control;
     joypad_io, 8 => gb.joypad_io;
     joypad, 8 => gb.joypad;
     interrupt_flag, 8 => gb.interrupt_flag.get();
@@ -92,6 +95,15 @@ decl_regs! {
     ly_compare_signal, 1 => ppu.ly_compare_signal;
     stat_mode_for_interrupt, 2 => ppu.stat_mode_for_interrupt;
     scanline_x, 8 => ppu.scanline_x;
+}
+
+decl_regs! {
+    TimerRegs, "timer", timer: &Timer,
+    div, 16 => timer.div;
+    tima, 8 => timer.tima;
+    tma, 8 => timer.tma;
+    tac, 8 => timer.tac;
+    loading, 8 => timer.loading;
 }
 
 struct Wire {
@@ -237,6 +249,7 @@ pub(crate) struct VcdWriter {
     gameboy_regs: GameboyRegs,
     cpu_regs: CpuRegs,
     ppu_regs: PpuRegs,
+    timer_regs: TimerRegs,
 }
 impl VcdWriter {
     pub fn new() -> std::io::Result<Self> {
@@ -259,6 +272,7 @@ impl VcdWriter {
         let gameboy_regs = GameboyRegs::new(&mut writer)?;
         let cpu_regs = CpuRegs::new(&mut writer)?;
         let ppu_regs = PpuRegs::new(&mut writer)?;
+        let timer_regs = TimerRegs::new(&mut writer)?;
 
         writer.close_module()?;
 
@@ -271,6 +285,7 @@ impl VcdWriter {
             gameboy_regs,
             cpu_regs,
             ppu_regs,
+            timer_regs,
         };
 
         Ok(this)
@@ -303,6 +318,14 @@ impl VcdWriter {
         let mut writer = self.writer.borrow_mut();
 
         self.ppu_regs.trace(clock_count, &mut writer, ppu)?;
+
+        Ok(())
+    }
+
+    pub fn trace_timer(&self, clock_count: u64, timer: &Timer) -> std::io::Result<()> {
+        let mut writer = self.writer.borrow_mut();
+
+        self.timer_regs.trace(clock_count, &mut writer, timer)?;
 
         Ok(())
     }

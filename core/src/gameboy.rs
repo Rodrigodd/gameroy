@@ -77,6 +77,15 @@ pub struct GameBoy {
     pub(crate) vcd_writer: crate::vcd_writer::VcdWriter,
 }
 
+#[cfg(feature = "vcd_trace")]
+impl Drop for GameBoy {
+    fn drop(&mut self) {
+        self.update_all();
+        println!("VCD committed on drop: {}", self.clock_count);
+        self.vcd_writer.commit().unwrap();
+    }
+}
+
 impl std::fmt::Debug for GameBoy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // TODO: derive Debug for fields when the time arrive.
@@ -428,7 +437,9 @@ impl GameBoy {
         self.update_sound();
 
         #[cfg(feature = "vcd_trace")]
-        self.vcd_writer.trace_gameboy(self.clock_count, self).unwrap();
+        self.vcd_writer
+            .trace_gameboy(self.clock_count, self)
+            .unwrap();
     }
 
     fn update_ppu(&self) {

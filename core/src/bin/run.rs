@@ -40,8 +40,9 @@ fn main() {
         "Running ROM: {}",
         rom_path.as_ref().expect("No rom path provided")
     );
+    println!("Boot ROM: {}", boot_rom_path.as_deref().unwrap_or("None"));
 
-    let rom = std::fs::read(&rom_path.expect("No rom path provided")).unwrap();
+    let rom = std::fs::read(rom_path.expect("No rom path provided")).unwrap();
     let boot_rom = boot_rom_path.map(|path| {
         std::fs::read(&path)
             .unwrap()
@@ -50,11 +51,22 @@ fn main() {
     });
 
     let cartridge = Cartridge::new(rom).expect("Invalid ROM");
+
+    println!(
+        "Cartridge: {:} ({})",
+        cartridge.kind_name(),
+        cartridge.header.cartridge_type
+    );
+
     let mut gameboy = GameBoy::new(boot_rom, cartridge);
 
     let mut inter = Interpreter(&mut gameboy);
 
     while inter.0.clock_count < timeout {
         inter.interpret_op();
+        if inter.0.read(inter.0.cpu.pc) == 0x40 {
+            println!("LD B, B detected, stopping");
+            break;
+        }
     }
 }

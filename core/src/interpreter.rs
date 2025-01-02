@@ -1305,7 +1305,16 @@ impl Interpreter<'_> {
 
     fn gb_read(&mut self, address: u16) -> u8 {
         #[allow(clippy::let_and_return)] // being useful for debugging
-        let value = self.0.read(address);
+        let value = if address < 0xFE00
+            || address >= 0xFF80
+            || (0xff04..=0xff07).contains(&address)
+            || address == 0xff0f
+        {
+            self.0.read(address)
+        } else {
+            // println!("read from unhandled address {:04x}", address);
+            0xff
+        };
 
         #[cfg(feature = "wave_trace")]
         self.0
@@ -1344,7 +1353,16 @@ impl Interpreter<'_> {
             .trace_gameboy_ex(self.0.clock_count, self.0, Some((address, value, true)))
             .unwrap();
 
-        self.0.write(address, value);
+        if address < 0xFE00
+            || address >= 0xFF80
+            || (0xff01..=0xff02).contains(&address)
+            || (0xff04..=0xff07).contains(&address)
+            || address == 0xff0f
+        {
+            self.0.write(address, value);
+        } else {
+            // println!("write to unhandled address {:04x} = {:02x}", address, value);
+        }
 
         // bypass tick to avoid wave_trace
         // self.0.tick(4);

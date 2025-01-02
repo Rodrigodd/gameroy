@@ -7,12 +7,12 @@ use crate::gameboy::ppu::Ppu;
 use crate::gameboy::timer::Timer;
 use crate::gameboy::GameBoy;
 
-// NOTE: The actual clock period should be 1/(2^22 Hz) = 476.837 ns, but msinger's
-// dmg-sim (the verilog simulation I am comparing to) uses a period of 244 ns.
-const TIMESCALE: u64 = 120; // ns
+// NOTE: The actual clock period should be 1/(2^22 Hz) = 238.419 ns, but msinger's
+// dmg-sim (the verilog simulation I am comparing to) uses a period of 240 ns.
+const TIMESCALE: u64 = 1; // ns
 const CYCLE_PERIOD: u64 = 240 / TIMESCALE;
 
-const OFFSET: i64 = (7680 - 5625677760 + 30968640 - 960 - 207360 - 9366720 + 11816545 - 2880) / TIMESCALE as i64;
+const OFFSET: i64 = (-5625669120) / TIMESCALE as i64;
 
 // Convert clock count to timestamp
 fn clock_to_timestamp(clock: u64) -> u64 {
@@ -246,6 +246,10 @@ pub(crate) struct VcdWriter {
     writer: RefCell<MyWriter>,
     last_clock_count: Cell<u64>,
     clk: WireIndex,
+    address_bus: WireIndex,
+    data_bus: WireIndex,
+    read: WireIndex,
+    write: WireIndex,
     gameboy_regs: GameboyRegs,
     cpu_regs: CpuRegs,
     ppu_regs: PpuRegs,
@@ -268,6 +272,10 @@ impl VcdWriter {
         writer.add_module("gameroy")?;
 
         let clk = writer.add_wire(1, "clk")?;
+        let address_bus = writer.add_wire(16, "address_bus")?;
+        let data_bus = writer.add_wire(8, "data_bus")?;
+        let read = writer.add_wire(1, "read")?;
+        let write = writer.add_wire(1, "write")?;
 
         let gameboy_regs = GameboyRegs::new(&mut writer)?;
         let cpu_regs = CpuRegs::new(&mut writer)?;
@@ -282,6 +290,10 @@ impl VcdWriter {
             writer: RefCell::new(writer),
             last_clock_count: u64::MAX.into(),
             clk,
+            address_bus,
+            data_bus,
+            read,
+            write,
             gameboy_regs,
             cpu_regs,
             ppu_regs,
@@ -292,6 +304,15 @@ impl VcdWriter {
     }
 
     pub fn trace_gameboy(&self, clock_count: u64, gameboy: &GameBoy) -> std::io::Result<()> {
+        self.trace_gameboy_ex(clock_count, gameboy, None)
+    }
+
+    pub fn trace_gameboy_ex(
+        &self,
+        clock_count: u64,
+        gameboy: &GameBoy,
+        bus: Option<(u16, u8, bool)>,
+    ) -> std::io::Result<()> {
         let mut writer = self.writer.borrow_mut();
 
         if self.last_clock_count.get() != u64::MAX {
@@ -303,6 +324,16 @@ impl VcdWriter {
             }
         } else {
             writer.change(clock_count, self.clk, 1)?;
+        }
+
+        if let Some(bus) = bus {
+            writer.change(clock_count - 4, self.address_bus, bus.0 as MaxWidth)?;
+            writer.change(clock_count - 4, self.data_bus, bus.1 as MaxWidth)?;
+            writer.change(clock_count - 4, self.read, !bus.2 as MaxWidth)?;
+            writer.change(clock_count - 4, self.write, bus.2 as MaxWidth)?;
+        } else {
+            writer.change(clock_count - 4, self.read, 0)?;
+            writer.change(clock_count - 4, self.write, 0)?;
         }
 
         self.last_clock_count.set(clock_count);

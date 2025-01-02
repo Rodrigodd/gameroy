@@ -18,8 +18,10 @@ harness = false
 
 [features]
 io_trace = []
+wave_trace = ["dep:vcd"]
 
 [dependencies]
+vcd = { version = "0.7.0", optional = true }
 
 [dev-dependencies]
 image = { version = "0.25.4", default-features = false, features = ["png"] }

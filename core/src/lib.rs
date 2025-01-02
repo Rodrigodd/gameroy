@@ -6,3 +6,6 @@ pub mod gameboy;
 pub mod interpreter;
 pub mod parser;
 pub mod save_state;
+
+#[cfg(feature = "wave_trace")]
+mod wave_trace;

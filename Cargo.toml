@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "jit", "android", "native", "wasm", "libretro"]
+members = ["core", "jit", "gameroy", "android", "native", "wasm", "libretro"]
 resolver = "2"
 
 [workspace.package]
@@ -8,115 +8,6 @@ edition = "2021"
 authors = ["Rodrigo Batista de Moraes <rodrigobatsmoraes@hotmail.com>"]
 repository = "https://github.com/Rodrigodd/gameroy"
 license = "MIT OR Apache-2.0"
-
-[package]
-name = "gameroy"
-build = "build.rs"
-description = "A high precision, high performance Game Boy emulator and debugger."
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-repository.workspace = true
-license.workspace = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-name = "gameroy_lib"
-crate-type = ["cdylib", "rlib"]
-path = "src/lib.rs"
-
-[features]
-
-# Staticly include files in the binary
-static = []
-
-# Enable multithreading. Not support in wasm for example.
-threads = []
-
-statistics = ["gameroy-jit/statistics"]
-
-emit_debug_info = ["gameroy-jit/emit_debug_info"]
-
-default = ["rfd", "audio-engine"]
-
-[build-dependencies]
-resvg = "0.35.0"
-
-[dev-dependencies]
-flexi_logger = "0.22.3"
-
-[dependencies]
-
-gameroy-core = { path = "core" }
-
-# giui = { path = "../giui" }
-giui = { git = "https://github.com/Rodrigodd/giui" }
-# sprite-render = { path = "../sprite-render-rs", features=["opengl", "webgl"] }
-sprite-render = { git = "https://github.com/Rodrigodd/sprite-render-rs", features = [
-    "opengl",
-    "webgl",
-] }
-# audio-engine = { path = "../audio-engine", optional = true }
-audio-engine = { version = "0.4.2", optional = true }
-
-rfd = { version = "0.9.1", optional = true, features = ["file-handle-inner"] }
-
-serde = { version = "1.0.210", features = ["derive"] }
-ron = "0.8.1"
-
-winit = { version = "0.28.7", features = ["serde"] }
-log = "0.4.22"
-
-image = { version = "0.25.4", default-features = false, features = ["png"] }
-parking_lot = "0.12.3"
-once_cell = "1.20.2"
-instant = { version = "0.1.12", features = ["wasm-bindgen"] }
-flume = { version = "0.11.1", default-features = false }
-cfg-if = "1.0.0"
-toml = "0.8.19"
-flate2 = "1.0.34"
-ureq = { version = "2.10.1", default-features = false }
-
-[target.'cfg(target_arch = "x86_64")'.dependencies]
-
-gameroy-jit = { path = "jit" }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-
-wasm-bindgen = "0.2.95"
-js-sys = "0.3.72"
-wasm-bindgen-futures = "0.4"
-base64 = "0.22.1"
-[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
-version = "0.3.72"
-features = ['Document', 'Element', 'Storage', 'Window', 'File', 'FileReader']
-
-[target.'cfg(target_os = "android")'.dependencies]
-
-ndk-glue = { version = "0.7.0", features = ["logger"] }
-ndk-context = { version = "0.1.1" }
-jni = "0.19.0"
-urlencoding = "2.1.3"
-
-[patch.crates-io]
-
-# waiting for https://github.com/sebcrozet/instant/pull/46
-instant = { git = "https://github.com/Rodrigodd/instant.git" }
-
-# contains hacky workaround for https://github.com/rust-windowing/winit/issues/2299
-# and this volume buttons fix: https://github.com/rust-windowing/winit/pull/1919
-# winit = { git = "https://github.com/Rodrigodd/winit.git", branch = "v0.27.5-gameroy" }
-
-# fork contains a android backend
-rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }
-
-# hard code oboe's performance mode to low latency
-cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" }
-
-# contains this fix: https://github.com/Nercury/android_logger-rs/pull/62
-android_logger = { git = "https://github.com/TiggeZaki/android_logger-rs", branch = "patch-1" }
-
 
 [profile.dev]
 opt-level = 1
@@ -152,3 +43,21 @@ panic = "abort"
 [profile.debugging]
 inherits = "dev"
 opt-level = 0
+
+[patch.crates-io]
+
+# waiting for https://github.com/sebcrozet/instant/pull/46
+instant = { git = "https://github.com/Rodrigodd/instant.git" }
+
+# contains hacky workaround for https://github.com/rust-windowing/winit/issues/2299
+# and this volume buttons fix: https://github.com/rust-windowing/winit/pull/1919
+# winit = { git = "https://github.com/Rodrigodd/winit.git", branch = "v0.27.5-gameroy" }
+
+# fork contains a android backend
+rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }
+
+# hard code oboe's performance mode to low latency
+cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" }
+
+# contains this fix: https://github.com/Nercury/android_logger-rs/pull/62
+android_logger = { git = "https://github.com/TiggeZaki/android_logger-rs", branch = "patch-1" }

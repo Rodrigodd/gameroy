@@ -174,15 +174,15 @@ mod static_files {
         pub icons_texture: &'static [&'static [u8]],
     }
     pub static FILES: StaticFiles = StaticFiles {
-        font: include_bytes!("../assets/NotoSansMono.ttf"),
-        style: include_str!("../assets/style.ron"),
+        font: include_bytes!("../../assets/NotoSansMono.ttf"),
+        style: include_str!("../../assets/style.ron"),
         icons_texture: &[
-            include_bytes!("../assets/icons0.75x.png"),
-            include_bytes!("../assets/icons1x.png"),
-            include_bytes!("../assets/icons1.5x.png"),
-            include_bytes!("../assets/icons2x.png"),
-            include_bytes!("../assets/icons3x.png"),
-            include_bytes!("../assets/icons4x.png"),
+            include_bytes!("../../assets/icons0.75x.png"),
+            include_bytes!("../../assets/icons1x.png"),
+            include_bytes!("../../assets/icons1.5x.png"),
+            include_bytes!("../../assets/icons2x.png"),
+            include_bytes!("../../assets/icons3x.png"),
+            include_bytes!("../../assets/icons4x.png"),
         ],
     };
     impl StyleLoaderCallback for super::Loader<'_> {

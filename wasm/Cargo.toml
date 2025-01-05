@@ -22,7 +22,7 @@ audio-engine = ["gameroy/audio-engine"]
 default = ["audio-engine", "static", "rfd"]
 
 [dependencies]
-gameroy = { path = "..", default-features = false }
+gameroy = { path = "../gameroy", default-features = false }
 wasm-bindgen = "0.2.95"
 console_error_panic_hook = "0.1.7"
 wasm-logger = "0.2.0"

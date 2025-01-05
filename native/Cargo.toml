@@ -27,7 +27,7 @@ default = ["threads", "console", "audio-engine", "rfd"]
 
 [dependencies]
 
-gameroy = { path = "..", default-features = false }
+gameroy = { path = "../gameroy", default-features = false }
 
 winit = "0.28.7"
 flexi_logger = "0.29.3"

@@ -14,12 +14,12 @@ fn cargo_rerun(path: &str) {
 const SCALES: &[f32] = &[0.75, 1.0, 1.5, 2.0, 3.0, 4.0];
 
 fn render_svg_assets() {
-    let icons_svg = "assets/icons.svg";
+    let icons_svg = "../assets/icons.svg";
     cargo_rerun(icons_svg);
 
     let dir = std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo");
 
-    let icons = include_bytes!("assets/icons.svg");
+    let icons = include_bytes!("../assets/icons.svg");
 
     let opts = resvg::usvg::Options {
         resources_dir: std::fs::canonicalize(dir).ok(),
@@ -31,7 +31,7 @@ fn render_svg_assets() {
     let tree = resvg::Tree::from_usvg(&tree);
 
     for &scale in SCALES {
-        to_png(&tree, scale, &format!("assets/icons{}x.png", scale));
+        to_png(&tree, scale, &format!("../assets/icons{}x.png", scale));
     }
 }
 

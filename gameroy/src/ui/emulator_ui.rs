@@ -18,7 +18,7 @@ use crate::{
         menu::{create_menu, MenuOption},
         ScreenLayout, SplitView,
     },
-    EmulatorEvent, UserEvent,
+    EmulatorCommand, UserEvent,
 };
 
 mod disassembler_viewer;
@@ -53,7 +53,7 @@ pub fn create_gui(
         .behaviour(OnKeyboardEvent::new(move |event, _, ctx| {
             use giui::KeyboardEvent::*;
             use winit::event::VirtualKeyCode::*;
-            let sender = ctx.get::<flume::Sender<EmulatorEvent>>().clone();
+            let sender = ctx.get::<flume::Sender<EmulatorCommand>>().clone();
             let debug = ctx.get::<crate::AppState>().debug;
             let app_state = ctx.get_mut::<crate::AppState>();
             let mut set_key = |key: u8, value: bool| {
@@ -82,19 +82,19 @@ pub fn create_gui(
                     if debug {
                         match event {
                             Pressed(x) if x == km.save_state => {
-                                sender.send(EmulatorEvent::SaveState).unwrap();
+                                sender.send(EmulatorCommand::SaveState).unwrap();
                             }
                             Pressed(x) if x == km.load_state => {
-                                sender.send(EmulatorEvent::LoadState).unwrap();
+                                sender.send(EmulatorCommand::LoadState).unwrap();
                             }
                             Pressed(x) if x == km.debug_stepback => {
-                                sender.send(EmulatorEvent::StepBack).unwrap();
+                                sender.send(EmulatorCommand::StepBack).unwrap();
                             }
                             Pressed(x) if x == km.debug_step => {
-                                sender.send(EmulatorEvent::Step).unwrap();
+                                sender.send(EmulatorCommand::Step).unwrap();
                             }
                             Pressed(x) if x == km.debug_run => {
-                                sender.send(EmulatorEvent::Run).unwrap();
+                                sender.send(EmulatorCommand::Run).unwrap();
                             }
                             Pressed(x) if x == km.open_debugger => {
                                 let textures = ctx.get::<Textures>().clone();
@@ -112,10 +112,10 @@ pub fn create_gui(
                     } else {
                         match event {
                             Pressed(x) if x == km.save_state => {
-                                sender.send(EmulatorEvent::SaveState).unwrap();
+                                sender.send(EmulatorCommand::SaveState).unwrap();
                             }
                             Pressed(x) if x == km.load_state => {
-                                sender.send(EmulatorEvent::LoadState).unwrap();
+                                sender.send(EmulatorCommand::LoadState).unwrap();
                             }
                             Pressed(x) if x == km.open_debugger => {
                                 let textures = ctx.get::<Textures>().clone();
@@ -131,10 +131,10 @@ pub fn create_gui(
                                 );
                             }
                             Pressed(x) | Release(x) if x == km.speed => sender
-                                .send(EmulatorEvent::FrameLimit(!matches!(event, Pressed(_))))
+                                .send(EmulatorCommand::FrameLimit(!matches!(event, Pressed(_))))
                                 .unwrap(),
                             Pressed(x) | Release(x) if x == km.rewind => sender
-                                .send(EmulatorEvent::Rewind(matches!(event, Pressed(_))))
+                                .send(EmulatorCommand::Rewind(matches!(event, Pressed(_))))
                                 .unwrap(),
 
                             _ => {}
@@ -321,8 +321,8 @@ fn open_debug_panel(
     proxy.send_event(UserEvent::Debug(true)).unwrap();
 }
 
-fn send_emu(ctx: &mut Context, event: EmulatorEvent) {
-    ctx.get::<flume::Sender<EmulatorEvent>>()
+fn send_emu(ctx: &mut Context, event: EmulatorCommand) {
+    ctx.get::<flume::Sender<EmulatorCommand>>()
         .send(event)
         .unwrap()
 }
@@ -461,7 +461,7 @@ fn create_screen(
             (ab, joypad[4].1 | joypad[5].1),
         ]);
 
-        use EmulatorEvent::*;
+        use EmulatorCommand::*;
         fn bx<T>(x: T) -> Box<T> {
             Box::new(x)
         }
@@ -525,11 +525,11 @@ fn open_menu(ctx: &mut Context, root: Id) {
     fn option(a: &str, b: impl FnMut(&mut Context) + 'static) -> MenuOption {
         (a, Box::new(b))
     }
-    send_emu(ctx, EmulatorEvent::Pause);
+    send_emu(ctx, EmulatorCommand::Pause);
     let options = vec![
-        option("Save State", |ctx| send_emu(ctx, EmulatorEvent::SaveState)),
-        option("Load State", |ctx| send_emu(ctx, EmulatorEvent::LoadState)),
-        option("Reset", |ctx| send_emu(ctx, EmulatorEvent::Reset)),
+        option("Save State", |ctx| send_emu(ctx, EmulatorCommand::SaveState)),
+        option("Load State", |ctx| send_emu(ctx, EmulatorCommand::LoadState)),
+        option("Reset", |ctx| send_emu(ctx, EmulatorCommand::Reset)),
         option("Exit Game", |ctx| {
             ctx.get::<EventLoopProxy<UserEvent>>()
                 .send_event(UserEvent::PopApp)
@@ -538,7 +538,7 @@ fn open_menu(ctx: &mut Context, root: Id) {
     ];
     let on_close = move |ctx: &mut Context| {
         ctx.set_focus(root);
-        send_emu(ctx, EmulatorEvent::Resume)
+        send_emu(ctx, EmulatorCommand::Resume)
     };
     let menu = create_menu(options, on_close, ctx, &style);
     ctx.set_focus(menu);

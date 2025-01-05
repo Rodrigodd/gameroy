@@ -28,7 +28,7 @@ pub mod config;
 
 use std::{any::Any, rc::Rc, sync::Arc, thread};
 
-use emulator::{Emulator, EmulatorEvent};
+use emulator::{Emulator, EmulatorCommand};
 pub use gameroy;
 use gameroy::{
     consts::{SCREEN_HEIGHT, SCREEN_WIDTH, VERSION},
@@ -402,13 +402,13 @@ struct EmulatorApp {
     lcd_screen: Arc<
         parking_lot::lock_api::Mutex<parking_lot::RawMutex, [u8; SCREEN_WIDTH * SCREEN_HEIGHT]>,
     >,
-    emu_channel: flume::Sender<EmulatorEvent>,
+    emu_channel: flume::Sender<EmulatorCommand>,
     #[cfg(feature = "threads")]
     emu_thread: Option<thread::JoinHandle<()>>,
     #[cfg(not(feature = "threads"))]
     emulator: Emulator,
     #[cfg(not(feature = "threads"))]
-    recv: flume::Receiver<emulator::EmulatorEvent>,
+    recv: flume::Receiver<emulator::EmulatorCommand>,
     update_frame: bool,
 }
 impl EmulatorApp {
@@ -438,7 +438,7 @@ impl EmulatorApp {
         if debug {
             proxy.send_event(UserEvent::Debug(debug)).unwrap();
         } else {
-            emu_channel.send(EmulatorEvent::RunFrame).unwrap();
+            emu_channel.send(EmulatorCommand::RunFrame).unwrap();
         }
         let debugger = Arc::new(Mutex::new(Debugger::default()));
         {
@@ -447,10 +447,10 @@ impl EmulatorApp {
             debugger.lock().callback = Some(Box::new(move |_, event| {
                 use DebuggerEvent::*;
                 match event {
-                    Step => emu_channel.send(EmulatorEvent::Step).unwrap(),
-                    StepBack => emu_channel.send(EmulatorEvent::StepBack).unwrap(),
-                    Reset => emu_channel.send(EmulatorEvent::Reset).unwrap(),
-                    Run => emu_channel.send(EmulatorEvent::Run).unwrap(),
+                    Step => emu_channel.send(EmulatorCommand::Step).unwrap(),
+                    StepBack => emu_channel.send(EmulatorCommand::StepBack).unwrap(),
+                    Reset => emu_channel.send(EmulatorCommand::Reset).unwrap(),
+                    Run => emu_channel.send(EmulatorCommand::Run).unwrap(),
                     BreakpointsUpdate => proxy.send_event(UserEvent::BreakpointsUpdated).unwrap(),
                     WatchsUpdate => proxy.send_event(UserEvent::WatchsUpdated).unwrap(),
                 }
@@ -466,7 +466,28 @@ impl EmulatorApp {
             let join_handle = thread::Builder::new()
                 .name("emulator".to_string())
                 .spawn(move || {
-                    Emulator::new(gb, debugger, proxy, movie, rom).event_loop(recv);
+                    let config = config();
+                    Emulator::new(
+                        gb,
+                        debugger,
+                        Box::new(move |event| match event {
+                            emulator::EmulatorEvent::Started => {
+                                proxy.send_event(UserEvent::EmulatorStarted).unwrap()
+                            }
+                            emulator::EmulatorEvent::Paused => {
+                                proxy.send_event(UserEvent::EmulatorPaused).unwrap()
+                            }
+                            emulator::EmulatorEvent::Update => {
+                                proxy.send_event(UserEvent::EmulatorUpdated).unwrap()
+                            }
+                        }),
+                        movie,
+                        rom,
+                        !config.frame_skip,
+                        config.rewinding,
+                        config.jit,
+                    )
+                    .event_loop(recv);
                 })
                 .unwrap();
             Some(join_handle)
@@ -488,7 +509,7 @@ impl EmulatorApp {
     }
 
     fn kill_emulator(&mut self) {
-        self.emu_channel.send(EmulatorEvent::Kill).unwrap();
+        self.emu_channel.send(EmulatorCommand::Kill).unwrap();
         #[cfg(feature = "threads")]
         self.emu_thread.take().unwrap().join().unwrap();
     }
@@ -516,12 +537,12 @@ impl App for EmulatorApp {
             Event::RedrawRequested(_) => {
                 let joypad = ui.get::<AppState>().joypad;
                 self.emu_channel
-                    .send(EmulatorEvent::SetJoypad(joypad))
+                    .send(EmulatorCommand::SetJoypad(joypad))
                     .unwrap();
-                self.emu_channel.send(EmulatorEvent::RunFrame).unwrap();
+                self.emu_channel.send(EmulatorCommand::RunFrame).unwrap();
             }
             Event::Suspended => {
-                self.emu_channel.send(EmulatorEvent::SaveRam).unwrap();
+                self.emu_channel.send(EmulatorCommand::SaveRam).unwrap();
             }
             #[cfg(not(feature = "threads"))]
             Event::MainEventsCleared => {
@@ -609,11 +630,18 @@ impl App for EmulatorApp {
                         ui.notify(event_table::EmulatorUpdated);
                         ui.force_render = false;
                     }
+                    EmulatorUpdated => {
+                        ui.notify(event_table::EmulatorUpdated);
+                        ui.force_render = true;
+                        window.request_redraw();
+                    }
                     BreakpointsUpdated => ui.notify(event_table::BreakpointsUpdated),
                     WatchsUpdated => ui.notify(event_table::WatchsUpdated),
                     Debug(value) => {
                         ui.get::<AppState>().debug = value;
-                        self.emu_channel.send(EmulatorEvent::Debug(value)).unwrap();
+                        self.emu_channel
+                            .send(EmulatorCommand::Debug(value))
+                            .unwrap();
                     }
                     _ => {}
                 }
@@ -627,6 +655,7 @@ pub enum UserEvent {
     FrameUpdated,
     EmulatorPaused,
     EmulatorStarted,
+    EmulatorUpdated,
     BreakpointsUpdated,
     WatchsUpdated,
     Debug(bool),
@@ -648,6 +677,7 @@ impl std::fmt::Debug for UserEvent {
             Self::FrameUpdated => write!(f, "FrameUpdated"),
             Self::EmulatorPaused => write!(f, "EmulatorPaused"),
             Self::EmulatorStarted => write!(f, "EmulatorStarted"),
+            Self::EmulatorUpdated => write!(f, "EmulatorUpdated"),
             Self::BreakpointsUpdated => write!(f, "BreakpointsUpdated"),
             Self::WatchsUpdated => write!(f, "WatchsUpdated"),
             Self::Debug(arg0) => f.debug_tuple("Debug").field(arg0).finish(),

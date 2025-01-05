@@ -12,13 +12,11 @@ use gameroy::{
 };
 use instant::{Instant, SystemTime};
 use parking_lot::Mutex as ParkMutex;
-use winit::event_loop::EventLoopProxy;
 
-use super::UserEvent;
-use crate::{config::config, rom_loading::RomFile};
+use crate::rom_loading::RomFile;
 
 #[derive(Debug)]
-pub enum EmulatorEvent {
+pub enum EmulatorCommand {
     Kill,
     RunFrame,
     FrameLimit(bool),
@@ -34,6 +32,12 @@ pub enum EmulatorEvent {
     SaveRam,
     Pause,
     Resume,
+}
+
+pub enum EmulatorEvent {
+    Started,
+    Paused,
+    Update,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -352,7 +356,7 @@ struct SoundBackend {
 
 pub struct Emulator {
     gb: Arc<ParkMutex<GameBoy>>,
-    proxy: EventLoopProxy<UserEvent>,
+    callback: Box<dyn FnMut(EmulatorEvent)>,
 
     #[cfg(target_arch = "x86_64")]
     jit_compiler: Option<gameroy_jit::JitCompiler>,
@@ -360,6 +364,7 @@ pub struct Emulator {
     joypad: Arc<ParkMutex<Timeline>>,
 
     rom: RomFile,
+    enable_rewind: bool,
 
     debug: bool,
     state: EmulatorState,
@@ -387,12 +392,16 @@ pub enum Control {
 }
 
 impl Emulator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         gb: Arc<ParkMutex<GameBoy>>,
         debugger: Arc<ParkMutex<Debugger>>,
-        proxy: EventLoopProxy<UserEvent>,
+        callback: Box<dyn FnMut(EmulatorEvent)>,
         movie: Option<Vbm>,
         rom: RomFile,
+        initial_frame_limit: bool,
+        enable_rewind: bool,
+        enable_jit: bool,
     ) -> Self {
         #[cfg(feature = "audio-engine")]
         let sound = match AudioEngine::new() {
@@ -441,10 +450,8 @@ impl Emulator {
                 .collect()
         });
 
-        let config = config();
-
         let mib = 2usize.pow(20);
-        let capacity = if config.rewinding { 32 * mib } else { 0 };
+        let capacity = if enable_rewind { 32 * mib } else { 0 };
         let joypad = Arc::new(ParkMutex::new(Timeline::new(
             current_frame,
             joypad_timeline,
@@ -469,14 +476,15 @@ impl Emulator {
         let last_start_clock = gb.lock().clock_count;
         Self {
             gb,
-            proxy,
+            callback,
             #[cfg(target_arch = "x86_64")]
-            jit_compiler: config.jit.then(gameroy_jit::JitCompiler::new),
+            jit_compiler: enable_jit.then(gameroy_jit::JitCompiler::new),
             joypad,
+            enable_rewind,
             rom,
             debug: false,
             state: EmulatorState::Idle,
-            frame_limit: !config.frame_skip,
+            frame_limit: initial_frame_limit,
             rewind: false,
 
             last_start_time,
@@ -490,16 +498,16 @@ impl Emulator {
 
     fn set_state(&mut self, new_state: EmulatorState) {
         if self.state == EmulatorState::Idle {
-            self.proxy.send_event(UserEvent::EmulatorStarted).unwrap();
+            (self.callback)(EmulatorEvent::Started);
         }
         if new_state == EmulatorState::Idle {
-            self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
+            (self.callback)(EmulatorEvent::Paused);
         }
         self.state = new_state;
     }
 
     #[cfg(feature = "threads")]
-    pub fn event_loop(&mut self, recv: flume::Receiver<EmulatorEvent>) {
+    pub fn event_loop(&mut self, recv: flume::Receiver<EmulatorCommand>) {
         'event_loop: while let Ok(mut event) = recv.recv() {
             'handle_event: loop {
                 if self.handle_event(event) {
@@ -538,8 +546,8 @@ impl Emulator {
     }
 
     /// Return true if should terminate event_loop.
-    pub fn handle_event(&mut self, event: EmulatorEvent) -> bool {
-        use EmulatorEvent::*;
+    pub fn handle_event(&mut self, event: EmulatorCommand) -> bool {
+        use EmulatorCommand::*;
         match event {
             SaveRam => {
                 log::info!("saving game ram data... ");
@@ -578,10 +586,7 @@ impl Emulator {
                         let clock_count = gb.clock_count;
                         drop(gb);
                         self.update_start_time(clock_count);
-                        // send EmulatorPaused to trigger the EmulatorUpdated event.
-                        self.proxy.send_event(UserEvent::EmulatorPaused).unwrap();
-                        // and send Started again, because the emulation is not paused.
-                        self.proxy.send_event(UserEvent::EmulatorStarted).unwrap();
+                        (self.callback)(EmulatorEvent::Update);
                     }
                     Err(e) => log::error!("error loading saved state: {}", e),
                 };
@@ -603,7 +608,7 @@ impl Emulator {
                 }
             }
             Rewind(value) => {
-                if !config().rewinding {
+                if !self.enable_rewind {
                     return false;
                 }
                 if self.rewind == value {

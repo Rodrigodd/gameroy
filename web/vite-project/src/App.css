@@ -1,0 +1,238 @@
+/* Define CSS Variables */
+:root {
+  --color-dark-bg: #111511;
+  --color-dark-green: #1E5128;
+  --color-bright-green: #4E9F3D;
+  --color-light-green: #D8E9A8;
+  --color-text: #E8EFE8;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background-color: var(--color-dark-bg);
+  border-bottom: 1px solid var(--color-dark-green);
+}
+
+.title {
+  margin-left: 8px;
+  flex-grow: 1;
+  font-size: 20px;
+}
+
+.buttons {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 20px;
+}
+
+button:hover {
+  color: var(--color-dark-bg);
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border-top: 1px solid var(--color-dark-green);
+}
+
+.item:hover {
+  background-color: var(--color-dark-green);
+}
+.item:hover .thumbnail {
+  background-color: var(--color-light-green);
+}
+
+a, a:hover {
+  all: unset;
+  cursor: pointer;
+}
+
+
+.thumbnail {
+  width: 72px;
+  height: 72px;
+  border-radius: 5px;
+  background-color: var(--color-bright-green);
+}
+
+.info {
+  flex-grow: 1;
+  margin-left: 20px;
+}
+
+.info h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--color-light-green);
+}
+
+.info p {
+  margin: 5px 0 0 0;
+  font-size: 14px;
+}
+
+.size {
+  font-weight: bold;
+}
+
+.drop-message {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(0, 0, 0, 0.7);
+}
+
+:root {
+  --color-dark-bg: #111511;
+  --color-dark-green: #1E5128;
+  --color-bright-green: #4E9F3D;
+  --color-light-green: #D8E9A8;
+  --color-text: #E8EFE8;
+}
+
+html, body {
+  height: 100vh;
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: var(--color-dark-bg);
+  color: var(--color-text);
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  background-color: var(--color-dark-bg);
+  border-bottom: 1px solid var(--color-dark-green);
+}
+
+.title {
+  margin: 4px 8px;
+  flex-grow: 1;
+}
+
+.buttons {
+  display: flex;
+  gap: 10px;
+}
+
+button {
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 20px;
+  background-color: var(--color-dark-bg);
+}
+
+button:hover {
+  color: var(--color-dark-bg);
+  background-color: var(--color-bright-green);
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-dark-green);
+}
+
+.thumbnail {
+  width: 96px;
+  height: 96px;
+  border-radius: 5px;
+  background-color: var(--color-bright-green);
+}
+
+.info {
+  flex-grow: 1;
+  margin-left: 20px;
+}
+
+.info h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--color-light-green);
+}
+
+.info p {
+  margin: 5px 0 0 0;
+  font-size: 14px;
+}
+
+.size {
+  font-weight: bold;
+}
+
+/* Drag Overlay */
+.drag-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-light-green);
+  font-size: 24px;
+  font-weight: bold;
+  z-index: 999;
+}

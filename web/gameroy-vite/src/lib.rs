@@ -55,6 +55,7 @@ pub fn load_rom(rom: Vec<u8>) -> Result<(), JsValue> {
     gameboy.v_blank = Some(Box::new(move |gb| {
         *screen.try_lock().unwrap() = gb.ppu.get_mut().screen.packed();
     }));
+    gameboy.sound.get_mut().sample_frequency = 44100;
 
     context.gameboy = Some(gameboy);
 
@@ -94,18 +95,24 @@ pub fn run_frame(delta: f64) -> Result<Vec<u32>, JsValue> {
     Ok(frame.to_vec())
 }
 
-#[wasm_bindgen]
-pub fn take_audio_buffer() -> Result<Vec<f32>, JsValue> {
+#[wasm_bindgen(unchecked_return_type = "Float32Array[]")]
+pub fn take_audio_buffer(gain: f32) -> Result<Vec<JsValue>, JsValue> {
     let mut context = context_mut();
 
     let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
 
     let clock_count = gb.clock_count;
-    Ok(gb
-        .sound
-        .get_mut()
-        .get_output(clock_count)
-        .iter()
-        .map(|&s| s as f32)
-        .collect())
+    let samples = gb.sound.get_mut().get_output(clock_count);
+    // uninterlieve the samples into left and right channels
+    let mut left = Vec::with_capacity(samples.len() / 2);
+    let mut right = Vec::with_capacity(samples.len() / 2);
+    for (i, sample) in samples.iter().enumerate() {
+        if i % 2 == 0 {
+            left.push(*sample as f32 * gain);
+        } else {
+            right.push(*sample as f32 * gain);
+        }
+    }
+
+    Ok([JsValue::from(left), JsValue::from(right)].to_vec())
 }

@@ -1,5 +1,5 @@
 import { Item } from "../interfaces"
-import { run_frame, load_rom, initSync } from "../../pkg/gameroy_vite";
+import { run_frame, load_rom, initSync, take_audio_buffer } from "../../pkg/gameroy_vite";
 import { useEffect, useRef } from "react";
 
 export interface GameProps {
@@ -35,6 +35,28 @@ const useAnimationFrame = (callback: (deltaTime: number) => void) => {
   }, [callback]); // Make sure the effect runs only once
 }
 
+const SAMPLE_RATE = 44100;
+const GAIN = 0.001
+let audioContext: AudioContext | null = null;
+let playAudioSamples: (samples: Float32Array[]) => void = () => { return; };
+
+const initAudioProcessor = async () => {
+  if (audioContext != null)
+    return;
+  audioContext = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'playback' });
+  audioContext.destination.channelCount = 2;
+  await audioContext.audioWorklet.addModule('/src/audioProcessor.js');
+  const processorNode = new AudioWorkletNode(audioContext, 'wasm-audio-processor', { outputChannelCount: [2] });
+  console.log(processorNode);
+  processorNode.connect(audioContext.destination);
+
+  await audioContext.resume();
+
+  playAudioSamples = (samples: Float32Array[]) => {
+    processorNode.port.postMessage([samples[0].buffer, samples[1].buffer], [samples[0].buffer, samples[1].buffer]);
+  };
+}
+
 const GameCanvas = ({ item }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bufferRef = useRef<Uint8Array | null>(null)
@@ -45,6 +67,7 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
       initSync(await wasm.arrayBuffer());
       const buffer = await item.file.arrayBuffer();
       const rom = new Uint8Array(buffer);
+      await initAudioProcessor();
       bufferRef.current = rom;
       load_rom(rom);
     };
@@ -57,14 +80,17 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     if (bufferRef.current == null) return
 
     try {
-      if (delta > 0.02000) {
-        console.warn(`Frame took too long: ${delta}ms`)
-        delta = 0.01666
+      if (delta > 0.050) {
+        console.warn(`Frame took too long: ${delta * 1000.0}ms`)
+        delta = 0.016666;
       }
       const frame = run_frame(delta);
       const context = canvas.getContext('2d')
       const imageData = new ImageData(new Uint8ClampedArray(frame.buffer), 160, 144)
       context?.putImageData(imageData, 0, 0);
+
+      const samples = take_audio_buffer(GAIN);
+      playAudioSamples(samples);
     } catch (error) {
       console.error(error)
     }

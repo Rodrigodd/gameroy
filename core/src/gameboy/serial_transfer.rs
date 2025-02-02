@@ -16,10 +16,7 @@ pub struct Serial {
     /// serial transfer was send. It is 0 if there is no transfer happening.
     pub serial_transfer_started: u64,
 
-    #[cfg(not(target_arch = "wasm32"))]
     pub serial_transfer_callback: Option<Box<dyn FnMut(u8) + Send>>,
-    #[cfg(target_arch = "wasm32")]
-    pub serial_transfer_callback: Option<Box<dyn FnMut(u8)>>,
 
     /// The estimated time where the next interrupt may happen.
     pub next_interrupt: u64,

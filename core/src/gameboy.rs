@@ -17,10 +17,7 @@ use self::{
     sound_controller::SoundController, timer::Timer,
 };
 
-#[cfg(not(target_arch = "wasm32"))]
 type VBlankCallback = Box<dyn FnMut(&mut GameBoy) + Send>;
-#[cfg(target_arch = "wasm32")]
-type VBlankCallback = Box<dyn FnMut(&mut GameBoy)>;
 
 pub struct GameBoy {
     pub trace: RefCell<Trace>,

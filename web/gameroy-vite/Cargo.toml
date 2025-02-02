@@ -1,0 +1,14 @@
+[package]
+name = "gameroy-vite"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+gameroy-core = { version = "0.3.1", path = "../../core" }
+wasm-bindgen = "0.2.100"

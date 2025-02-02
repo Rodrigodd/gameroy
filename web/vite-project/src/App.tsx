@@ -1,15 +1,11 @@
 import React, { useState } from "react";
 import "./App.css";
-
-interface Item {
-  title: string;
-  lastPlayed: string;
-  size: string;
-}
+import { Item } from "./interfaces"
+import { Game } from "./screens/Game";
 
 const initialItems: Item[] = [
-  { title: "Item Title 1", lastPlayed: "2024-09-15", size: "1024 KiB" },
-  { title: "Item Title 2", lastPlayed: "2024-09-10", size: "512 KiB" },
+  // { title: "Item Title 1", lastPlayed: "2024-09-15", size: "1024 KiB" },
+  // { title: "Item Title 2", lastPlayed: "2024-09-10", size: "512 KiB" },
 ];
 
 const Header = () => {
@@ -25,14 +21,14 @@ const Header = () => {
   );
 };
 
-interface ItemProps {
+interface ListItemProps {
   item: Item;
   onClick: (item: Item) => void;
 }
 
-const Item = ({ item, onClick }: ItemProps) => {
+const ListItem = ({ item, onClick }: ListItemProps) => {
   return (
-    <div onDoubleClick={() => onClick(item)} className="item">
+    <div onClick={() => onClick(item)} className="item">
       <div className="thumbnail"></div>
       <div className="info">
         <h3>{item.title}</h3>
@@ -46,41 +42,36 @@ const Item = ({ item, onClick }: ItemProps) => {
 interface MainProps {
   items: Item[];
   onDrop: (newItem: Item) => void;
+  onItemClick: (item: Item) => void;
 }
 
-const Main = ({ items, onDrop }: MainProps) => {
+const RomList = ({ items, onDrop, onItemClick }: MainProps) => {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleDragOver = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragging(true);
-    console.log("Drag over detected");
   };
 
   const handleDragLeave = () => {
     setIsDragging(false);
-    console.log("Drag leave detected");
   };
 
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
     setIsDragging(false);
-    console.log("Drop event detected");
     const files = event.dataTransfer.files;
     if (files.length > 0) {
-      console.log("File dropped:", files[0].name);
+      const file = files[0];
       const newItem = {
-        title: files[0].name,
+        title: file.name,
         lastPlayed: new Date().toISOString().split("T")[0],
-        size: `${(files[0].size / 1024).toFixed(2)} KiB`,
+        size: `${(file.size / 1024).toFixed(2)} KiB`,
+        file: file
       };
       onDrop(newItem);
     }
   };
-
-  const onItemClick = (item: Item) => {
-    console.log("Item clicked:", item.title);
-  }
 
   return (
     <main
@@ -92,7 +83,7 @@ const Main = ({ items, onDrop }: MainProps) => {
       {isDragging && <div className="drop-message">Drop Here</div>}
       <div className="item-list">
         {items.map((item, index) => (
-          <Item onClick={onItemClick} key={index} item={item} />
+          <ListItem onClick={onItemClick} key={index} item={item} />
         ))}
       </div>
     </main>
@@ -101,16 +92,21 @@ const Main = ({ items, onDrop }: MainProps) => {
 
 const App = () => {
   const [items, setItems] = useState(initialItems);
+  const [selectedItem, setSelectedItem] = useState<Item | null>(null);
 
   const addItem = (newItem: Item) => {
-    console.log("Adding new item:", newItem);
     setItems((prevItems) => [...prevItems, newItem]);
   };
 
   return (
-    <div className="container">
-      <Header />
-      <Main items={items} onDrop={addItem} />
+    <div>
+      <div className={"container" + (selectedItem == null ? " hidden" : "")}>
+        <Game item={selectedItem} onBack={() => setSelectedItem(null)} />
+      </div>
+      <div className={"container" + (selectedItem != null ? " hidden" : "")}>
+        <Header />
+        <RomList items={items} onDrop={addItem} onItemClick={setSelectedItem} />
+      </div>
     </div>
   );
 };

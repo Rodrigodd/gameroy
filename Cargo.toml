@@ -1,5 +1,5 @@
 [workspace]
-members = ["core", "jit", "gameroy", "android", "native", "wasm", "libretro"]
+members = ["core", "jit", "gameroy", "android", "native", "wasm", "libretro", "web/gameroy-vite"]
 resolver = "2"
 
 [workspace.package]

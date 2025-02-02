@@ -67,6 +67,7 @@ button:hover {
 
 .item:hover {
   background-color: var(--color-dark-green);
+  cursor: pointer;
 }
 .item:hover .thumbnail {
   background-color: var(--color-light-green);

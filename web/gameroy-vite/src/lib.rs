@@ -63,6 +63,13 @@ pub fn load_rom(rom: Vec<u8>) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn set_joypad(joypad: u8) {
+    let mut context = context_mut();
+    let gameboy = context.gameboy.as_mut().unwrap();
+    gameboy.joypad = !joypad;
+}
+
+#[wasm_bindgen]
 pub fn run_frame(delta: f64) -> Result<Vec<u32>, JsValue> {
     let mut context = context_mut();
 

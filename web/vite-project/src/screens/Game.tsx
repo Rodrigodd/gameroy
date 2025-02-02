@@ -1,6 +1,6 @@
-import { Item } from "../interfaces"
-import { run_frame, load_rom, initSync, take_audio_buffer } from "../../pkg/gameroy_vite";
-import { useEffect, useRef } from "react";
+import { Item } from "../interfaces";
+import { run_frame, load_rom, initSync, take_audio_buffer, set_joypad } from "../../pkg/gameroy_vite";
+import { useEffect, useRef, useState } from "react";
 
 export interface GameProps {
   item: Item | null;
@@ -12,8 +12,6 @@ interface GameCanvasProps {
 }
 
 const useAnimationFrame = (callback: (deltaTime: number) => void) => {
-  // Use useRef for mutable variables that we want to persist
-  // without triggering a re-render on their change
   const requestRef = useRef<number | undefined>(undefined);
   const previousTimeRef = useRef<number | undefined>(undefined);
 
@@ -21,22 +19,21 @@ const useAnimationFrame = (callback: (deltaTime: number) => void) => {
     const animate = (time: DOMHighResTimeStamp) => {
       if (previousTimeRef.current != undefined) {
         const deltaTime = time - previousTimeRef.current;
-        callback(deltaTime / 1000.0)
+        callback(deltaTime / 1000.0);
       }
       previousTimeRef.current = time;
       requestRef.current = requestAnimationFrame(animate);
-    }
+    };
 
     requestRef.current = requestAnimationFrame(animate);
     return () => {
-      if (requestRef.current != null)
-        cancelAnimationFrame(requestRef.current)
+      if (requestRef.current != null) cancelAnimationFrame(requestRef.current);
     };
-  }, [callback]); // Make sure the effect runs only once
-}
+  }, [callback]);
+};
 
 const SAMPLE_RATE = 44100;
-const GAIN = 0.001
+const GAIN = 0.001;
 let audioContext: AudioContext | null = null;
 let playAudioSamples: (samples: Float32Array[]) => void = () => { return; };
 
@@ -47,7 +44,7 @@ const initAudioProcessor = async () => {
   audioContext.destination.channelCount = 2;
   await audioContext.audioWorklet.addModule('/src/audioProcessor.js');
   const processorNode = new AudioWorkletNode(audioContext, 'wasm-audio-processor', { outputChannelCount: [2] });
-  console.log(processorNode);
+
   processorNode.connect(audioContext.destination);
 
   await audioContext.resume();
@@ -55,11 +52,12 @@ const initAudioProcessor = async () => {
   playAudioSamples = (samples: Float32Array[]) => {
     processorNode.port.postMessage([samples[0].buffer, samples[1].buffer], [samples[0].buffer, samples[1].buffer]);
   };
-}
+};
 
 const GameCanvas = ({ item }: GameCanvasProps) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const bufferRef = useRef<Uint8Array | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bufferRef = useRef<Uint8Array | null>(null);
+  const [joypadState, setJoypadState] = useState<number>(0);
 
   useEffect(() => {
     const load = async () => {
@@ -74,35 +72,63 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     void load();
   }, [item]);
 
-  useAnimationFrame((delta) => {
-    const canvas = canvasRef.current
-    if (canvas == null) return
-    if (bufferRef.current == null) return
+  useEffect(() => {
+    const keyMap: Record<string, number> = {
+      ArrowRight: 0x01, // Right
+      ArrowLeft: 0x02, // Left
+      ArrowUp: 0x04, // Up
+      ArrowDown: 0x08, // Down
+      a: 0x10, // A
+      s: 0x20, // B
+      Backspace: 0x40, // Select
+      Enter: 0x80, // Start
+    };
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (keyMap[event.key] !== undefined) {
+        setJoypadState((prev) => prev | keyMap[event.key]);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (keyMap[event.key] !== undefined) {
+        setJoypadState((prev) => prev & ~keyMap[event.key]);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  useAnimationFrame((delta) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !bufferRef.current) return;
     try {
       if (delta > 0.050) {
-        console.warn(`Frame took too long: ${delta * 1000.0}ms`)
+        console.warn(`Frame took too long: ${delta * 1000.0}ms`);
         delta = 0.016666;
       }
+      set_joypad(joypadState);
       const frame = run_frame(delta);
-      const context = canvas.getContext('2d')
-      const imageData = new ImageData(new Uint8ClampedArray(frame.buffer), 160, 144)
+      const context = canvas.getContext("2d");
+      const imageData = new ImageData(new Uint8ClampedArray(frame.buffer), 160, 144);
       context?.putImageData(imageData, 0, 0);
-
       const samples = take_audio_buffer(GAIN);
       playAudioSamples(samples);
     } catch (error) {
-      console.error(error)
+      console.error(error);
     }
-  })
+  });
 
-  return <canvas ref={canvasRef} width={160} height={144} />
-}
+  return <canvas ref={canvasRef} width={160} height={144} />;
+};
 
 export const Game = ({ item, onBack }: GameProps) => {
-  if (item == null)
-    return <div className="detail">No item selected</div>
-
+  if (!item) return <div className="detail">No item selected</div>;
   return (
     <div className="detail">
       <button onClick={onBack}>🔙 Back</button>

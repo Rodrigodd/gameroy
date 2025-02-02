@@ -99,7 +99,7 @@ const App = () => {
   };
 
   return (
-    <div>
+    <div style={{ height: '100%' }}>
       <div className={"container" + (selectedItem == null ? " hidden" : "")}>
         <Game item={selectedItem} onBack={() => setSelectedItem(null)} />
       </div>

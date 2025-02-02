@@ -7,6 +7,7 @@ import {
   set_joypad,
 } from "../../pkg/gameroy_vite";
 import { useEffect, useRef, useState } from "react";
+import "../App.css";
 
 export interface GameProps {
   item: Item | null;
@@ -145,15 +146,17 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     }
   });
 
-  return <canvas ref={canvasRef} width={160} height={144} />;
+  return <canvas ref={canvasRef} width={160} height={144} id="game-canvas" style={{ flex: '1' }} />;
 };
 
 export const Game = ({ item, onBack }: GameProps) => {
   if (!item) return <div className="detail">No item selected</div>;
   return (
     <div className="detail">
-      <button onClick={onBack}>🔙 Back</button>
-      <h2>{item.title}</h2>
+      <header className="header">
+        <button onClick={onBack}>🔙 Back</button>
+        <h2>{item.title}</h2>
+      </header>
       <GameCanvas item={item} />
     </div>
   );

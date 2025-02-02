@@ -130,6 +130,8 @@ a:hover {
 
 html,
 body {
+  /* max-height: 100%; */
+  /* min-height: 0%; */
   height: 100vh;
   margin: 0;
   font-family: Arial, sans-serif;
@@ -137,10 +139,27 @@ body {
   color: var(--color-text);
 }
 
+#root {
+  height: 100%;
+}
+
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#game-canvas {
+  min-height: 0px;
+  min-width: 0px;
+  object-fit: contain;
+  image-rendering: pixelated;
 }
 
 .header {

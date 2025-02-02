@@ -1,10 +1,10 @@
 /* Define CSS Variables */
 :root {
   --color-dark-bg: #111511;
-  --color-dark-green: #1E5128;
-  --color-bright-green: #4E9F3D;
-  --color-light-green: #D8E9A8;
-  --color-text: #E8EFE8;
+  --color-dark-green: #1e5128;
+  --color-bright-green: #4e9f3d;
+  --color-light-green: #d8e9a8;
+  --color-text: #e8efe8;
 }
 
 .container {
@@ -73,11 +73,11 @@ button:hover {
   background-color: var(--color-light-green);
 }
 
-a, a:hover {
+a,
+a:hover {
   all: unset;
   cursor: pointer;
 }
-
 
 .thumbnail {
   width: 72px;
@@ -122,13 +122,14 @@ a, a:hover {
 
 :root {
   --color-dark-bg: #111511;
-  --color-dark-green: #1E5128;
-  --color-bright-green: #4E9F3D;
-  --color-light-green: #D8E9A8;
-  --color-text: #E8EFE8;
+  --color-dark-green: #1e5128;
+  --color-bright-green: #4e9f3d;
+  --color-light-green: #d8e9a8;
+  --color-text: #e8efe8;
 }
 
-html, body {
+html,
+body {
   height: 100vh;
   margin: 0;
   font-family: Arial, sans-serif;

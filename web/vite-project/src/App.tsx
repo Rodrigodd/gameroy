@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import "./App.css";
-import { Item } from "./interfaces"
+import { Item } from "./interfaces";
 import { Game } from "./screens/Game";
 
 const initialItems: Item[] = [
@@ -67,7 +67,7 @@ const RomList = ({ items, onDrop, onItemClick }: MainProps) => {
         title: file.name,
         lastPlayed: new Date().toISOString().split("T")[0],
         size: `${(file.size / 1024).toFixed(2)} KiB`,
-        file: file
+        file: file,
       };
       onDrop(newItem);
     }

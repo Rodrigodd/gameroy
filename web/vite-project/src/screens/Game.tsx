@@ -1,5 +1,11 @@
 import { Item } from "../interfaces";
-import { run_frame, load_rom, initSync, take_audio_buffer, set_joypad } from "../../pkg/gameroy_vite";
+import {
+  run_frame,
+  load_rom,
+  initSync,
+  take_audio_buffer,
+  set_joypad,
+} from "../../pkg/gameroy_vite";
 import { useEffect, useRef, useState } from "react";
 
 export interface GameProps {
@@ -35,22 +41,33 @@ const useAnimationFrame = (callback: (deltaTime: number) => void) => {
 const SAMPLE_RATE = 44100;
 const GAIN = 0.001;
 let audioContext: AudioContext | null = null;
-let playAudioSamples: (samples: Float32Array[]) => void = () => { return; };
+let playAudioSamples: (samples: Float32Array[]) => void = () => {
+  return;
+};
 
 const initAudioProcessor = async () => {
-  if (audioContext != null)
-    return;
-  audioContext = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'playback' });
+  if (audioContext != null) return;
+  audioContext = new AudioContext({
+    sampleRate: SAMPLE_RATE,
+    latencyHint: "playback",
+  });
   audioContext.destination.channelCount = 2;
-  await audioContext.audioWorklet.addModule('/src/audioProcessor.js');
-  const processorNode = new AudioWorkletNode(audioContext, 'wasm-audio-processor', { outputChannelCount: [2] });
+  await audioContext.audioWorklet.addModule("/src/audioProcessor.js");
+  const processorNode = new AudioWorkletNode(
+    audioContext,
+    "wasm-audio-processor",
+    { outputChannelCount: [2] },
+  );
 
   processorNode.connect(audioContext.destination);
 
   await audioContext.resume();
 
   playAudioSamples = (samples: Float32Array[]) => {
-    processorNode.port.postMessage([samples[0].buffer, samples[1].buffer], [samples[0].buffer, samples[1].buffer]);
+    processorNode.port.postMessage(
+      [samples[0].buffer, samples[1].buffer],
+      [samples[0].buffer, samples[1].buffer],
+    );
   };
 };
 
@@ -108,14 +125,18 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     const canvas = canvasRef.current;
     if (!canvas || !bufferRef.current) return;
     try {
-      if (delta > 0.050) {
+      if (delta > 0.05) {
         console.warn(`Frame took too long: ${delta * 1000.0}ms`);
         delta = 0.016666;
       }
       set_joypad(joypadState);
       const frame = run_frame(delta);
       const context = canvas.getContext("2d");
-      const imageData = new ImageData(new Uint8ClampedArray(frame.buffer), 160, 144);
+      const imageData = new ImageData(
+        new Uint8ClampedArray(frame.buffer),
+        160,
+        144,
+      );
       context?.putImageData(imageData, 0, 0);
       const samples = take_audio_buffer(GAIN);
       playAudioSamples(samples);

@@ -3,19 +3,41 @@ import "./App.css";
 import { Item } from "./interfaces";
 import { Game } from "./screens/Game";
 
-const initialItems: Item[] = [
-  // { title: "Item Title 1", lastPlayed: "2024-09-15", size: "1024 KiB" },
-  // { title: "Item Title 2", lastPlayed: "2024-09-10", size: "512 KiB" },
-];
+const initialItems: Item[] = [];
 
-const Header = () => {
+const Header = ({
+  onFileSelect,
+}: {
+  onFileSelect: (newItem: Item) => void;
+}) => {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const newItem = {
+        title: file.name,
+        lastPlayed: new Date().toISOString().split("T")[0],
+        size: `${(file.size / 1024).toFixed(2)} KiB`,
+        file: file,
+      };
+      onFileSelect(newItem);
+    }
+  };
+
   return (
     <header className="header">
       <h3 className="title">Web App Mockup</h3>
       <div className="buttons">
         <button>📁</button>
-        <button>📄</button>
+        <button onClick={() => document.getElementById("fileInput")?.click()}>
+          📄
+        </button>
         <button>🔍</button>
+        <input
+          type="file"
+          id="fileInput"
+          style={{ display: "none" }}
+          onChange={handleFileSelect}
+        />
       </div>
     </header>
   );
@@ -99,12 +121,12 @@ const App = () => {
   };
 
   return (
-    <div style={{ height: '100%' }}>
+    <div style={{ height: "100%" }}>
       <div className={"container" + (selectedItem == null ? " hidden" : "")}>
         <Game item={selectedItem} onBack={() => setSelectedItem(null)} />
       </div>
       <div className={"container" + (selectedItem != null ? " hidden" : "")}>
-        <Header />
+        <Header onFileSelect={addItem} />
         <RomList items={items} onDrop={addItem} onItemClick={setSelectedItem} />
       </div>
     </div>

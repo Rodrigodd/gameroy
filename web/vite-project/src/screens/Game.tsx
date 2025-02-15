@@ -146,7 +146,15 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     }
   });
 
-  return <canvas ref={canvasRef} width={160} height={144} id="game-canvas" style={{ flex: '1' }} />;
+  return (
+    <canvas
+      ref={canvasRef}
+      width={160}
+      height={144}
+      id="game-canvas"
+      style={{ flex: "1" }}
+    />
+  );
 };
 
 export const Game = ({ item, onBack }: GameProps) => {

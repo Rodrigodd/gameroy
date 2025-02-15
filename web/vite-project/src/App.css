@@ -214,6 +214,14 @@ button:hover {
   border-bottom: 1px solid var(--color-dark-green);
 }
 
+.item:hover {
+  background-color: var(--color-dark-green);
+  cursor: pointer;
+}
+.item:hover .thumbnail {
+  background-color: var(--color-light-green);
+}
+
 .thumbnail {
   width: 96px;
   height: 96px;
@@ -256,4 +264,55 @@ button:hover {
   font-size: 24px;
   font-weight: bold;
   z-index: 999;
+}
+
+.menu-container {
+  position: relative;
+  display: inline-block;
+}
+
+.menu-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 5px;
+  color: var(--color-bright-green);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+}
+
+.menu-button:hover {
+  color: var(--color-dark-green);
+}
+
+.menu-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: var(--color-dark-bg);
+  border: 1px solid var(--color-dark-green);
+  border-radius: 5px;
+  box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.2);
+  min-width: 120px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-dropdown button {
+  background: none;
+  border: none;
+  padding: 8px;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  color: var(--color-text);
+  font-size: 16px;
+}
+
+.menu-dropdown button:hover {
+  background: var(--color-bright-green);
+  color: var(--color-dark-bg);
 }

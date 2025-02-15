@@ -48,3 +48,13 @@ export async function loadFilesFromOPFS(): Promise<Item[]> {
     return [];
   }
 }
+
+export async function deleteFileFromOPFS(fileName: string): Promise<void> {
+  try {
+    const root = await navigator.storage.getDirectory();
+    await root.removeEntry(fileName);
+    console.log(`Deleted: ${fileName}`);
+  } catch (error) {
+    console.error("Failed to delete file:", error);
+  }
+}

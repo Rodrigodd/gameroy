@@ -1,25 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 import { Item } from "./interfaces";
 import { Game } from "./screens/Game";
+import { saveFileToOPFS, loadFilesFromOPFS } from "./utils/opfsUtils";
 
 const initialItems: Item[] = [];
 
-const Header = ({
-  onFileSelect,
-}: {
-  onFileSelect: (newItem: Item) => void;
-}) => {
+const Header = ({ onFileSelect }: { onFileSelect: (newItem: Item) => void }) => {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const newItem = {
-        title: file.name,
-        lastPlayed: new Date().toISOString().split("T")[0],
-        size: `${(file.size / 1024).toFixed(2)} KiB`,
-        file: file,
-      };
-      onFileSelect(newItem);
+      void saveFileToOPFS(file).then((newItem) => {
+        if (newItem) onFileSelect(newItem);
+      });
     }
   };
 
@@ -84,14 +77,9 @@ const RomList = ({ items, onDrop, onItemClick }: MainProps) => {
     setIsDragging(false);
     const files = event.dataTransfer.files;
     if (files.length > 0) {
-      const file = files[0];
-      const newItem = {
-        title: file.name,
-        lastPlayed: new Date().toISOString().split("T")[0],
-        size: `${(file.size / 1024).toFixed(2)} KiB`,
-        file: file,
-      };
-      onDrop(newItem);
+      void saveFileToOPFS(files[0]).then((newItem) => {
+        if (newItem) onDrop(newItem);
+      });
     }
   };
 
@@ -115,6 +103,10 @@ const RomList = ({ items, onDrop, onItemClick }: MainProps) => {
 const App = () => {
   const [items, setItems] = useState(initialItems);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+
+  useEffect(() => {
+    loadFilesFromOPFS().then(setItems);
+  }, []);
 
   const addItem = (newItem: Item) => {
     setItems((prevItems) => [...prevItems, newItem]);

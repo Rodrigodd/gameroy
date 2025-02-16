@@ -6,10 +6,12 @@ import {
   take_audio_buffer,
   set_joypad,
   save_state,
-  load_state
+  load_state,
+  reset,
 } from "../../pkg/gameroy_vite";
 import { useEffect, useRef, useState } from "react";
 import "../App.css";
+import { Menu, MenuItem } from "../components/Menu";
 
 export interface GameProps {
   item: Item | null;
@@ -77,7 +79,9 @@ const initAudioProcessor = async () => {
 async function loadStateFromOPFS(item: Item): Promise<ArrayBuffer | null> {
   const root = await navigator.storage.getDirectory();
   const savesHandle = await root.getDirectoryHandle("saves", { create: true });
-  const saveHandle = await savesHandle.getFileHandle(item.title, { create: true });
+  const saveHandle = await savesHandle.getFileHandle(item.title, {
+    create: true,
+  });
   const saveFile = await saveHandle.getFile();
   return await saveFile.arrayBuffer();
 }
@@ -85,7 +89,9 @@ async function loadStateFromOPFS(item: Item): Promise<ArrayBuffer | null> {
 async function saveStateToOPFS(item: Item, state: ArrayBuffer): Promise<void> {
   const root = await navigator.storage.getDirectory();
   const savesHandle = await root.getDirectoryHandle("saves", { create: true });
-  const saveHandle = await savesHandle.getFileHandle(item.title, { create: true });
+  const saveHandle = await savesHandle.getFileHandle(item.title, {
+    create: true,
+  });
   const writable = await saveHandle.createWritable();
   await writable.write(state);
   await writable.close();
@@ -102,7 +108,9 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
       void saveStateToOPFS(item, array);
       return "Save game before leaving?";
     };
-    return () => (window.onbeforeunload = null);
+    return () => {
+      window.onbeforeunload = null;
+    };
   }, [item]);
 
   useEffect(() => {
@@ -199,11 +207,25 @@ export const Game = ({ item, onBack }: GameProps) => {
     onBack();
   };
 
+  const menuItems: MenuItem[] = [
+    { label: "Back", action: "back" },
+    { label: "Restart", action: "reset" },
+  ];
+
+  const handleMenuSelect = (action: string) => {
+    if (action === "reset") {
+      reset();
+    } else if (action === "back") {
+      onBackClick();
+    }
+  };
+
   return (
     <div className="detail">
       <header className="header">
         <button onClick={onBackClick}>🔙 Back</button>
         <h2>{item.title}</h2>
+        <Menu items={menuItems} onSelect={handleMenuSelect} />
       </header>
       <GameCanvas item={item} />
     </div>

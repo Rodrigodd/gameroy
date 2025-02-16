@@ -147,3 +147,11 @@ pub fn load_state(state: Vec<u8>) -> Result<(), JsValue> {
 
     Ok(())
 }
+
+#[wasm_bindgen]
+pub fn reset() -> Result<(), JsValue> {
+    let mut context = context_mut();
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    gb.reset();
+    Ok(())
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import "./App.css";
 import { Item } from "./interfaces";
 import { Game } from "./screens/Game";
@@ -7,6 +7,7 @@ import {
   loadFilesFromOPFS,
   deleteFileFromOPFS,
 } from "./utils/opfsUtils";
+import { Menu, MenuItem } from "./components/Menu";
 
 const initialItems: Item[] = [];
 
@@ -51,43 +52,19 @@ interface ListItemProps {
 }
 
 const ListItem = ({ item, onClick, onRemove }: ListItemProps) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuOpenRef = useRef(menuOpen);
+  const menuItems: MenuItem[] = [
+    { label: "▶ Play", action: "play" },
+    { label: "💾 Clear Save", action: "clear-save" },
+    { separator: true },
+    { label: "🗑 Remove", action: "remove" },
+  ];
 
-  menuOpenRef.current = menuOpen;
-
-  // Close menu if clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        menuOpenRef.current &&
-        menuRef.current &&
-        !menuRef.current.contains(event.target as Node)
-      ) {
-        event.stopPropagation();
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const handleMenuClick = (event: React.MouseEvent, action: string) => {
-    console.log("Menu Clicked: ", action);
-    event.stopPropagation();
-    setMenuOpen(false); // Close menu after action
+  const handleMenuSelect = (action: string) => {
     if (action === "play") {
       onClick(item);
     } else if (action === "remove") {
       onRemove(item);
     }
-  };
-
-  const menuOnClick = (event: React.MouseEvent) => {
-    event.stopPropagation();
-    setMenuOpen(!menuOpen);
   };
 
   return (
@@ -98,25 +75,7 @@ const ListItem = ({ item, onClick, onRemove }: ListItemProps) => {
         <p>Last Played: {item.lastPlayed}</p>
         <p className="size">Size: {item.size}</p>
       </div>
-
-      {/* Menu Button & Dropdown */}
-      <div className="menu-container" ref={menuRef}>
-        <button className="menu-button" onClick={menuOnClick}>
-          ⋮
-        </button>
-
-        {menuOpen && (
-          <div className="menu-dropdown">
-            <button onClick={(e) => handleMenuClick(e, "play")}>▶ Play</button>
-            <button onClick={(e) => handleMenuClick(e, "remove")}>
-              🗑 Remove
-            </button>
-            <button onClick={(e) => handleMenuClick(e, "clear-save")}>
-              💾 Clear Save
-            </button>
-          </div>
-        )}
-      </div>
+      <Menu items={menuItems} onSelect={handleMenuSelect} />
     </div>
   );
 };

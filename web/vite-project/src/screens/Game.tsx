@@ -5,6 +5,8 @@ import {
   initSync,
   take_audio_buffer,
   set_joypad,
+  save_state,
+  load_state
 } from "../../pkg/gameroy_vite";
 import { useEffect, useRef, useState } from "react";
 import "../App.css";
@@ -72,10 +74,36 @@ const initAudioProcessor = async () => {
   };
 };
 
+async function loadStateFromOPFS(item: Item): Promise<ArrayBuffer | null> {
+  const root = await navigator.storage.getDirectory();
+  const savesHandle = await root.getDirectoryHandle("saves", { create: true });
+  const saveHandle = await savesHandle.getFileHandle(item.title, { create: true });
+  const saveFile = await saveHandle.getFile();
+  return await saveFile.arrayBuffer();
+}
+
+async function saveStateToOPFS(item: Item, state: ArrayBuffer): Promise<void> {
+  const root = await navigator.storage.getDirectory();
+  const savesHandle = await root.getDirectoryHandle("saves", { create: true });
+  const saveHandle = await savesHandle.getFileHandle(item.title, { create: true });
+  const writable = await saveHandle.createWritable();
+  await writable.write(state);
+  await writable.close();
+}
+
 const GameCanvas = ({ item }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bufferRef = useRef<Uint8Array | null>(null);
   const [joypadState, setJoypadState] = useState<number>(0);
+
+  useEffect(() => {
+    window.onbeforeunload = () => {
+      const array = save_state();
+      void saveStateToOPFS(item, array);
+      return "Save game before leaving?";
+    };
+    return () => (window.onbeforeunload = null);
+  }, [item]);
 
   useEffect(() => {
     const load = async () => {
@@ -86,6 +114,11 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
       await initAudioProcessor();
       bufferRef.current = rom;
       load_rom(rom);
+
+      const state = await loadStateFromOPFS(item);
+      if (state) {
+        load_state(new Uint8Array(state));
+      }
     };
     void load();
   }, [item]);
@@ -159,10 +192,17 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
 
 export const Game = ({ item, onBack }: GameProps) => {
   if (!item) return <div className="detail">No item selected</div>;
+
+  const onBackClick = () => {
+    const array = save_state();
+    void saveStateToOPFS(item, array);
+    onBack();
+  };
+
   return (
     <div className="detail">
       <header className="header">
-        <button onClick={onBack}>🔙 Back</button>
+        <button onClick={onBackClick}>🔙 Back</button>
         <h2>{item.title}</h2>
       </header>
       <GameCanvas item={item} />

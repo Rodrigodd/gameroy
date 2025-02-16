@@ -123,3 +123,27 @@ pub fn take_audio_buffer(gain: f32) -> Result<Vec<JsValue>, JsValue> {
 
     Ok([JsValue::from(left), JsValue::from(right)].to_vec())
 }
+
+#[wasm_bindgen]
+pub fn save_state() -> Result<Vec<u8>, JsValue> {
+    let mut context = context_mut();
+
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+
+    let mut save_state = Vec::new();
+    gb.save_state(None, &mut save_state)
+        .map_err(|e| format!("Failed to save state: {}", e))?;
+    Ok(save_state)
+}
+
+#[wasm_bindgen]
+pub fn load_state(state: Vec<u8>) -> Result<(), JsValue> {
+    let mut context = context_mut();
+
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+
+    gb.load_state(&mut state.as_slice())
+        .map_err(|e| format!("Failed to load state: {:?}", e))?;
+
+    Ok(())
+}

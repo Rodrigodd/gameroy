@@ -101,6 +101,13 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bufferRef = useRef<Uint8Array | null>(null);
   const [joypadState, setJoypadState] = useState<number>(0);
+  const joypadStateRef = useRef<number>(0);
+  const [isFastFoward, setIsFastFoward] = useState<boolean>(false);
+  const isFastFowardRef = useRef<boolean>(false);
+  const fastForwardTaskRef = useRef<(() => Promise<void>) | null>(null);
+
+  joypadStateRef.current = joypadState;
+  isFastFowardRef.current = isFastFoward;
 
   useEffect(() => {
     window.onbeforeunload = () => {
@@ -131,27 +138,57 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     void load();
   }, [item]);
 
+  if (isFastFoward && fastForwardTaskRef.current == null) {
+    console.log("Starting fast forward");
+    fastForwardTaskRef.current = async () => {
+      while (isFastFowardRef.current) {
+        set_joypad(joypadStateRef.current);
+        const frame = run_frame(0.016666);
+        const context = canvasRef.current?.getContext("2d");
+        const imageData = new ImageData(
+          new Uint8ClampedArray(frame.buffer),
+          160,
+          144,
+        );
+        context?.putImageData(imageData, 0, 0);
+        const samples = take_audio_buffer(GAIN);
+        playAudioSamples(samples);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      fastForwardTaskRef.current = null;
+    }
+
+    void fastForwardTaskRef.current();
+  } else if (!isFastFoward && fastForwardTaskRef.current != null) {
+    fastForwardTaskRef.current = null;
+  }
+
   useEffect(() => {
     const keyMap: Record<string, number> = {
       ArrowRight: 0x01, // Right
       ArrowLeft: 0x02, // Left
       ArrowUp: 0x04, // Up
       ArrowDown: 0x08, // Down
-      a: 0x10, // A
-      s: 0x20, // B
+      KeyA: 0x10, // A
+      KeyS: 0x20, // B
       Backspace: 0x40, // Select
       Enter: 0x80, // Start
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (keyMap[event.key] !== undefined) {
-        setJoypadState((prev) => prev | keyMap[event.key]);
+      console.log(event.code, keyMap[event.code]);
+      if (keyMap[event.code] !== undefined) {
+        setJoypadState((prev) => prev | keyMap[event.code]);
+      } else if (event.code === "ShiftLeft") {
+        setIsFastFoward(true);
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
-      if (keyMap[event.key] !== undefined) {
-        setJoypadState((prev) => prev & ~keyMap[event.key]);
+      if (keyMap[event.code] !== undefined) {
+        setJoypadState((prev) => prev & ~keyMap[event.code]);
+      } else if (event.code === "ShiftLeft") {
+        setIsFastFoward(false);
       }
     };
 
@@ -164,6 +201,7 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
   }, []);
 
   useAnimationFrame((delta) => {
+    if (isFastFowardRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas || !bufferRef.current) return;
     try {

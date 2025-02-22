@@ -70,7 +70,7 @@ pub fn set_joypad(joypad: u8) {
 }
 
 #[wasm_bindgen]
-pub fn run_frame(delta: f64) -> Result<Vec<u32>, JsValue> {
+pub fn run_for(delta: f64) -> Result<(), JsValue> {
     let mut context = context_mut();
 
     let gameboy = context.gameboy.as_mut().ok_or("No ROM loaded")?;
@@ -80,6 +80,13 @@ pub fn run_frame(delta: f64) -> Result<Vec<u32>, JsValue> {
         Interpreter(gameboy).interpret_op();
     }
 
+    Ok(())
+}
+
+#[wasm_bindgen]
+pub fn get_frame() -> Result<Vec<u32>, JsValue> {
+    let context = context_mut();
+
     let frame = context
         .screen_buffer
         .as_ref()
@@ -87,9 +94,6 @@ pub fn run_frame(delta: f64) -> Result<Vec<u32>, JsValue> {
         .try_lock()
         .unwrap()
         .map(|c| {
-            /// 0RGB1555 format
-            /// FIXME: this format is deprecated
-            #[allow(clippy::unusual_byte_groupings)]
             const COLOR: [u32; 4] = [
                 0xffffffff, //
                 0xffaaaaaa, //

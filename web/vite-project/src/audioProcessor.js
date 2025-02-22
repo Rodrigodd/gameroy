@@ -15,6 +15,12 @@ class WasmAudioProcessor extends AudioWorkletProcessor {
         return;
       }
 
+      if (left.length > MAX_BUFFER_SIZE) {
+        // truncate buffers
+        left = left.subarray(0, MAX_BUFFER_SIZE);
+        right = right.subarray(0, MAX_BUFFER_SIZE);
+      }
+
       this.buffers.push([left, right]);
       this.sampleCount += left.length;
       // console.log(this.sampleCount);

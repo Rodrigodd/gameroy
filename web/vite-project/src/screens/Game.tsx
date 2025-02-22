@@ -1,6 +1,7 @@
 import { Item } from "../interfaces";
 import {
-  run_frame,
+  run_for,
+  get_frame,
   load_rom,
   initSync,
   take_audio_buffer,
@@ -139,18 +140,10 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
   }, [item]);
 
   if (isFastFoward && fastForwardTaskRef.current == null) {
-    console.log("Starting fast forward");
     fastForwardTaskRef.current = async () => {
       while (isFastFowardRef.current) {
         set_joypad(joypadStateRef.current);
-        const frame = run_frame(0.016666);
-        const context = canvasRef.current?.getContext("2d");
-        const imageData = new ImageData(
-          new Uint8ClampedArray(frame.buffer),
-          160,
-          144,
-        );
-        context?.putImageData(imageData, 0, 0);
+        run_for(0.016666);
         const samples = take_audio_buffer(GAIN);
         playAudioSamples(samples);
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -176,7 +169,6 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      console.log(event.code, keyMap[event.code]);
       if (keyMap[event.code] !== undefined) {
         setJoypadState((prev) => prev | keyMap[event.code]);
       } else if (event.code === "ShiftLeft") {
@@ -201,16 +193,18 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
   }, []);
 
   useAnimationFrame((delta) => {
-    if (isFastFowardRef.current) return;
     const canvas = canvasRef.current;
     if (!canvas || !bufferRef.current) return;
     try {
-      if (delta > 0.05) {
-        console.warn(`Frame took too long: ${delta * 1000.0}ms`);
-        delta = 0.016666;
+      if (!isFastFowardRef.current) {
+        if (delta > 0.05) {
+          console.warn(`Frame took too long: ${delta * 1000.0}ms`);
+          delta = 0.016666;
+        }
+        set_joypad(joypadState);
+        run_for(delta);
       }
-      set_joypad(joypadState);
-      const frame = run_frame(delta);
+      const frame = get_frame();
       const context = canvas.getContext("2d");
       const imageData = new ImageData(
         new Uint8ClampedArray(frame.buffer),

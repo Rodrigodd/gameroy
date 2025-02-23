@@ -8,6 +8,7 @@ import {
   deleteFileFromOPFS,
 } from "./utils/opfsUtils";
 import { Menu, MenuItem } from "./components/Menu";
+import { getThumbnailUri } from "./utils/database";
 
 const initialItems: Item[] = [];
 
@@ -21,7 +22,10 @@ const Header = ({
     if (file) {
       void saveFileToOPFS(file).then((newItem) => {
         if (newItem) onFileSelect(newItem);
-      });
+      })
+        .catch((error) => {
+          console.error("Failed to save file to OPFS:", error);
+        })
     }
   };
 
@@ -52,6 +56,18 @@ interface ListItemProps {
 }
 
 const ListItem = ({ item, onClick, onRemove }: ListItemProps) => {
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    console.log("Getting thumbnail for", item.title);
+    void getThumbnailUri(item).then((url) => {
+      console.log("Thumbnail URL:", url);
+      if (url) {
+        setThumbnailUrl(url);
+      }
+    });
+  }, [item]);
+
   const menuItems: MenuItem[] = [
     { label: "▶ Play", action: "play" },
     { label: "💾 Clear Save", action: "clear-save" },
@@ -69,14 +85,23 @@ const ListItem = ({ item, onClick, onRemove }: ListItemProps) => {
 
   return (
     <div onClick={() => onClick(item)} className="item">
-      <div className="thumbnail"></div>
+      {thumbnailUrl ? (
+        <img
+          src={thumbnailUrl ?? "https://via.placeholder.com/64"}
+          alt={item.title}
+          className="thumbnail"
+        />
+      ) : (
+        <div className="thumbnail">
+        </div>
+      )}
       <div className="info">
         <h3>{item.title}</h3>
         <p>Last Played: {item.lastPlayed}</p>
         <p className="size">Size: {item.size}</p>
       </div>
       <Menu items={menuItems} onSelect={handleMenuSelect} />
-    </div>
+    </div >
   );
 };
 

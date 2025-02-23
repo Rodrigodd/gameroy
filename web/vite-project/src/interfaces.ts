@@ -3,4 +3,5 @@ export interface Item {
   lastPlayed: string;
   size: string;
   file: File;
+  crc32: string;
 }

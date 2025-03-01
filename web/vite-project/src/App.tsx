@@ -85,16 +85,15 @@ const ListItem = ({ item, onClick, onRemove }: ListItemProps) => {
 
   return (
     <div onClick={() => onClick(item)} className="item">
-      {thumbnailUrl ? (
-        <img
-          src={thumbnailUrl ?? "https://via.placeholder.com/64"}
-          alt={item.title}
-          className="thumbnail"
-        />
-      ) : (
-        <div className="thumbnail">
-        </div>
-      )}
+      <img
+        src={thumbnailUrl ?? "/src/assets/placeholder.png"}
+        alt={item.title}
+        className="thumbnail"
+        // onError="this.onerror=null; this.src='/src/assets/placeholder.png'"
+        onError={(e) => {
+          (e.target as HTMLImageElement).src = "/src/assets/placeholder.png";
+        }}
+      />
       <div className="info">
         <h3>{item.title}</h3>
         <p>Last Played: {item.lastPlayed}</p>

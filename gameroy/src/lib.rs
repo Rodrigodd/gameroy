@@ -467,7 +467,7 @@ impl EmulatorApp {
                 .name("emulator".to_string())
                 .spawn(move || {
                     let config = config();
-                    Emulator::new(
+                    let mut emu = Emulator::new(
                         gb,
                         debugger,
                         Box::new(move |event| match event {
@@ -486,8 +486,9 @@ impl EmulatorApp {
                         !config.frame_skip,
                         config.rewinding,
                         config.jit,
-                    )
-                    .event_loop(recv);
+                    );
+                    drop(config);
+                    emu.event_loop(recv);
                 })
                 .unwrap();
             Some(join_handle)

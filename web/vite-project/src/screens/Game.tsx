@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import "../App.css";
 import { Menu, MenuItem } from "../components/Menu";
 import { saveStateToOPFS, loadStateFromOPFS } from "../utils/opfsUtils";
+import ResizablePanel from "../components/Resizable";
 
 export interface GameProps {
   item: Item | null;
@@ -299,7 +300,9 @@ export const Game = ({ item, onBack }: GameProps) => {
       </header>
       <div className="flex-row">
         <GameCanvas item={item} isLoaded={isLoaded} />
-        <PpuDebug isLoaded={isLoaded} />
+        <ResizablePanel corner="bottom-left" resizeAxis="horizontal">
+          <PpuDebug isLoaded={isLoaded} />
+        </ResizablePanel>
       </div>
     </div>
   );

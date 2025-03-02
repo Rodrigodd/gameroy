@@ -186,6 +186,15 @@ a:hover {
   width: auto;
 }
 
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 20px;
+  height: 20px;
+  
+}
+
 /* Drag Overlay */
 .drag-overlay {
   position: fixed;

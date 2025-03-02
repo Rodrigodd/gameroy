@@ -1,4 +1,5 @@
 import { useState, ReactNode } from "react";
+import "./Tab.css";
 
 interface TabProps {
   label: string;

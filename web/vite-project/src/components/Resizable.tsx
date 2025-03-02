@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import "./Resizable.css";
 
 interface ResizablePanelProps {
   children: React.ReactNode;
@@ -102,13 +103,9 @@ const ResizablePanel: React.FC<ResizablePanelProps> = ({
       style={{
         width: resizeAxis !== "vertical" ? size.width : "auto",
         height: resizeAxis !== "horizontal" ? size.height : "auto",
-        position: "relative",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
         ...style,
       }}
-      className={className}
+      className={"resizable-panel " + className}
     >
       <div
         style={{
@@ -120,14 +117,11 @@ const ResizablePanel: React.FC<ResizablePanelProps> = ({
       </div>
       <div
         style={{
-          position: "absolute",
-          width: "16px",
-          height: "16px",
           clipPath: clipPaths[corner],
-          backgroundColor: "var(--color-bright-green)",
           ...cornerStyles[corner],
           ...handleStyle,
         }}
+        className="resizable-handle"
         onMouseDown={handleMouseDown}
       ></div>
     </div>

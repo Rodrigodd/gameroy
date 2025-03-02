@@ -1,0 +1,35 @@
+.detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#game-canvas {
+  min-height: 0px;
+  min-width: 0px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex: 1;
+}
+
+#ppu-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow: auto;
+}
+
+#ppu-debug h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--color-light-green);
+  margin-top: 10px;
+}
+
+.pixel-canvas {
+  /* flex-grow: 1; */
+  background-color: var(--color-dark-bg);
+  border: 1px solid var(--color-dark-green);
+  width: auto;
+}

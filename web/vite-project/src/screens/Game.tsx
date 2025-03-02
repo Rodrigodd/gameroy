@@ -19,6 +19,7 @@ import { Menu, MenuItem } from "../components/Menu";
 import { saveStateToOPFS, loadStateFromOPFS } from "../utils/opfsUtils";
 import ResizablePanel from "../components/Resizable";
 import { Tab, TabPanel } from "../components/Tab";
+import './Game.css';
 
 export interface GameProps {
   item: Item | null;

@@ -1,0 +1,36 @@
+.tab-panel {
+  overflow: hidden;
+  height: 100%;
+}
+
+.tab-header {
+  display: flex;
+  gap: 3px;
+  padding: 5px 5px 0 5px;
+  background-color: black;
+}
+
+.tab-button {
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 16px;
+  background-color: var(--color-dark-green);
+  border-bottom: 1px solid var(--color-dark-green);
+  border-radius: 5px 5px 0 0;
+}
+
+.tab-button.active {
+  color: var(--color-light-green);
+  background-color: var(--color-dark-bg);
+  border-bottom: 1px solid var(--color-dark-bg);
+}
+.tab-button:hover {
+  color: var(--color-light-green);
+}
+
+.tab-content {
+  overflow: scroll;
+  height: 100%;
+}

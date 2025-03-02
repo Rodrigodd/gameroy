@@ -1,0 +1,13 @@
+.resizable-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background-color: var(--color-bright-green);
+}
+
+.resizable-panel {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}

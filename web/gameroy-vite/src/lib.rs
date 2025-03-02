@@ -21,15 +21,27 @@ impl GameroyContext {
     }
 }
 
+const COLOR: [u32; 4] = [
+    0xffffffff, //
+    0xffaaaaaa, //
+    0xff555555, //
+    0xff000000,
+];
+
 static GAMEROY_CONTEXT: Mutex<GameroyContext> = Mutex::new(GameroyContext::new());
 
-fn context_mut() -> std::sync::MutexGuard<'static, GameroyContext> {
-    GAMEROY_CONTEXT.try_lock().unwrap()
+static SETUP_PANIC_HOOK: std::sync::Once = std::sync::Once::new();
+
+fn context_mut() -> Result<std::sync::MutexGuard<'static, GameroyContext>, JsValue> {
+    SETUP_PANIC_HOOK.call_once(console_error_panic_hook::set_once);
+    Ok(GAMEROY_CONTEXT
+        .try_lock()
+        .map_err(|_| "Failed to lock context")?)
 }
 
 #[wasm_bindgen]
 pub fn load_rom(rom: Vec<u8>) -> Result<(), JsValue> {
-    let mut context = context_mut();
+    let mut context = context_mut()?;
 
     let cartridge = match Cartridge::new(rom) {
         Ok(rom) => Ok(rom),
@@ -63,15 +75,16 @@ pub fn load_rom(rom: Vec<u8>) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn set_joypad(joypad: u8) {
-    let mut context = context_mut();
-    let gameboy = context.gameboy.as_mut().unwrap();
+pub fn set_joypad(joypad: u8) -> Result<(), JsValue> {
+    let mut context = context_mut()?;
+    let gameboy = context.gameboy.as_mut().ok_or("No ROM loaded")?;
     gameboy.joypad = !joypad;
+    Ok(())
 }
 
 #[wasm_bindgen]
 pub fn run_for(delta: f64) -> Result<(), JsValue> {
-    let mut context = context_mut();
+    let mut context = context_mut()?;
 
     let gameboy = context.gameboy.as_mut().ok_or("No ROM loaded")?;
 
@@ -84,33 +97,77 @@ pub fn run_for(delta: f64) -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen]
-pub fn get_frame() -> Result<Vec<u32>, JsValue> {
-    let context = context_mut();
+pub fn get_last_screen() -> Result<Vec<u32>, JsValue> {
+    let context = context_mut()?;
 
     let frame = context
         .screen_buffer
         .as_ref()
-        .unwrap()
+        .ok_or("No screen buffer")?
         .try_lock()
-        .unwrap()
-        .map(|c| {
-            const COLOR: [u32; 4] = [
-                0xffffffff, //
-                0xffaaaaaa, //
-                0xff555555, //
-                0xff000000,
-            ];
-            COLOR[c as usize]
-        });
+        .map_err(|_| "Failed to lock screen buffer")?
+        .map(|c| COLOR[c as usize]);
 
     Ok(frame.to_vec())
 }
 
-#[wasm_bindgen(unchecked_return_type = "Float32Array[]")]
-pub fn take_audio_buffer(gain: f32) -> Result<Vec<JsValue>, JsValue> {
-    let mut context = context_mut();
+#[wasm_bindgen]
+pub fn get_ppu_background() -> Result<Vec<u32>, JsValue> {
+    let mut context = context_mut()?;
 
     let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    let ppu = gb.ppu.get_mut();
+
+    let mut background = vec![0; 256 * 256];
+    gameroy::gameboy::ppu::draw_background(&*ppu, &mut |x, y, c| {
+        let i = (x + y * 256) as usize;
+        background[i] = COLOR[c as usize];
+    });
+
+    Ok(background)
+}
+
+#[wasm_bindgen]
+pub fn get_ppu_window() -> Result<Vec<u32>, JsValue> {
+    let mut context = context_mut()?;
+
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    let ppu = gb.ppu.get_mut();
+
+    let mut window = vec![0; 256 * 256];
+    gameroy::gameboy::ppu::draw_window(&*ppu, &mut |x, y, c| {
+        let i = (x + y * 256) as usize;
+        window[i] = COLOR[c as usize];
+    });
+
+    Ok(window)
+}
+
+#[wasm_bindgen]
+pub fn get_ppu_tiles(pallete: u8) -> Result<Vec<u32>, JsValue> {
+    let mut context = context_mut()?;
+
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    let ppu = gb.ppu.get_mut();
+
+    let mut tiles = vec![0; 128 * 192];
+    gameroy::gameboy::ppu::draw_tiles(
+        &*ppu,
+        &mut |x, y, c| {
+            let i = (x + y * 128) as usize;
+            tiles[i] = COLOR[c as usize];
+        },
+        pallete,
+    );
+
+    Ok(tiles)
+}
+
+#[wasm_bindgen(unchecked_return_type = "Float32Array[]")]
+pub fn take_audio_buffer(gain: f32) -> Result<Vec<JsValue>, JsValue> {
+    let mut context = context_mut()?;
+
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded")?;
 
     let clock_count = gb.clock_count;
     let samples = gb.sound.get_mut().get_output(clock_count);
@@ -130,9 +187,9 @@ pub fn take_audio_buffer(gain: f32) -> Result<Vec<JsValue>, JsValue> {
 
 #[wasm_bindgen]
 pub fn save_state() -> Result<Vec<u8>, JsValue> {
-    let mut context = context_mut();
+    let mut context = context_mut()?;
 
-    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded")?;
 
     let mut save_state = Vec::new();
     gb.save_state(None, &mut save_state)
@@ -142,9 +199,9 @@ pub fn save_state() -> Result<Vec<u8>, JsValue> {
 
 #[wasm_bindgen]
 pub fn load_state(state: Vec<u8>) -> Result<(), JsValue> {
-    let mut context = context_mut();
+    let mut context = context_mut()?;
 
-    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded")?;
 
     gb.load_state(&mut state.as_slice())
         .map_err(|e| format!("Failed to load state: {:?}", e))?;
@@ -154,8 +211,8 @@ pub fn load_state(state: Vec<u8>) -> Result<(), JsValue> {
 
 #[wasm_bindgen]
 pub fn reset() -> Result<(), JsValue> {
-    let mut context = context_mut();
-    let gb = context.gameboy.as_mut().ok_or("No ROM loaded").unwrap();
+    let mut context = context_mut()?;
+    let gb = context.gameboy.as_mut().ok_or("No ROM loaded")?;
     gb.reset();
     Ok(())
 }

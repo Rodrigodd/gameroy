@@ -7,7 +7,7 @@ function crc32(buffer: ArrayBuffer): string {
   for (let i = 0; i < 256; i++) {
     let crc = i;
     for (let j = 0; j < 8; j++) {
-      crc = (crc & 1) ? (0xedb88320 ^ (crc >>> 1)) : (crc >>> 1);
+      crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1;
     }
     table[i] = crc;
   }
@@ -84,4 +84,29 @@ export async function deleteFileFromOPFS(fileName: string): Promise<void> {
   } catch (error) {
     console.error("Failed to delete file:", error);
   }
+}
+
+export async function loadStateFromOPFS(
+  item: Item,
+): Promise<ArrayBuffer | null> {
+  const root = await navigator.storage.getDirectory();
+  const savesHandle = await root.getDirectoryHandle("saves", { create: true });
+  const saveHandle = await savesHandle.getFileHandle(item.title, {
+    create: true,
+  });
+  const saveFile = await saveHandle.getFile();
+  return await saveFile.arrayBuffer();
+}
+
+export async function saveStateToOPFS(
+  item: Item,
+  state: ArrayBuffer,
+): Promise<void> {
+  const root = await navigator.storage.getDirectory();
+  const savesHandle = await root.getDirectoryHandle("saves", { create: true });
+  const saveHandle = await savesHandle.getFileHandle(item.title, {
+    create: true,
+  });
+  const writable = await saveHandle.createWritable();
+  await writable.write(state);
 }

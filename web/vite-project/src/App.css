@@ -1,3 +1,9 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
 /* Define CSS Variables */
 :root {
   --color-dark-bg: #111511;
@@ -7,10 +13,32 @@
   --color-text: #e8efe8;
 }
 
+html {
+  height: 100%;
+  font-family: Arial, sans-serif;
+  color: var(--color-text);
+  overflow: hidden;
+}
+
+body {
+  height: 100%;
+  background-color: var(--color-dark-bg);
+}
+
+#root {
+  height: 100%;
+}
+
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .header {
@@ -80,8 +108,8 @@ a:hover {
 }
 
 .thumbnail {
-  width: 72px;
-  height: 72px;
+  width: 96px;
+  height: 96px;
   border-radius: 5px;
   background-color: var(--color-bright-green);
 }
@@ -120,39 +148,10 @@ a:hover {
   background-color: rgba(0, 0, 0, 0.7);
 }
 
-:root {
-  --color-dark-bg: #111511;
-  --color-dark-green: #1e5128;
-  --color-bright-green: #4e9f3d;
-  --color-light-green: #d8e9a8;
-  --color-text: #e8efe8;
-}
-
-html,
-body {
-  /* max-height: 100%; */
-  /* min-height: 0%; */
-  height: 100vh;
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background-color: var(--color-dark-bg);
-  color: var(--color-text);
-}
-
-#root {
-  height: 100%;
-}
-
-.container {
+.flex-row {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.detail {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  flex-direction: row;
+  overflow: hidden;
 }
 
 #game-canvas {
@@ -160,93 +159,31 @@ body {
   min-width: 0px;
   object-fit: contain;
   image-rendering: pixelated;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px;
-  background-color: var(--color-dark-bg);
-  border-bottom: 1px solid var(--color-dark-green);
-}
-
-.title {
-  margin: 4px 8px;
-  flex-grow: 1;
-}
-
-.buttons {
-  display: flex;
-  gap: 10px;
-}
-
-button {
-  border: none;
-  color: var(--color-text);
-  cursor: pointer;
-  border-radius: 3px;
-  font-size: 20px;
-  background-color: var(--color-dark-bg);
-}
-
-button:hover {
-  color: var(--color-dark-bg);
-  background-color: var(--color-bright-green);
-}
-
-.main {
   flex: 1;
-  overflow-y: auto;
-  position: relative;
 }
 
-.item-list {
+#ppu-debug {
   display: flex;
   flex-direction: column;
-}
-
-.item {
+  gap: 10px;
   padding: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--color-dark-green);
+  background-color: var(--color-dark-bg);
+  border: 1px solid var(--color-dark-green);
+  overflow: auto;
 }
 
-.item:hover {
-  background-color: var(--color-dark-green);
-  cursor: pointer;
-}
-.item:hover .thumbnail {
-  background-color: var(--color-light-green);
-}
-
-.thumbnail {
-  width: 96px;
-  height: 96px;
-  border-radius: 5px;
-  background-color: var(--color-bright-green);
-}
-
-.info {
-  flex-grow: 1;
-  margin-left: 20px;
-}
-
-.info h3 {
+#ppu-debug h2 {
   margin: 0;
   font-size: 18px;
   color: var(--color-light-green);
+  margin-top: 10px;
 }
 
-.info p {
-  margin: 5px 0 0 0;
-  font-size: 14px;
-}
-
-.size {
-  font-weight: bold;
+.pixel-canvas {
+  /* flex-grow: 1; */
+  border: 1px solid var(--color-dark-green);
+  background-color: var(--color-dark-bg);
+  width: auto;
 }
 
 /* Drag Overlay */

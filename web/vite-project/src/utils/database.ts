@@ -10,8 +10,9 @@ async function getDatabase(): Promise<Database> {
     return db;
   }
 
-
-  const json: unknown = await fetch("/src/assets/database.json").then((res) => res.json());
+  const json: unknown = await fetch("/src/assets/database.json").then((res) =>
+    res.json(),
+  );
   if (!Array.isArray(json)) {
     throw new Error("Database is not an array");
   }
@@ -24,7 +25,7 @@ async function getDatabase(): Promise<Database> {
     }
     if (!("crc" in item && "name" in item)) {
       // throw new Error("No crc or name in item: " + JSON.stringify(item));
-      console.log("No crc or name in item: " + JSON.stringify(item));
+      // console.log("No crc or name in item: " + JSON.stringify(item));
       continue;
     }
     const crc: unknown = item.crc;

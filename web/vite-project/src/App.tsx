@@ -20,12 +20,13 @@ const Header = ({
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      void saveFileToOPFS(file).then((newItem) => {
-        if (newItem) onFileSelect(newItem);
-      })
+      void saveFileToOPFS(file)
+        .then((newItem) => {
+          if (newItem) onFileSelect(newItem);
+        })
         .catch((error) => {
           console.error("Failed to save file to OPFS:", error);
-        })
+        });
     }
   };
 
@@ -100,7 +101,7 @@ const ListItem = ({ item, onClick, onRemove }: ListItemProps) => {
         <p className="size">Size: {item.size}</p>
       </div>
       <Menu items={menuItems} onSelect={handleMenuSelect} />
-    </div >
+    </div>
   );
 };
 

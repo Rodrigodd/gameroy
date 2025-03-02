@@ -1,7 +1,10 @@
 import { Item } from "../interfaces";
 import {
   run_for,
-  get_frame,
+  get_last_screen,
+  get_ppu_background,
+  get_ppu_window,
+  get_ppu_tiles,
   load_rom,
   initSync,
   take_audio_buffer,
@@ -13,6 +16,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import "../App.css";
 import { Menu, MenuItem } from "../components/Menu";
+import { saveStateToOPFS, loadStateFromOPFS } from "../utils/opfsUtils";
 
 export interface GameProps {
   item: Item | null;
@@ -21,6 +25,7 @@ export interface GameProps {
 
 interface GameCanvasProps {
   item: Item;
+  isLoaded: boolean;
 }
 
 const useAnimationFrame = (callback: (deltaTime: number) => void) => {
@@ -77,30 +82,8 @@ const initAudioProcessor = async () => {
   };
 };
 
-async function loadStateFromOPFS(item: Item): Promise<ArrayBuffer | null> {
-  const root = await navigator.storage.getDirectory();
-  const savesHandle = await root.getDirectoryHandle("saves", { create: true });
-  const saveHandle = await savesHandle.getFileHandle(item.title, {
-    create: true,
-  });
-  const saveFile = await saveHandle.getFile();
-  return await saveFile.arrayBuffer();
-}
-
-async function saveStateToOPFS(item: Item, state: ArrayBuffer): Promise<void> {
-  const root = await navigator.storage.getDirectory();
-  const savesHandle = await root.getDirectoryHandle("saves", { create: true });
-  const saveHandle = await savesHandle.getFileHandle(item.title, {
-    create: true,
-  });
-  const writable = await saveHandle.createWritable();
-  await writable.write(state);
-  await writable.close();
-}
-
-const GameCanvas = ({ item }: GameCanvasProps) => {
+const GameCanvas = ({ item, isLoaded }: GameCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const bufferRef = useRef<Uint8Array | null>(null);
   const [joypadState, setJoypadState] = useState<number>(0);
   const joypadStateRef = useRef<number>(0);
   const [isFastFoward, setIsFastFoward] = useState<boolean>(false);
@@ -121,35 +104,17 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     };
   }, [item]);
 
-  useEffect(() => {
-    const load = async () => {
-      const wasm = await fetch("/pkg/gameroy_vite_bg.wasm");
-      initSync(await wasm.arrayBuffer());
-      const buffer = await item.file.arrayBuffer();
-      const rom = new Uint8Array(buffer);
-      await initAudioProcessor();
-      bufferRef.current = rom;
-      load_rom(rom);
-
-      const state = await loadStateFromOPFS(item);
-      if (state) {
-        load_state(new Uint8Array(state));
-      }
-    };
-    void load();
-  }, [item]);
-
   if (isFastFoward && fastForwardTaskRef.current == null) {
     fastForwardTaskRef.current = async () => {
       while (isFastFowardRef.current) {
         set_joypad(joypadStateRef.current);
-        run_for(0.016666);
+        run_for(0.16666);
         const samples = take_audio_buffer(GAIN);
         playAudioSamples(samples);
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
       fastForwardTaskRef.current = null;
-    }
+    };
 
     void fastForwardTaskRef.current();
   } else if (!isFastFoward && fastForwardTaskRef.current != null) {
@@ -194,7 +159,7 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
 
   useAnimationFrame((delta) => {
     const canvas = canvasRef.current;
-    if (!canvas || !bufferRef.current) return;
+    if (!canvas || !isLoaded) return;
     try {
       if (!isFastFowardRef.current) {
         if (delta > 0.05) {
@@ -204,7 +169,7 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
         set_joypad(joypadState);
         run_for(delta);
       }
-      const frame = get_frame();
+      const frame = get_last_screen();
       const context = canvas.getContext("2d");
       const imageData = new ImageData(
         new Uint8ClampedArray(frame.buffer),
@@ -219,18 +184,91 @@ const GameCanvas = ({ item }: GameCanvasProps) => {
     }
   });
 
+  return <canvas ref={canvasRef} width={160} height={144} id="game-canvas" />;
+};
+
+const PixelCanvas = ({
+  get_pixels,
+  size: [width, height],
+}: {
+  get_pixels: () => Uint32Array;
+  size: number[];
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useAnimationFrame(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    try {
+      const pixels = get_pixels();
+      const context = canvas.getContext("2d");
+      const imageData = new ImageData(
+        new Uint8ClampedArray(pixels.buffer),
+        width,
+        height,
+      );
+      context?.putImageData(imageData, 0, 0);
+    } catch (error) {
+      console.error("Failed to render PPU debug:", error);
+    }
+  });
+
   return (
     <canvas
       ref={canvasRef}
-      width={160}
-      height={144}
-      id="game-canvas"
-      style={{ flex: "1" }}
+      width={width}
+      height={height}
+      className="pixel-canvas"
+      style={{ width: `${width}px`, height: `${height}px` }}
     />
   );
 };
 
+const PpuDebug = ({ isLoaded }: { isLoaded: boolean }) => {
+  if (!isLoaded) return <div>Loading...</div>;
+
+  return (
+    <div id="ppu-debug">
+      <h2>Tiles</h2>
+      <PixelCanvas
+        get_pixels={() => get_ppu_tiles(0b11100100)}
+        size={[128, 192]}
+      />
+      <h2>Background</h2>
+      <PixelCanvas get_pixels={get_ppu_background} size={[256, 256]} />
+      <h2>Window</h2>
+      <PixelCanvas get_pixels={get_ppu_window} size={[256, 256]} />
+    </div>
+  );
+};
+
 export const Game = ({ item, onBack }: GameProps) => {
+  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!item) return;
+      const wasm = await fetch("/pkg/gameroy_vite_bg.wasm");
+      initSync(await wasm.arrayBuffer());
+      const buffer = await item.file.arrayBuffer();
+      const rom = new Uint8Array(buffer);
+      await initAudioProcessor();
+      load_rom(rom);
+      setIsLoaded(true);
+
+      const state = await loadStateFromOPFS(item);
+      if (state) {
+        try {
+          load_state(new Uint8Array(state));
+        } catch (error) {
+          console.warn("Failed to load state:", error);
+        }
+      }
+    };
+    void load();
+  }, [item]);
+
+  if (!isLoaded) return <div>Loading...</div>;
   if (!item) return <div className="detail">No item selected</div>;
 
   const onBackClick = () => {
@@ -259,7 +297,10 @@ export const Game = ({ item, onBack }: GameProps) => {
         <h2>{item.title}</h2>
         <Menu items={menuItems} onSelect={handleMenuSelect} />
       </header>
-      <GameCanvas item={item} />
+      <div className="flex-row">
+        <GameCanvas item={item} isLoaded={isLoaded} />
+        <PpuDebug isLoaded={isLoaded} />
+      </div>
     </div>
   );
 };

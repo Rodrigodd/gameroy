@@ -18,6 +18,7 @@ import "../App.css";
 import { Menu, MenuItem } from "../components/Menu";
 import { saveStateToOPFS, loadStateFromOPFS } from "../utils/opfsUtils";
 import ResizablePanel from "../components/Resizable";
+import { Tab, TabPanel } from "../components/Tab";
 
 export interface GameProps {
   item: Item | null;
@@ -298,10 +299,24 @@ export const Game = ({ item, onBack }: GameProps) => {
         <h2>{item.title}</h2>
         <Menu items={menuItems} onSelect={handleMenuSelect} />
       </header>
-      <div className="flex-row">
+      <div className="flex-row" style={{ flex: 1 }}>
         <GameCanvas item={item} isLoaded={isLoaded} />
-        <ResizablePanel corner="bottom-left" resizeAxis="horizontal">
-          <PpuDebug isLoaded={isLoaded} />
+        <ResizablePanel
+          corner="bottom-left"
+          resizeAxis="horizontal"
+          className="panel"
+        >
+          <TabPanel>
+            <Tab label="Tiles">
+              <PpuDebug isLoaded={isLoaded} />
+            </Tab>
+            <Tab label="Sprites">
+              <h1> TODO: Implement sprite debug </h1>
+            </Tab>
+            <Tab label="Assembly">
+              <h1> TODO: Implement sprite debug </h1>
+            </Tab>
+          </TabPanel>
         </ResizablePanel>
       </div>
     </div>

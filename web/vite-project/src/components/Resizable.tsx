@@ -5,6 +5,7 @@ interface ResizablePanelProps {
   corner?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   resizeAxis?: "both" | "horizontal" | "vertical";
   style?: React.CSSProperties;
+  className?: string;
   handleStyle?: React.CSSProperties;
 }
 
@@ -24,6 +25,7 @@ const ResizablePanel: React.FC<ResizablePanelProps> = ({
   resizeAxis = "both",
   style = {},
   handleStyle = {},
+  className,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<Size>({ width: 300, height: 200 });
@@ -106,6 +108,7 @@ const ResizablePanel: React.FC<ResizablePanelProps> = ({
         flexDirection: "column",
         ...style,
       }}
+      className={className}
     >
       <div
         style={{

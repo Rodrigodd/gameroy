@@ -167,8 +167,6 @@ a:hover {
   flex-direction: column;
   gap: 10px;
   padding: 10px;
-  background-color: var(--color-dark-bg);
-  border: 1px solid var(--color-dark-green);
   overflow: auto;
 }
 
@@ -181,9 +179,53 @@ a:hover {
 
 .pixel-canvas {
   /* flex-grow: 1; */
+  background-color: var(--color-dark-bg);
+  border: 1px solid var(--color-dark-green);
+  width: auto;
+}
+
+.panel {
   border: 1px solid var(--color-dark-green);
   background-color: var(--color-dark-bg);
-  width: auto;
+  overflow: scroll;
+  height: 100%;
+}
+
+.tab-panel {
+  overflow: hidden;
+  height: 100%;
+}
+
+.tab-header {
+  display: flex;
+  gap: 3px;
+  padding: 5px 5px 0 5px;
+  background-color: black;
+}
+
+.tab-button {
+  border: none;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 16px;
+  background-color: var(--color-dark-green);
+  border-bottom: 1px solid var(--color-dark-green);
+  border-radius: 5px 5px 0 0;
+}
+
+.tab-button.active {
+  color: var(--color-light-green);
+  background-color: var(--color-dark-bg);
+  border-bottom: 1px solid var(--color-dark-bg);
+}
+.tab-button:hover {
+  color: var(--color-light-green);
+}
+
+.tab-content {
+  overflow: scroll;
+  height: 100%;
 }
 
 .resize-handle {
@@ -192,7 +234,6 @@ a:hover {
   left: 0;
   width: 20px;
   height: 20px;
-  
 }
 
 /* Drag Overlay */

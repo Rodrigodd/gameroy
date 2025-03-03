@@ -11,6 +11,7 @@
     "fmt": "prettier --write ."
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.13.2",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "eslint-plugin-react": "^7.37.4",
     "react": "^18.3.1",

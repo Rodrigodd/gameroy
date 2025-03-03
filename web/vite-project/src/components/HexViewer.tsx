@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from "react";
+import React, { useRef, useState, useMemo, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 const BYTES_PER_ROW = 16;
@@ -20,11 +20,27 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const [jumpAddress, setJumpAddress] = useState("");
   const rowCount = Math.ceil(data.length / BYTES_PER_ROW);
+  const [hoveredByte, setHoveredByte] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<boolean>(false);
+  const [selection, setSelection] = useState<{
+    start: number;
+    end: number;
+  } | null>(null);
 
   const addressPad = useMemo(
     () => Math.max(4, Math.ceil(Math.log2(data.length) / 4)),
     [data.length],
   );
+
+  const [selectionStart, selectionEnd] = useMemo(() => {
+    if (selection == null) {
+      return [0, 0];
+    }
+    return [
+      Math.min(selection.start, selection.end),
+      Math.max(selection.start, selection.end),
+    ];
+  }, [selection]);
 
   const virtualizer = useVirtualizer({
     count: rowCount,
@@ -50,6 +66,14 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
     }
   };
 
+  useEffect(() => {
+    const callback = () => setDragging(false);
+    window.addEventListener("mouseup", callback);
+    return () => {
+      window.removeEventListener("mouseup", callback);
+    };
+  }, []);
+
   return (
     <div style={{ fontFamily: "monospace" }}>
       <div style={{ marginBottom: "10px" }}>
@@ -69,7 +93,6 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
           {virtualizer.getVirtualItems().map((virtualRow) => {
             const start = virtualRow.index * BYTES_PER_ROW;
             const end = start + BYTES_PER_ROW;
-            const rowBytes = data.slice(start, end);
             const rowSymbols = symbols.filter(
               (s) => s.address < end && s.address + s.size > start,
             );
@@ -127,7 +150,7 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
                 <div style={{ marginRight: 10 }}>
                   {start.toString(16).padStart(addressPad, "0").toUpperCase()}:
                 </div>
-                <div style={{ flex: 1, display: "flex", gap: "4px" }}>
+                <div style={{ flex: 1, display: "flex" }}>
                   {segments.map((seg, i) => (
                     <span
                       key={i}
@@ -143,7 +166,6 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
                         borderBottomRightRadius: seg.truncatedEnd ? "0" : "3px",
                         position: "relative",
                         display: "flex",
-                        gap: "4px",
                       }}
                       title={
                         seg.symbol
@@ -153,7 +175,38 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
                     >
                       {Array.from(data.slice(seg.start, seg.end)).map(
                         (byte, j) => (
-                          <span key={j}>{formatHex(byte)}</span>
+                          <span
+                            key={j}
+                            onMouseEnter={() => setHoveredByte(seg.start + j)}
+                            onMouseLeave={() => setHoveredByte(null)}
+                            onMouseDown={() => {
+                              setSelection(null);
+                              setDragging(true);
+                            }}
+                            onMouseMove={() => {
+                              if (dragging) {
+                                const byteIndex = seg.start + j;
+                                setSelection((prev) => {
+                                  return {
+                                    start: prev?.start ?? byteIndex,
+                                    end: byteIndex + 1,
+                                  };
+                                });
+                              }
+                            }}
+                            style={{
+                              backgroundColor:
+                                hoveredByte == seg.start + j
+                                  ? "rgb(150, 200, 150, 0.4)"
+                                  : seg.start + j >= selectionStart &&
+                                      seg.start + j < selectionEnd
+                                    ? "rgb(150, 200, 150, 0.2)"
+                                    : "transparent",
+                              padding: "0px 2px",
+                            }}
+                          >
+                            {formatHex(byte)}
+                          </span>
                         ),
                       )}
                     </span>
@@ -181,7 +234,37 @@ const HexViewer: React.FC<HexViewerProps> = ({ data, symbols }) => {
                     >
                       {Array.from(data.slice(seg.start, seg.end)).map(
                         (byte, j) => (
-                          <span key={j}>{formatAscii(byte)}</span>
+                          <span
+                            key={j}
+                            style={{
+                              backgroundColor:
+                                hoveredByte == seg.start + j
+                                  ? "rgb(150, 200, 150, 0.4)"
+                                  : seg.start + j >= selectionStart &&
+                                      seg.start + j < selectionEnd
+                                    ? "rgb(150, 200, 150, 0.2)"
+                                    : "transparent",
+                            }}
+                            onMouseEnter={() => setHoveredByte(seg.start + j)}
+                            onMouseLeave={() => setHoveredByte(null)}
+                            onMouseDown={() => {
+                              setSelection(null);
+                              setDragging(true);
+                            }}
+                            onMouseMove={() => {
+                              if (dragging) {
+                                const byteIndex = seg.start + j;
+                                setSelection((prev) => {
+                                  return {
+                                    start: prev?.start ?? byteIndex,
+                                    end: byteIndex + 1,
+                                  };
+                                });
+                              }
+                            }}
+                          >
+                            {formatAscii(byte)}
+                          </span>
                         ),
                       )}
                     </span>

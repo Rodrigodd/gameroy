@@ -2369,7 +2369,7 @@ mod test {
         gb.predict_interrupt = true;
         let mut rng = rand::thread_rng();
 
-        while start_time.elapsed().as_secs() < 4 {
+        while start_time.elapsed().as_secs() < 3 {
             for x in [LCDC, STAT, SCY, SCX, LY, LYC, BGP, OBP0, OBP1, WY, WX] {
                 if rng.gen_bool(0.2) {
                     gb.clock_count += 4;

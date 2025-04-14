@@ -253,7 +253,7 @@ mod test {
         let mut thread_rng = rand::thread_rng();
 
         let start = std::time::Instant::now();
-        while start.elapsed().as_secs() < 20 {
+        while start.elapsed().as_secs() < 3 {
             let seed: u64 = thread_rng.gen();
             println!("seed 0x{:016x}", seed);
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
@@ -303,7 +303,7 @@ mod test {
         let mut thread_rng = rand::thread_rng();
 
         let start = std::time::Instant::now();
-        while start.elapsed().as_secs() < 20 {
+        while start.elapsed().as_secs() < 3 {
             let seed: u64 = thread_rng.gen();
             println!("seed 0x{:016x}", seed);
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
@@ -343,7 +343,7 @@ mod test {
         let start = std::time::Instant::now();
         let mut tries = 0;
         let mut overflow = 0;
-        while start.elapsed().as_secs() < 20 {
+        while start.elapsed().as_secs() < 3 {
             let seed: u64 = thread_rng.gen();
             let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 

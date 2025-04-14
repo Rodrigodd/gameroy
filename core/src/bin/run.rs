@@ -46,11 +46,9 @@ fn main() {
     println!("Boot ROM: {}", boot_rom_path.as_deref().unwrap_or("None"));
 
     let rom = std::fs::read(rom_path.expect("No rom path provided")).unwrap();
-    let boot_rom = boot_rom_path.map(|path| {
-        std::fs::read(&path)
-            .unwrap()
-            .try_into()
-            .expect("Boot ROM must be 256 bytes")
+    let boot_rom = boot_rom_path.map(|path| match std::fs::read(&path).unwrap().try_into() {
+        Ok(t) => t,
+        Err(_) => panic!("Boot ROM must be 256 bytes"),
     });
 
     let cartridge = Cartridge::new(rom).expect("Invalid ROM");

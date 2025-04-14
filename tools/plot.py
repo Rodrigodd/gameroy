@@ -1,5 +1,5 @@
 r"""
-Script for ploting the results of a folded stack profile data of a GameRoy run
+Script for plotting the results of a folded stack profile data of a GameRoy run
 in a pie chart.
 
 Usage:
@@ -14,24 +14,24 @@ in combination with [`inferno`](https://github.com/jonhoo/inferno).
 ## Windows
 
 ```shell
-> cargo build --release -p gameroy-native
-> blondie folded-text target\release\gameroy-native.exe bench -f6000 -t10 path/to/rom.gb
-> python tools\plot.py folded_stacks.txt
+cargo build --release -p gameroy-native
+blondie folded-text target\release\gameroy-native.exe bench -f6000 -t10 path/to/rom.gb
+python tools\plot.py folded_stacks.txt
 ```
 
 ## Linux
 
 ```shell
-$ cargo build --release -p gameroy-native
-$ perf record --call-graph dwarf target/release/gameroy-native bench -f6000 -t10 path/to/rom.gb --emit-perf-map
-$ perf script | inferno-collapse-perf --jit > stacks.folded
-$ python tools\plot.py stacks.folded
+cargo build --release -p gameroy-native
+perf record --call-graph dwarf target/release/gameroy-native bench -f6000 -t10 path/to/rom.gb --emit-perf-map
+perf script | inferno-collapse-perf --jit > stacks.folded
+python tools/plot.py stacks.folded
 ```
 
 ![Example plot](plot_output.png)
 
 You may run blondie many times (renaming the output file each time), with
-diferent builds of the program, and then plot all the results at once and
+different builds of the program, and then plot all the results at once and
 compare them.
 """
 

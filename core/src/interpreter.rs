@@ -716,15 +716,16 @@ impl Interpreter<'_> {
                 };
 
                 if interrupt != 8 {
+                    self.0.tick(4);
                     self.0.update_interrupt();
                     self.0
                         .interrupt_flag
                         .set(self.0.interrupt_flag.get() & !(1 << interrupt));
                     self.jump_to(address);
                 } else {
+                    self.0.tick(4);
                     self.jump_to(0x0000);
                 }
-                self.0.tick(4);
 
                 // return, to allow detecting the interrupt
                 return ControlFlow::Break(());
@@ -1313,9 +1314,6 @@ impl Interpreter<'_> {
             .trace_gameboy_ex(self.0.clock_count, self.0, Some((address, value, false)))
             .unwrap();
 
-        // #[cfg(feature = "wave_trace")]
-        // self.0.
-
         #[cfg(feature = "io_trace")]
         self.0.io_trace.borrow_mut().push((
             GameBoy::IO_READ | ((self.0.clock_count & !3) as u8 >> 1),
@@ -1495,8 +1493,8 @@ impl Interpreter<'_> {
         let c = self.check_condition(c);
         let address = self.read_next_pc16();
         if c {
-            self.jump_to(address);
             self.0.tick(4); // Extra 1 M-cycle for jump
+            self.jump_to(address);
         }
     }
 
@@ -1507,8 +1505,8 @@ impl Interpreter<'_> {
         let r8 = self.read_next_pc() as i8;
         if c {
             let pc = self.0.cpu.pc.wrapping_add_signed(r8 as i16);
-            self.jump_to(pc);
             self.0.tick(4); // Extra 1 M-cycle for jump
+            self.jump_to(pc);
         }
     }
 
@@ -1576,8 +1574,8 @@ impl Interpreter<'_> {
         }
         if c {
             let address = self.popr();
-            self.jump_to(address);
             self.0.tick(4); // more 1 M-cycle
+            self.jump_to(address);
         }
     }
 

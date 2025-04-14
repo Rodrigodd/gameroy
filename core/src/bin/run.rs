@@ -29,6 +29,9 @@ fn main() {
         } else if arg == "--timeout" {
             timeout = parse_timeout(&args.next().expect("Missing arg value"))
                 .expect("Invalid timeout value");
+        } else if arg == "--help" {
+            println!("Usage: run [--boot <boot_rom_path>] [--timeout <timeout>] <rom_path>");
+            return;
         } else if arg.starts_with("--") {
             panic!("Unknown argument: {}", arg);
         } else {

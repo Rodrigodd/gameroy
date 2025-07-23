@@ -190,8 +190,8 @@ impl MyWriter {
         debug_assert!(
             self.last_commit <= timestamp,
             "{} < {} at {}",
-            self.last_commit,
-            timestamp,
+            self.last_commit / CYCLE_PERIOD,
+            timestamp / CYCLE_PERIOD,
             wire.name
         );
 
@@ -222,7 +222,15 @@ impl MyWriter {
         self.buffer
             .sort_unstable_by_key(|(timestamp, _, _)| *timestamp);
 
-        for (timestamp, index, value) in self.buffer.drain(..) {
+        // Don't commit the last 4 cycles, because we are generating clk changes ahead of time.
+        let last_timestamp = self.buffer.last().map_or(0, |(t, _, _)| *t);
+        let end = self
+            .buffer
+            .iter()
+            .rposition(|(t, _, _)| *t < last_timestamp - 4 * CYCLE_PERIOD)
+            .unwrap_or(0);
+
+        for (timestamp, index, value) in self.buffer.drain(..end) {
             if timestamp != self.last_commit {
                 debug_assert!(
                     self.last_commit <= timestamp,
@@ -326,14 +334,16 @@ impl WaveTrace {
             writer.change(clock_count, self.clk, 1)?;
         }
 
-        if let Some(bus) = bus {
-            writer.change(clock_count - 4, self.address_bus, bus.0 as MaxWidth)?;
-            writer.change(clock_count - 4, self.data_bus, bus.1 as MaxWidth)?;
-            writer.change(clock_count - 4, self.read, !bus.2 as MaxWidth)?;
-            writer.change(clock_count - 4, self.write, bus.2 as MaxWidth)?;
-        } else {
-            writer.change(clock_count - 4, self.read, 0)?;
-            writer.change(clock_count - 4, self.write, 0)?;
+        if clock_count >= 4 {
+            if let Some(bus) = bus {
+                writer.change(clock_count - 4, self.address_bus, bus.0 as MaxWidth)?;
+                writer.change(clock_count - 4, self.data_bus, bus.1 as MaxWidth)?;
+                writer.change(clock_count - 4, self.read, !bus.2 as MaxWidth)?;
+                writer.change(clock_count - 4, self.write, bus.2 as MaxWidth)?;
+            } else {
+                writer.change(clock_count - 4, self.read, 0)?;
+                writer.change(clock_count - 4, self.write, 0)?;
+            }
         }
 
         self.last_clock_count.set(clock_count);

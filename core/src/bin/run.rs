@@ -4,16 +4,27 @@ use gameroy::{
     interpreter::Interpreter,
 };
 
-fn parse_timeout(timeout: &str) -> Option<u64> {
-    Some(if let Some(value) = timeout.strip_suffix("s") {
-        value.parse::<u64>().ok()? * CLOCK_SPEED
-    } else if let Some(value) = timeout.strip_suffix("ms") {
-        value.parse::<u64>().ok()? * CLOCK_SPEED / 1000
-    } else {
-        timeout.parse::<u64>().ok()?
-    })
+fn f64_to_u64(x: f64) -> Option<u64> {
+    let y = x as u64;
+    if y as f64 != x {
+        return None;
+    }
+    Some(y)
 }
 
+fn parse_timeout(timeout: &str) -> Option<u64> {
+    let time = if let Some(value) = timeout.strip_suffix("s") {
+        value.parse::<f64>().ok()? * CLOCK_SPEED as f64
+    } else if let Some(value) = timeout.strip_suffix("ms") {
+        value.parse::<f64>().ok()? * CLOCK_SPEED as f64 / 1000.0
+    } else {
+        timeout.parse::<f64>().ok()?
+    };
+    let time = f64_to_u64(time.ceil())?;
+    Some(time)
+}
+
+const HELP: &str = "Usage: run [--boot <boot_rom_path>] [--timeout <timeout>] <rom_path>";
 fn main() {
     let mut args = std::env::args();
     let mut boot_rom_path = None;
@@ -30,10 +41,12 @@ fn main() {
             timeout = parse_timeout(&args.next().expect("Missing arg value"))
                 .expect("Invalid timeout value");
         } else if arg == "--help" {
-            println!("Usage: run [--boot <boot_rom_path>] [--timeout <timeout>] <rom_path>");
+            println!("{}", HELP);
             return;
         } else if arg.starts_with("--") {
-            panic!("Unknown argument: {}", arg);
+            eprintln!("Unknown argument: {}", arg);
+            eprintln!("{}", HELP);
+            std::process::exit(1);
         } else {
             rom_path = Some(arg);
         }

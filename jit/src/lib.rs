@@ -318,6 +318,11 @@ impl JitCompiler {
         let pc = gb.cpu.pc;
         let bank = gb.cartridge.curr_bank();
 
+        if gb.boot_rom_active {
+            // don't compile code in boot rom
+            return None;
+        }
+
         if pc >= 0x8000 {
             // don't compile code outside ROM
             return None;

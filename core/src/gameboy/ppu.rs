@@ -348,12 +348,12 @@ pub struct Ppu {
     pub sprite_fifo: PixelFifo,
 
     // pixel fetcher
-    fetcher_step: u8,
+    pub fetcher_step: u8,
     /// the tile x position that the pixel fetcher is in
-    fetcher_x: u8,
-    fetch_tile_number: u8,
-    fetch_tile_data_low: u8,
-    fetch_tile_data_hight: u8,
+    pub fetcher_x: u8,
+    pub fetch_tile_number: u8,
+    pub fetch_tile_data_low: u8,
+    pub fetch_tile_data_hight: u8,
 
     sprite_tile_address: u16,
     sprite_tile_data_low: u8,
@@ -1276,7 +1276,7 @@ impl Ppu {
                 // while there are background pixels or don't reach a fetcher step...
                 31 => {
                     if ppu.background_fifo.is_empty() || ppu.fetcher_step < 5 {
-                        tick_pixel_fetcher(ppu, ppu.ly);
+                        tick_pixel_fetcher(gb, ppu, ppu.ly);
                         // wait 1
                         ppu.next_clock_count += 1;
                         // if abort_sprite_feching { goto aborted }
@@ -1305,14 +1305,14 @@ impl Ppu {
                 }
                 38 => {
                     // wait 1
-                    tick_pixel_fetcher(ppu, ppu.ly);
+                    tick_pixel_fetcher(gb, ppu, ppu.ly);
                     ppu.next_clock_count += 1;
                     ppu.state = 36;
                 }
                 36 => {
                     // if abort_sprite_feching { goto aborted }
 
-                    tick_pixel_fetcher(ppu, ppu.ly);
+                    tick_pixel_fetcher(gb, ppu, ppu.ly);
                     ppu.sprite_tile_address = {
                         let tall = ppu.lcdc & 0x04 != 0;
                         let sprite = ppu.sprite_buffer[ppu.sprite_buffer_len as usize - 1];
@@ -1335,6 +1335,14 @@ impl Ppu {
                 33 => {
                     // if abort_sprite_feching { goto aborted }
 
+                    #[cfg(feature = "wave_trace")]
+                    gb.vcd_writer
+                        .trace_vram_read(
+                            ppu.next_clock_count,
+                            ppu.sprite_tile_address as usize,
+                            ppu.vram[ppu.sprite_tile_address as usize],
+                        )
+                        .unwrap();
                     ppu.sprite_tile_data_low = ppu.vram[ppu.sprite_tile_address as usize];
 
                     // wait 2
@@ -1344,6 +1352,14 @@ impl Ppu {
                 34 => {
                     // if abort_sprite_feching { goto aborted }
 
+                    #[cfg(feature = "wave_trace")]
+                    gb.vcd_writer
+                        .trace_vram_read(
+                            ppu.next_clock_count,
+                            ppu.sprite_tile_address as usize + 1,
+                            ppu.vram[ppu.sprite_tile_address as usize + 1],
+                        )
+                        .unwrap();
                     ppu.sprite_tile_data_hight = ppu.vram[ppu.sprite_tile_address as usize + 1];
 
                     // ppu.sprite_fetching = false;
@@ -1378,7 +1394,7 @@ impl Ppu {
                 }
                 24 => {
                     output_pixel(ppu);
-                    tick_pixel_fetcher(ppu, ppu.ly);
+                    tick_pixel_fetcher(gb, ppu, ppu.ly);
 
                     debug_assert!(ppu.screen_x <= 160);
                     if ppu.screen_x == 160 {
@@ -1854,7 +1870,7 @@ fn write_pallete_conflict<F: Fn(&mut Ppu) -> &mut u8>(gb: &mut GameBoy, value: u
     gb.clock_count += 1;
 }
 
-fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
+fn tick_pixel_fetcher(_gb: &GameBoy, ppu: &mut Ppu, ly: u8) {
     let is_in_window = ppu.is_in_window;
 
     let fetch_tile_address = |ppu: &mut Ppu, is_in_window: bool, ly: u8| -> u16 {
@@ -1914,18 +1930,44 @@ fn tick_pixel_fetcher(ppu: &mut Ppu, ly: u8) {
             };
 
             let offset = (32 * ty as u16 + tx as u16) & 0x03ff;
+
+            #[cfg(feature = "wave_trace")]
+            _gb.vcd_writer
+                .trace_vram_read(
+                    ppu.next_clock_count,
+                    (tile_map + offset) as usize - 0x8000,
+                    ppu.vram[(tile_map + offset) as usize - 0x8000],
+                )
+                .unwrap();
+
             ppu.fetch_tile_number = ppu.vram[(tile_map + offset) as usize - 0x8000];
         }
         2 => {}
         // fetch tile data (low)
         3 => {
             let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
+            #[cfg(feature = "wave_trace")]
+            _gb.vcd_writer
+                .trace_vram_read(
+                    ppu.next_clock_count,
+                    fetch_tile_address as usize - 0x8000,
+                    ppu.vram[fetch_tile_address as usize - 0x8000],
+                )
+                .unwrap();
             ppu.fetch_tile_data_low = ppu.vram[fetch_tile_address as usize - 0x8000];
         }
         4 => {}
         // fetch tile data (hight)
         5 => {
             let fetch_tile_address = fetch_tile_address(ppu, is_in_window, ly);
+            #[cfg(feature = "wave_trace")]
+            _gb.vcd_writer
+                .trace_vram_read(
+                    ppu.next_clock_count,
+                    fetch_tile_address as usize + 1 - 0x8000,
+                    ppu.vram[fetch_tile_address as usize + 1 - 0x8000],
+                )
+                .unwrap();
             ppu.fetch_tile_data_hight = ppu.vram[fetch_tile_address as usize + 1 - 0x8000];
             if ppu.is_in_window {
                 ppu.fetcher_x += 1;

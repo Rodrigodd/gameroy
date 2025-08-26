@@ -17,7 +17,8 @@ const TIMESCALE: u64 = 1; // ns
 const CYCLE_PERIOD: u64 = 240 / TIMESCALE;
 
 // Offset the timestampst to make it align with the other simulations.
-const OFFSET: i64 = (-5625669120) / TIMESCALE as i64;
+// const OFFSET: i64 = (-5625669120) / TIMESCALE as i64;
+const OFFSET: i64 = (31475448 - 960) / TIMESCALE as i64;
 
 // Convert clock count to timestamp
 fn clock_to_timestamp(clock: u64) -> u64 {
@@ -100,6 +101,12 @@ decl_regs! {
     ly_compare_signal, 1 => ppu.ly_compare_signal;
     stat_mode_for_interrupt, 2 => ppu.stat_mode_for_interrupt;
     scanline_x, 8 => ppu.scanline_x;
+
+    fetcher_step, 8 => ppu.fetcher_step;
+    fetcher_x, 8 => ppu.fetcher_x;
+    fetch_tile_number, 8 => ppu.fetch_tile_number;
+    fetch_tile_data_low, 8 => ppu.fetch_tile_data_low;
+    fetch_tile_data_hight, 8 => ppu.fetch_tile_data_hight;
 }
 
 decl_regs! {
@@ -250,6 +257,7 @@ impl MyWriter {
                     .change_vector(wire.id, to_bits(wire.width, value))?;
             }
         }
+        println!("commit at {}", self.last_commit / CYCLE_PERIOD);
 
         Ok(())
     }
@@ -263,6 +271,8 @@ pub struct WaveTrace {
     data_bus: WireIndex,
     read: WireIndex,
     write: WireIndex,
+    vram_address: WireIndex,
+    vram_data: WireIndex,
     gameboy_regs: GameboyRegs,
     cpu_regs: CpuRegs,
     ppu_regs: PpuRegs,
@@ -290,6 +300,9 @@ impl WaveTrace {
         let ppu_regs = PpuRegs::new(&mut writer)?;
         let timer_regs = TimerRegs::new(&mut writer)?;
 
+        let vram_address = writer.add_wire(16, "vram_address")?;
+        let vram_data = writer.add_wire(8, "vram_data")?;
+
         writer.close_module()?;
 
         writer.begin()?;
@@ -302,6 +315,8 @@ impl WaveTrace {
             data_bus,
             read,
             write,
+            vram_address,
+            vram_data,
             gameboy_regs,
             cpu_regs,
             ppu_regs,
@@ -359,6 +374,20 @@ impl WaveTrace {
         let mut writer = self.writer.borrow_mut();
 
         self.ppu_regs.trace(clock_count, &mut writer, ppu)?;
+
+        Ok(())
+    }
+
+    pub fn trace_vram_read(
+        &self,
+        clock_count: u64,
+        address: usize,
+        value: u8,
+    ) -> std::io::Result<()> {
+        let mut writer = self.writer.borrow_mut();
+
+        writer.change(clock_count, self.vram_address, address as MaxWidth)?;
+        writer.change(clock_count, self.vram_data, value as MaxWidth)?;
 
         Ok(())
     }

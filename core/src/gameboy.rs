@@ -104,6 +104,7 @@ impl Eq for GameBoy {}
 impl PartialEq for GameBoy {
     fn eq(&self, other: &Self) -> bool {
         self.update_all();
+        other.update_all();
 
         // self.trace == other.trace &&
         self.cpu == other.cpu

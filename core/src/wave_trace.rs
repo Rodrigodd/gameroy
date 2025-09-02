@@ -6,10 +6,13 @@ use std::cell::{Cell, RefCell};
 use std::fs::File;
 use std::io::BufWriter;
 
-use crate::gameboy::cpu::Cpu;
-use crate::gameboy::ppu::Ppu;
-use crate::gameboy::timer::Timer;
-use crate::gameboy::GameBoy;
+use crate::gameboy::{
+    cartridge::{Cartridge, Mbc, Mbc1},
+    cpu::Cpu,
+    ppu::Ppu,
+    timer::Timer,
+    GameBoy,
+};
 
 // NOTE: The actual clock period should be 1/(2^22 Hz) = 238.419 ns, but msinger's
 // dmg-sim (the verilog simulation I am comparing to) uses a period of 240 ns.
@@ -116,6 +119,13 @@ decl_regs! {
     tma, 8 => timer.tma;
     tac, 8 => timer.tac;
     loading, 8 => timer.loading;
+}
+
+decl_regs! {
+    Mbc1Regs, "mbc1", mbc1: &Mbc1,
+    selected_bank, 8 => mbc1.selected_bank;
+    mode, 1 => mbc1.mode as u8;
+    ram_enabled, 1 => mbc1.ram_enabled as u8;
 }
 
 struct Wire {
@@ -277,6 +287,7 @@ pub struct WaveTrace {
     cpu_regs: CpuRegs,
     ppu_regs: PpuRegs,
     timer_regs: TimerRegs,
+    mbc1_regs: Mbc1Regs,
 }
 impl WaveTrace {
     pub fn new() -> std::io::Result<Self> {
@@ -299,6 +310,7 @@ impl WaveTrace {
         let cpu_regs = CpuRegs::new(&mut writer)?;
         let ppu_regs = PpuRegs::new(&mut writer)?;
         let timer_regs = TimerRegs::new(&mut writer)?;
+        let mbc1_regs = Mbc1Regs::new(&mut writer)?;
 
         let vram_address = writer.add_wire(16, "vram_address")?;
         let vram_data = writer.add_wire(8, "vram_data")?;
@@ -321,9 +333,20 @@ impl WaveTrace {
             cpu_regs,
             ppu_regs,
             timer_regs,
+            mbc1_regs,
         };
 
         Ok(this)
+    }
+
+    pub fn trace_all(&self, gameboy: &GameBoy) -> std::io::Result<()> {
+        let clock_count = gameboy.clock_count;
+        println!("trace_all at {}", clock_count);
+        self.trace_gameboy(clock_count, gameboy)?;
+        self.trace_ppu(clock_count, &*gameboy.ppu.borrow())?;
+        self.trace_timer(clock_count, &*gameboy.timer.borrow())?;
+        self.trace_cartridge(clock_count, &gameboy.cartridge)?;
+        Ok(())
     }
 
     pub fn trace_gameboy(&self, clock_count: u64, gameboy: &GameBoy) -> std::io::Result<()> {
@@ -396,6 +419,24 @@ impl WaveTrace {
         let mut writer = self.writer.borrow_mut();
 
         self.timer_regs.trace(clock_count, &mut writer, timer)?;
+
+        Ok(())
+    }
+
+    pub fn trace_cartridge(&self, clock_count: u64, cartridge: &Cartridge) -> std::io::Result<()> {
+        match cartridge.mbc {
+            Mbc::Mbc1(ref mbc1) => self.trace_mbc1(clock_count, mbc1),
+            _ => {
+                println!("WaveTrace: Unsupported MBC type for tracing");
+                Ok(())
+            }
+        }
+    }
+
+    pub fn trace_mbc1(&self, clock_count: u64, mbc1: &Mbc1) -> std::io::Result<()> {
+        let mut writer = self.writer.borrow_mut();
+
+        self.mbc1_regs.trace(clock_count, &mut writer, mbc1)?;
 
         Ok(())
     }

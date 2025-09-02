@@ -251,6 +251,10 @@ impl GameBoy {
 
         self.next_interrupt = 0.into();
         self.update_next_interrupt();
+        #[cfg(feature = "wave_trace")]
+        {
+            self.vcd_writer.trace_all(self).unwrap();
+        }
     }
 
     /// Reset the gameboy to its state after disabling the boot.
@@ -297,6 +301,10 @@ impl GameBoy {
 
         self.next_interrupt = 0.into();
         self.update_next_interrupt();
+        #[cfg(feature = "wave_trace")]
+        {
+            self.vcd_writer.trace_all(self).unwrap();
+        }
     }
 
     pub fn read(&self, mut address: u16) -> u8 {
@@ -343,11 +351,31 @@ impl GameBoy {
 
         match address {
             // Cartridge ROM
-            0x0000..=0x7FFF => self.cartridge.write(address, value),
+            #[allow(clippy::let_unit_value)]
+            0x0000..=0x7FFF => {
+                let x = self.cartridge.write(address, value);
+                #[cfg(feature = "wave_trace")]
+                {
+                    self.vcd_writer
+                        .trace_cartridge(self.clock_count, &self.cartridge)
+                        .unwrap();
+                }
+                x
+            }
             // Video RAM
             0x8000..=0x9FFF => Ppu::write_vram(self, address, value),
             // Cartridge RAM
-            0xA000..=0xBFFF => self.cartridge.write(address, value),
+            #[allow(clippy::let_unit_value)]
+            0xA000..=0xBFFF => {
+                let x = self.cartridge.write(address, value);
+                #[cfg(feature = "wave_trace")]
+                {
+                    self.vcd_writer
+                        .trace_cartridge(self.clock_count, &self.cartridge)
+                        .unwrap();
+                }
+                x
+            }
             // Work RAM
             0xC000..=0xDFFF => self.wram[address as usize - 0xC000] = value,
             // ECHO RAM

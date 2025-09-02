@@ -157,7 +157,7 @@ impl CartridgeHeader {
 
 #[allow(clippy::enum_variant_names)]
 #[derive(PartialEq, Eq, Clone)]
-enum Mbc {
+pub enum Mbc {
     None(Mbc0),
     Mbc1(Mbc1),
     Mbc1M(Mbc1M),
@@ -254,18 +254,16 @@ impl MbcSpecification {
                 size
             }
             Ok(size) => size,
-            Err(err) => {
-                match ROM_SIZES.iter().copied().find(|&x| x >= rom.len()) {
-                    Some(size) => {
-                        writeln!(error, "{}, deducing size from ROM size as {}", err, size,).unwrap();
-                        size
-                    }
-                    None => {
-                        writeln!(error, "{}", err).unwrap();
-                        return None;
-                    }
+            Err(err) => match ROM_SIZES.iter().copied().find(|&x| x >= rom.len()) {
+                Some(size) => {
+                    writeln!(error, "{}, deducing size from ROM size as {}", err, size,).unwrap();
+                    size
                 }
-            }
+                None => {
+                    writeln!(error, "{}", err).unwrap();
+                    return None;
+                }
+            },
         };
 
         // Cartridge Type
@@ -350,7 +348,7 @@ pub struct Cartridge {
     pub upper_bank: u16,
     pub rom: Vec<u8>,
     pub ram: Vec<u8>,
-    mbc: Mbc,
+    pub mbc: Mbc,
 }
 
 impl std::fmt::Debug for Cartridge {
@@ -693,7 +691,7 @@ impl Cartridge {
 
 /// Cartridge without a MBC chip
 #[derive(PartialEq, Eq, Clone)]
-struct Mbc0 {}
+pub struct Mbc0 {}
 crate::save_state!(Mbc0, self, data {});
 impl Mbc0 {
     pub fn read(&self, address: u16, rom: &[u8], ram: &[u8]) -> u8 {
@@ -737,12 +735,12 @@ impl Mbc0 {
 
 /// Cartridge with a MBC1 chip
 #[derive(PartialEq, Eq, Clone)]
-struct Mbc1 {
+pub struct Mbc1 {
     // the banking register. Includes the 5-bit register 1, and the 2-bit register 2.
-    selected_bank: u8,
+    pub selected_bank: u8,
     // false is mode 0, true is mode 1
-    mode: bool,
-    ram_enabled: bool,
+    pub mode: bool,
+    pub ram_enabled: bool,
 }
 crate::save_state!(Mbc1, self, data {
     self.selected_bank;
@@ -899,7 +897,7 @@ impl Mbc1 {
 
 /// Cartridge with a MBC1 multicart chip
 #[derive(PartialEq, Eq, Clone)]
-struct Mbc1M {
+pub struct Mbc1M {
     // the banking register. Includes the 4-bit register 1 (the bit 4 of the 5-bit register is
     // skipped in the multicard), and the 2-bit register 2. A total of 6-bit.
     selected_bank: u8,
@@ -1059,7 +1057,7 @@ impl Mbc1M {
 
 /// Cartridge with a MBC2 chip
 #[derive(PartialEq, Eq, Clone)]
-struct Mbc2 {
+pub struct Mbc2 {
     // the banking register
     selected_bank: u8,
     ram_enabled: bool,
@@ -1157,7 +1155,7 @@ impl Mbc2 {
 
 /// Cartridge with a MBC3 chip
 #[derive(PartialEq, Eq, Clone)]
-struct Mbc3 {
+pub struct Mbc3 {
     // the banking register, including second 2-bit
     selected_bank: u8,
     // false is mode 0, true is mode 1
@@ -1355,7 +1353,7 @@ impl Mbc3 {
 
 /// Cartridge with a MBC5 chip
 #[derive(PartialEq, Eq, Clone)]
-struct Mbc5 {
+pub struct Mbc5 {
     selected_bank: u16,
     selected_ram_bank: u8,
     ram_enabled: bool,

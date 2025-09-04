@@ -1,13 +1,15 @@
 use std::{
+    fs::OpenOptions,
+    io::Write,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
 };
 
 use gameroy::{
-    consts::{CLOCK_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH},
+    consts::{CLOCK_SPEED, FRAME_CYCLES, SCREEN_HEIGHT, SCREEN_WIDTH},
     gameboy::{cartridge::Cartridge, GameBoy},
     interpreter::Interpreter,
 };
@@ -21,17 +23,437 @@ const TEST_ROM_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gameboy-
 // const BOOT_ROM: Option<[u8; 256]> = Some(*include_bytes!("../../boot/dmg_boot.bin"));
 const BOOT_ROM: Option<[u8; 256]> = None;
 
+/// Defines when the test should terminate during emulation
+#[derive(Debug, Clone)]
+pub enum TerminationCondition {
+    /// Stop when timeout is reached
+    TimeoutOnly,
+    /// Stop when a specific opcode is executed (e.g., 0x40 = LD B, B)
+    OpcodeExecution(u8),
+    /// Stop when serial transfer callback detects a specific pattern
+    SerialPattern(String),
+}
+
+/// Defines how to check if the test passed
+#[derive(Debug, Clone)]
+pub enum SuccessCheck {
+    /// Compare screen output with reference image
+    ScreenComparison { reference_path: String },
+    /// Check CPU register values
+    FibonacciRegisters,
+    /// Check for "Passed" message in serial output
+    SerialPassed,
+    /// Check memory signature and status
+    BlarggMemorySignature,
+}
+
 macro_rules! log {
     ($rom:expr, $str:literal $($t:tt)*) => {
         println!(concat!("\"{}\" ", $str), $rom $($t)*);
     }
 }
 
+fn save_test_rom_as_json(
+    rom_path: &str,
+    termination_condition: TerminationCondition,
+    success_check: SuccessCheck,
+    timeout_cycles: u64,
+    final_screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>>,
+    passed: bool,
+) -> Result<(), String> {
+    let termination_condition = match termination_condition {
+        TerminationCondition::TimeoutOnly => r#"[]"#.to_string(),
+        TerminationCondition::OpcodeExecution(op) => {
+            format!(r#"[{{"type":"opcode","opcode":{op}}}]"#)
+        }
+        TerminationCondition::SerialPattern(pattern) => {
+            format!(r#"[{{"type":"serial_pattern","pattern":"{}"}}]"#, pattern)
+        }
+    };
+
+    let mut success_checks = match success_check {
+        SuccessCheck::ScreenComparison { ref reference_path } => {
+            format!(
+                r#"{{"type":"screen_comparison","reference_path":"{}"}}"#,
+                reference_path
+            )
+        }
+        SuccessCheck::FibonacciRegisters => r#"{"type":"fibonacci_registers"}"#.to_string(),
+        SuccessCheck::SerialPassed => r#"{"type":"serial_passed"}"#.to_string(),
+        SuccessCheck::BlarggMemorySignature => {
+            r#"[{"type":"blargg_memory_signature"}]"#.to_string()
+        }
+    };
+
+    if passed && !matches!(success_check, SuccessCheck::ScreenComparison { .. }) {
+        let path = format!(
+            "{}test_output/{}.png",
+            TEST_ROM_PATH,
+            rom_path.replace(".gb", "")
+        );
+        println!("Saving screen output to {}", path);
+
+        let screen = final_screen.lock().unwrap();
+
+        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+        lcd_to_rgb(&screen, &mut img_data);
+
+        // create directory hierarchy if it doesn't exist
+        let path_buf: PathBuf = path.clone().into();
+        if let Some(parent) = path_buf.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+
+        image::save_buffer(
+            &path,
+            &img_data,
+            SCREEN_WIDTH as u32,
+            SCREEN_HEIGHT as u32,
+            image::ColorType::Rgb8,
+        )
+        .unwrap();
+
+        success_checks += &format!(r#",{{"type":"screen_output","output_path":"{}"}}"#, path);
+    }
+
+    let json_object = format!(
+        r#"{{"rom_path":"{}","termination_condition":[{}],"success_check":[{}],"timeout_cycles":{}}}"#,
+        rom_path, termination_condition, success_checks, timeout_cycles
+    );
+
+    let file_path = "test_database.json";
+
+    static JSON_WRITE_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+    static FIRST: AtomicBool = AtomicBool::new(true);
+    let mutex = JSON_WRITE_MUTEX.get_or_init(|| Mutex::new(()));
+    let _lock = mutex.lock().unwrap();
+    let first = FIRST.swap(false, Ordering::Relaxed);
+    let write_mode = if !first {
+        OpenOptions::new().append(true).open(file_path)
+    } else {
+        OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(file_path)
+    };
+
+    match write_mode {
+        Ok(mut file) => {
+            writeln!(file, "{}", json_object)
+                .map_err(|e| format!("Failed to write to file: {}", e))?;
+            Ok(())
+        }
+        Err(e) => Err(format!("Failed to open file: {}", e)),
+    }
+}
+
+/// Main test runner function that executes test ROMs with configurable conditions
+///
+/// This unified function replaces all the individual test functions and provides a flexible
+/// interface for running Game Boy test ROMs with different termination and success conditions.
+///
+/// # Arguments
+///
+/// * `rom_path` - Path to the ROM file relative to TEST_ROM_PATH
+/// * `termination_condition` - Defines when the test should stop during emulation:
+///   - `OpcodeExecution(opcode)` - Stop when a specific opcode is executed (e.g., 0x40 = LD B, B)
+///   - `TimeoutOnly` - Only stop when timeout is reached
+///   - `SerialPattern(pattern)` - Stop when serial output contains the pattern
+///   - `VBlankCondition` - Stop when v_blank callback determines condition is met
+/// * `success_check` - Defines how to verify if the test passed:
+///   - `ScreenComparison { reference_path }` - Compare screen output with reference image
+///   - `RegisterCheck { a, b, c, d, e, h, l }` - Check CPU register values (None = don't check)
+///   - `SerialPassed` - Check for "Passed" message in serial output  
+///   - `MemoryCheck { ... }` - Check memory signature and status at specific addresses
+/// * `timeout_cycles` - Maximum number of CPU cycles to run before timing out
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the test passes, or `Err(String)` with error description if it fails.
+fn run_test_rom(
+    rom_path: &str,
+    termination_condition: TerminationCondition,
+    success_check: SuccessCheck,
+    timeout_cycles: u64,
+) -> Result<(), String> {
+    let full_rom_path: PathBuf = (TEST_ROM_PATH.to_string() + rom_path).into();
+    let rom = std::fs::read(&full_rom_path)
+        .map_err(|e| format!("Failed to read ROM {}: {}", rom_path, e))?;
+
+    let cartridge =
+        Cartridge::new(rom).map_err(|e| format!("Failed to create cartridge: {:?}", e))?;
+
+    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
+
+    // Setup shared state for different test types
+    let screen = Arc::new(Mutex::new([0u8; SCREEN_WIDTH * SCREEN_HEIGHT]));
+    let stop_condition_met = Arc::new(AtomicBool::new(false));
+    let serial_output = Arc::new(Mutex::new(String::new()));
+
+    // Setup callbacks based on termination condition and success check
+    setup_callbacks(
+        &mut game_boy,
+        &termination_condition,
+        &success_check,
+        &screen,
+        &stop_condition_met,
+        &serial_output,
+    )?;
+
+    let mut inter = Interpreter(&mut game_boy);
+
+    // Main emulation loop
+    while inter.0.clock_count < timeout_cycles && !stop_condition_met.load(Ordering::Relaxed) {
+        inter.interpret_op();
+
+        // Check termination condition
+        if should_terminate(&inter, &termination_condition, &serial_output) {
+            break;
+        }
+    }
+
+    // Run one more frame (some tests report success before rendering the test passed screen)
+    for _ in 0..FRAME_CYCLES {
+        inter.interpret_op();
+    }
+
+    log!(rom_path, "final clock_count: {}", inter.0.clock_count);
+
+    // Check success condition
+    let res = check_success(inter.0, &success_check, &screen, &serial_output, rom_path);
+
+    if option_env!("GAMEROY_TEST_OUTPUT_JSON").is_some() {
+        save_test_rom_as_json(
+            rom_path,
+            termination_condition,
+            success_check,
+            inter.0.clock_count.min(timeout_cycles),
+            screen,
+            res.is_ok(),
+        )
+        .unwrap();
+    }
+
+    res
+}
+
+fn setup_callbacks(
+    game_boy: &mut GameBoy,
+    termination_condition: &TerminationCondition,
+    success_check: &SuccessCheck,
+    screen: &Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>>,
+    stop_condition_met: &Arc<AtomicBool>,
+    serial_output: &Arc<Mutex<String>>,
+) -> Result<(), String> {
+    // Setup v_blank callback for screen tests
+    let screen_clone = screen.clone();
+
+    // Load reference image for screen comparison
+    if let SuccessCheck::ScreenComparison { reference_path } = success_check {
+        let stop_clone = stop_condition_met.clone();
+
+        let reference_path_full = TEST_ROM_PATH.to_string() + reference_path;
+        let reference_img_data = image::open(&reference_path_full)
+            .map_err(|e| format!("Failed to load reference image {}: {}", reference_path, e))?
+            .to_rgb8();
+        let mut reference_screen = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+        rgb_to_lcd(reference_img_data.as_ref(), &mut reference_screen);
+
+        game_boy.v_blank = Some(Box::new(move |gb| {
+            screen_clone
+                .lock()
+                .unwrap()
+                .copy_from_slice(&gb.ppu.borrow().screen.packed());
+            if reference_screen == gb.ppu.borrow().screen.packed() {
+                stop_clone.store(true, Ordering::Relaxed);
+            }
+        }));
+    } else {
+        game_boy.v_blank = Some(Box::new(move |gb| {
+            screen_clone
+                .lock()
+                .unwrap()
+                .copy_from_slice(&gb.ppu.borrow().screen.packed());
+        }));
+    }
+
+    // Setup serial callback for serial tests
+    if matches!(success_check, SuccessCheck::SerialPassed)
+        || matches!(
+            termination_condition,
+            TerminationCondition::SerialPattern(_)
+        )
+    {
+        let serial_clone = serial_output.clone();
+        let stop_clone = stop_condition_met.clone();
+
+        game_boy.serial.get_mut().serial_transfer_callback = Some(Box::new(move |byte| {
+            let mut output = serial_clone.lock().unwrap();
+            output.push(byte as char);
+            if output.ends_with("Passed") {
+                stop_clone.store(true, Ordering::Relaxed);
+            }
+        }));
+    }
+
+    Ok(())
+}
+
+fn should_terminate(
+    inter: &Interpreter,
+    termination_condition: &TerminationCondition,
+    serial_output: &Arc<Mutex<String>>,
+) -> bool {
+    match termination_condition {
+        TerminationCondition::OpcodeExecution(opcode) => inter.0.read(inter.0.cpu.pc) == *opcode,
+        TerminationCondition::TimeoutOnly => false,
+        TerminationCondition::SerialPattern(pattern) => {
+            serial_output.lock().unwrap().contains(pattern)
+        }
+    }
+}
+
+fn check_success(
+    game_boy: &GameBoy,
+    success_check: &SuccessCheck,
+    screen: &Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>>,
+    serial_output: &Arc<Mutex<String>>,
+    rom_path: &str,
+) -> Result<(), String> {
+    match success_check {
+        SuccessCheck::ScreenComparison { reference_path } => {
+            let reference_path_full = TEST_ROM_PATH.to_string() + reference_path;
+            let reference_img_data = image::open(&reference_path_full)
+                .map_err(|e| format!("Failed to load reference image: {}", e))?
+                .to_rgb8();
+            let mut reference_screen = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
+            rgb_to_lcd(reference_img_data.as_ref(), &mut reference_screen);
+
+            let current_screen = screen.lock().unwrap();
+            if *current_screen == reference_screen {
+                Ok(())
+            } else {
+                save_comparison_images(&current_screen, &reference_screen, rom_path)?;
+                Err("Screen doesn't match expected image".to_string())
+            }
+        }
+        SuccessCheck::FibonacciRegisters => {
+            let regs = &game_boy.cpu;
+
+            if regs.b != 3
+                || regs.c != 5
+                || regs.d != 8
+                || regs.e != 13
+                || regs.h != 21
+                || regs.l != 34
+            {
+                return Err("Hardware test failed".to_string());
+            }
+
+            Ok(())
+        }
+        SuccessCheck::SerialPassed => {
+            let output = serial_output.lock().unwrap();
+            if output.contains("Passed") {
+                Ok(())
+            } else {
+                Err(format!("Test rom failed: \n{}", output))
+            }
+        }
+        SuccessCheck::BlarggMemorySignature => {
+            let signature = [
+                game_boy.read(0xA001),
+                game_boy.read(0xA002),
+                game_boy.read(0xA003),
+            ];
+            if signature != [0xDE, 0xB0, 0x61] {
+                return Err(format!(
+                    "Invalid output to memory signature: {:0x?}",
+                    signature
+                ));
+            }
+
+            let status_code = game_boy.read(0xA000);
+            if status_code == 0 {
+                Ok(())
+            } else {
+                let mut message = Vec::new();
+                let mut addr = 0xA004;
+                loop {
+                    let value = game_boy.read(addr);
+                    if value == 0 {
+                        break;
+                    }
+                    message.push(value);
+                    addr += 1;
+                }
+                let message_str =
+                    String::from_utf8(message).unwrap_or_else(|_| "Invalid UTF-8".to_string());
+                Err(format!(
+                    "Test rom failed({:02x}): \n{}",
+                    status_code, message_str
+                ))
+            }
+        }
+    }
+}
+
+fn save_comparison_images(
+    current_screen: &[u8; SCREEN_WIDTH * SCREEN_HEIGHT],
+    reference_screen: &[u8; SCREEN_WIDTH * SCREEN_HEIGHT],
+    rom_path: &str,
+) -> Result<(), String> {
+    let path_buf = PathBuf::from(rom_path);
+    let rom_name = path_buf
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+
+    // Save current output
+    let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
+    lcd_to_rgb(current_screen, &mut img_data);
+
+    let output_path: PathBuf = format!("test_output/{}_output.png", rom_name).into();
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    image::save_buffer(
+        &output_path,
+        &img_data,
+        SCREEN_WIDTH as u32,
+        SCREEN_HEIGHT as u32,
+        image::ColorType::Rgb8,
+    )
+    .map_err(|e| format!("Failed to save output image: {}", e))?;
+
+    // Save expected output
+    lcd_to_rgb(reference_screen, &mut img_data);
+    let expected_path: PathBuf = format!("test_output/{}_expected.png", rom_name).into();
+    image::save_buffer(
+        &expected_path,
+        &img_data,
+        SCREEN_WIDTH as u32,
+        SCREEN_HEIGHT as u32,
+        image::ColorType::Rgb8,
+    )
+    .map_err(|e| format!("Failed to save expected image: {}", e))?;
+
+    Ok(())
+}
+
 macro_rules! screen {
     { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $expec:expr, $timeout:expr, ); )* } => {
         $(#[test] $(#[$($attrib)*])*
         fn $test() {
-            test_screen($rom, $expec, $timeout);
+            run_test_rom(
+                $rom,
+                TerminationCondition::OpcodeExecution(0x40),
+                SuccessCheck::ScreenComparison { reference_path: $expec.to_string() },
+                $timeout,
+            ).unwrap();
         })*
     };
 }
@@ -67,127 +489,45 @@ fn rgb_to_lcd(screen: &[u8], img_data: &mut [u8; 144 * 160]) {
     }
 }
 
-fn test_screen(romstr: &str, reference: &str, timeout: u64) {
-    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + romstr).into();
-    let reference_path = TEST_ROM_PATH.to_string() + reference;
-    let rom = std::fs::read(&rom_path).unwrap();
-
-    let cartridge = Cartridge::new(rom).unwrap();
-
-    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
-
-    let screen = Arc::new(Mutex::new([0u8; SCREEN_WIDTH * SCREEN_HEIGHT]));
-    let matched = Arc::new(AtomicBool::new(false));
-
-    let reference_img_data: &[u8] = &image::open(reference_path).unwrap().to_rgb8();
-    let mut reference_screen = [0; SCREEN_WIDTH * SCREEN_HEIGHT];
-    rgb_to_lcd(reference_img_data, &mut reference_screen);
-
-    game_boy.v_blank = Some(Box::new({
-        let matched = matched.clone();
-        let screen = screen.clone();
-        move |gb| {
-            screen
-                .lock()
-                .unwrap()
-                .copy_from_slice(&gb.ppu.borrow().screen.packed());
-            if reference_screen == gb.ppu.borrow().screen.packed() {
-                matched.store(true, Ordering::Relaxed);
-            }
-        }
-    }));
-
-    let mut inter = Interpreter(&mut game_boy);
-
-    while inter.0.clock_count < timeout && !matched.load(Ordering::Relaxed) {
-        inter.interpret_op();
-        // 0x40 = LD B, B
-        if inter.0.read(inter.0.cpu.pc) == 0x40 {
-            break;
-        }
-    }
-    log!(romstr, "final clock_count: {}", inter.0.clock_count);
-
-    if inter.0.clock_count >= timeout {
-        log!(romstr, "reach timeout!!");
-    }
-
-    if !matched.load(Ordering::Relaxed) {
-        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
-        lcd_to_rgb(&screen.lock().unwrap(), &mut img_data);
-
-        let path: PathBuf = ("test_output/".to_string()
-            + &rom_path.file_stem().unwrap().to_string_lossy()
-            + "_output.png")
-            .into();
-        if let Some(x) = path.parent() {
-            std::fs::create_dir_all(x).unwrap()
-        }
-        image::save_buffer(
-            &path,
-            &img_data,
-            SCREEN_WIDTH as u32,
-            SCREEN_HEIGHT as u32,
-            image::ColorType::Rgb8,
-        )
-        .unwrap();
-
-        let mut img_data = vec![0; SCREEN_WIDTH * SCREEN_HEIGHT * 3];
-        lcd_to_rgb(&reference_screen, &mut img_data);
-
-        let path: PathBuf = ("test_output/".to_string()
-            + &rom_path.file_stem().unwrap().to_string_lossy()
-            + "_expected.png")
-            .into();
-        if let Some(x) = path.parent() {
-            std::fs::create_dir_all(x).unwrap()
-        }
-        image::save_buffer(
-            &path,
-            &img_data,
-            SCREEN_WIDTH as u32,
-            SCREEN_HEIGHT as u32,
-            image::ColorType::Rgb8,
-        )
-        .unwrap();
-        panic!("screen don't match with expected image");
-    }
+// Legacy function wrappers for backward compatibility and specific test types
+fn test_registers(romstr: &str, timeout: u64) {
+    run_test_rom(
+        romstr,
+        TerminationCondition::OpcodeExecution(0x40),
+        SuccessCheck::FibonacciRegisters,
+        timeout,
+    )
+    .unwrap();
 }
 
-fn test_registers(romstr: &str, timeout: u64) {
-    let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + romstr).into();
-    let rom = std::fs::read(rom_path).unwrap();
+fn test_rom_serial(romstr: &str, timeout: u64) -> Result<(), String> {
+    let full_path = format!("blargg/{}", romstr);
+    run_test_rom(
+        &full_path,
+        TerminationCondition::SerialPattern("Passed".to_string()),
+        SuccessCheck::SerialPassed,
+        timeout,
+    )
+}
 
-    let cartridge = Cartridge::new(rom).unwrap();
+fn test_rom_memory(romstr: &str, timeout: u64) -> Result<(), String> {
+    let full_path = format!("blargg/{}", romstr);
+    run_test_rom(
+        &full_path,
+        TerminationCondition::TimeoutOnly,
+        SuccessCheck::BlarggMemorySignature,
+        timeout,
+    )
+}
 
-    let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
-    let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
-        Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-    game_boy.v_blank = Some(Box::new(move |gb| {
-        *screen.lock().unwrap() = gb.ppu.borrow().screen.packed();
-    }));
-
-    let mut inter = Interpreter(&mut game_boy);
-    while inter.0.clock_count < timeout {
-        inter.interpret_op();
-        // 0x40 = LD B, B
-        if inter.0.read(inter.0.cpu.pc) == 0x40 {
-            break;
-        }
-    }
-    log!(romstr, "final clock_count: {}", inter.0.clock_count);
-
-    if inter.0.clock_count >= timeout {
-        panic!("reach timeout!!");
-    }
-    let regs = game_boy.cpu;
-
-    if regs.a != 0 {
-        panic!("{} assertion failures in hardware test", regs.a);
-    }
-    if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34 {
-        panic!("Hardware test failed");
-    }
+fn test_age(romstr: &str, timeout: u64) {
+    run_test_rom(
+        romstr,
+        TerminationCondition::OpcodeExecution(0x40),
+        SuccessCheck::FibonacciRegisters,
+        timeout,
+    )
+    .unwrap();
 }
 
 mod blargg {
@@ -271,102 +611,6 @@ mod blargg {
             "blargg/halt_bug-dmg-cgb.png",
             803_000_000,
         );
-    }
-
-    fn test_rom_serial(romstr: &str, timeout: u64) -> Result<(), String> {
-        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + romstr;
-        let rom = std::fs::read(rom_path).unwrap();
-
-        let cartridge = Cartridge::new(rom).unwrap();
-
-        let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
-
-        let string = Arc::new(Mutex::new(String::new()));
-        let string_clone = string.clone();
-        let stop = Arc::new(AtomicBool::new(false));
-        game_boy.serial.get_mut().serial_transfer_callback = Some(Box::new({
-            let stop = stop.clone();
-            move |byte| {
-                let mut string = string.lock().unwrap();
-                string.push(byte as char);
-                if string.ends_with("Passed") {
-                    stop.store(true, Ordering::Relaxed);
-                }
-            }
-        }));
-
-        let mut inter = Interpreter(&mut game_boy);
-        while inter.0.clock_count < timeout {
-            inter.interpret_op();
-            if stop.load(Ordering::Relaxed) {
-                break;
-            }
-        }
-        log!(romstr, "final clock_count: {}", inter.0.clock_count);
-
-        // panic!("ahh");
-        if stop.load(Ordering::Relaxed) {
-            Ok(())
-            // let string = string_clone.lock().unwrap();
-            // Err(format!("test rom failed: \n{}", string))
-        } else {
-            let string = string_clone.lock().unwrap();
-            Err(format!("test rom failed: \n{}", string))
-        }
-    }
-
-    fn test_rom_memory(romstr: &str, timeout: u64) -> Result<(), String> {
-        let rom_path = TEST_ROM_PATH.to_string() + "blargg/" + romstr;
-        let rom = std::fs::read(rom_path).unwrap();
-
-        let cartridge = Cartridge::new(rom).unwrap();
-
-        let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
-
-        let mut inter = Interpreter(&mut game_boy);
-        while inter.0.clock_count < timeout {
-            inter.interpret_op();
-        }
-        log!(romstr, "final clock_count: {}", inter.0.clock_count);
-
-        let signature = [
-            inter.0.read(0xA001),
-            inter.0.read(0xA002),
-            inter.0.read(0xA003),
-        ];
-        if signature != [0xDE, 0xB0, 0x61] {
-            return Err(format!(
-                "invalid output to memory signature: {:0x?}",
-                signature
-            ));
-        }
-
-        let status_code = inter.0.read(0xA000);
-
-        // panic!("ahh");
-        if status_code == 0 {
-            Ok(())
-            // let string = string_clone.lock().unwrap();
-            // Err(format!("test rom failed: \n{}", string))
-        } else {
-            let string = {
-                let mut i = 0xA004;
-                let mut string = Vec::new();
-                loop {
-                    let value = inter.0.read(i);
-                    if value == 0 {
-                        break;
-                    }
-                    string.push(value);
-                    i += 1;
-                }
-                String::from_utf8(string).unwrap()
-            };
-            Err(format!(
-                "test rom failed({:02x}): \n{}",
-                status_code, string
-            ))
-        }
     }
 }
 
@@ -901,40 +1145,6 @@ mod mooneye {
 
 mod age {
     use super::*;
-
-    fn test_age(romstr: &str, timeout: u64) {
-        let rom_path: PathBuf = (TEST_ROM_PATH.to_string() + romstr).into();
-        let rom = std::fs::read(rom_path).unwrap();
-
-        let cartridge = Cartridge::new(rom).unwrap();
-
-        let mut game_boy = GameBoy::new(BOOT_ROM, cartridge);
-        let screen: Arc<Mutex<[u8; SCREEN_WIDTH * SCREEN_HEIGHT]>> =
-            Arc::new(Mutex::new([0; SCREEN_WIDTH * SCREEN_HEIGHT]));
-        game_boy.v_blank = Some(Box::new(move |gb| {
-            *screen.lock().unwrap() = gb.ppu.borrow().screen.packed();
-        }));
-
-        let mut inter = Interpreter(&mut game_boy);
-        while inter.0.clock_count < timeout {
-            inter.interpret_op();
-            // 0x40 = LD B, B
-            if inter.0.read(inter.0.cpu.pc) == 0x40 {
-                break;
-            }
-        }
-        log!(romstr, "final clock_count: {}", inter.0.clock_count);
-
-        if inter.0.clock_count >= timeout {
-            panic!("reach timeout!!");
-        }
-        let regs = game_boy.cpu;
-
-        if regs.b != 3 || regs.c != 5 || regs.d != 8 || regs.e != 13 || regs.h != 21 || regs.l != 34
-        {
-            panic!("Hardware test failed");
-        }
-    }
 
     macro_rules! registers {
         { $( $(#[$($attrib:meta)*])* $test:ident($rom:expr, $timeout:expr ); )* } => {

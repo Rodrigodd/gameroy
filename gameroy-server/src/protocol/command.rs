@@ -40,6 +40,26 @@ pub enum Command {
 
     // --- debugger ---
     Step,
+    /// Run until a breakpoint, as the debugger's "continue".
+    RunToBreakpoint,
+    AddBreakpoint {
+        address: u16,
+        /// Any of `break_flags`: WRITE | READ | EXECUTE | JUMP.
+        flags: u8,
+    },
+    RemoveBreakpoint {
+        address: u16,
+    },
+    AddWatch {
+        address: u16,
+    },
+    RemoveWatch {
+        address: u16,
+    },
+    /// One line typed into the debugger console.
+    ExecuteDebugCommand {
+        line: String,
+    },
     SetDebugViews(DebugViews),
 
     // --- flow control ---

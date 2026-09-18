@@ -5,14 +5,16 @@ use std::time::{Duration, Instant};
 
 use gameroy::{
     consts::{CLOCK_SPEED, SCREEN_HEIGHT, SCREEN_WIDTH},
+    debugger::{Debugger, RunResult},
     gameboy::{GameBoy, cartridge::Cartridge},
     interpreter::Interpreter,
 };
 
+use crate::debug_console::{self, ConsoleAction};
 use crate::protocol::{
     AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, EmulatorConfig, Event,
-    FrameBuffer, FramePacket, ImeState, OpenRom, RomOpened, RunMode, ServerError, SessionEpoch,
-    StopReason,
+    FrameBuffer, FramePacket, ImeState, OpenRom, PpuState, RomOpened, RunMode, ServerError,
+    SessionEpoch, StopReason, WatchValue,
     transport::{ServerTransport, TransportError},
 };
 use crate::timeline::{Timeline, timestamp};
@@ -70,6 +72,7 @@ impl VBlank {
 
 pub struct Session {
     gb: Option<Box<GameBoy>>,
+    debugger: Debugger,
     vblank: Arc<Mutex<VBlank>>,
     config: EmulatorConfig,
 
@@ -87,6 +90,8 @@ pub struct Session {
     last_start_clock: u64,
 
     shutting_down: bool,
+    /// A stop discovered mid-slice, applied once the borrow on `gb` is released.
+    pending_stop: Option<StopReason>,
 
     /// Last cartridge RAM handed to the client, so the periodic write only fires
     /// when something actually changed.
@@ -102,6 +107,7 @@ impl Session {
     pub fn new(config: EmulatorConfig) -> Self {
         Self {
             gb: None,
+            debugger: Debugger::default(),
             vblank: Arc::new(Mutex::new(VBlank {
                 timeline: Timeline::new(0, Vec::new(), 0),
                 produced: Vec::new(),
@@ -117,6 +123,7 @@ impl Session {
             last_start_time: Instant::now(),
             last_start_clock: 0,
             shutting_down: false,
+            pending_stop: None,
             last_persisted_ram: Vec::new(),
             next_ram_check: Instant::now() + RAM_CHECK_INTERVAL,
         }
@@ -145,6 +152,12 @@ impl Session {
 
         // 2. Emulate.
         let schedule = self.run_slice();
+
+        // A breakpoint found during the slice pauses here, where `gb` is no
+        // longer borrowed.
+        if let Some(reason) = self.pending_stop.take() {
+            self.set_mode(RunMode::Paused, reason, t);
+        }
 
         // 3. Ship whatever the emulation produced.
         self.flush_frames(t);
@@ -184,6 +197,34 @@ impl Session {
             }
             // One frame per call, paced like normal playback.
             return Schedule::At(Instant::now() + Duration::from_micros(16_666));
+        }
+
+        if self.mode == RunMode::RunningWithBreakpoints {
+            // Short slices so a breakpoint is noticed promptly and commands stay
+            // responsive; the same granularity the old front-end used.
+            let result = self.debugger.run_for(gb, SLICE_CLOCKS);
+            return match result {
+                RunResult::TimeOut => Schedule::Now,
+                RunResult::ReachBreakpoint => {
+                    let address = gb.cpu.pc;
+                    let flags = self
+                        .debugger
+                        .breakpoints()
+                        .get(&address)
+                        .copied()
+                        .unwrap_or(0);
+                    self.pending_stop = Some(StopReason::Breakpoint { address, flags });
+                    Schedule::Now
+                }
+                RunResult::ReachTargetAddress => {
+                    self.pending_stop = Some(StopReason::TargetAddress(gb.cpu.pc));
+                    Schedule::Now
+                }
+                RunResult::ReachTargetClock => {
+                    self.pending_stop = Some(StopReason::TargetClock(gb.clock_count));
+                    Schedule::Now
+                }
+            };
         }
 
         if !self.frame_limit {
@@ -346,6 +387,28 @@ impl Session {
             Command::RequestSaveState => self.save_state(t),
             Command::LoadSaveState(data) => self.load_state(&data, t),
             Command::RequestPersistRam => self.persist_ram(t),
+            Command::RunToBreakpoint => {
+                self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t)
+            }
+            Command::AddBreakpoint { address, flags } => {
+                self.debugger.add_break(flags, address);
+                self.send_breakpoints(t);
+            }
+            Command::RemoveBreakpoint { address } => {
+                self.debugger.remove_break(address);
+                self.send_breakpoints(t);
+            }
+            Command::AddWatch { address } => {
+                self.debugger.add_watch(address);
+                self.send_watches(t);
+                self.send_debug_update(t);
+            }
+            Command::RemoveWatch { address } => {
+                self.debugger.remove_watch(address);
+                self.send_watches(t);
+                self.send_debug_update(t);
+            }
+            Command::ExecuteDebugCommand { line } => self.run_console_command(&line, t),
         }
         false
     }
@@ -458,10 +521,17 @@ impl Session {
     }
 
     fn send_debug_update(&mut self, t: &mut impl ServerTransport) {
-        if !self.views.cpu {
+        if !self.views.cpu && !self.views.ppu && !self.views.watches {
             return;
         }
         let Some(gb) = self.gb.as_ref() else { return };
+
+        // The PPU is updated lazily: its fields only catch up when something reads
+        // one of its registers. Reading LY forces that, so the panel and any watch
+        // on a PPU register describe the same instant. Without this the panel shows
+        // values staler than the watch list, which for a debugger is a real defect.
+        let _ = gb.read(0xff44);
+
         let (clock, frame) = (
             gb.clock_count,
             self.vblank.lock().unwrap().timeline.current_frame,
@@ -471,7 +541,39 @@ impl Session {
             epoch: self.epoch,
             clock_count: clock,
             frame,
-            cpu: Some(CpuState {
+            ppu: self.views.ppu.then(|| {
+                let ppu = gb.ppu.borrow();
+                PpuState {
+                    lcdc: ppu.lcdc,
+                    stat: ppu.stat,
+                    scy: ppu.scy,
+                    scx: ppu.scx,
+                    ly: ppu.ly,
+                    lyc: ppu.lyc,
+                    // Dot within the line. A line is 456 dots.
+                    lx: ((clock - ppu.line_start_clock_count) % 456) as u16,
+                    bgp: ppu.bgp,
+                    obp0: ppu.obp0,
+                    obp1: ppu.obp1,
+                    wyc: ppu.wyc,
+                    wy: ppu.wy,
+                    wx: ppu.wx,
+                    state: ppu.state,
+                    screen_x: ppu.screen_x,
+                    next_clock_count: ppu.next_clock_count,
+                }
+            }),
+            watches: self.views.watches.then(|| {
+                self.debugger
+                    .watchs()
+                    .iter()
+                    .map(|&address| WatchValue {
+                        address,
+                        value: gb.read(address),
+                    })
+                    .collect()
+            }),
+            cpu: self.views.cpu.then(|| CpuState {
                 a: cpu.a,
                 f: cpu.f.0,
                 b: cpu.b,
@@ -493,6 +595,82 @@ impl Session {
             }),
         };
         let _ = t.send(Event::DebugUpdate(Box::new(update)));
+    }
+
+    fn send_breakpoints(&mut self, t: &mut impl ServerTransport) {
+        let breakpoints = self
+            .debugger
+            .breakpoints()
+            .iter()
+            .map(|(&a, &f)| (a, f))
+            .collect();
+        let _ = t.send(Event::BreakpointsChanged { breakpoints });
+    }
+
+    fn send_watches(&mut self, t: &mut impl ServerTransport) {
+        let watches = self.debugger.watchs().iter().copied().collect();
+        let _ = t.send(Event::WatchesChanged { watches });
+    }
+
+    fn run_console_command(&mut self, line: &str, t: &mut impl ServerTransport) {
+        let outcome = match debug_console::execute(&mut self.debugger, line) {
+            Ok(o) => o,
+            Err(message) => {
+                let _ = t.send(Event::DebugConsole {
+                    ok: false,
+                    text: message,
+                });
+                return;
+            }
+        };
+
+        if let Some(text) = outcome.message {
+            let _ = t.send(Event::DebugConsole { ok: true, text });
+        }
+        if outcome.breakpoints_changed {
+            self.send_breakpoints(t);
+        }
+        if outcome.watches_changed {
+            self.send_watches(t);
+        }
+
+        match outcome.action {
+            None => {}
+            Some(ConsoleAction::Step) => {
+                self.step_pending = true;
+                self.set_mode(RunMode::Running, StopReason::UserRequest, t);
+            }
+            Some(ConsoleAction::StepBack) => {
+                let _ = t.send(Event::DebugConsole {
+                    ok: false,
+                    text: "stepback is not implemented yet".into(),
+                });
+            }
+            Some(ConsoleAction::Run) => {
+                self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t)
+            }
+            Some(ConsoleAction::Reset) => {
+                if let Some(gb) = self.gb.as_mut() {
+                    gb.reset();
+                    self.epoch += 1;
+                    self.resync_pacing();
+                    self.set_mode(self.mode, StopReason::Reset, t);
+                }
+            }
+            Some(ConsoleAction::RunToAddress(address)) => {
+                self.debugger.target_address = Some(address);
+                self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t);
+            }
+            Some(ConsoleAction::RunForClocks(clocks)) => {
+                let now = self.gb.as_ref().map_or(0, |gb| gb.clock_count);
+                self.debugger.target_clock = Some(now + clocks);
+                self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t);
+            }
+            Some(ConsoleAction::RunUntilClock(clock)) => {
+                self.debugger.target_clock = Some(clock);
+                self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t);
+            }
+        }
     }
 
     fn persist_ram(&mut self, t: &mut impl ServerTransport) {

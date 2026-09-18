@@ -1,7 +1,8 @@
 import { Button, VerticalBox } from "std-widgets.slint";
 import { Library, RomRow } from "library.slint";
+import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
 
-export { RomRow }
+export { RomRow, BreakRow, WatchRow }
 
 export component AppWindow inherits Window {
     /// Every key the app handles is dispatched from Rust, so the keymap lives in
@@ -18,9 +19,19 @@ export component AppWindow inherits Window {
     callback menu_exit();
 
     in property <image> screen;
-    /// Rendered from the server's DebugUpdate. Empty means the overlay is off.
-    in property <string> debug_text;
     in property <string> status_text;
+
+    // --- debugger ---
+    in property <bool> debugging;
+    in property <string> cpu_text;
+    in property <string> ppu_text;
+    in property <[BreakRow]> breakpoints;
+    in property <[WatchRow]> watches;
+    in property <[string]> console_lines;
+    in-out property <length> panel_width: 260px;
+    callback remove_breakpoint(int);
+    callback remove_watch(int);
+    callback submit_command(string);
     in property <string> window_title: "GameRoy";
     in property <bool> menu_open;
     /// False shows the ROM library instead of the emulator.
@@ -100,34 +111,33 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Temporary debugger overlay. Exercises the DebugUpdate path end to end
-        // before the real debugger UI exists; replaced later.
-        if root.debug_text != "": Rectangle {
-            width: 210px;
-            background: #161a16;
-            VerticalLayout {
-                padding: 10px;
-                spacing: 6px;
-                Text {
-                    text: "debug (F8 step, F9 run)";
-                    color: #6f8f6f;
-                    font-size: 11px;
-                }
-                Text {
-                    text: root.debug_text;
-                    color: #9fd39f;
-                    font-family: "monospace";
-                    font-size: 12px;
-                    vertical-alignment: top;
-                }
-                Rectangle { vertical-stretch: 1; }
-                Text {
-                    text: root.status_text;
-                    color: #6f8f6f;
-                    font-size: 11px;
-                    wrap: word-wrap;
+        // Draggable divider. Slint has no splitter widget, so this is the whole
+        // of it: a thin strip that adjusts the panel width as it is dragged.
+        if root.debugging: Rectangle {
+            width: 5px;
+            background: divider.has-hover || divider.pressed ? #3a4a3a : #232a23;
+            divider := TouchArea {
+                mouse-cursor: ew-resize;
+                moved => {
+                    // Dragging left widens the panel, so the delta is negated.
+                    root.panel_width = clamp(
+                        root.panel_width - (self.mouse-x - self.pressed-x),
+                        160px,
+                        root.width - 160px);
                 }
             }
+        }
+
+        if root.debugging: DebugPanel {
+            width: root.panel_width;
+            cpu-text: root.cpu_text;
+            ppu-text: root.ppu_text;
+            breakpoints: root.breakpoints;
+            watches: root.watches;
+            console-lines: root.console_lines;
+            remove-breakpoint(a) => { root.remove_breakpoint(a); }
+            remove-watch(a) => { root.remove_watch(a); }
+            submit-command(line) => { root.submit_command(line); }
         }
     }
 

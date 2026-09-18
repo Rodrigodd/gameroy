@@ -1,0 +1,215 @@
+import { ScrollView, LineEdit } from "std-widgets.slint";
+
+export struct BreakRow {
+    address: int,
+    address-text: string,
+    flags-text: string,
+}
+
+export struct WatchRow {
+    address: int,
+    address-text: string,
+    value-text: string,
+}
+
+// Collapsible section. Slint has no such widget, and the old panel stacked four
+// of them, so it earns its own component.
+component FoldView inherits VerticalLayout {
+    in property <string> title;
+    in-out property <bool> expanded: true;
+
+    spacing: 2px;
+
+    Rectangle {
+        height: 22px;
+        background: touch.has-hover ? #222922 : #1a1f1a;
+        touch := TouchArea {
+            clicked => { root.expanded = !root.expanded; }
+        }
+        HorizontalLayout {
+            padding-left: 6px;
+            spacing: 6px;
+            Text {
+                // Chevron turns to mark the state, as the old fold view did.
+                text: root.expanded ? "\u{25bc}" : "\u{25b6}";
+                color: #6f8f6f;
+                font-size: 9px;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.title;
+                color: #9fd39f;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+            // Takes the slack so the title stays beside its chevron instead of
+            // being centred across the header.
+            Rectangle { horizontal-stretch: 1; }
+        }
+    }
+
+    // Collapsed by height rather than by `if`, because @children may not appear
+    // inside a conditional element. Clipping hides the overflow, and it gives the
+    // fold something to animate.
+    Rectangle {
+        clip: true;
+        height: root.expanded ? content.preferred-height : 0px;
+        animate height { duration: 120ms; easing: ease-out; }
+
+        content := VerticalLayout {
+            padding: 6px;
+            spacing: 2px;
+            @children
+        }
+    }
+}
+
+export component DebugPanel inherits Rectangle {
+    in property <string> cpu-text;
+    in property <string> ppu-text;
+    in property <[BreakRow]> breakpoints;
+    in property <[WatchRow]> watches;
+    in property <[string]> console-lines;
+
+    callback remove-breakpoint(int);
+    callback remove-watch(int);
+    callback submit-command(string);
+
+    background: #161a16;
+
+    VerticalLayout {
+        padding: 4px;
+        spacing: 4px;
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                spacing: 4px;
+                alignment: start;
+
+                FoldView {
+                    title: "cpu";
+                    Text {
+                        text: root.cpu-text;
+                        color: #9fd39f;
+                        font-family: "monospace";
+                        font-size: 12px;
+                    }
+                }
+
+                FoldView {
+                    title: "ppu";
+                    Text {
+                        text: root.ppu-text;
+                        color: #9fd39f;
+                        font-family: "monospace";
+                        font-size: 12px;
+                    }
+                }
+
+                FoldView {
+                    title: "breaks";
+                    if root.breakpoints.length == 0: Text {
+                        text: "none";
+                        color: #5f6f5f;
+                        font-size: 11px;
+                    }
+                    for b in root.breakpoints: HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: b.flags-text + " " + b.address-text;
+                            color: #9fd39f;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            background: del.has-hover ? #663333 : transparent;
+                            border-radius: 3px;
+                            del := TouchArea {
+                                clicked => { root.remove-breakpoint(b.address); }
+                            }
+                            Text {
+                                text: "x";
+                                color: #c08080;
+                                font-size: 11px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                FoldView {
+                    title: "watchs";
+                    if root.watches.length == 0: Text {
+                        text: "none";
+                        color: #5f6f5f;
+                        font-size: 11px;
+                    }
+                    for w in root.watches: HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: w.address-text + " = " + w.value-text;
+                            color: #9fd39f;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            background: delw.has-hover ? #663333 : transparent;
+                            border-radius: 3px;
+                            delw := TouchArea {
+                                clicked => { root.remove-watch(w.address); }
+                            }
+                            Text {
+                                text: "x";
+                                color: #c08080;
+                                font-size: 11px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Console log and input.
+        Rectangle {
+            height: 120px;
+            background: #101210;
+            border-radius: 3px;
+            VerticalLayout {
+                padding: 4px;
+                spacing: 2px;
+                ScrollView {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: end;
+                        for line in root.console-lines: Text {
+                            text: line;
+                            color: #8fae8f;
+                            font-family: "monospace";
+                            font-size: 11px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                input := LineEdit {
+                    placeholder-text: "command (try: help)";
+                    accepted(text) => {
+                        root.submit-command(text);
+                        self.text = "";
+                    }
+                }
+            }
+        }
+    }
+}

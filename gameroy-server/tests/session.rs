@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use gameroy_server::protocol::transport::{ClientTransport, channel};
 use gameroy_server::protocol::{
-    Command, DebugViews, EmulatorConfig, Event, OpenRom, RunMode, SCREEN_PIXELS,
+    Command, DebugViews, EmulatorConfig, Event, OpenRom, RunMode, SCREEN_PIXELS, StopReason,
 };
 
 /// The test ROM is gitignored, so skip rather than fail when it is absent.
@@ -147,7 +147,10 @@ fn pauses_and_reports_cpu_state() {
         matches!(ev, Event::Frame(_)).then_some(())
     });
 
-    h.send(Command::SetDebugViews(DebugViews { cpu: true }));
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
     h.send(Command::SetRunMode(RunMode::Paused));
 
     let first = h.wait_for("DebugUpdate", |ev| match ev {
@@ -287,7 +290,10 @@ fn save_state_round_trips() {
         matches!(ev, Event::Frame(_)).then_some(())
     });
 
-    h.send(Command::SetDebugViews(DebugViews { cpu: true }));
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
     h.send(Command::SetRunMode(RunMode::Paused));
     let clock_at_save = h.wait_for("DebugUpdate", |ev| match ev {
         Event::DebugUpdate(u) => Some(u.clock_count),
@@ -400,4 +406,145 @@ fn persists_ram_on_shutdown() {
         _ => None,
     });
     assert!(!data.is_empty(), "expected non-empty cartridge RAM");
+}
+
+#[test]
+fn breaks_on_an_execute_breakpoint() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, true);
+    h.wait_for("paused at start", |ev| {
+        matches!(
+            ev,
+            Event::RunState {
+                mode: RunMode::Paused,
+                ..
+            }
+        )
+        .then_some(())
+    });
+
+    // 0x0150 is the usual cartridge entry point, reached almost immediately.
+    h.send(Command::AddBreakpoint {
+        address: 0x0150,
+        flags: 4, // EXECUTE
+    });
+    let breakpoints = h.wait_for("BreakpointsChanged", |ev| match ev {
+        Event::BreakpointsChanged { breakpoints } => Some(breakpoints),
+        _ => None,
+    });
+    assert_eq!(breakpoints, vec![(0x0150, 4)]);
+
+    h.send(Command::RunToBreakpoint);
+    let reason = h.wait_for("stop at breakpoint", |ev| match ev {
+        Event::RunState {
+            mode: RunMode::Paused,
+            reason,
+            ..
+        } => Some(reason),
+        _ => None,
+    });
+    assert!(
+        matches!(
+            reason,
+            StopReason::Breakpoint {
+                address: 0x0150,
+                ..
+            }
+        ),
+        "expected a breakpoint stop at 0150, got {reason:?}"
+    );
+}
+
+#[test]
+fn watches_report_live_memory() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ppu: true,
+        watches: true,
+    }));
+    // 0xff47 is BGP, the background palette. Deliberately not LY: LY advances
+    // every scanline and is updated lazily, so cross-checking it against the panel
+    // would be testing the emulator's update timing rather than snapshot coherence.
+    h.send(Command::AddWatch { address: 0xff47 });
+    h.send(Command::SetRunMode(RunMode::Paused));
+
+    // SetDebugViews itself triggers a snapshot, which is emitted before AddWatch
+    // has been handled, so the first update legitimately carries an empty list.
+    // Wait for one that actually has the watch in it.
+    let update = h.wait_for("DebugUpdate carrying the watch", |ev| match ev {
+        Event::DebugUpdate(u)
+            if u.ppu.is_some() && u.watches.as_ref().is_some_and(|w| !w.is_empty()) =>
+        {
+            Some(u)
+        }
+        _ => None,
+    });
+    let watches = update.watches.unwrap();
+    assert_eq!(watches.len(), 1);
+    assert_eq!(watches[0].address, 0xff47);
+
+    let ppu = update.ppu.unwrap();
+    assert!(ppu.ly < 154, "LY out of range: {}", ppu.ly);
+    assert!(ppu.lx < 456, "LX out of range: {}", ppu.lx);
+    // The watch and the PPU panel must describe the same instant.
+    assert_eq!(
+        watches[0].value, ppu.bgp,
+        "watch on BGP disagrees with the PPU panel in the same snapshot"
+    );
+}
+
+#[test]
+fn console_reports_errors_and_runs_commands() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, true);
+
+    h.send(Command::ExecuteDebugCommand {
+        line: "brk 0150".into(),
+    });
+    let (ok, text) = h.wait_for("console error", |ev| match ev {
+        Event::DebugConsole { ok, text } => Some((ok, text)),
+        _ => None,
+    });
+    assert!(!ok, "a bad command must report failure");
+    assert!(
+        text.contains("unknown command"),
+        "unhelpful message: {text}"
+    );
+
+    // A valid one must still work afterwards: a bad command cannot wedge the console.
+    h.send(Command::ExecuteDebugCommand {
+        line: "break x 0150".into(),
+    });
+    let breakpoints = h.wait_for("BreakpointsChanged", |ev| match ev {
+        Event::BreakpointsChanged { breakpoints } => Some(breakpoints),
+        _ => None,
+    });
+    assert_eq!(breakpoints, vec![(0x0150, 4)]);
+
+    h.send(Command::ExecuteDebugCommand {
+        line: "watch ff05".into(),
+    });
+    let watches = h.wait_for("WatchesChanged", |ev| match ev {
+        Event::WatchesChanged { watches } => Some(watches),
+        _ => None,
+    });
+    assert_eq!(watches, vec![0xff05]);
 }

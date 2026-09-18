@@ -26,6 +26,19 @@ pub enum Event {
         frame: u32,
     },
     DebugUpdate(Box<DebugUpdate>),
+    /// The breakpoint set changed. Sent whole rather than as a delta: it is tiny,
+    /// and a whole set cannot desynchronize the way a stream of deltas can.
+    BreakpointsChanged {
+        breakpoints: Vec<(u16, u8)>,
+    },
+    WatchesChanged {
+        watches: Vec<u16>,
+    },
+    /// Output for the debugger console.
+    DebugConsole {
+        ok: bool,
+        text: String,
+    },
     /// A save state, in the core's own binary format. Opaque to the front-end,
     /// which only has to store and return the bytes.
     SaveStateData {
@@ -41,12 +54,16 @@ pub enum Event {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum StopReason {
     None,
     UserRequest,
     StepComplete,
     Reset,
     LoadedState,
+    Breakpoint { address: u16, flags: u8 },
+    TargetAddress(u16),
+    TargetClock(u64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

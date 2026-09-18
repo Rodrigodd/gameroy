@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::error::Error;
 
 use gameroy_server::protocol::{
-    Command, CpuState, DebugViews, EmulatorConfig, Event, OpenRom, RunMode,
+    Command, CpuState, DebugViews, EmulatorConfig, Event, OpenRom, PpuState, RunMode, StopReason,
 };
 use slint::{ModelRc, Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
@@ -46,6 +46,8 @@ struct App {
     debugging: bool,
     mode: RunMode,
     menu_open: bool,
+    /// Console scrollback. Bounded so a long session cannot grow without limit.
+    console: Vec<String>,
     /// Run mode to restore when the pause menu closes.
     mode_before_menu: RunMode,
     /// The server announces itself with Ready; a ROM chosen before that (from the
@@ -123,6 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             debugging: false,
             mode: RunMode::Paused,
             menu_open: false,
+            console: Vec::new(),
             mode_before_menu: RunMode::Running,
             rom: cli_rom,
             server_ready: false,
@@ -281,7 +284,7 @@ fn exit_to_library(ui: &AppWindow) {
     });
     ui.set_menu_open(false);
     ui.set_playing(false);
-    ui.set_debug_text("".into());
+    ui.set_debugging(false);
     refresh_library(ui);
 }
 
@@ -395,6 +398,27 @@ fn wire_callbacks(ui: &AppWindow) {
         }
     });
 
+    ui.on_remove_breakpoint(|address| {
+        if let Ok(address) = u16::try_from(address) {
+            with_app(|app| app.send(Command::RemoveBreakpoint { address }));
+        }
+    });
+
+    ui.on_remove_watch(|address| {
+        if let Ok(address) = u16::try_from(address) {
+            with_app(|app| app.send(Command::RemoveWatch { address }));
+        }
+    });
+
+    let weak = ui.as_weak();
+    ui.on_submit_command(move |line| {
+        let Some(ui) = weak.upgrade() else { return };
+        let line = line.trim().to_string();
+        // Echo the input so the log reads as a transcript.
+        push_console(&ui, format!("> {line}"));
+        with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
+    });
+
     let weak = ui.as_weak();
     ui.on_menu_save_state(move || {
         with_app(|app| app.send(Command::RequestSaveState));
@@ -460,7 +484,11 @@ fn press_hotkey(ui: &AppWindow, key: Hotkey) {
         Hotkey::ToggleDebugger => {
             let debugging = with_app(|app| {
                 app.debugging = !app.debugging;
-                app.send(Command::SetDebugViews(DebugViews { cpu: app.debugging }));
+                app.send(Command::SetDebugViews(DebugViews {
+                    cpu: app.debugging,
+                    ppu: app.debugging,
+                    watches: app.debugging,
+                }));
                 app.send(Command::SetRunMode(if app.debugging {
                     RunMode::Paused
                 } else {
@@ -469,9 +497,7 @@ fn press_hotkey(ui: &AppWindow, key: Hotkey) {
                 app.debugging
             })
             .unwrap_or(false);
-            if !debugging {
-                ui.set_debug_text("".into());
-            }
+            ui.set_debugging(debugging);
         }
         Hotkey::DebugStep => {
             with_app(|app| app.send(Command::Step));
@@ -479,6 +505,9 @@ fn press_hotkey(ui: &AppWindow, key: Hotkey) {
         Hotkey::ToggleRun => {
             with_app(|app| {
                 let mode = match app.mode {
+                    // Continuing from the debugger must honour breakpoints;
+                    // continuing while just playing must not pay for checking them.
+                    RunMode::Paused if app.debugging => RunMode::RunningWithBreakpoints,
                     RunMode::Paused => RunMode::Running,
                     _ => RunMode::Paused,
                 };
@@ -586,15 +615,56 @@ fn handle_event(ui: &AppWindow, event: Event) {
             });
         }
         Event::RunState {
-            mode, clock_count, ..
+            mode,
+            clock_count,
+            reason,
+            ..
         } => {
             with_app(|app| app.mode = mode);
             ui.set_status_text(format!("{mode:?} @ {clock_count}").into());
+            // A breakpoint hit is worth saying out loud; the user asked for it.
+            if let StopReason::Breakpoint { address, flags } = reason {
+                push_console(
+                    ui,
+                    format!("stopped at {address:04x} ({})", format_break_flags(flags)),
+                );
+            }
         }
         Event::DebugUpdate(update) => {
-            if let Some(cpu) = update.cpu {
-                ui.set_debug_text(format_cpu(&cpu, update.clock_count, update.frame).into());
+            if let Some(cpu) = update.cpu.as_ref() {
+                ui.set_cpu_text(format_cpu(cpu, update.clock_count, update.frame).into());
             }
+            if let Some(ppu) = update.ppu.as_ref() {
+                ui.set_ppu_text(format_ppu(ppu).into());
+            }
+            if let Some(watches) = update.watches.as_ref() {
+                let rows: Vec<WatchRow> = watches
+                    .iter()
+                    .map(|w| WatchRow {
+                        address: w.address as i32,
+                        address_text: format!("{:04x}", w.address).into(),
+                        value_text: format!("{:02x}", w.value).into(),
+                    })
+                    .collect();
+                ui.set_watches(ModelRc::new(VecModel::from(rows)));
+            }
+        }
+        Event::BreakpointsChanged { breakpoints } => {
+            let rows: Vec<BreakRow> = breakpoints
+                .iter()
+                .map(|&(address, flags)| BreakRow {
+                    address: address as i32,
+                    address_text: format!("{address:04x}").into(),
+                    flags_text: format_break_flags(flags).into(),
+                })
+                .collect();
+            ui.set_breakpoints(ModelRc::new(VecModel::from(rows)));
+        }
+        Event::WatchesChanged { .. } => {
+            // The values arrive with the next DebugUpdate; nothing to do here.
+        }
+        Event::DebugConsole { ok, text } => {
+            push_console(ui, if ok { text } else { format!("error: {text}") });
         }
         Event::SaveStateData { data } => {
             with_app(|app| {
@@ -661,5 +731,74 @@ fn format_cpu(cpu: &CpuState, clock: u64, frame: u32) -> String {
         cpu.interrupt_enabled,
         cpu.banks.0,
         cpu.banks.1,
+    )
+}
+
+/// Renders breakpoint flags as `wrxj`, dashes for the ones that are off. Formatting
+/// is a front-end concern: the server sends the bitmask.
+fn format_break_flags(flags: u8) -> String {
+    // Mirrors gameroy::debugger::break_flags.
+    const WRITE: u8 = 1 << 0;
+    const READ: u8 = 1 << 1;
+    const EXECUTE: u8 = 1 << 2;
+    const JUMP: u8 = 1 << 3;
+    let bit = |f: u8, c: char| if flags & f != 0 { c } else { '-' };
+    [
+        bit(WRITE, 'w'),
+        bit(READ, 'r'),
+        bit(EXECUTE, 'x'),
+        bit(JUMP, 'j'),
+    ]
+    .iter()
+    .collect()
+}
+
+/// Maximum console scrollback. Beyond this the oldest lines are dropped, so a long
+/// debugging session cannot grow the model without bound.
+const CONSOLE_LIMIT: usize = 200;
+
+fn push_console(ui: &AppWindow, line: String) {
+    let lines = with_app(|app| {
+        app.console.push(line);
+        let overflow = app.console.len().saturating_sub(CONSOLE_LIMIT);
+        if overflow > 0 {
+            app.console.drain(0..overflow);
+        }
+        app.console
+            .iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>()
+    })
+    .unwrap_or_default();
+    ui.set_console_lines(ModelRc::new(VecModel::from(lines)));
+}
+
+fn format_ppu(ppu: &PpuState) -> String {
+    format!(
+        "LCDC {:02x}  STAT {:02x}\n\
+         SCY  {:02x}  SCX  {:02x}\n\
+         LY   {:02x}  LYC  {:02x}\n\
+         LX   {:>3}\n\
+         BGP  {:02x}\n\
+         OBP0 {:02x}  OBP1 {:02x}\n\
+         WY   {:02x}  WX   {:02x}\n\
+         WYC  {:02x}\n\
+         state {}\n\
+         next  {}",
+        ppu.lcdc,
+        ppu.stat,
+        ppu.scy,
+        ppu.scx,
+        ppu.ly,
+        ppu.lyc,
+        ppu.lx,
+        ppu.bgp,
+        ppu.obp0,
+        ppu.obp1,
+        ppu.wy,
+        ppu.wx,
+        ppu.wyc,
+        ppu.state,
+        ppu.next_clock_count,
     )
 }

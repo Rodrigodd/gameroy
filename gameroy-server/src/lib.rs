@@ -26,6 +26,8 @@ mod debug_console;
 #[cfg(feature = "emulation")]
 mod disasm;
 #[cfg(feature = "emulation")]
+mod ppu_view;
+#[cfg(feature = "emulation")]
 mod session;
 #[cfg(feature = "emulation")]
 mod timeline;

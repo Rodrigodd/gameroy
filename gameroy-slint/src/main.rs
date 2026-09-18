@@ -12,7 +12,8 @@ use std::cell::RefCell;
 use std::error::Error;
 
 use gameroy_server::protocol::{
-    Command, CpuState, DebugViews, EmulatorConfig, Event, OpenRom, PpuState, RunMode, StopReason,
+    Command, CpuState, DebugViews, EmulatorConfig, Event, IndexedImage, OpenRom, PpuState, RunMode,
+    SpriteInfo, StopReason,
 };
 use slint::{ModelRc, Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
@@ -52,6 +53,8 @@ struct App {
     menu_open: bool,
     /// Console scrollback. Bounded so a long session cannot grow without limit.
     console: Vec<String>,
+    /// The PPU viewer tab is open, so its images are worth generating.
+    ppu_viewer: bool,
     /// Run mode to restore when the pause menu closes.
     mode_before_menu: RunMode,
     /// The server announces itself with Ready; a ROM chosen before that (from the
@@ -131,6 +134,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             mode: RunMode::Paused,
             menu_open: false,
             console: Vec::new(),
+            ppu_viewer: false,
             mode_before_menu: RunMode::Running,
             rom: cli_rom,
             server_ready: false,
@@ -405,6 +409,21 @@ fn wire_callbacks(ui: &AppWindow) {
         }
     });
 
+    ui.on_ppu_viewer_toggled(|shown| {
+        with_app(|app| {
+            app.ppu_viewer = shown;
+            // Re-declare the subscription so the server starts or stops paying for
+            // the four image buffers.
+            app.send(Command::SetDebugViews(DebugViews {
+                cpu: app.debugging,
+                ppu: app.debugging,
+                watches: app.debugging,
+                disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
+                ppu_viewer: app.debugging && shown,
+            }));
+        });
+    });
+
     ui.on_remove_breakpoint(|address| {
         if let Ok(address) = u16::try_from(address) {
             with_app(|app| app.send(Command::RemoveBreakpoint { address }));
@@ -498,6 +517,7 @@ fn press_hotkey(ui: &AppWindow, key: Hotkey) {
                     // A window, not the whole trace. The server centres it on the
                     // PC, so following the PC costs the client nothing.
                     disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
+                    ppu_viewer: app.debugging && app.ppu_viewer,
                 }));
                 app.send(Command::SetRunMode(if app.debugging {
                     RunMode::Paused
@@ -646,6 +666,16 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
             if let Some(ppu) = update.ppu.as_ref() {
                 ui.set_ppu_text(format_ppu(ppu).into());
+            }
+            if let Some(view) = update.ppu_viewer.as_ref() {
+                ui.set_ppu_tiles(indexed_to_image(&view.tiles));
+                ui.set_ppu_background(indexed_to_image(&view.background));
+                ui.set_ppu_window(indexed_to_image(&view.window));
+                ui.set_ppu_oam(ModelRc::new(VecModel::from(sprite_cells(&view.oam))));
+                ui.set_ppu_sprite_buffer(ModelRc::new(VecModel::from(sprite_cells(
+                    &view.sprite_buffer,
+                ))));
+                ui.set_ppu_sprite_buffer_len(view.sprite_buffer_len as i32);
             }
             if let Some(disasm) = update.disassembly.as_ref() {
                 let rows: Vec<DisasmRow> = disasm
@@ -826,4 +856,30 @@ fn format_ppu(ppu: &PpuState) -> String {
         ppu.state,
         ppu.next_clock_count,
     )
+}
+
+/// Expands a palette-index image into RGB for display. The server ships indices,
+/// so the palette stays a front-end decision.
+fn indexed_to_image(img: &IndexedImage) -> slint::Image {
+    let mut buffer = SharedPixelBuffer::<Rgb8Pixel>::new(img.width as u32, img.height as u32);
+    for (out, &shade) in buffer.make_mut_slice().iter_mut().zip(img.data.iter()) {
+        let l = PALETTE[(shade & 3) as usize];
+        *out = Rgb8Pixel::new(l, l, l);
+    }
+    slint::Image::from_rgb8(buffer)
+}
+
+fn sprite_cells(sprites: &[SpriteInfo]) -> Vec<SpriteCell> {
+    sprites
+        .iter()
+        .enumerate()
+        .map(|(i, s)| SpriteCell {
+            text: format!(
+                "{i:>2}  x {:>3}  y {:>3}  tile {:02x}  flags {:02x}",
+                s.sx, s.sy, s.tile, s.flags
+            )
+            .into(),
+            offscreen: s.is_offscreen(),
+        })
+        .collect()
 }

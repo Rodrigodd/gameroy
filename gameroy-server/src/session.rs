@@ -555,6 +555,7 @@ impl Session {
         if !self.views.cpu
             && !self.views.ppu
             && !self.views.watches
+            && !self.views.ppu_viewer
             && self.views.disassembly_lines == 0
         {
             return;
@@ -573,6 +574,8 @@ impl Session {
         );
 
         // Cheap when the trace has not grown, which is the usual case.
+        let ppu_viewer = self.views.ppu_viewer.then(|| crate::ppu_view::capture(gb));
+
         let disassembly = if self.views.disassembly_lines > 0 {
             self.disasm.sync(gb);
             Some(
@@ -588,6 +591,7 @@ impl Session {
             clock_count: clock,
             frame,
             disassembly,
+            ppu_viewer,
             ppu: self.views.ppu.then(|| {
                 let ppu = gb.ppu.borrow();
                 PpuState {

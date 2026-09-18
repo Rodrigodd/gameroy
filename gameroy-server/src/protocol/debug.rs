@@ -14,6 +14,11 @@ pub struct DebugViews {
     pub cpu: bool,
     pub ppu: bool,
     pub watches: bool,
+    /// Generate the PPU viewer's images and sprite tables. Expensive -- four
+    /// buffers redrawn per pause -- so it is opt-in, and costs nothing when the
+    /// tab is closed. The old front-end redrew its textures every frame whether
+    /// or not the tab was visible.
+    pub ppu_viewer: bool,
     /// Number of disassembly lines to push around the PC on each pause. 0 is off.
     ///
     /// A window rather than the whole trace: `Trace::directives` grows into the
@@ -33,6 +38,7 @@ pub struct DebugUpdate {
     /// Current value of each watched address.
     pub watches: Option<Vec<WatchValue>>,
     pub disassembly: Option<DisassemblyWindow>,
+    pub ppu_viewer: Option<PpuViewer>,
 }
 
 /// A mirror of the core's `Cpu`, because `gameroy-core` has no serde and this
@@ -130,4 +136,48 @@ pub struct DisasmLine {
     /// front-end reimplement a Game Boy disassembler.
     pub text: String,
     pub is_current: bool,
+}
+
+/// The PPU viewer's contents.
+///
+/// Images are one byte per pixel holding a palette index, not RGBA: a quarter of
+/// the bytes, and the palette stays a front-end decision, so a green-screen theme
+/// costs nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PpuViewer {
+    /// All 384 tiles, 16 across: 128x192.
+    pub tiles: IndexedImage,
+    /// The background tile map, 256x256.
+    pub background: IndexedImage,
+    /// The window tile map, 256x256.
+    pub window: IndexedImage,
+    /// The 40 OAM entries, in order.
+    pub oam: Vec<SpriteInfo>,
+    /// The sprites selected for the current scanline.
+    pub sprite_buffer: Vec<SpriteInfo>,
+    pub sprite_buffer_len: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexedImage {
+    pub width: u16,
+    pub height: u16,
+    #[serde(with = "serde_bytes")]
+    pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpriteInfo {
+    pub sx: u8,
+    pub sy: u8,
+    pub tile: u8,
+    pub flags: u8,
+}
+
+impl SpriteInfo {
+    /// Off-screen sprites are parked outside the visible area; the old viewer
+    /// tinted them red.
+    pub fn is_offscreen(&self) -> bool {
+        self.sy < 16 || self.sy >= 160 || self.sx == 0 || self.sx >= 168
+    }
 }

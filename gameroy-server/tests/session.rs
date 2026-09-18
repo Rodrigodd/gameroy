@@ -643,3 +643,63 @@ fn disassembly_generation_is_stable_while_no_new_code_runs() {
         "generation moved without new code being traced"
     );
 }
+
+#[test]
+fn ppu_viewer_renders_images_only_when_asked() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    for _ in 0..40 {
+        h.wait_for("Frame", |ev| matches!(ev, Event::Frame(_)).then_some(()));
+    }
+
+    // With only the CPU panel open, the expensive images must not be produced.
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+    h.send(Command::SetRunMode(RunMode::Paused));
+    let cheap = h.wait_for("DebugUpdate", |ev| match ev {
+        Event::DebugUpdate(u) if u.cpu.is_some() => Some(u),
+        _ => None,
+    });
+    assert!(
+        cheap.ppu_viewer.is_none(),
+        "the PPU viewer must cost nothing while its tab is closed"
+    );
+
+    // Now open it.
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ppu_viewer: true,
+        ..Default::default()
+    }));
+    let update = h.wait_for("DebugUpdate with ppu viewer", |ev| match ev {
+        Event::DebugUpdate(u) if u.ppu_viewer.is_some() => Some(u),
+        _ => None,
+    });
+    let view = update.ppu_viewer.unwrap();
+
+    assert_eq!(view.tiles.width, 128);
+    assert_eq!(view.tiles.height, 192);
+    assert_eq!(view.tiles.data.len(), 128 * 192);
+    assert_eq!(view.background.data.len(), 256 * 256);
+    assert_eq!(view.window.data.len(), 256 * 256);
+    assert_eq!(view.oam.len(), 40, "OAM always holds 40 entries");
+    assert_eq!(view.sprite_buffer.len(), 10);
+
+    for img in [&view.tiles, &view.background, &view.window] {
+        assert!(
+            img.data.iter().all(|&p| p < 4),
+            "images must be 2-bit palette indices, not RGBA"
+        );
+    }
+    // Zelda has drawn something by now, so the tile sheet cannot be blank.
+    assert!(
+        view.tiles.data.iter().any(|&p| p != view.tiles.data[0]),
+        "tile sheet is a single flat value; VRAM is not being read"
+    );
+}

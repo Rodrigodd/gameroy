@@ -2,8 +2,9 @@ import { Button, VerticalBox } from "std-widgets.slint";
 import { Library, RomRow } from "library.slint";
 import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
 import { DisassemblyView, DisasmRow } from "disassembly.slint";
+import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
 
-export { RomRow, BreakRow, WatchRow, DisasmRow }
+export { RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell }
 
 export component AppWindow inherits Window {
     /// Every key the app handles is dispatched from Rust, so the keymap lives in
@@ -32,6 +33,16 @@ export component AppWindow inherits Window {
     in property <[DisasmRow]> disasm_rows;
     in property <int> disasm_total;
     in property <int> disasm_start;
+
+    /// Which centre tab is showing: false = disassembly, true = PPU viewer.
+    in-out property <bool> show_ppu_viewer;
+    in property <image> ppu_tiles;
+    in property <image> ppu_background;
+    in property <image> ppu_window;
+    in property <[SpriteCell]> ppu_oam;
+    in property <[SpriteCell]> ppu_sprite_buffer;
+    in property <int> ppu_sprite_buffer_len;
+    callback ppu_viewer_toggled(bool);
     in-out property <length> panel_width: 260px;
     callback remove_breakpoint(int);
     callback remove_watch(int);
@@ -124,11 +135,46 @@ export component AppWindow inherits Window {
             }
         }
 
-        if root.debugging: DisassemblyView {
+        // Centre column: disassembly or PPU viewer, as tabs.
+        if root.debugging: VerticalLayout {
             width: 330px;
-            rows: root.disasm_rows;
-            total: root.disasm_total;
-            start-index: root.disasm_start;
+            spacing: 0px;
+
+            HorizontalLayout {
+                height: 24px;
+                spacing: 0px;
+                for tab[i] in ["disassembly", "ppu"] : Rectangle {
+                    horizontal-stretch: 1;
+                    background: (root.show_ppu_viewer == (i == 1)) ? #2a332a : #1a1f1a;
+                    TouchArea {
+                        clicked => {
+                            root.show_ppu_viewer = i == 1;
+                            root.ppu_viewer_toggled(root.show_ppu_viewer);
+                        }
+                    }
+                    Text {
+                        text: tab;
+                        color: (root.show_ppu_viewer == (i == 1)) ? #cfe3cf : #6f8f6f;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            if !root.show_ppu_viewer: DisassemblyView {
+                rows: root.disasm_rows;
+                total: root.disasm_total;
+                start-index: root.disasm_start;
+            }
+            if root.show_ppu_viewer: PpuViewer {
+                tiles: root.ppu_tiles;
+                background-map: root.ppu_background;
+                window-map: root.ppu_window;
+                oam: root.ppu_oam;
+                sprite-buffer: root.ppu_sprite_buffer;
+                sprite-buffer-len: root.ppu_sprite_buffer_len;
+            }
         }
 
         // Draggable divider. Slint has no splitter widget, so this is the whole

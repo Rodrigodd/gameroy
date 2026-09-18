@@ -1,0 +1,87 @@
+import { ScrollView } from "std-widgets.slint";
+
+export struct SpriteCell {
+    text: string,
+    offscreen: bool,
+}
+
+export component PpuViewer inherits Rectangle {
+    in property <image> tiles;
+    in property <image> background-map;
+    in property <image> window-map;
+    in property <[SpriteCell]> oam;
+    in property <[SpriteCell]> sprite-buffer;
+    in property <int> sprite-buffer-len;
+
+    background: #131613;
+
+    ScrollView {
+        VerticalLayout {
+            padding: 6px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "tiles (128x192)";
+                color: #6f8f6f;
+                font-size: 11px;
+            }
+            Image {
+                source: root.tiles;
+                width: 256px;
+                height: 384px;
+                image-rendering: pixelated;
+            }
+
+            Text {
+                text: "background (256x256)";
+                color: #6f8f6f;
+                font-size: 11px;
+            }
+            Image {
+                source: root.background-map;
+                width: 256px;
+                height: 256px;
+                image-rendering: pixelated;
+            }
+
+            Text {
+                text: "window (256x256)";
+                color: #6f8f6f;
+                font-size: 11px;
+            }
+            Image {
+                source: root.window-map;
+                width: 256px;
+                height: 256px;
+                image-rendering: pixelated;
+            }
+
+            Text {
+                text: "OAM (40 sprites)";
+                color: #6f8f6f;
+                font-size: 11px;
+            }
+            for s in root.oam: Text {
+                text: s.text;
+                // Off-screen sprites tinted red, as the old viewer did.
+                color: s.offscreen ? #b06060 : #9fd39f;
+                font-family: "monospace";
+                font-size: 11px;
+            }
+
+            Text {
+                text: "sprite buffer (" + root.sprite-buffer-len + " active)";
+                color: #6f8f6f;
+                font-size: 11px;
+            }
+            for s[i] in root.sprite-buffer: Text {
+                text: s.text;
+                // Slots past the active count hold stale data.
+                color: i < root.sprite-buffer-len ? #9fd39f : #b06060;
+                font-family: "monospace";
+                font-size: 11px;
+            }
+        }
+    }
+}

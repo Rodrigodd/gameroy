@@ -25,6 +25,10 @@ use storage::RomFile;
 
 slint::include_modules!();
 
+/// How many disassembly lines to keep around the PC. Enough to fill a tall panel
+/// without shipping a large slice on every single step.
+const DISASM_WINDOW: u16 = 64;
+
 /// The four Game Boy shades, lightest first, as the old front-end had them.
 const PALETTE: [u8; 4] = [255, 180, 100, 0];
 
@@ -488,6 +492,9 @@ fn press_hotkey(ui: &AppWindow, key: Hotkey) {
                     cpu: app.debugging,
                     ppu: app.debugging,
                     watches: app.debugging,
+                    // A window, not the whole trace. The server centres it on the
+                    // PC, so following the PC costs the client nothing.
+                    disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
                 }));
                 app.send(Command::SetRunMode(if app.debugging {
                     RunMode::Paused
@@ -636,6 +643,21 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
             if let Some(ppu) = update.ppu.as_ref() {
                 ui.set_ppu_text(format_ppu(ppu).into());
+            }
+            if let Some(disasm) = update.disassembly.as_ref() {
+                let rows: Vec<DisasmRow> = disasm
+                    .lines
+                    .iter()
+                    .map(|l| DisasmRow {
+                        address_text: format!("{:04x}", l.pc).into(),
+                        label: l.label.clone().unwrap_or_default().into(),
+                        text: l.text.clone().into(),
+                        is_current: l.is_current,
+                    })
+                    .collect();
+                ui.set_disasm_rows(ModelRc::new(VecModel::from(rows)));
+                ui.set_disasm_total(disasm.total as i32);
+                ui.set_disasm_start(disasm.start_index as i32);
             }
             if let Some(watches) = update.watches.as_ref() {
                 let rows: Vec<WatchRow> = watches

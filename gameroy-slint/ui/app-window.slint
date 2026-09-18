@@ -1,8 +1,9 @@
 import { Button, VerticalBox } from "std-widgets.slint";
 import { Library, RomRow } from "library.slint";
 import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
+import { DisassemblyView, DisasmRow } from "disassembly.slint";
 
-export { RomRow, BreakRow, WatchRow }
+export { RomRow, BreakRow, WatchRow, DisasmRow }
 
 export component AppWindow inherits Window {
     /// Every key the app handles is dispatched from Rust, so the keymap lives in
@@ -28,6 +29,9 @@ export component AppWindow inherits Window {
     in property <[BreakRow]> breakpoints;
     in property <[WatchRow]> watches;
     in property <[string]> console_lines;
+    in property <[DisasmRow]> disasm_rows;
+    in property <int> disasm_total;
+    in property <int> disasm_start;
     in-out property <length> panel_width: 260px;
     callback remove_breakpoint(int);
     callback remove_watch(int);
@@ -109,6 +113,13 @@ export component AppWindow inherits Window {
                 source: root.screen;
                 image-rendering: pixelated;
             }
+        }
+
+        if root.debugging: DisassemblyView {
+            width: 330px;
+            rows: root.disasm_rows;
+            total: root.disasm_total;
+            start-index: root.disasm_start;
         }
 
         // Draggable divider. Slint has no splitter widget, so this is the whole

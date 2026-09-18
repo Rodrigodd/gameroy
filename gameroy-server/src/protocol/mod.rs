@@ -12,7 +12,10 @@ pub mod transport;
 
 pub use buffer::{AudioChunk, FrameBuffer, FramePacket};
 pub use command::{Command, EmulatorConfig, OpenRom, RequestId, RunMode, SessionEpoch};
-pub use debug::{CpuState, DebugUpdate, DebugViews, ImeState, PpuState, WatchValue};
+pub use debug::{
+    Address, CpuState, DebugUpdate, DebugViews, DisasmLine, DisassemblyWindow, ImeState, PpuState,
+    WatchValue,
+};
 pub use event::{CartridgeInfo, Event, RomOpened, ServerError, StopReason};
 
 /// Bumped on any breaking change to [`Command`] or [`Event`]. The server reports it

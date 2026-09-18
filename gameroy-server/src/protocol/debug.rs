@@ -14,6 +14,13 @@ pub struct DebugViews {
     pub cpu: bool,
     pub ppu: bool,
     pub watches: bool,
+    /// Number of disassembly lines to push around the PC on each pause. 0 is off.
+    ///
+    /// A window rather than the whole trace: `Trace::directives` grows into the
+    /// tens of thousands, and the old front-end cloned the entire set on every
+    /// pause. That was merely wasteful in-process; across a serialized boundary it
+    /// would be fatal.
+    pub disassembly_lines: u16,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -25,6 +32,7 @@ pub struct DebugUpdate {
     pub ppu: Option<PpuState>,
     /// Current value of each watched address.
     pub watches: Option<Vec<WatchValue>>,
+    pub disassembly: Option<DisassemblyWindow>,
 }
 
 /// A mirror of the core's `Cpu`, because `gameroy-core` has no serde and this
@@ -88,4 +96,38 @@ pub struct PpuState {
 pub struct WatchValue {
     pub address: u16,
     pub value: u8,
+}
+
+/// A bank-qualified ROM address, mirroring `gameroy::disassembler::Address`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Address {
+    pub bank: u16,
+    pub address: u16,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisassemblyWindow {
+    /// Index of `lines[0]` within the whole trace.
+    pub start_index: u32,
+    pub total: u32,
+    /// Bumped whenever the trace grows, so the client knows cached rows are stale.
+    pub generation: u32,
+    pub lines: Vec<DisasmLine>,
+    /// Index of the current PC within the whole trace, when it is traced at all.
+    pub pc_index: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisasmLine {
+    pub address: Address,
+    /// The CPU-visible address, which is what the user reads.
+    pub pc: u16,
+    /// Label attached to this address, if the trace named one.
+    pub label: Option<String>,
+    /// Mnemonic and operands, already rendered with jump targets resolved to label
+    /// names. Rendering happens server-side because it needs the trace's label and
+    /// jump maps -- shipping raw opcodes instead would make every alternative
+    /// front-end reimplement a Game Boy disassembler.
+    pub text: String,
+    pub is_current: bool,
 }

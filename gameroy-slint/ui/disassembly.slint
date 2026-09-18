@@ -1,0 +1,76 @@
+import { ScrollView } from "std-widgets.slint";
+
+export struct DisasmRow {
+    address-text: string,
+    label: string,
+    text: string,
+    is-current: bool,
+}
+
+// The disassembly view.
+//
+// Note there is no scroll-to-index here, and none is needed: the server sends a
+// window already centred on the PC, so following it is just rendering what
+// arrived. Slint's ListView has no programmatic scroll, so doing this client-side
+// would have meant computing viewport-y by hand against a fixed row height.
+export component DisassemblyView inherits Rectangle {
+    in property <[DisasmRow]> rows;
+    in property <int> total;
+    in property <int> start-index;
+
+    background: #131613;
+
+    VerticalLayout {
+        padding: 4px;
+        spacing: 2px;
+
+        Text {
+            text: "disassembly  " + root.start-index + "-" + (root.start-index + root.rows.length)
+                + " of " + root.total;
+            color: #6f8f6f;
+            font-size: 11px;
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                alignment: start;
+                for row in root.rows: Rectangle {
+                    height: 16px;
+                    // The row the CPU is on, highlighted as the old viewer did.
+                    background: row.is-current ? #2f3f2f : transparent;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        padding-left: 4px;
+                        Text {
+                            width: 44px;
+                            text: row.address-text;
+                            color: row.is-current ? #cfe3cf : #6f8f6f;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            width: 90px;
+                            text: row.label;
+                            color: #5f9fb2;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                        Text {
+                            horizontal-stretch: 1;
+                            text: row.text;
+                            color: row.is-current ? #ffffff : #b9d3b9;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

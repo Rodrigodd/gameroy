@@ -11,6 +11,7 @@ use gameroy::{
 };
 
 use crate::debug_console::{self, ConsoleAction};
+use crate::disasm::DisasmIndex;
 use crate::protocol::{
     AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, EmulatorConfig, Event,
     FrameBuffer, FramePacket, ImeState, OpenRom, PpuState, RomOpened, RunMode, ServerError,
@@ -73,6 +74,7 @@ impl VBlank {
 pub struct Session {
     gb: Option<Box<GameBoy>>,
     debugger: Debugger,
+    disasm: DisasmIndex,
     vblank: Arc<Mutex<VBlank>>,
     config: EmulatorConfig,
 
@@ -108,6 +110,7 @@ impl Session {
         Self {
             gb: None,
             debugger: Debugger::default(),
+            disasm: DisasmIndex::default(),
             vblank: Arc::new(Mutex::new(VBlank {
                 timeline: Timeline::new(0, Vec::new(), 0),
                 produced: Vec::new(),
@@ -521,7 +524,11 @@ impl Session {
     }
 
     fn send_debug_update(&mut self, t: &mut impl ServerTransport) {
-        if !self.views.cpu && !self.views.ppu && !self.views.watches {
+        if !self.views.cpu
+            && !self.views.ppu
+            && !self.views.watches
+            && self.views.disassembly_lines == 0
+        {
             return;
         }
         let Some(gb) = self.gb.as_ref() else { return };
@@ -536,11 +543,23 @@ impl Session {
             gb.clock_count,
             self.vblank.lock().unwrap().timeline.current_frame,
         );
+
+        // Cheap when the trace has not grown, which is the usual case.
+        let disassembly = if self.views.disassembly_lines > 0 {
+            self.disasm.sync(gb);
+            Some(
+                self.disasm
+                    .window_around_pc(gb, self.views.disassembly_lines),
+            )
+        } else {
+            None
+        };
         let cpu = &gb.cpu;
         let update = DebugUpdate {
             epoch: self.epoch,
             clock_count: clock,
             frame,
+            disassembly,
             ppu: self.views.ppu.then(|| {
                 let ppu = gb.ppu.borrow();
                 PpuState {

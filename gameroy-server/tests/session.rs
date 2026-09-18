@@ -475,6 +475,7 @@ fn watches_report_live_memory() {
         cpu: true,
         ppu: true,
         watches: true,
+        ..Default::default()
     }));
     // 0xff47 is BGP, the background palette. Deliberately not LY: LY advances
     // every scanline and is updated lazily, so cross-checking it against the panel
@@ -547,4 +548,98 @@ fn console_reports_errors_and_runs_commands() {
         _ => None,
     });
     assert_eq!(watches, vec![0xff05]);
+}
+
+#[test]
+fn disassembles_a_window_around_the_pc() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    // Let it execute enough for the tracer to discover code.
+    for _ in 0..30 {
+        h.wait_for("Frame", |ev| matches!(ev, Event::Frame(_)).then_some(()));
+    }
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        disassembly_lines: 40,
+        ..Default::default()
+    }));
+    h.send(Command::SetRunMode(RunMode::Paused));
+
+    let update = h.wait_for("DebugUpdate with disassembly", |ev| match ev {
+        Event::DebugUpdate(u) if u.disassembly.as_ref().is_some_and(|d| !d.lines.is_empty()) => {
+            Some(u)
+        }
+        _ => None,
+    });
+    let disasm = update.disassembly.unwrap();
+    let cpu = update.cpu.unwrap();
+
+    assert!(
+        disasm.total > 100,
+        "trace looks empty: {} entries",
+        disasm.total
+    );
+    assert!(
+        disasm.lines.len() <= 40,
+        "window must be bounded, got {} lines",
+        disasm.lines.len()
+    );
+    // The window must be a window: a slice of the whole, not the whole thing.
+    assert!(disasm.total as usize > disasm.lines.len());
+
+    for line in &disasm.lines {
+        assert!(!line.text.is_empty(), "every line must render some text");
+    }
+
+    // The PC row must be marked, and must agree with the CPU snapshot.
+    if let Some(current) = disasm.lines.iter().find(|l| l.is_current) {
+        assert_eq!(
+            current.pc, cpu.pc,
+            "the highlighted row must be the row the CPU is on"
+        );
+    }
+}
+
+#[test]
+fn disassembly_generation_is_stable_while_no_new_code_runs() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    for _ in 0..30 {
+        h.wait_for("Frame", |ev| matches!(ev, Event::Frame(_)).then_some(()));
+    }
+    h.send(Command::SetDebugViews(DebugViews {
+        disassembly_lines: 20,
+        ..Default::default()
+    }));
+    h.send(Command::SetRunMode(RunMode::Paused));
+
+    let first = h.wait_for("first disassembly", |ev| match ev {
+        Event::DebugUpdate(u) => u.disassembly.map(|d| d.generation),
+        _ => None,
+    });
+
+    // Paused: nothing new is traced, so the index must not be rebuilt and the
+    // generation must not move. If it does, clients would invalidate caches for
+    // nothing on every single pause.
+    h.send(Command::SetDebugViews(DebugViews {
+        disassembly_lines: 20,
+        ..Default::default()
+    }));
+    let second = h.wait_for("second disassembly", |ev| match ev {
+        Event::DebugUpdate(u) => u.disassembly.map(|d| d.generation),
+        _ => None,
+    });
+    assert_eq!(
+        first, second,
+        "generation moved without new code being traced"
+    );
 }

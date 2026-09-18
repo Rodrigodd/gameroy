@@ -108,6 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             0
         },
+        jit: settings.jit,
         ..EmulatorConfig::default()
     };
     if let Some(a) = audio.as_ref() {
@@ -135,6 +136,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             server_ready: false,
         })
     });
+
+    ui.set_integer_scaling(with_app(|app| app.settings.only_integer_scaling).unwrap_or(false));
 
     wire_callbacks(&ui);
     refresh_library(&ui);

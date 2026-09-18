@@ -30,6 +30,8 @@ pub struct Config {
     pub rewinding: bool,
     /// Open the debugger overlay at startup.
     pub start_in_debug: bool,
+    /// Use the x86_64 recompiler. No effect on other architectures.
+    pub jit: bool,
 }
 
 impl Config {
@@ -68,6 +70,7 @@ impl Config {
     fn with_defaults() -> Self {
         Self {
             rewinding: true,
+            jit: true,
             ..Self::default()
         }
     }
@@ -120,6 +123,7 @@ mod tests {
             only_integer_scaling: true,
             rewinding: true,
             start_in_debug: false,
+            jit: true,
             sort_list: None,
         };
         c.set_sort(Sort {

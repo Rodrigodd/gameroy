@@ -1869,6 +1869,7 @@ version = "0.3.1"
 dependencies = [
  "flume",
  "gameroy-core",
+ "gameroy-jit",
  "log",
  "serde",
  "serde_bytes",

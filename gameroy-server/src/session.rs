@@ -73,6 +73,10 @@ impl VBlank {
 
 pub struct Session {
     gb: Option<Box<GameBoy>>,
+    /// The recompiler, when this is an x86_64 build with the feature on and the
+    /// config asks for it. Everything else runs the interpreter.
+    #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+    jit: Option<gameroy_jit::JitCompiler>,
     debugger: Debugger,
     disasm: DisasmIndex,
     vblank: Arc<Mutex<VBlank>>,
@@ -109,6 +113,8 @@ impl Session {
     pub fn new(config: EmulatorConfig) -> Self {
         Self {
             gb: None,
+            #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+            jit: None,
             debugger: Debugger::default(),
             disasm: DisasmIndex::default(),
             vblank: Arc::new(Mutex::new(VBlank {
@@ -234,6 +240,12 @@ impl Session {
             // Fast-forward: no real-time pacing, just keep going a slice at a time.
             let target = gb.clock_count + SLICE_CLOCKS;
             while gb.clock_count < target {
+                #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+                match self.jit.as_mut() {
+                    Some(jit) => jit.interpret_block(gb),
+                    None => Interpreter(gb).interpret_op(),
+                }
+                #[cfg(not(all(target_arch = "x86_64", feature = "jit")))]
                 Interpreter(gb).interpret_op();
             }
             // Drain and drop: the controller's buffer would grow without bound
@@ -263,6 +275,12 @@ impl Session {
         // Cap the work per call so commands stay responsive even after a long stall.
         let capped = target.min(gb.clock_count + SLICE_CLOCKS);
         while gb.clock_count < capped {
+            #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+            match self.jit.as_mut() {
+                Some(jit) => jit.interpret_block(gb),
+                None => Interpreter(gb).interpret_op(),
+            }
+            #[cfg(not(all(target_arch = "x86_64", feature = "jit")))]
             Interpreter(gb).interpret_op();
         }
 
@@ -472,6 +490,16 @@ impl Session {
             buf.copy_from_slice(&gb.ppu.borrow().screen.packed());
             vb.produced.push(buf);
         }));
+
+        // The debugger needs instruction granularity, so the recompiler is only
+        // used for plain playing; `RunningWithBreakpoints` always interprets.
+        #[cfg(all(target_arch = "x86_64", feature = "jit"))]
+        {
+            self.jit = open.config.jit.then(gameroy_jit::JitCompiler::new);
+            if self.jit.is_some() {
+                log::info!("using the x86_64 recompiler");
+            }
+        }
 
         self.config = open.config;
         self.frame_limit = self.config.frame_limit;

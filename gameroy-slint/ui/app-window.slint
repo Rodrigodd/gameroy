@@ -40,6 +40,9 @@ export component AppWindow inherits Window {
     in property <bool> menu_open;
     /// False shows the ROM library instead of the emulator.
     in property <bool> playing;
+    /// Scale the screen by whole pixels only. Off means fill while keeping the
+    /// 160x144 aspect ratio, which uses the window better on odd sizes.
+    in property <bool> integer_scaling;
 
     // --- library ---
     in property <[RomRow]> roms;
@@ -99,7 +102,11 @@ export component AppWindow inherits Window {
         Rectangle {
             horizontal-stretch: 1;
             Image {
-                property <int> scale: max(1, min(parent.width / 160px, parent.height / 144px));
+                // Whole-pixel scale factor, at least 1.
+                property <int> int-scale: max(1, min(parent.width / 160px, parent.height / 144px));
+                // Fractional factor that fits the box while keeping the aspect ratio.
+                property <float> fit-scale: min(parent.width / 160px, parent.height / 144px);
+                property <float> scale: root.integer_scaling ? int-scale : max(1.0, fit-scale);
 
                 // Pin the layout constraints to the native resolution: otherwise the
                 // Image's implicit preferred size follows its scaled width, which the
@@ -111,7 +118,9 @@ export component AppWindow inherits Window {
                 height: 144px * scale;
 
                 source: root.screen;
-                image-rendering: pixelated;
+                // Pixelated only makes sense at whole-pixel scales; smoothing a
+                // fractional scale avoids uneven pixel sizes.
+                image-rendering: root.integer_scaling ? ImageRendering.pixelated : ImageRendering.smooth;
             }
         }
 

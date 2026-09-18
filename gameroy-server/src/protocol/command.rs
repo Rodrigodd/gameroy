@@ -102,6 +102,8 @@ pub struct EmulatorConfig {
     /// Rewind ring capacity. 0 disables rewinding entirely.
     pub rewind_capacity_bytes: usize,
     pub interrupt_prediction: bool,
+    /// Use the x86_64 recompiler when this build has it. Ignored elsewhere.
+    pub jit: bool,
     /// Start with real-time pacing on.
     pub frame_limit: bool,
 }
@@ -113,6 +115,7 @@ impl Default for EmulatorConfig {
             audio_sample_rate: 0,
             rewind_capacity_bytes: 32 * 1024 * 1024,
             interrupt_prediction: true,
+            jit: true,
             frame_limit: true,
         }
     }

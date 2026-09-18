@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{DebugUpdate, FramePacket, RunMode, SessionEpoch};
+use super::{AudioChunk, DebugUpdate, FramePacket, RunMode, SessionEpoch};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -13,6 +13,9 @@ pub enum Event {
     },
     RomOpened(Box<RomOpened>),
     Frame(FramePacket),
+    /// Synthesized audio. Not emitted while fast-forwarding, since the samples
+    /// cannot be played at real-time rate anyway.
+    Audio(AudioChunk),
     /// Emitted on every run-mode transition. Replaces the old content-free
     /// `EmulatorPaused` / `EmulatorStarted` pings.
     RunState {

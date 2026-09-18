@@ -10,7 +10,7 @@ mod debug;
 mod event;
 pub mod transport;
 
-pub use buffer::{FrameBuffer, FramePacket};
+pub use buffer::{AudioChunk, FrameBuffer, FramePacket};
 pub use command::{Command, EmulatorConfig, OpenRom, RequestId, RunMode, SessionEpoch};
 pub use debug::{CpuState, DebugUpdate, DebugViews, ImeState};
 pub use event::{CartridgeInfo, Event, RomOpened, ServerError, StopReason};

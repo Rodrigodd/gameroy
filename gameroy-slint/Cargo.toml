@@ -16,6 +16,7 @@ gameroy-server = { path = "../gameroy-server" }
 slint = "1.18.0"
 log = "0.4"
 env_logger = "0.11"
+audio-engine = "0.4.2"
 
 [build-dependencies]
 slint-build = "1.18.0"

@@ -10,8 +10,9 @@ use gameroy::{
 };
 
 use crate::protocol::{
-    CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, EmulatorConfig, Event, FrameBuffer,
-    FramePacket, ImeState, OpenRom, RomOpened, RunMode, ServerError, SessionEpoch, StopReason,
+    AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, EmulatorConfig, Event,
+    FrameBuffer, FramePacket, ImeState, OpenRom, RomOpened, RunMode, ServerError, SessionEpoch,
+    StopReason,
     transport::{ServerTransport, TransportError},
 };
 use crate::timeline::Timeline;
@@ -134,8 +135,9 @@ impl Session {
         // 2. Emulate.
         let schedule = self.run_slice();
 
-        // 3. Ship whatever the vblank callback produced.
+        // 3. Ship whatever the emulation produced.
         self.flush_frames(t);
+        self.flush_audio(t);
 
         schedule
     }
@@ -154,8 +156,8 @@ impl Session {
             while gb.clock_count < target {
                 Interpreter(gb).interpret_op();
             }
-            // Audio would be generated and immediately discarded here; it cannot
-            // keep up with real time and is not worth shipping.
+            // Drain and drop: the controller's buffer would grow without bound
+            // otherwise, and these samples are unplayable at real-time rate.
             let clock = gb.clock_count;
             let _ = gb.sound.get_mut().get_output(clock);
             return Schedule::Now;
@@ -184,10 +186,34 @@ impl Session {
             Interpreter(gb).interpret_op();
         }
 
-        let clock = gb.clock_count;
-        let _ = gb.sound.get_mut().get_output(clock);
-
         Schedule::Now
+    }
+
+    /// Drains synthesized samples and ships them.
+    ///
+    /// Called after every emulation slice. While fast-forwarding the samples are
+    /// generated and dropped: they describe more time than the device can play, so
+    /// sending them would only build an ever-growing backlog. That also means the
+    /// message volume falls to zero during fast-forward with no special-casing.
+    fn flush_audio(&mut self, t: &mut impl ServerTransport) {
+        let rate = self.config.audio_sample_rate;
+        let Some(gb) = self.gb.as_mut() else { return };
+        if rate == 0 {
+            return;
+        }
+        let clock = gb.clock_count;
+        let output = gb.sound.get_mut().get_output(clock);
+        if output.is_empty() || !self.frame_limit || self.mode == RunMode::Paused {
+            return;
+        }
+        // The core emits unsigned DAC levels around a 128 midpoint; the scale
+        // factor is inherited from the old front-end.
+        let samples: Vec<i16> = output.iter().map(|&x| (x as i16 - 128) * 30).collect();
+        let _ = t.send_lossy(Event::Audio(AudioChunk {
+            samples,
+            clock_count: clock,
+            sample_rate: rate,
+        }));
     }
 
     fn flush_frames(&mut self, t: &mut impl ServerTransport) {
@@ -299,6 +325,7 @@ impl Session {
             .and_then(|b| <[u8; 256]>::try_from(b.as_slice()).ok());
         let mut gb = Box::new(GameBoy::new(boot_rom, cartridge));
         gb.predict_interrupt = open.config.interrupt_prediction;
+        gb.sound.get_mut().sample_frequency = open.config.audio_sample_rate as u64;
 
         if let Some(ram) = open.save_ram {
             if ram.len() == gb.cartridge.ram.len() {

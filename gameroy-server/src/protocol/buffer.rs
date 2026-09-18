@@ -31,3 +31,17 @@ pub struct FramePacket {
     pub height: u16,
     pub pixels: FrameBuffer,
 }
+
+/// A run of synthesized audio.
+///
+/// Produced on the server, because the samples come straight out of the emulated
+/// sound controller as the clock advances; played on the client, which owns the
+/// audio device. That split is what keeps `cpal` out of the server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioChunk {
+    /// Interleaved stereo at [`AudioChunk::sample_rate`].
+    pub samples: Vec<i16>,
+    /// Clock of the first sample, so a client can detect a gap.
+    pub clock_count: u64,
+    pub sample_rate: u32,
+}

@@ -171,6 +171,111 @@ fn pauses_and_reports_cpu_state() {
 }
 
 #[test]
+fn produces_audio_at_roughly_real_time() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    const RATE: u32 = 48_000;
+    let config = EmulatorConfig {
+        audio_sample_rate: RATE,
+        ..EmulatorConfig::default()
+    };
+    let h = Harness::start(config.clone());
+
+    h.wait_for("Ready", |ev| {
+        matches!(ev, Event::Ready { .. }).then_some(())
+    });
+    h.send(Command::OpenRom(Box::new(OpenRom {
+        rom,
+        save_ram: None,
+        boot_rom: None,
+        config,
+        start_paused: false,
+    })));
+
+    // Accumulate samples over a known wall-clock window. The emulator paces itself
+    // against real time, so the sample count must track the device rate; a rate
+    // that is badly wrong is exactly what produces crackle on a real device.
+    let start = Instant::now();
+    let window = Duration::from_millis(1500);
+    let mut samples = 0usize;
+    let mut chunks = 0usize;
+    while start.elapsed() < window {
+        match h.client.try_recv() {
+            Ok(Some(Event::Audio(chunk))) => {
+                assert_eq!(chunk.sample_rate, RATE);
+                samples += chunk.samples.len();
+                chunks += 1;
+            }
+            Ok(Some(_)) => {}
+            Ok(None) => std::thread::sleep(Duration::from_millis(1)),
+            Err(e) => panic!("transport closed: {e}"),
+        }
+    }
+
+    assert!(
+        chunks > 10,
+        "expected a steady stream of chunks, got {chunks}"
+    );
+    // Stereo, so two samples per frame of audio.
+    let expected = RATE as f64 * 2.0 * window.as_secs_f64();
+    let ratio = samples as f64 / expected;
+    assert!(
+        (0.5..1.5).contains(&ratio),
+        "produced {samples} samples in {:?}; expected about {expected:.0} \
+         (ratio {ratio:.2}) -- audio is not tracking real time",
+        window
+    );
+}
+
+#[test]
+fn no_audio_while_fast_forwarding() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let config = EmulatorConfig {
+        audio_sample_rate: 48_000,
+        ..EmulatorConfig::default()
+    };
+    let h = Harness::start(config.clone());
+    h.wait_for("Ready", |ev| {
+        matches!(ev, Event::Ready { .. }).then_some(())
+    });
+    h.send(Command::OpenRom(Box::new(OpenRom {
+        rom,
+        save_ram: None,
+        boot_rom: None,
+        config,
+        start_paused: false,
+    })));
+    h.wait_for("first audio", |ev| {
+        matches!(ev, Event::Audio(_)).then_some(())
+    });
+
+    h.send(Command::SetFrameLimit(false));
+    // Let the switch take effect and flush anything already queued.
+    std::thread::sleep(Duration::from_millis(200));
+    while matches!(h.client.try_recv(), Ok(Some(_))) {}
+
+    let start = Instant::now();
+    let mut audio_chunks = 0;
+    while start.elapsed() < Duration::from_millis(400) {
+        match h.client.try_recv() {
+            Ok(Some(Event::Audio(_))) => audio_chunks += 1,
+            Ok(Some(_)) => {}
+            Ok(None) => std::thread::sleep(Duration::from_millis(1)),
+            Err(_) => break,
+        }
+    }
+    assert_eq!(
+        audio_chunks, 0,
+        "fast-forward must not emit audio; it cannot be played at real-time rate"
+    );
+}
+
+#[test]
 fn persists_ram_on_shutdown() {
     let Some(rom) = test_rom() else {
         eprintln!("skipping: roms/zelda.gb not present");

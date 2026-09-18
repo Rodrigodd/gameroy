@@ -65,6 +65,9 @@ pub struct OpenRom {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmulatorConfig {
+    /// The client's audio device rate. 0 disables audio synthesis entirely, which
+    /// is what a client with no working audio backend should send.
+    pub audio_sample_rate: u32,
     /// Rewind ring capacity. 0 disables rewinding entirely.
     pub rewind_capacity_bytes: usize,
     pub interrupt_prediction: bool,
@@ -76,6 +79,7 @@ impl Default for EmulatorConfig {
     fn default() -> Self {
         Self {
             // Matches the old front-end's `32 * mib`.
+            audio_sample_rate: 0,
             rewind_capacity_bytes: 32 * 1024 * 1024,
             interrupt_prediction: true,
             frame_limit: true,

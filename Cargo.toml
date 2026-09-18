@@ -33,7 +33,7 @@ license = "MIT OR Apache-2.0"
 # rfd = { git = "https://github.com/Rodrigodd/rfd.git", branch = "android", optional = true }
 
 # hard code oboe's performance mode to low latency
-# cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" }
+cpal = { git = "https://github.com/Rodrigodd/cpal.git", branch = "oboe-low-latency" }
 
 # contains this fix: https://github.com/Nercury/android_logger-rs/pull/62
 # Disabled: the fork's revision 032b026 is no longer reachable on GitHub, which

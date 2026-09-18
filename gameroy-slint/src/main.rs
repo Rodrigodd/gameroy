@@ -1,6 +1,7 @@
 // Prevent console window in addition to Slint window in Windows release builds when, e.g., starting the app via file manager. Ignored on other platforms.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio;
 mod input;
 mod server_handle;
 mod storage;
@@ -13,6 +14,7 @@ use gameroy_server::protocol::{
 };
 use slint::{Rgb8Pixel, SharedPixelBuffer};
 
+use audio::{AudioEngineSink, AudioSink};
 use input::Joypad;
 use server_handle::ServerHandle;
 use storage::RomFile;
@@ -26,6 +28,8 @@ const PALETTE: [u8; 4] = [255, 180, 100, 0];
 /// posts a wake-up and the draining happens here.
 struct App {
     server: Option<ServerHandle>,
+    audio: Option<AudioEngineSink>,
+    config: EmulatorConfig,
     rom: RomFile,
     joypad: Joypad,
     debugging: bool,
@@ -59,11 +63,24 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let server = ServerHandle::spawn(EmulatorConfig::default(), wake)?;
+    // Open the device first: its rate is what the emulator must synthesize at, and
+    // the server needs it in the config it starts with.
+    let audio = AudioEngineSink::new();
+    let config = EmulatorConfig {
+        audio_sample_rate: audio.as_ref().map_or(0, |a| a.sample_rate()),
+        ..EmulatorConfig::default()
+    };
+    if let Some(a) = audio.as_ref() {
+        log::info!("audio device at {} Hz", a.sample_rate());
+    }
+
+    let server = ServerHandle::spawn(config.clone(), wake)?;
 
     APP.with(|cell| {
         *cell.borrow_mut() = Some(App {
             server: Some(server),
+            audio,
+            config,
             rom,
             joypad: Joypad::default(),
             debugging: false,
@@ -234,6 +251,13 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 ui.set_debug_text(format_cpu(&cpu, update.clock_count, update.frame).into());
             }
         }
+        Event::Audio(chunk) => {
+            with_app(|app| {
+                if let Some(sink) = app.audio.as_mut() {
+                    sink.push(&chunk.samples);
+                }
+            });
+        }
         Event::PersistRam { data } => {
             with_app(|app| match app.rom.write_save_ram(&data) {
                 Ok(()) => log::info!("saved {} bytes of cartridge RAM", data.len()),
@@ -271,7 +295,7 @@ fn open_rom(ui: &AppWindow) {
             rom,
             save_ram,
             boot_rom: None,
-            config: EmulatorConfig::default(),
+            config: app.config.clone(),
             start_paused: false,
         }))))
     });

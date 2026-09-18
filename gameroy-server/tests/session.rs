@@ -276,6 +276,111 @@ fn no_audio_while_fast_forwarding() {
 }
 
 #[test]
+fn save_state_round_trips() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+
+    h.send(Command::SetDebugViews(DebugViews { cpu: true }));
+    h.send(Command::SetRunMode(RunMode::Paused));
+    let clock_at_save = h.wait_for("DebugUpdate", |ev| match ev {
+        Event::DebugUpdate(u) => Some(u.clock_count),
+        _ => None,
+    });
+
+    h.send(Command::RequestSaveState);
+    let state = h.wait_for("SaveStateData", |ev| match ev {
+        Event::SaveStateData { data } => Some(data),
+        _ => None,
+    });
+    assert!(!state.is_empty());
+
+    // Run on, then rewind to the saved point.
+    h.send(Command::SetRunMode(RunMode::Running));
+    h.wait_for("progress", |ev| match ev {
+        Event::DebugUpdate(u) if u.clock_count > clock_at_save => Some(()),
+        Event::Frame(_) => Some(()),
+        _ => None,
+    });
+
+    h.send(Command::LoadSaveState(state));
+    h.send(Command::SetRunMode(RunMode::Paused));
+    let restored = h.wait_for("DebugUpdate after load", |ev| match ev {
+        Event::DebugUpdate(u) => Some(u.clock_count),
+        _ => None,
+    });
+    assert_eq!(
+        restored, clock_at_save,
+        "loading a state must restore the exact clock it was taken at"
+    );
+}
+
+#[test]
+fn rejects_a_corrupt_save_state_without_losing_the_session() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+
+    h.send(Command::LoadSaveState(vec![0xde, 0xad, 0xbe, 0xef]));
+    h.wait_for("Fatal", |ev| match ev {
+        Event::Fatal(e) => Some(e),
+        _ => None,
+    });
+
+    // The session must still be alive and emulating.
+    h.wait_for("frame after bad load", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+}
+
+#[test]
+fn rewinds_backwards_through_frames() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+
+    // Build up some history.
+    let mut last_clock = 0;
+    for _ in 0..60 {
+        last_clock = h.wait_for("Frame", |ev| match ev {
+            Event::Frame(p) => Some(p.clock_count),
+            _ => None,
+        });
+    }
+
+    h.send(Command::SetRewinding(true));
+    let mut clocks = Vec::new();
+    while clocks.len() < 5 {
+        let c = h.wait_for("Frame while rewinding", |ev| match ev {
+            Event::Frame(p) => Some(p.clock_count),
+            _ => None,
+        });
+        clocks.push(c);
+    }
+    h.send(Command::SetRewinding(false));
+
+    assert!(
+        clocks.last().unwrap() < &last_clock,
+        "rewinding must move the clock backwards: {last_clock} -> {clocks:?}"
+    );
+}
+
+#[test]
 fn persists_ram_on_shutdown() {
     let Some(rom) = test_rom() else {
         eprintln!("skipping: roms/zelda.gb not present");

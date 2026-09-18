@@ -27,6 +27,17 @@ pub enum Command {
     /// (right, left, up, down), bits 4-7 the buttons (A, B, select, start).
     SetJoypad(u8),
 
+    /// Hold-to-rewind: replays the delta-compressed save-state ring backwards.
+    SetRewinding(bool),
+
+    // --- persistence: bytes only; the client owns the filesystem ---
+    /// Asks for a save state. Answered with [`super::Event::SaveStateData`].
+    RequestSaveState,
+    /// Restores a save state produced earlier by this emulator.
+    LoadSaveState(#[serde(with = "serde_bytes")] Vec<u8>),
+    /// Asks for cartridge RAM now, rather than waiting for the periodic write.
+    RequestPersistRam,
+
     // --- debugger ---
     Step,
     SetDebugViews(DebugViews),

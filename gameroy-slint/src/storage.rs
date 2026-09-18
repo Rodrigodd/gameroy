@@ -42,3 +42,21 @@ impl RomFile {
         std::fs::rename(&tmp_path, &final_path)
     }
 }
+
+impl RomFile {
+    /// Single-slot save state, kept beside the ROM as `<rom>.save_state`.
+    pub fn save_state_path(&self) -> PathBuf {
+        self.path.with_extension("save_state")
+    }
+
+    pub fn read_save_state(&self) -> std::io::Result<Vec<u8>> {
+        std::fs::read(self.save_state_path())
+    }
+
+    pub fn write_save_state(&self, data: &[u8]) -> std::io::Result<()> {
+        let final_path = self.save_state_path();
+        let tmp_path = final_path.with_extension("save_state.tmp");
+        std::fs::write(&tmp_path, data)?;
+        std::fs::rename(&tmp_path, &final_path)
+    }
+}

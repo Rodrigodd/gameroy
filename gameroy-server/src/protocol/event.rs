@@ -26,6 +26,12 @@ pub enum Event {
         frame: u32,
     },
     DebugUpdate(Box<DebugUpdate>),
+    /// A save state, in the core's own binary format. Opaque to the front-end,
+    /// which only has to store and return the bytes.
+    SaveStateData {
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    },
     /// The server wants cartridge RAM persisted. It cannot write files itself.
     PersistRam {
         #[serde(with = "serde_bytes")]
@@ -40,11 +46,13 @@ pub enum StopReason {
     UserRequest,
     StepComplete,
     Reset,
+    LoadedState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ServerError {
     LoadRom(String),
+    LoadState(String),
     /// No ROM is open, but the command needed one.
     NoRom,
     Internal(String),
@@ -54,6 +62,7 @@ impl std::fmt::Display for ServerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::LoadRom(m) => write!(f, "failed to load ROM: {m}"),
+            Self::LoadState(m) => write!(f, "failed to load save state: {m}"),
             Self::NoRom => write!(f, "no ROM is open"),
             Self::Internal(m) => write!(f, "internal server error: {m}"),
         }

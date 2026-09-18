@@ -1,18 +1,24 @@
+import { Button, VerticalBox } from "std-widgets.slint";
+
 export component AppWindow inherits Window {
+    /// Every key the app handles is dispatched from Rust, so the keymap lives in
+    /// exactly one place rather than being split across the UI and the host.
     callback key_pressed(KeyEvent);
     callback key_release(KeyEvent);
-    /// Toggle the debugger overlay (F12).
-    callback debug_toggle();
-    /// Single-step (F8). Only meaningful while the overlay is on.
-    callback debug_step();
-    /// Pause / resume (F9).
-    callback run_toggle();
+    /// True when the key does something, so the FocusScope knows to consume it.
+    pure callback is_handled_key(string) -> bool;
+
+    callback menu_save_state();
+    callback menu_load_state();
+    callback menu_reset();
+    callback menu_close();
 
     in property <image> screen;
-    /// Rendered by the server's DebugUpdate. Empty means the overlay is off.
+    /// Rendered from the server's DebugUpdate. Empty means the overlay is off.
     in property <string> debug_text;
     in property <string> status_text;
     in property <string> window_title: "GameRoy";
+    in property <bool> menu_open;
 
     title: root.window_title;
     min-width: 160px;
@@ -20,31 +26,12 @@ export component AppWindow inherits Window {
     preferred-width: 480px;
     preferred-height: 432px;
     background: #101210;
-
-    pure function is-joypad-key(text: string) -> bool {
-        return text == Key.Return       // Start
-            || text == Key.Backspace    // Select
-            || text == Key.X            // A
-            || text == Key.Z            // B
-            || text == Key.UpArrow
-            || text == Key.DownArrow
-            || text == Key.LeftArrow
-            || text == Key.RightArrow;
-    }
+    forward-focus: scope;
 
     scope := FocusScope {
         key-pressed(event) => {
-            if (root.is-joypad-key(event.text)) {
+            if (root.is_handled_key(event.text)) {
                 root.key_pressed(event);
-                accept
-            } else if (event.text == Key.F12) {
-                root.debug_toggle();
-                accept
-            } else if (event.text == Key.F8) {
-                root.debug_step();
-                accept
-            } else if (event.text == Key.F9) {
-                root.run_toggle();
                 accept
             } else {
                 reject
@@ -52,7 +39,7 @@ export component AppWindow inherits Window {
         }
 
         key-released(event) => {
-            if (root.is-joypad-key(event.text)) {
+            if (root.is_handled_key(event.text)) {
                 root.key_release(event);
                 accept
             } else {
@@ -82,8 +69,8 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Temporary debugger overlay. This exists to exercise the DebugUpdate path
-        // end to end before any real debugger UI is built; it is replaced later.
+        // Temporary debugger overlay. Exercises the DebugUpdate path end to end
+        // before the real debugger UI exists; replaced later.
         if root.debug_text != "": Rectangle {
             width: 210px;
             background: #161a16;
@@ -108,6 +95,51 @@ export component AppWindow inherits Window {
                     color: #6f8f6f;
                     font-size: 11px;
                     wrap: word-wrap;
+                }
+            }
+        }
+    }
+
+    // Pause menu. Emulation is paused while this is up.
+    if root.menu_open: Rectangle {
+        // Blocker: swallows clicks so they cannot reach anything behind, and
+        // closes the menu, matching the old front-end's click-away behaviour.
+        background: #00000099;
+        TouchArea {
+            clicked => { root.menu_close(); }
+        }
+
+        Rectangle {
+            width: 220px;
+            height: menu_layout.preferred-height;
+            y: parent.height - self.height;
+            background: #1b201b;
+            border-radius: 6px;
+            // Slide up from the bottom edge.
+            animate y { duration: 180ms; easing: ease-out; }
+
+            menu_layout := VerticalBox {
+                spacing: 6px;
+                Text {
+                    text: "Paused";
+                    color: #9fd39f;
+                    horizontal-alignment: center;
+                }
+                Button {
+                    text: "Save State";
+                    clicked => { root.menu_save_state(); }
+                }
+                Button {
+                    text: "Load State";
+                    clicked => { root.menu_load_state(); }
+                }
+                Button {
+                    text: "Reset";
+                    clicked => { root.menu_reset(); }
+                }
+                Button {
+                    text: "Resume";
+                    clicked => { root.menu_close(); }
                 }
             }
         }

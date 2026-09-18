@@ -79,3 +79,70 @@ mod tests {
         assert_eq!(jp.press(&SharedString::from("q")), None);
     }
 }
+
+/// A non-joypad action bound to a key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hotkey {
+    /// Held, not toggled.
+    FastForward,
+    /// Held, not toggled.
+    Rewind,
+    SaveState,
+    LoadState,
+    ToggleDebugger,
+    DebugStep,
+    ToggleRun,
+    ToggleMenu,
+}
+
+/// Mirrors the old front-end's defaults, minus the keys that had no binding.
+pub fn hotkey(text: &SharedString) -> Option<Hotkey> {
+    let named = |k: Key| *text == SharedString::from(k);
+    Some(match () {
+        _ if named(Key::Shift) => Hotkey::FastForward,
+        _ if text.as_str() == "r" || text.as_str() == "R" => Hotkey::Rewind,
+        _ if named(Key::F5) => Hotkey::SaveState,
+        _ if named(Key::F6) => Hotkey::LoadState,
+        _ if named(Key::F12) => Hotkey::ToggleDebugger,
+        _ if named(Key::F8) => Hotkey::DebugStep,
+        _ if named(Key::F9) => Hotkey::ToggleRun,
+        _ if text.as_str() == "m" || text.as_str() == "M" => Hotkey::ToggleMenu,
+        _ => return None,
+    })
+}
+
+/// True when the key does something, so the UI knows whether to consume it.
+pub fn is_handled(text: &SharedString) -> bool {
+    joypad_bit(text).is_some() || hotkey(text).is_some()
+}
+
+#[cfg(test)]
+mod hotkey_tests {
+    use super::*;
+
+    #[test]
+    fn recognises_holds_and_actions() {
+        assert_eq!(
+            hotkey(&SharedString::from(Key::Shift)),
+            Some(Hotkey::FastForward)
+        );
+        assert_eq!(hotkey(&SharedString::from("r")), Some(Hotkey::Rewind));
+        assert_eq!(
+            hotkey(&SharedString::from(Key::F5)),
+            Some(Hotkey::SaveState)
+        );
+        assert_eq!(hotkey(&SharedString::from("q")), None);
+    }
+
+    #[test]
+    fn joypad_and_hotkeys_do_not_overlap() {
+        for (key, _) in JOYPAD_KEYS {
+            let text = SharedString::from(key);
+            assert!(
+                hotkey(&text).is_none(),
+                "{key:?} is both a joypad key and a hotkey"
+            );
+            assert!(is_handled(&text));
+        }
+    }
+}

@@ -15,7 +15,7 @@ use gameroy_server::protocol::{
 use slint::{Rgb8Pixel, SharedPixelBuffer};
 
 use audio::{AudioEngineSink, AudioSink};
-use input::Joypad;
+use input::{Hotkey, Joypad};
 use server_handle::ServerHandle;
 use storage::RomFile;
 
@@ -35,6 +35,9 @@ struct App {
     debugging: bool,
     mode: RunMode,
     opened: bool,
+    menu_open: bool,
+    /// Run mode to restore when the pause menu closes.
+    mode_before_menu: RunMode,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -86,6 +89,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             debugging: false,
             mode: RunMode::Paused,
             opened: false,
+            menu_open: false,
+            mode_before_menu: RunMode::Running,
         })
     });
 
@@ -119,54 +124,128 @@ thread_local! {
 }
 
 fn wire_callbacks(ui: &AppWindow) {
+    ui.on_is_handled_key(|text| input::is_handled(&text));
+
+    let weak = ui.as_weak();
     ui.on_key_pressed(move |event| {
+        let Some(ui) = weak.upgrade() else { return };
         with_app(|app| {
             if let Some(mask) = app.joypad.press(&event.text) {
                 app.send(Command::SetJoypad(mask));
+                return;
             }
-        })
-    });
-
-    ui.on_key_release(move |event| {
-        with_app(|app| {
-            if let Some(mask) = app.joypad.release(&event.text) {
-                app.send(Command::SetJoypad(mask));
+            if let Some(key) = input::hotkey(&event.text) {
+                press_hotkey(app, &ui, key);
             }
         })
     });
 
     let weak = ui.as_weak();
-    ui.on_debug_toggle(move || {
+    ui.on_key_release(move |event| {
+        let Some(ui) = weak.upgrade() else { return };
+        let _ = &ui;
         with_app(|app| {
-            app.debugging = !app.debugging;
-            app.send(Command::SetDebugViews(DebugViews { cpu: app.debugging }));
-            // Entering the debugger pauses, as the old front-end did; leaving it
-            // resumes.
-            let mode = if app.debugging {
-                RunMode::Paused
-            } else {
-                RunMode::Running
-            };
-            app.send(Command::SetRunMode(mode));
-            if !app.debugging {
-                if let Some(ui) = weak.upgrade() {
-                    ui.set_debug_text("".into());
-                }
+            if let Some(mask) = app.joypad.release(&event.text) {
+                app.send(Command::SetJoypad(mask));
+                return;
+            }
+            // Only the held actions do anything on release.
+            match input::hotkey(&event.text) {
+                Some(Hotkey::FastForward) => app.send(Command::SetFrameLimit(true)),
+                Some(Hotkey::Rewind) => app.send(Command::SetRewinding(false)),
+                _ => {}
             }
         })
     });
 
-    ui.on_debug_step(move || with_app(|app| app.send(Command::Step)));
+    let weak = ui.as_weak();
+    ui.on_menu_save_state(move || {
+        with_app(|app| app.send(Command::RequestSaveState));
+        if let Some(ui) = weak.upgrade() {
+            close_menu(&ui);
+        }
+    });
 
-    ui.on_run_toggle(move || {
-        with_app(|app| {
+    let weak = ui.as_weak();
+    ui.on_menu_load_state(move || {
+        with_app(|app| match app.rom.read_save_state() {
+            Ok(data) => app.send(Command::LoadSaveState(data)),
+            Err(e) => log::warn!("no save state to load: {e}"),
+        });
+        if let Some(ui) = weak.upgrade() {
+            close_menu(&ui);
+        }
+    });
+
+    let weak = ui.as_weak();
+    ui.on_menu_reset(move || {
+        with_app(|app| app.send(Command::Reset));
+        if let Some(ui) = weak.upgrade() {
+            close_menu(&ui);
+        }
+    });
+
+    let weak = ui.as_weak();
+    ui.on_menu_close(move || {
+        if let Some(ui) = weak.upgrade() {
+            close_menu(&ui);
+        }
+    });
+}
+
+fn press_hotkey(app: &mut App, ui: &AppWindow, key: Hotkey) {
+    match key {
+        // Held, not toggled: repeats while the key is down, which is harmless.
+        Hotkey::FastForward => app.send(Command::SetFrameLimit(false)),
+        Hotkey::Rewind => app.send(Command::SetRewinding(true)),
+        Hotkey::SaveState => app.send(Command::RequestSaveState),
+        Hotkey::LoadState => match app.rom.read_save_state() {
+            Ok(data) => app.send(Command::LoadSaveState(data)),
+            Err(e) => log::warn!("no save state to load: {e}"),
+        },
+        Hotkey::ToggleDebugger => {
+            app.debugging = !app.debugging;
+            app.send(Command::SetDebugViews(DebugViews { cpu: app.debugging }));
+            app.send(Command::SetRunMode(if app.debugging {
+                RunMode::Paused
+            } else {
+                RunMode::Running
+            }));
+            if !app.debugging {
+                ui.set_debug_text("".into());
+            }
+        }
+        Hotkey::DebugStep => app.send(Command::Step),
+        Hotkey::ToggleRun => {
             let mode = match app.mode {
                 RunMode::Paused => RunMode::Running,
                 _ => RunMode::Paused,
             };
             app.send(Command::SetRunMode(mode));
-        })
+        }
+        Hotkey::ToggleMenu => {
+            if app.menu_open {
+                app.menu_open = false;
+                app.send(Command::SetRunMode(app.mode_before_menu));
+            } else {
+                app.menu_open = true;
+                app.mode_before_menu = app.mode;
+                app.send(Command::SetRunMode(RunMode::Paused));
+            }
+            ui.set_menu_open(app.menu_open);
+        }
+    }
+}
+
+/// Closes the pause menu and resumes whatever was running before it opened.
+fn close_menu(ui: &AppWindow) {
+    with_app(|app| {
+        if app.menu_open {
+            app.menu_open = false;
+            app.send(Command::SetRunMode(app.mode_before_menu));
+        }
     });
+    ui.set_menu_open(false);
 }
 
 impl App {
@@ -256,6 +335,16 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 if let Some(sink) = app.audio.as_mut() {
                     sink.push(&chunk.samples);
                 }
+            });
+        }
+        Event::SaveStateData { data } => {
+            with_app(|app| match app.rom.write_save_state(&data) {
+                Ok(()) => log::info!(
+                    "wrote save state to {} ({} bytes)",
+                    app.rom.save_state_path().display(),
+                    data.len()
+                ),
+                Err(e) => log::error!("failed to write save state: {e}"),
             });
         }
         Event::PersistRam { data } => {

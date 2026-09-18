@@ -15,7 +15,7 @@ use crate::protocol::{
     StopReason,
     transport::{ServerTransport, TransportError},
 };
-use crate::timeline::Timeline;
+use crate::timeline::{Timeline, timestamp};
 
 // The protocol duplicates these so it can compile without the emulator. If the core
 // ever changes them, this is where the duplication is caught.
@@ -87,7 +87,16 @@ pub struct Session {
     last_start_clock: u64,
 
     shutting_down: bool,
+
+    /// Last cartridge RAM handed to the client, so the periodic write only fires
+    /// when something actually changed.
+    last_persisted_ram: Vec<u8>,
+    next_ram_check: Instant,
 }
+
+/// How often to look at cartridge RAM while running. The old front-end only wrote
+/// on a clean exit, so a crash lost the save; this bounds the loss instead.
+const RAM_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 impl Session {
     pub fn new(config: EmulatorConfig) -> Self {
@@ -108,6 +117,8 @@ impl Session {
             last_start_time: Instant::now(),
             last_start_clock: 0,
             shutting_down: false,
+            last_persisted_ram: Vec::new(),
+            next_ram_check: Instant::now() + RAM_CHECK_INTERVAL,
         }
     }
 
@@ -138,6 +149,7 @@ impl Session {
         // 3. Ship whatever the emulation produced.
         self.flush_frames(t);
         self.flush_audio(t);
+        self.maybe_persist_ram(t);
 
         schedule
     }
@@ -149,6 +161,30 @@ impl Session {
         let Some(gb) = self.gb.as_mut() else {
             return Schedule::Idle;
         };
+
+        if self.vblank.lock().unwrap().timeline.rewinding {
+            let restored = {
+                let vb = &mut *self.vblank.lock().unwrap();
+                if vb.timeline.load_last_frame(gb) {
+                    vb.timeline.pop_last_frame();
+                    true
+                } else {
+                    false
+                }
+            };
+            if restored {
+                // Capture directly rather than re-entering the v_blank callback:
+                // it is stored inside `gb`, so invoking it means taking it out and
+                // putting it back, and it would also advance the input record we
+                // are in the middle of unwinding.
+                let vb = &mut *self.vblank.lock().unwrap();
+                let mut buf = vb.take_buffer();
+                buf.copy_from_slice(&gb.ppu.borrow().screen.packed());
+                vb.produced.push(buf);
+            }
+            // One frame per call, paced like normal playback.
+            return Schedule::At(Instant::now() + Duration::from_micros(16_666));
+        }
 
         if !self.frame_limit {
             // Fast-forward: no real-time pacing, just keep going a slice at a time.
@@ -299,6 +335,17 @@ impl Session {
                 self.send_debug_update(t);
             }
             Command::ReturnFrame(buf) => self.recycle(buf.0),
+            Command::SetRewinding(on) => {
+                self.vblank.lock().unwrap().timeline.rewinding = on;
+                if !on {
+                    // Wall time passed while stepping backwards; do not treat it as
+                    // emulation debt to be sprinted through.
+                    self.resync_pacing();
+                }
+            }
+            Command::RequestSaveState => self.save_state(t),
+            Command::LoadSaveState(data) => self.load_state(&data, t),
+            Command::RequestPersistRam => self.persist_ram(t),
         }
         false
     }
@@ -449,12 +496,64 @@ impl Session {
     }
 
     fn persist_ram(&mut self, t: &mut impl ServerTransport) {
-        if let Some(gb) = self.gb.as_ref() {
-            if !gb.cartridge.ram.is_empty() {
-                let _ = t.send(Event::PersistRam {
-                    data: gb.cartridge.ram.clone(),
-                });
+        let Some(gb) = self.gb.as_ref() else { return };
+        if gb.cartridge.ram.is_empty() {
+            return;
+        }
+        self.last_persisted_ram = gb.cartridge.ram.clone();
+        let _ = t.send(Event::PersistRam {
+            data: gb.cartridge.ram.clone(),
+        });
+    }
+
+    /// Hands cartridge RAM over periodically, but only when it changed.
+    fn maybe_persist_ram(&mut self, t: &mut impl ServerTransport) {
+        if Instant::now() < self.next_ram_check {
+            return;
+        }
+        self.next_ram_check = Instant::now() + RAM_CHECK_INTERVAL;
+        let Some(gb) = self.gb.as_ref() else { return };
+        if gb.cartridge.ram.is_empty() || gb.cartridge.ram == self.last_persisted_ram {
+            return;
+        }
+        self.persist_ram(t);
+    }
+
+    fn save_state(&mut self, t: &mut impl ServerTransport) {
+        let Some(gb) = self.gb.as_ref() else {
+            let _ = t.send(Event::Fatal(ServerError::NoRom));
+            return;
+        };
+        let mut data = Vec::new();
+        match gb.save_state(timestamp(), &mut data) {
+            Ok(()) => {
+                let _ = t.send(Event::SaveStateData { data });
+            }
+            Err(e) => {
+                let _ = t.send(Event::Fatal(ServerError::Internal(e.to_string())));
             }
         }
+    }
+
+    fn load_state(&mut self, data: &[u8], t: &mut impl ServerTransport) {
+        let Some(gb) = self.gb.as_mut() else {
+            let _ = t.send(Event::Fatal(ServerError::NoRom));
+            return;
+        };
+        // Keep the current state so a malformed file cannot destroy the session.
+        let mut backup = Vec::new();
+        let _ = gb.save_state(None, &mut backup);
+
+        if let Err(e) = gb.load_state(&mut &data[..]) {
+            log::error!("save state rejected: {e:?}");
+            let _ = gb.load_state(&mut &backup[..]);
+            let _ = t.send(Event::Fatal(ServerError::LoadState(format!("{e:?}"))));
+            return;
+        }
+
+        self.epoch += 1;
+        self.resync_pacing();
+        let mode = self.mode;
+        self.set_mode(mode, StopReason::LoadedState, t);
     }
 }

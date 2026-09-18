@@ -65,6 +65,21 @@ impl DisasmIndex {
         let start = end.saturating_sub(lines as usize).min(start);
 
         let trace = gb.trace.borrow();
+        // `Address` holds an in-bank offset (0x0000..=0x3FFF); the CPU address for
+        // anything mapped into the upper bank region is that plus 0x4000. Show the
+        // CPU address, because that is what `break`/`runto` take -- listing
+        // in-bank offsets next to commands that want CPU addresses would be a trap.
+        let cpu_address = |addr: CoreAddress| -> u16 {
+            if Some(addr.bank) == banks.0.into() {
+                addr.address
+            } else if Some(addr.bank) == banks.1.into() {
+                addr.address + 0x4000
+            } else {
+                // Not currently mapped, so there is no CPU address for it; the
+                // bank travels alongside in `DisasmLine::address`.
+                addr.address
+            }
+        };
         let rendered = self.directives[start..end]
             .iter()
             .map(|d| {
@@ -88,7 +103,7 @@ impl DisasmIndex {
                         bank: d.address.bank,
                         address: d.address.address,
                     },
-                    pc: d.address.address,
+                    pc: cpu_address(d.address),
                     label: trace.labels.get(&d.address).map(|l| l.name.clone()),
                     text: text.trim_end().to_string(),
                     is_current: current == Some(d.address),

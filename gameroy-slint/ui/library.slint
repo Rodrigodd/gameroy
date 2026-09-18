@@ -1,0 +1,182 @@
+import { Button, ListView, ScrollView } from "std-widgets.slint";
+
+export struct RomRow {
+    file: string,
+    title: string,
+    size: string,
+    last-played: string,
+}
+
+// One clickable column header. Kept as its own component so the stretchy column
+// can simply omit `width`: setting `width` at all defeats `horizontal-stretch`,
+// which silently collapsed the File column to zero.
+component HeaderCell inherits Rectangle {
+    in property <string> title;
+    in property <int> index;
+    in property <int> sort-column;
+    in property <bool> sort-ascending;
+    callback clicked(int);
+
+    background: touch.has-hover ? #222922 : #1a1f1a;
+
+    touch := TouchArea {
+        clicked => { root.clicked(root.index); }
+    }
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 4px;
+        Text {
+            text: root.title;
+            color: #9fd39f;
+            font-size: 12px;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        Text {
+            // Arrow marks the active column and its direction.
+            text: root.sort-column == root.index ? (root.sort-ascending ? "\u{25b2}" : "\u{25bc}") : "";
+            color: #6f8f6f;
+            font-size: 10px;
+            vertical-alignment: center;
+        }
+        // Soaks up the slack so the arrow stays next to its label rather than
+        // drifting to the far edge of a stretchy column.
+        Rectangle { horizontal-stretch: 1; }
+    }
+}
+
+// A hand-built table rather than StandardTableView, whose cells are
+// StandardListViewItem and therefore text only -- the thumbnail column the old
+// front-end had needs an Image per row, so the structure has to allow one.
+export component Library inherits Rectangle {
+    in property <[RomRow]> roms;
+    in property <int> sort-column;
+    in property <bool> sort-ascending;
+    in property <string> folder-text;
+    in property <int> selected: -1;
+
+    callback sort-by(int);
+    callback activate(int);
+    callback select(int);
+    callback pick-rom();
+    callback pick-folder();
+
+    background: #101210;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            Button {
+                text: "Open ROM";
+                clicked => { root.pick-rom(); }
+            }
+            Button {
+                text: "Choose Folder";
+                clicked => { root.pick-folder(); }
+            }
+            Text {
+                text: root.folder-text;
+                color: #6f8f6f;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
+        // Header. Clicking a column sorts by it; clicking again reverses.
+        HorizontalLayout {
+            height: 26px;
+            spacing: 0px;
+            HeaderCell {
+                // No width: this is the column that takes the slack.
+                horizontal-stretch: 1;
+                title: "File";
+                index: 0;
+                sort-column: root.sort-column;
+                sort-ascending: root.sort-ascending;
+                clicked(i) => { root.sort-by(i); }
+            }
+            HeaderCell {
+                width: 150px;
+                title: "Header Name";
+                index: 1;
+                sort-column: root.sort-column;
+                sort-ascending: root.sort-ascending;
+                clicked(i) => { root.sort-by(i); }
+            }
+            HeaderCell {
+                width: 80px;
+                title: "Size";
+                index: 2;
+                sort-column: root.sort-column;
+                sort-ascending: root.sort-ascending;
+                clicked(i) => { root.sort-by(i); }
+            }
+            HeaderCell {
+                width: 110px;
+                title: "Last played";
+                index: 3;
+                sort-column: root.sort-column;
+                sort-ascending: root.sort-ascending;
+                clicked(i) => { root.sort-by(i); }
+            }
+        }
+
+        ListView {
+            for row[i] in root.roms: Rectangle {
+                height: 24px;
+                background: root.selected == i
+                    ? #2c3a2c
+                    : (row-touch.has-hover ? #1a1f1a : transparent);
+
+                row-touch := TouchArea {
+                    clicked => { root.select(i); }
+                    double-clicked => { root.activate(i); }
+                }
+
+                HorizontalLayout {
+                    spacing: 0px;
+                    Text {
+                        horizontal-stretch: 1;
+                        text: row.file;
+                        color: #cfe3cf;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: 150px;
+                        text: row.title;
+                        color: #9fb39f;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: 80px;
+                        text: row.size;
+                        color: #9fb39f;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: 110px;
+                        text: row.last-played;
+                        color: #9fb39f;
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        if root.roms.length == 0: Text {
+            text: "No .gb files found. Use \"Choose Folder\" to pick a ROM folder.";
+            color: #6f8f6f;
+            horizontal-alignment: center;
+        }
+    }
+}

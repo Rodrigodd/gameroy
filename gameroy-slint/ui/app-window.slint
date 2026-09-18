@@ -1,4 +1,7 @@
 import { Button, VerticalBox } from "std-widgets.slint";
+import { Library, RomRow } from "library.slint";
+
+export { RomRow }
 
 export component AppWindow inherits Window {
     /// Every key the app handles is dispatched from Rust, so the keymap lives in
@@ -12,6 +15,7 @@ export component AppWindow inherits Window {
     callback menu_load_state();
     callback menu_reset();
     callback menu_close();
+    callback menu_exit();
 
     in property <image> screen;
     /// Rendered from the server's DebugUpdate. Empty means the overlay is off.
@@ -19,6 +23,20 @@ export component AppWindow inherits Window {
     in property <string> status_text;
     in property <string> window_title: "GameRoy";
     in property <bool> menu_open;
+    /// False shows the ROM library instead of the emulator.
+    in property <bool> playing;
+
+    // --- library ---
+    in property <[RomRow]> roms;
+    in property <int> sort_column;
+    in property <bool> sort_ascending;
+    in property <string> folder_text;
+    in property <int> selected_rom: -1;
+    callback sort_by(int);
+    callback activate_rom(int);
+    callback select_rom(int);
+    callback pick_rom();
+    callback pick_folder();
 
     title: root.window_title;
     min-width: 160px;
@@ -48,7 +66,20 @@ export component AppWindow inherits Window {
         }
     }
 
-    HorizontalLayout {
+    if !root.playing: Library {
+        roms: root.roms;
+        sort-column: root.sort_column;
+        sort-ascending: root.sort_ascending;
+        folder-text: root.folder_text;
+        selected: root.selected_rom;
+        sort-by(i) => { root.sort_by(i); }
+        activate(i) => { root.activate_rom(i); }
+        select(i) => { root.select_rom(i); }
+        pick-rom() => { root.pick_rom(); }
+        pick-folder() => { root.pick_folder(); }
+    }
+
+    if root.playing: HorizontalLayout {
         // The emulated screen, scaled by whole pixels only and centred.
         Rectangle {
             horizontal-stretch: 1;
@@ -101,7 +132,7 @@ export component AppWindow inherits Window {
     }
 
     // Pause menu. Emulation is paused while this is up.
-    if root.menu_open: Rectangle {
+    if root.menu_open && root.playing: Rectangle {
         // Blocker: swallows clicks so they cannot reach anything behind, and
         // closes the menu, matching the old front-end's click-away behaviour.
         background: #00000099;
@@ -136,6 +167,10 @@ export component AppWindow inherits Window {
                 Button {
                     text: "Reset";
                     clicked => { root.menu_reset(); }
+                }
+                Button {
+                    text: "Exit Game";
+                    clicked => { root.menu_exit(); }
                 }
                 Button {
                     text: "Resume";

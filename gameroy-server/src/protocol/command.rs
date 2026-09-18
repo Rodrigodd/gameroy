@@ -1,0 +1,84 @@
+use serde::{Deserialize, Serialize};
+
+use super::{FrameBuffer, debug::DebugViews};
+
+pub type RequestId = u64;
+
+/// Incremented by the server on every reset, state load or ROM open. Debug data
+/// carries it so a front-end can discard a snapshot that describes a machine that
+/// no longer exists.
+pub type SessionEpoch = u64;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum Command {
+    // --- lifecycle ---
+    OpenRom(Box<OpenRom>),
+    Shutdown,
+
+    // --- run control ---
+    SetRunMode(RunMode),
+    /// `false` disables real-time pacing, i.e. fast-forward.
+    SetFrameLimit(bool),
+    Reset,
+
+    // --- input ---
+    /// Joypad bitmask, where a 0 bit means pressed. Bits 0-3 are the direction keys
+    /// (right, left, up, down), bits 4-7 the buttons (A, B, select, start).
+    SetJoypad(u8),
+
+    // --- debugger ---
+    Step,
+    SetDebugViews(DebugViews),
+
+    // --- flow control ---
+    /// Hands a frame buffer back for reuse. A no-op over a serialized transport.
+    ReturnFrame(FrameBuffer),
+}
+
+/// What the emulator should be doing.
+///
+/// This replaces the old `Pause`/`Resume`/`Run`/`RunFrame`/`Debug(bool)` events,
+/// which encoded the same state across five messages and an implicit state machine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RunMode {
+    /// Not running. The debugger surface is live and coherent.
+    Paused,
+    /// Running in real time, breakpoints ignored. The normal playing mode.
+    Running,
+    /// Running, checking breakpoints — the debugger's "continue".
+    RunningWithBreakpoints,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenRom {
+    #[serde(with = "serde_bytes")]
+    pub rom: Vec<u8>,
+    /// Battery-backed cartridge RAM, if a save file exists. The *client* reads it;
+    /// the server has no filesystem.
+    pub save_ram: Option<Vec<u8>>,
+    /// A 256-byte boot ROM. `Vec` rather than an array to avoid `serde_arrays`.
+    pub boot_rom: Option<Vec<u8>>,
+    pub config: EmulatorConfig,
+    pub start_paused: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmulatorConfig {
+    /// Rewind ring capacity. 0 disables rewinding entirely.
+    pub rewind_capacity_bytes: usize,
+    pub interrupt_prediction: bool,
+    /// Start with real-time pacing on.
+    pub frame_limit: bool,
+}
+
+impl Default for EmulatorConfig {
+    fn default() -> Self {
+        Self {
+            // Matches the old front-end's `32 * mib`.
+            rewind_capacity_bytes: 32 * 1024 * 1024,
+            interrupt_prediction: true,
+            frame_limit: true,
+        }
+    }
+}

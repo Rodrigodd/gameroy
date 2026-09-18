@@ -1,117 +1,322 @@
 // Prevent console window in addition to Slint window in Windows release builds when, e.g., starting the app via file manager. Ignored on other platforms.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::cell::Cell;
-use std::error::Error;
-use std::rc::Rc;
-use std::sync::mpsc::Receiver;
+mod input;
+mod server_handle;
+mod storage;
 
-use gameroy::gameboy::GameBoy;
-use gameroy::gameboy::cartridge::Cartridge;
-use gameroy::interpreter::Interpreter;
-use slint::platform::Key;
-use slint::{Rgb8Pixel, SharedPixelBuffer, SharedString, Weak};
+use std::cell::RefCell;
+use std::error::Error;
+
+use gameroy_server::protocol::{
+    Command, CpuState, DebugViews, EmulatorConfig, Event, OpenRom, RunMode,
+};
+use slint::{Rgb8Pixel, SharedPixelBuffer};
+
+use input::Joypad;
+use server_handle::ServerHandle;
+use storage::RomFile;
 
 slint::include_modules!();
 
-enum GbEvent {
-    Joypad(u8),
-}
+/// The four Game Boy shades, darkest last, as the old front-end had them.
+const PALETTE: [u8; 4] = [255, 180, 100, 0];
 
-/// The bit of each joypad key in [`GameBoy::joypad`], which is a bitmask where 0 means pressed
-/// and 1 released. Bits 0-3 are the direction keys, bits 4-7 the action buttons.
-const JOYPAD_KEYS: [(Key, u8); 8] = [
-    (Key::RightArrow, 0),
-    (Key::LeftArrow, 1),
-    (Key::UpArrow, 2),
-    (Key::DownArrow, 3),
-    (Key::X, 4),         // A
-    (Key::Z, 5),         // B
-    (Key::Backspace, 6), // Select
-    (Key::Return, 7),    // Start
-];
-
-fn joypad_bit(text: &SharedString) -> Option<u8> {
-    JOYPAD_KEYS
-        .iter()
-        .find(|(key, _)| *text == SharedString::from(*key))
-        .map(|&(_, bit)| bit)
-}
-
-fn gameroy_thread(ui: Weak<AppWindow>, rx: Receiver<GbEvent>) {
-    let rom = std::fs::read("roms/zelda.gb").expect("Failed to read ROM file");
-    let cartridge = Cartridge::new(rom).expect("Failed to create cartridge");
-    let mut gb = GameBoy::new(None, cartridge);
-
-    gb.v_blank = Some(Box::new(move |gb| {
-        let screen = gb.ppu.get_mut().screen;
-        let ui = ui.clone();
-        let _ = slint::invoke_from_event_loop(move || {
-            let Some(ui) = ui.upgrade() else { return };
-            let mut pixel_buffer = SharedPixelBuffer::<Rgb8Pixel>::new(
-                gameroy::consts::SCREEN_WIDTH as u32,
-                gameroy::consts::SCREEN_HEIGHT as u32,
-            );
-            for (p, c) in pixel_buffer
-                .make_mut_slice()
-                .iter_mut()
-                .zip(screen.packed().iter())
-            {
-                let l = [255, 180, 100, 0][*c as usize];
-                *p = Rgb8Pixel::new(l, l, l);
-            }
-            let image = slint::Image::from_rgb8(pixel_buffer);
-            ui.set_screen(image);
-        });
-    }));
-
-    let start_time = std::time::Instant::now();
-    let start_clock = gb.clock_count;
-    loop {
-        std::thread::sleep(std::time::Duration::from_millis(1));
-
-        if let Ok(event) = rx.try_recv() {
-            match event {
-                GbEvent::Joypad(jp) => gb.joypad = jp,
-            }
-        }
-
-        let target_clock = start_clock
-            + start_time.elapsed().as_millis() as u64 * gameroy::consts::CLOCK_SPEED / 1000;
-
-        while gb.clock_count < target_clock {
-            Interpreter(&mut gb).interpret_op();
-        }
-    }
+/// UI-thread state. Single-threaded: the server thread never touches this, it only
+/// posts a wake-up and the draining happens here.
+struct App {
+    server: Option<ServerHandle>,
+    rom: RomFile,
+    joypad: Joypad,
+    debugging: bool,
+    mode: RunMode,
+    opened: bool,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    // The server has no filesystem, so the ROM is resolved and read here.
+    let rom_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "roms/zelda.gb".to_string());
+    let rom = RomFile::new(&rom_path);
+
     let ui = AppWindow::new()?;
+    let weak = ui.as_weak();
 
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    let joypad = Rc::new(Cell::new(0xff));
-    {
-        let tx = tx.clone();
-        let joypad = joypad.clone();
-        ui.on_key_pressed(move |event| {
-            if let Some(bit) = joypad_bit(&event.text) {
-                joypad.update(|x| x & !(1 << bit));
-                let _ = tx.send(GbEvent::Joypad(joypad.get()));
-            }
-        });
-    }
-    ui.on_key_release(move |event| {
-        if let Some(bit) = joypad_bit(&event.text) {
-            joypad.update(|x| x | (1 << bit));
-            let _ = tx.send(GbEvent::Joypad(joypad.get()));
+    // Waking the UI loop from the server thread. `invoke_from_event_loop` returns
+    // Err once the loop has quit, which is the natural "front-end is gone" signal.
+    let wake = {
+        let weak = weak.clone();
+        move || {
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade() {
+                    drain_events(&ui);
+                }
+            });
         }
+    };
+
+    let server = ServerHandle::spawn(EmulatorConfig::default(), wake)?;
+
+    APP.with(|cell| {
+        *cell.borrow_mut() = Some(App {
+            server: Some(server),
+            rom,
+            joypad: Joypad::default(),
+            debugging: false,
+            mode: RunMode::Paused,
+            opened: false,
+        })
     });
 
-    let wui = ui.as_weak();
-    std::thread::spawn(move || gameroy_thread(wui, rx));
+    wire_callbacks(&ui);
 
     ui.run()?;
 
+    // Draining during shutdown is what persists the save: the server emits its
+    // final PersistRam after receiving Shutdown and before exiting.
+    let taken = APP.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        let app = borrow.as_mut()?;
+        Some((app.server.take()?, app.rom.save_ram_path()))
+    });
+    if let Some((mut server, save_path)) = taken {
+        server.shutdown(|ev| {
+            if let Event::PersistRam { data } = ev {
+                match std::fs::write(&save_path, &data) {
+                    Ok(()) => log::info!("wrote {} ({} bytes)", save_path.display(), data.len()),
+                    Err(e) => log::error!("failed to write {}: {e}", save_path.display()),
+                }
+            }
+        });
+    }
+
     Ok(())
+}
+
+thread_local! {
+    static APP: RefCell<Option<App>> = const { RefCell::new(None) };
+}
+
+fn wire_callbacks(ui: &AppWindow) {
+    ui.on_key_pressed(move |event| {
+        with_app(|app| {
+            if let Some(mask) = app.joypad.press(&event.text) {
+                app.send(Command::SetJoypad(mask));
+            }
+        })
+    });
+
+    ui.on_key_release(move |event| {
+        with_app(|app| {
+            if let Some(mask) = app.joypad.release(&event.text) {
+                app.send(Command::SetJoypad(mask));
+            }
+        })
+    });
+
+    let weak = ui.as_weak();
+    ui.on_debug_toggle(move || {
+        with_app(|app| {
+            app.debugging = !app.debugging;
+            app.send(Command::SetDebugViews(DebugViews { cpu: app.debugging }));
+            // Entering the debugger pauses, as the old front-end did; leaving it
+            // resumes.
+            let mode = if app.debugging {
+                RunMode::Paused
+            } else {
+                RunMode::Running
+            };
+            app.send(Command::SetRunMode(mode));
+            if !app.debugging {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_debug_text("".into());
+                }
+            }
+        })
+    });
+
+    ui.on_debug_step(move || with_app(|app| app.send(Command::Step)));
+
+    ui.on_run_toggle(move || {
+        with_app(|app| {
+            let mode = match app.mode {
+                RunMode::Paused => RunMode::Running,
+                _ => RunMode::Paused,
+            };
+            app.send(Command::SetRunMode(mode));
+        })
+    });
+}
+
+impl App {
+    fn send(&self, cmd: Command) {
+        if let Some(server) = self.server.as_ref() {
+            server.send(cmd);
+        }
+    }
+}
+
+fn with_app(f: impl FnOnce(&mut App)) {
+    APP.with(|cell| {
+        if let Some(app) = cell.borrow_mut().as_mut() {
+            f(app)
+        }
+    })
+}
+
+/// Pulls everything the server has queued and folds it into the UI. Runs on the UI
+/// thread, holds no locks, and never blocks.
+fn drain_events(ui: &AppWindow) {
+    APP.with(|cell| {
+        if let Some(server) = cell.borrow().as_ref().and_then(|a| a.server.as_ref()) {
+            server.begin_drain();
+        }
+    });
+    loop {
+        let next = APP.with(|cell| {
+            cell.borrow()
+                .as_ref()
+                .and_then(|app| app.server.as_ref()?.try_recv().ok().flatten())
+        });
+        let Some(event) = next else { return };
+        handle_event(ui, event);
+    }
+}
+
+fn handle_event(ui: &AppWindow, event: Event) {
+    match event {
+        Event::Ready { protocol_version } => {
+            log::info!("server ready, protocol v{protocol_version}");
+            open_rom(ui);
+        }
+        Event::RomOpened(opened) => {
+            let title = opened.header.title.trim().to_string();
+            ui.set_window_title(if title.is_empty() {
+                "GameRoy".into()
+            } else {
+                slint::SharedString::from(format!("{title} - GameRoy"))
+            });
+            log::info!(
+                "loaded {:?} ({}, rom {} B, ram {} B)",
+                opened.header.title,
+                opened.header.kind_name,
+                opened.header.rom_size,
+                opened.header.ram_size
+            );
+        }
+        Event::Frame(packet) => {
+            let mut buffer =
+                SharedPixelBuffer::<Rgb8Pixel>::new(packet.width as u32, packet.height as u32);
+            for (out, &shade) in buffer
+                .make_mut_slice()
+                .iter_mut()
+                .zip(packet.pixels.0.iter())
+            {
+                let l = PALETTE[(shade & 3) as usize];
+                *out = Rgb8Pixel::new(l, l, l);
+            }
+            ui.set_screen(slint::Image::from_rgb8(buffer));
+            // Hand the allocation back so the server can reuse it.
+            with_app(|app| app.send(Command::ReturnFrame(packet.pixels)));
+        }
+        Event::RunState {
+            mode, clock_count, ..
+        } => {
+            with_app(|app| app.mode = mode);
+            ui.set_status_text(format!("{mode:?} @ {clock_count}").into());
+        }
+        Event::DebugUpdate(update) => {
+            if let Some(cpu) = update.cpu {
+                ui.set_debug_text(format_cpu(&cpu, update.clock_count, update.frame).into());
+            }
+        }
+        Event::PersistRam { data } => {
+            with_app(|app| match app.rom.write_save_ram(&data) {
+                Ok(()) => log::info!("saved {} bytes of cartridge RAM", data.len()),
+                Err(e) => log::error!("failed to save cartridge RAM: {e}"),
+            });
+        }
+        Event::Fatal(err) => {
+            log::error!("server error: {err}");
+            ui.set_status_text(format!("error: {err}").into());
+        }
+        other => log::debug!("unhandled event: {other:?}"),
+    }
+}
+
+fn open_rom(ui: &AppWindow) {
+    let request = APP.with(|cell| {
+        let mut borrow = cell.borrow_mut();
+        let app = borrow.as_mut()?;
+        if app.opened {
+            return None;
+        }
+        let rom = match app.rom.read_rom() {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                log::error!("failed to read {}: {e}", app.rom.path().display());
+                return Some(Err(format!(
+                    "cannot read {}: {e}",
+                    app.rom.path().display()
+                )));
+            }
+        };
+        let save_ram = app.rom.read_save_ram();
+        app.opened = true;
+        Some(Ok(Command::OpenRom(Box::new(OpenRom {
+            rom,
+            save_ram,
+            boot_rom: None,
+            config: EmulatorConfig::default(),
+            start_paused: false,
+        }))))
+    });
+
+    match request {
+        Some(Ok(cmd)) => with_app(|app| app.send(cmd)),
+        Some(Err(message)) => ui.set_status_text(message.into()),
+        None => {}
+    }
+}
+
+fn format_cpu(cpu: &CpuState, clock: u64, frame: u32) -> String {
+    let flag = |bit: u8, name: char| if cpu.f & (1 << bit) != 0 { name } else { '-' };
+    format!(
+        "clock {clock}\n\
+         frame {frame}\n\
+         \n\
+         AF {:02x}{:02x}  {}{}{}{}\n\
+         BC {:02x}{:02x}\n\
+         DE {:02x}{:02x}\n\
+         HL {:02x}{:02x}\n\
+         SP {:04x}\n\
+         PC {:04x}\n\
+         \n\
+         IME {:?}\n\
+         IF {:02x}  IE {:02x}\n\
+         bank {:x}/{:x}",
+        cpu.a,
+        cpu.f,
+        flag(7, 'Z'),
+        flag(6, 'N'),
+        flag(5, 'H'),
+        flag(4, 'C'),
+        cpu.b,
+        cpu.c,
+        cpu.d,
+        cpu.e,
+        cpu.h,
+        cpu.l,
+        cpu.sp,
+        cpu.pc,
+        cpu.ime,
+        cpu.interrupt_flag,
+        cpu.interrupt_enabled,
+        cpu.banks.0,
+        cpu.banks.1,
+    )
 }

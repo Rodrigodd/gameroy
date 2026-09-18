@@ -9,8 +9,13 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
-gameroy-core = { path = "../core" }
+# Note: no dependency on gameroy-core. The front-end talks to the server only
+# through the protocol; if this list ever grows a `gameroy-core`, the client/server
+# boundary has rotted.
+gameroy-server = { path = "../gameroy-server" }
 slint = "1.18.0"
+log = "0.4"
+env_logger = "0.11"
 
 [build-dependencies]
 slint-build = "1.18.0"

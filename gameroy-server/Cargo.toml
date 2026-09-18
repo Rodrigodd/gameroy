@@ -1,0 +1,28 @@
+[package]
+name = "gameroy-server"
+description = "Emulation server for GameRoy: runs the Game Boy, speaks a message protocol, renders nothing."
+version.workspace = true
+edition = "2024"
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = ["emulation", "thread-driver"]
+# The emulator itself. Without this, only the `protocol` module is compiled, so a
+# front-end talking to a remote server does not link the emulator at all.
+emulation = ["dep:gameroy-core"]
+# In-process channel transport.
+transport-channel = ["dep:flume"]
+# The blocking std::thread run loop. Not usable on wasm.
+thread-driver = ["emulation", "transport-channel"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11"
+log = "0.4"
+gameroy-core = { path = "../core", optional = true }
+flume = { version = "0.11", default-features = false, optional = true }
+
+[dev-dependencies]
+serde_json = "1"

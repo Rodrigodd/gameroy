@@ -1,13 +1,25 @@
-import { Button, VerticalBox } from "std-widgets.slint";
-
 export component AppWindow inherits Window {
     callback key_pressed(KeyEvent);
     callback key_release(KeyEvent);
+    /// Toggle the debugger overlay (F12).
+    callback debug_toggle();
+    /// Single-step (F8). Only meaningful while the overlay is on.
+    callback debug_step();
+    /// Pause / resume (F9).
+    callback run_toggle();
+
     in property <image> screen;
+    /// Rendered by the server's DebugUpdate. Empty means the overlay is off.
+    in property <string> debug_text;
+    in property <string> status_text;
+    in property <string> window_title: "GameRoy";
+
+    title: root.window_title;
     min-width: 160px;
     min-height: 144px;
-    preferred-width: 160px;
-    preferred-height: 144px;
+    preferred-width: 480px;
+    preferred-height: 432px;
+    background: #101210;
 
     pure function is-joypad-key(text: string) -> bool {
         return text == Key.Return       // Start
@@ -23,7 +35,16 @@ export component AppWindow inherits Window {
     scope := FocusScope {
         key-pressed(event) => {
             if (root.is-joypad-key(event.text)) {
-                key_pressed(event);
+                root.key_pressed(event);
+                accept
+            } else if (event.text == Key.F12) {
+                root.debug_toggle();
+                accept
+            } else if (event.text == Key.F8) {
+                root.debug_step();
+                accept
+            } else if (event.text == Key.F9) {
+                root.run_toggle();
                 accept
             } else {
                 reject
@@ -32,7 +53,7 @@ export component AppWindow inherits Window {
 
         key-released(event) => {
             if (root.is-joypad-key(event.text)) {
-                key_release(event);
+                root.key_release(event);
                 accept
             } else {
                 reject
@@ -40,17 +61,55 @@ export component AppWindow inherits Window {
         }
     }
 
-    Image {
-        property <int> scale: max(1, min(parent.width / 160px, parent.height / 144px));
+    HorizontalLayout {
+        // The emulated screen, scaled by whole pixels only and centred.
+        Rectangle {
+            horizontal-stretch: 1;
+            Image {
+                property <int> scale: max(1, min(parent.width / 160px, parent.height / 144px));
 
-        preferred-width: 160px;
-        preferred-height: 144px;
+                // Pin the layout constraints to the native resolution: otherwise the
+                // Image's implicit preferred size follows its scaled width, which the
+                // window's layout info depends on -> binding loop.
+                preferred-width: 160px;
+                preferred-height: 144px;
 
-        width: 160px * scale;
-        height: 144px * scale;
+                width: 160px * scale;
+                height: 144px * scale;
 
-        source: parent.screen;
+                source: root.screen;
+                image-rendering: pixelated;
+            }
+        }
 
-        image-rendering: pixelated;
+        // Temporary debugger overlay. This exists to exercise the DebugUpdate path
+        // end to end before any real debugger UI is built; it is replaced later.
+        if root.debug_text != "": Rectangle {
+            width: 210px;
+            background: #161a16;
+            VerticalLayout {
+                padding: 10px;
+                spacing: 6px;
+                Text {
+                    text: "debug (F8 step, F9 run)";
+                    color: #6f8f6f;
+                    font-size: 11px;
+                }
+                Text {
+                    text: root.debug_text;
+                    color: #9fd39f;
+                    font-family: "monospace";
+                    font-size: 12px;
+                    vertical-alignment: top;
+                }
+                Rectangle { vertical-stretch: 1; }
+                Text {
+                    text: root.status_text;
+                    color: #6f8f6f;
+                    font-size: 11px;
+                    wrap: word-wrap;
+                }
+            }
+        }
     }
 }

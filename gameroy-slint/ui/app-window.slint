@@ -1,0 +1,56 @@
+import { Button, VerticalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    callback key_pressed(KeyEvent);
+    callback key_release(KeyEvent);
+    in property <image> screen;
+    min-width: 160px;
+    min-height: 144px;
+    preferred-width: 160px;
+    preferred-height: 144px;
+
+    pure function is-joypad-key(text: string) -> bool {
+        return text == Key.Return       // Start
+            || text == Key.Backspace    // Select
+            || text == Key.X            // A
+            || text == Key.Z            // B
+            || text == Key.UpArrow
+            || text == Key.DownArrow
+            || text == Key.LeftArrow
+            || text == Key.RightArrow;
+    }
+
+    scope := FocusScope {
+        key-pressed(event) => {
+            if (root.is-joypad-key(event.text)) {
+                key_pressed(event);
+                accept
+            } else {
+                reject
+            }
+        }
+
+        key-released(event) => {
+            if (root.is-joypad-key(event.text)) {
+                key_release(event);
+                accept
+            } else {
+                reject
+            }
+        }
+    }
+
+    Image {
+        property <int> scale: max(1, min(parent.width / 160px, parent.height / 144px));
+
+        preferred-width: 160px;
+        preferred-height: 144px;
+
+        width: 160px * scale;
+        height: 144px * scale;
+
+        source: parent.screen;
+
+        image-rendering: pixelated;
+    }
+}

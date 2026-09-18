@@ -1,4 +1,5 @@
-/target
+# ignore target/ at any depth, not just the workspace root
+target/
 dissasembly.txt
 roms
 bootrom

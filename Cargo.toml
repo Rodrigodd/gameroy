@@ -5,7 +5,7 @@
 #   - libretro/src/lib.rs:194 uses `retro_game_info.data/.size`, gone from rust-libretro-sys
 # Their sources are untouched on disk. To restore this manifest:
 #   git show master:Cargo.toml > Cargo.toml
-members = ["core", "jit"]
+members = ["core", "jit", "gameroy-slint"]
 resolver = "2"
 
 [workspace.package]

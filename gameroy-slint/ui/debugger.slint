@@ -1,5 +1,44 @@
 import { ScrollView, LineEdit } from "std-widgets.slint";
 
+// A small "+ addr" row for adding a breakpoint or a watch without the console.
+// The panel could only ever *remove* one before.
+component AddEntry inherits HorizontalLayout {
+    in property <string> placeholder;
+    callback add(string);
+
+    spacing: 4px;
+    field := LineEdit {
+        horizontal-stretch: 1;
+        font-size: 11px;
+        placeholder-text: root.placeholder;
+        accepted(text) => {
+            if (text != "") {
+                root.add(text);
+                self.text = "";
+            }
+        }
+    }
+    Rectangle {
+        width: 18px;
+        background: plus.has-hover ? #2a422a : #1a1f1a;
+        border-radius: 3px;
+        plus := TouchArea {
+            clicked => {
+                if (field.text != "") {
+                    root.add(field.text);
+                    field.text = "";
+                }
+            }
+        }
+        Text {
+            text: "+";
+            color: #9fd39f;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
 export struct BreakRow {
     address: int,
     address-text: string,
@@ -73,9 +112,22 @@ export component DebugPanel inherits Rectangle {
 
     callback remove-breakpoint(int);
     callback remove-watch(int);
+    callback add-breakpoint(string);
+    callback add-watch(string);
     callback submit-command(string);
+    /// Walks the submitted-command history. -1 is older, +1 is newer; the host
+    /// answers with the text to put in the field, or "" at the end.
+    pure callback history(int) -> string;
+
+    in-out property <length> console-height: 120px;
 
     background: #161a16;
+
+    // Jump to the bottom whenever a line is added, so a command's output is
+    // visible without scrolling for it.
+    changed console-lines => {
+        log.content-y = min(0px, log.visible-height - log.content-height);
+    }
 
     VerticalLayout {
         padding: 4px;
@@ -109,6 +161,10 @@ export component DebugPanel inherits Rectangle {
 
                 FoldView {
                     title: "breaks";
+                    AddEntry {
+                        placeholder: "x 0150";
+                        add(text) => { root.add-breakpoint(text); }
+                    }
                     if root.breakpoints.length == 0: Text {
                         text: "none";
                         color: #5f6f5f;
@@ -145,6 +201,10 @@ export component DebugPanel inherits Rectangle {
 
                 FoldView {
                     title: "watchs";
+                    AddEntry {
+                        placeholder: "ff44";
+                        add(text) => { root.add-watch(text); }
+                    }
                     if root.watches.length == 0: Text {
                         text: "none";
                         color: #5f6f5f;
@@ -181,16 +241,36 @@ export component DebugPanel inherits Rectangle {
             }
         }
 
+        // Splits the folded sections from the console.
+        Rectangle {
+            height: 5px;
+            background: split.has-hover || split.pressed ? #3a4a3a : #232a23;
+            split := TouchArea {
+                mouse-cursor: ns-resize;
+                moved => {
+                    // Dragging up grows the console, so the delta is negated.
+                    root.console-height = clamp(
+                        root.console-height - (self.mouse-y - self.pressed-y),
+                        60px,
+                        max(60px, root.height - 120px));
+                }
+            }
+        }
+
         // Console log and input.
         Rectangle {
-            height: 120px;
+            height: root.console-height;
             background: #101210;
             border-radius: 3px;
             VerticalLayout {
                 padding: 4px;
                 spacing: 2px;
-                ScrollView {
+                log := ScrollView {
                     vertical-stretch: 1;
+                    // `alignment: end` keeps the newest line against the bottom,
+                    // which is the auto-scroll: no viewport arithmetic needed
+                    // while the log is shorter than the box, and the explicit
+                    // scroll below covers it once it is longer.
                     VerticalLayout {
                         alignment: end;
                         for line in root.console-lines: Text {
@@ -202,11 +282,31 @@ export component DebugPanel inherits Rectangle {
                         }
                     }
                 }
+
+
                 input := LineEdit {
                     placeholder-text: "command (try: help)";
                     accepted(text) => {
                         root.submit-command(text);
                         self.text = "";
+                    }
+                    key-pressed(event) => {
+                        // Up/Down walk the history and Escape clears, as the old
+                        // prompt did. LineEdit has no history of its own, so the
+                        // host keeps it.
+                        if (event.text == Key.UpArrow) {
+                            self.text = root.history(-1);
+                            return accept;
+                        }
+                        if (event.text == Key.DownArrow) {
+                            self.text = root.history(1);
+                            return accept;
+                        }
+                        if (event.text == Key.Escape) {
+                            self.text = "";
+                            return accept;
+                        }
+                        return reject;
                     }
                 }
             }

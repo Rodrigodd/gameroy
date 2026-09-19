@@ -74,7 +74,10 @@ export component AppWindow inherits Window {
     callback ppu_viewer_toggled(bool);
     callback remove_breakpoint(int);
     callback remove_watch(int);
+    callback add_breakpoint(string);
+    callback add_watch(string);
     callback submit_command(string);
+    pure callback history(int) -> string;
 
     // --- library ---
     in property <[RomRow]> roms;
@@ -168,6 +171,26 @@ export component AppWindow inherits Window {
         pick-folder() => { root.pick_folder(); }
     }
 
+    // The status line. It was set from three places -- a ROM that would not
+    // read, the run state, a fatal server error -- and rendered nowhere, so all
+    // three were invisible outside the log.
+    if root.status_text != "": Rectangle {
+        y: parent.height - self.height;
+        height: 20px;
+        background: #1a1f1acc;
+        HorizontalLayout {
+            padding-left: 6px;
+            padding-right: 6px;
+            Text {
+                text: root.status_text;
+                color: #9fb39f;
+                font-size: 11px;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+
     if root.playing: EmulatorView {
         frame: root.screen;
         integer-scaling: root.integer_scaling;
@@ -199,7 +222,10 @@ export component AppWindow inherits Window {
         ppu-viewer-toggled(shown) => { root.ppu_viewer_toggled(shown); }
         remove-breakpoint(a) => { root.remove_breakpoint(a); }
         remove-watch(a) => { root.remove_watch(a); }
+        add-breakpoint(t) => { root.add_breakpoint(t); }
+        add-watch(t) => { root.add_watch(t); }
         submit-command(line) => { root.submit_command(line); }
+        history(d) => { return root.history(d); }
     }
 
     if root.menu_open && root.playing: PauseMenu {

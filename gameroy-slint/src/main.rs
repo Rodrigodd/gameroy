@@ -71,6 +71,13 @@ struct App {
     menu_open: bool,
     /// Console scrollback. Bounded so a long session cannot grow without limit.
     console: Vec<String>,
+    /// Submitted command lines, oldest first, for the Up/Down keys.
+    history: Vec<String>,
+    /// Where the Up/Down keys currently sit in `history`; `len()` means "at the
+    /// empty line below the newest entry".
+    history_pos: usize,
+    /// Where a pending `dump` should write, once the server sends the text.
+    pending_dump: Option<std::path::PathBuf>,
     /// The PPU viewer tab is open, so its images are worth generating.
     ppu_viewer: bool,
     /// The disassembly list's backing model, shared with Slint.
@@ -83,6 +90,10 @@ struct App {
     disasm_following_pc: bool,
     /// Identifies our disassembly requests; only the newest answer is applied.
     disasm_request: u64,
+    /// The session the front-end believes it is looking at. The server bumps this
+    /// on every reset, state load and ROM open, and anything older describes a
+    /// machine that no longer exists.
+    epoch: u64,
     breakpoints: Vec<u16>,
     /// Run mode to restore when the pause menu closes.
     mode_before_menu: RunMode,
@@ -178,11 +189,15 @@ fn main() -> Result<(), Box<dyn Error>> {
             mode: RunMode::Paused,
             menu_open: false,
             console: Vec::new(),
+            history: Vec::new(),
+            history_pos: 0,
+            pending_dump: None,
             ppu_viewer: false,
             disasm: Rc::new(DisasmModel::default()),
             disasm_focus_token: 0,
             disasm_following_pc: true,
             disasm_request: 0,
+            epoch: 0,
             breakpoints: Vec::new(),
             mode_before_menu: RunMode::Running,
             rom: cli_rom,
@@ -740,6 +755,49 @@ fn wire_callbacks(ui: &AppWindow) {
         let line = line.trim().to_string();
         // Echo the input so the log reads as a transcript.
         push_console(&ui, format!("> {line}"));
+        with_app(|app| {
+            if !line.is_empty() && app.history.last() != Some(&line) {
+                app.history.push(line.clone());
+            }
+            app.history_pos = app.history.len();
+        });
+        // `dump` and `save` write files, which is this side's job; everything
+        // else is the server's.
+        if let Some(rest) = line.strip_prefix("dump") {
+            dump_disassembly(&ui, rest.trim());
+            return;
+        }
+        with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
+    });
+
+    ui.on_history(|direction| {
+        with_app(|app| {
+            if app.history.is_empty() {
+                return SharedString::new();
+            }
+            if direction < 0 {
+                app.history_pos = app.history_pos.saturating_sub(1);
+            } else {
+                // Stepping past the newest entry lands on the empty line, which
+                // is how you get back to a blank prompt without clearing.
+                app.history_pos = (app.history_pos + 1).min(app.history.len());
+            }
+            app.history
+                .get(app.history_pos)
+                .map(SharedString::from)
+                .unwrap_or_default()
+        })
+        .unwrap_or_default()
+    });
+
+    ui.on_add_breakpoint(|text| {
+        // Reuse the console's parser rather than growing a second one here.
+        let line = format!("break {}", text.trim());
+        with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
+    });
+
+    ui.on_add_watch(|text| {
+        let line = format!("watch {}", text.trim());
         with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
     });
 
@@ -779,6 +837,28 @@ fn wire_callbacks(ui: &AppWindow) {
         if let Some(ui) = weak.upgrade() {
             close_menu(&ui);
         }
+    });
+}
+
+/// Asks the server for the whole listing, to be written once it arrives.
+///
+/// The path defaults beside the ROM, so a bare `dump` does something sensible.
+fn dump_disassembly(ui: &AppWindow, path: &str) {
+    let target = with_app(|app| {
+        if !path.is_empty() {
+            return Some(std::path::PathBuf::from(path));
+        }
+        Some(app.rom.as_ref()?.path().with_extension("asm"))
+    })
+    .flatten();
+
+    let Some(target) = target else {
+        push_console(ui, "error: no ROM open, and no path given".into());
+        return;
+    };
+    with_app(|app| {
+        app.pending_dump = Some(target);
+        app.send(Command::RequestDisassemblyDump);
     });
 }
 
@@ -890,6 +970,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
         }
         Event::RomOpened(opened) => {
+            with_app(|app| app.epoch = opened.epoch);
             let title = opened.header.title.trim().to_string();
             ui.set_window_title(if title.is_empty() {
                 "GameRoy".into()
@@ -927,12 +1008,16 @@ fn handle_event(ui: &AppWindow, event: Event) {
             });
         }
         Event::RunState {
+            epoch,
             mode,
             clock_count,
             reason,
             ..
         } => {
-            with_app(|app| app.mode = mode);
+            with_app(|app| {
+                app.epoch = epoch;
+                app.mode = mode;
+            });
             ui.set_status_text(format!("{mode:?} @ {clock_count}").into());
             // A breakpoint hit is worth saying out loud; the user asked for it.
             if let StopReason::Breakpoint { address, flags } = reason {
@@ -943,6 +1028,11 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
         }
         Event::DebugUpdate(update) => {
+            // A snapshot of a machine that has since been reset or reloaded is
+            // not stale data to show briefly; it is wrong data.
+            if with_app(|app| update.epoch < app.epoch).unwrap_or(false) {
+                return;
+            }
             // Only while stopped. A views change made mid-play also produces an
             // update, and painting a half-drawn frame over the live one would be
             // a visible flicker for no reason.
@@ -997,7 +1087,10 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 ui.set_watches(ModelRc::new(VecModel::from(rows)));
             }
         }
-        Event::Disassembly { id, window, .. } => {
+        Event::Disassembly { id, epoch, window } => {
+            if with_app(|app| epoch < app.epoch).unwrap_or(false) {
+                return;
+            }
             // Only the newest request's answer is interesting; an older one
             // describes a scroll position the user has already left.
             let current = with_app(|app| app.disasm_request).unwrap_or(0);
@@ -1027,6 +1120,17 @@ fn handle_event(ui: &AppWindow, event: Event) {
         }
         Event::WatchesChanged { .. } => {
             // The values arrive with the next DebugUpdate; nothing to do here.
+        }
+        Event::DisassemblyDump { text } => {
+            let target = with_app(|app| app.pending_dump.take()).flatten();
+            let Some(target) = target else { return };
+            match std::fs::write(&target, text) {
+                Ok(()) => push_console(ui, format!("wrote {}", target.display())),
+                Err(e) => push_console(
+                    ui,
+                    format!("error: could not write {}: {e}", target.display()),
+                ),
+            }
         }
         Event::DebugConsole { ok, text } => {
             push_console(ui, if ok { text } else { format!("error: {text}") });

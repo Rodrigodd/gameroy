@@ -1,4 +1,20 @@
 import { GameScreen } from "game-screen.slint";
+
+// A draggable vertical split. Slint has no splitter widget, so this is the whole
+// of one: a thin strip that reports how far it has been dragged. The height comes
+// from the enclosing layout, and the parent owns the size being adjusted, because
+// only it knows what to clamp against.
+component Divider inherits Rectangle {
+    callback dragged(length);
+
+    width: 5px;
+    background: touch.has-hover || touch.pressed ? #3a4a3a : #232a23;
+
+    touch := TouchArea {
+        mouse-cursor: ew-resize;
+        moved => { root.dragged(self.mouse-x - self.pressed-x); }
+    }
+}
 import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
 import { DisassemblyView, DisasmRow } from "disassembly.slint";
 import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
@@ -35,6 +51,8 @@ export component EmulatorView inherits HorizontalLayout {
     in property <string> ppu-background-fifo;
     in property <string> ppu-sprite-fifo;
     in-out property <length> panel-width: 260px;
+    in-out property <length> centre-width: 330px;
+    in-out property <length> console-height: 120px;
 
     callback disasm-jump-to(int, int, int);
     callback disasm-toggle-breakpoint(int);
@@ -42,7 +60,10 @@ export component EmulatorView inherits HorizontalLayout {
     callback ppu-viewer-toggled(bool);
     callback remove-breakpoint(int);
     callback remove-watch(int);
+    callback add-breakpoint(string);
+    callback add-watch(string);
     callback submit-command(string);
+    pure callback history(int) -> string;
 
     GameScreen {
         horizontal-stretch: 1;
@@ -50,9 +71,17 @@ export component EmulatorView inherits HorizontalLayout {
         integer-scaling: root.integer-scaling;
     }
 
+    // Splits the game screen from the debugger.
+    if root.debugging: Divider {
+        // Dragging right widens the screen, which narrows the centre column.
+        dragged(d) => {
+            root.centre-width = clamp(root.centre-width - d, 160px, root.width - 320px);
+        }
+    }
+
     // Centre column: disassembly or PPU viewer, as tabs.
     if root.debugging: VerticalLayout {
-        width: 330px;
+        width: root.centre-width;
         spacing: 0px;
 
         HorizontalLayout {
@@ -101,25 +130,16 @@ export component EmulatorView inherits HorizontalLayout {
         }
     }
 
-    // Draggable divider. Slint has no splitter widget, so this is the whole of
-    // it: a thin strip that adjusts the panel width as it is dragged.
-    if root.debugging: Rectangle {
-        width: 5px;
-        background: divider.has-hover || divider.pressed ? #3a4a3a : #232a23;
-        divider := TouchArea {
-            mouse-cursor: ew-resize;
-            moved => {
-                // Dragging left widens the panel, so the delta is negated.
-                root.panel-width = clamp(
-                    root.panel-width - (self.mouse-x - self.pressed-x),
-                    160px,
-                    root.width - 160px);
-            }
+    if root.debugging: Divider {
+        // Dragging left widens the panel, so the delta is negated.
+        dragged(d) => {
+            root.panel-width = clamp(root.panel-width - d, 160px, root.width - 320px);
         }
     }
 
     if root.debugging: DebugPanel {
         width: root.panel-width;
+        console-height <=> root.console-height;
         cpu-text: root.cpu-text;
         ppu-text: root.ppu-text;
         breakpoints: root.breakpoints;
@@ -127,6 +147,9 @@ export component EmulatorView inherits HorizontalLayout {
         console-lines: root.console-lines;
         remove-breakpoint(a) => { root.remove-breakpoint(a); }
         remove-watch(a) => { root.remove-watch(a); }
+        add-breakpoint(t) => { root.add-breakpoint(t); }
+        add-watch(t) => { root.add-watch(t); }
         submit-command(line) => { root.submit-command(line); }
+        history(d) => { return root.history(d); }
     }
 }

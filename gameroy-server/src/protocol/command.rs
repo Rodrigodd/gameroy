@@ -68,6 +68,12 @@ pub enum Command {
     ExecuteDebugCommand {
         line: String,
     },
+    /// Asks for the whole ROM's disassembly as text, answered with
+    /// [`super::Event::DisassemblyDump`].
+    ///
+    /// The old `dump <path>` wrote the file itself. The server has no
+    /// filesystem, so it hands over the text and the front-end writes it.
+    RequestDisassemblyDump,
     SetDebugViews(DebugViews),
     /// Asks for an arbitrary window of the disassembly, answered with
     /// [`super::Event::Disassembly`].

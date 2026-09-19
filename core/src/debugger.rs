@@ -129,7 +129,7 @@ impl Debugger {
             "break" => {
                 if args.len() == 2 {
                     if let "interrupt" = args[1] {
-                        self.interrupt_breakpoint = true;
+                        self.set_interrupt_breakpoint(true);
                         return Ok(());
                     }
                 }
@@ -302,6 +302,23 @@ impl Debugger {
         if (flags & break_flags::JUMP) != 0 {
             self.jump_breakpoints.insert(address);
         }
+        let mut take = self.callback.take();
+        if let Some(x) = take.as_mut() {
+            x(self, DebuggerEvent::BreakpointsUpdate)
+        }
+        self.callback = take;
+    }
+
+    /// Whether execution stops on any enabled-and-flagged interrupt.
+    pub fn interrupt_breakpoint(&self) -> bool {
+        self.interrupt_breakpoint
+    }
+
+    /// Sets the interrupt breakpoint, notifying the callback as the address
+    /// breakpoints do -- a front-end showing the breakpoint set has to be told
+    /// about this one too.
+    pub fn set_interrupt_breakpoint(&mut self, enabled: bool) {
+        self.interrupt_breakpoint = enabled;
         let mut take = self.callback.take();
         if let Some(x) = take.as_mut() {
             x(self, DebuggerEvent::BreakpointsUpdate)

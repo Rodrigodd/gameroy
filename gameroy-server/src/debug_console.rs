@@ -69,6 +69,23 @@ pub fn execute(debugger: &mut Debugger, line: &str) -> Result<CommandOutcome, St
         ["runto", addr] => {
             parse_u16(addr).map(|a| CommandOutcome::action(ConsoleAction::RunToAddress(a)))
         }
+        // Not an address: the core breaks on any enabled-and-flagged interrupt.
+        ["break", "interrupt"] => {
+            debugger.set_interrupt_breakpoint(true);
+            Ok(CommandOutcome {
+                message: Some("breaking on interrupts".into()),
+                breakpoints_changed: true,
+                ..CommandOutcome::default()
+            })
+        }
+        ["unbreak", "interrupt"] => {
+            debugger.set_interrupt_breakpoint(false);
+            Ok(CommandOutcome {
+                message: Some("no longer breaking on interrupts".into()),
+                breakpoints_changed: true,
+                ..CommandOutcome::default()
+            })
+        }
         ["break", flags, addr] => {
             let flags = parse_flags(flags)?;
             let address = parse_u16(addr)?;
@@ -120,7 +137,11 @@ run for <clocks>      run for N clocks
 run until <clock>     run until the clock reaches N
 runto <addr>          run until PC reaches addr (hex)
 break <flags> <addr>  break on addr; flags from w r x j
+break interrupt       break on any enabled interrupt
 unbreak <addr>        remove a breakpoint
+unbreak interrupt     stop breaking on interrupts
+dump <path>           write the whole disassembly to a file
+save <dir>            dump the machine's sub-states into a folder
 watch <addr>          show the value at addr
 unwatch <addr>        stop watching addr
 reset                 reset the Game Boy
@@ -196,6 +217,25 @@ mod tests {
 
         execute(&mut d, "unbreak ff45").unwrap();
         assert!(d.breakpoints().get(&0xff45).is_none());
+    }
+
+    #[test]
+    fn breaks_on_interrupts() {
+        let mut d = debugger();
+        assert!(
+            execute(&mut d, "break interrupt")
+                .unwrap()
+                .breakpoints_changed
+        );
+        assert!(d.interrupt_breakpoint());
+        assert!(
+            execute(&mut d, "unbreak interrupt")
+                .unwrap()
+                .breakpoints_changed
+        );
+        assert!(!d.interrupt_breakpoint());
+        // The address form must still parse; `interrupt` is not an address.
+        assert!(execute(&mut d, "break x 0150").is_ok());
     }
 
     #[test]

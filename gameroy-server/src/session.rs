@@ -399,6 +399,19 @@ impl Session {
                 self.views = views;
                 self.send_debug_update(t);
             }
+            Command::RequestDisassemblyDump => {
+                let text = match self.gb.as_ref() {
+                    Some(gb) => {
+                        let mut out = String::new();
+                        // `Trace::fmt` walks the whole trace; fine for an
+                        // explicit export, useless for the interactive view.
+                        let _ = gb.trace.borrow().fmt(gb, &mut out);
+                        out
+                    }
+                    None => String::new(),
+                };
+                let _ = t.send(Event::DisassemblyDump { text });
+            }
             Command::RequestDisassembly { id, anchor, count } => {
                 self.send_disassembly(id, anchor, count, t)
             }

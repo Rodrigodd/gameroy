@@ -44,6 +44,10 @@ pub enum Event {
     WatchesChanged {
         watches: Vec<u16>,
     },
+    /// The whole disassembly, for the console's `dump` to write to a file.
+    DisassemblyDump {
+        text: String,
+    },
     /// Output for the debugger console.
     DebugConsole {
         ok: bool,

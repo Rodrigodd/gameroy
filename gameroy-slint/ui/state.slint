@@ -70,3 +70,45 @@ export global DebuggerState {
     /// answers with the text to put in the field, or "" at the end.
     pure callback history(int) -> string;
 }
+
+export struct DisasmRow {
+    address-text: string,
+    label: string,
+    mnemonic: string,
+    operand-prefix: string,
+    /// The clickable run. Empty when the instruction does not jump.
+    link-text: string,
+    operand-suffix: string,
+    /// Row index of the jump destination, -1 when this row has no link. Valid
+    /// only while the trace has not grown; the host falls back to the address.
+    jump-index: int,
+    jump-bank: int,
+    jump-address: int,
+    /// CPU address, for the breakpoint gutter.
+    address: int,
+    bank: int,
+    in-bank: int,
+    is-current: bool,
+    has-breakpoint: bool,
+    /// False for a row the client has not fetched yet.
+    loaded: bool,
+}
+
+/// The disassembly listing.
+///
+/// `rows` is a model over the *whole* trace, handed over once and mutated in
+/// place afterwards; only the visible rows are ever asked for, and
+/// `visible-range-changed` is how the host learns it must fetch more.
+export global DisasmState {
+    in property <[DisasmRow]> rows;
+    in property <int> total;
+    /// Row to bring into view, applied when `focus-token` changes rather than
+    /// when this does: stepping inside a one-instruction loop leaves the index
+    /// the same and must still re-centre.
+    in property <int> focus-index: -1;
+    in property <int> focus-token;
+
+    callback jump-to(index: int, bank: int, address: int);
+    callback toggle-breakpoint(address: int);
+    callback visible-range-changed(first: int, count: int);
+}

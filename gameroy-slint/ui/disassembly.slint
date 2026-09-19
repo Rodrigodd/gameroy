@@ -1,27 +1,8 @@
 import { ListView } from "std-widgets.slint";
+import { DisasmState, DisasmRow } from "state.slint";
 
-export struct DisasmRow {
-    address-text: string,
-    label: string,
-    mnemonic: string,
-    operand-prefix: string,
-    /// The clickable run. Empty when the instruction does not jump.
-    link-text: string,
-    operand-suffix: string,
-    /// Row index of the jump destination, -1 when this row has no link. Valid
-    /// only while the trace has not grown; the host falls back to the address.
-    jump-index: int,
-    jump-bank: int,
-    jump-address: int,
-    /// CPU address, for the breakpoint gutter.
-    address: int,
-    bank: int,
-    in-bank: int,
-    is-current: bool,
-    has-breakpoint: bool,
-    /// False for a row the client has not fetched yet.
-    loaded: bool,
-}
+// Re-exported so this view can be previewed on its own with --load-data.
+export { DisasmState, DisasmRow }
 
 // The disassembly listing.
 //
@@ -34,18 +15,9 @@ export struct DisasmRow {
 // property is deliberately left unbound: a binding would be replaced the first
 // time the user turned the wheel, and programmatic scrolling would stop working.
 export component DisassemblyView inherits Rectangle {
-    in property <[DisasmRow]> rows;
-    in property <int> total;
-
-    /// Row to bring into view, applied when `focus-token` changes rather than
-    /// when this does: stepping inside a one-instruction loop leaves the index
-    /// the same and must still re-centre.
-    in property <int> focus-index: -1;
-    in property <int> focus-token;
-
-    callback jump-to(index: int, bank: int, address: int);
-    callback toggle-breakpoint(address: int);
-    callback visible-range-changed(first: int, count: int);
+    // A `changed` handler can only watch a property of its own element, so the
+    // re-centring tracks the global through a local mirror.
+    private property <int> focus-token: DisasmState.focus-token;
 
     property <length> row-h: 16px;
     /// Leave the row this far from an edge before re-centring, as the old
@@ -55,7 +27,7 @@ export component DisassemblyView inherits Rectangle {
     background: #131613;
 
     public function scroll-to-index(i: int) {
-        if (i < 0 || i >= root.total) {
+        if (i < 0 || i >= DisasmState.total) {
             return;
         }
         // content-y is negative as the view moves down.
@@ -65,18 +37,18 @@ export component DisassemblyView inherits Rectangle {
             list.content-y = -clamp(
                 i * root.row-h - list.visible-height / 2,
                 0px,
-                max(0px, root.total * root.row-h - list.visible-height));
+                max(0px, DisasmState.total * root.row-h - list.visible-height));
         }
     }
 
-    changed focus-token => { root.scroll-to-index(root.focus-index); }
+    changed focus-token => { root.scroll-to-index(DisasmState.focus-index); }
 
     VerticalLayout {
         padding: 4px;
         spacing: 2px;
 
         Text {
-            text: root.total + " instructions traced";
+            text: DisasmState.total + " instructions traced";
             color: #6f8f6f;
             font-size: 11px;
         }
@@ -85,12 +57,12 @@ export component DisassemblyView inherits Rectangle {
             vertical-stretch: 1;
 
             changed content-y => {
-                root.visible-range-changed(
+                DisasmState.visible-range-changed(
                     max(0, floor(-self.content-y / root.row-h)),
                     ceil(self.visible-height / root.row-h) + 1);
             }
 
-            for row in root.rows: Rectangle {
+            for row in DisasmState.rows: Rectangle {
                 height: root.row-h;
                 background: row.is-current ? #2f3f2f
                     : (rowhover.has-hover ? #1a1f1a : transparent);
@@ -105,7 +77,7 @@ export component DisassemblyView inherits Rectangle {
                         width: 14px;
                         gutter := TouchArea {
                             mouse-cursor: pointer;
-                            clicked => { root.toggle-breakpoint(row.address); }
+                            clicked => { DisasmState.toggle-breakpoint(row.address); }
                         }
                         Text {
                             text: row.has-breakpoint ? "\u{25cf}" : (gutter.has-hover ? "\u{25cb}" : "");
@@ -157,7 +129,7 @@ export component DisassemblyView inherits Rectangle {
                         link := TouchArea {
                             mouse-cursor: pointer;
                             clicked => {
-                                root.jump-to(row.jump-index, row.jump-bank, row.jump-address);
+                                DisasmState.jump-to(row.jump-index, row.jump-bank, row.jump-address);
                             }
                         }
                         link-label := Text {

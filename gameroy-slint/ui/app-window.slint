@@ -1,10 +1,10 @@
 import { Library } from "library.slint";
-import { EmulatorView, DisasmRow, SpriteCell } from "emulator.slint";
+import { EmulatorView, SpriteCell } from "emulator.slint";
 import { PauseMenu } from "pause-menu.slint";
-import { LibraryState, DebuggerState, RomRow, BreakRow, WatchRow } from "state.slint";
+import { LibraryState, DebuggerState, DisasmState, RomRow, BreakRow, WatchRow, DisasmRow } from "state.slint";
 
 // A global is only reachable from Rust if the compiled entry file exports it.
-export { LibraryState, DebuggerState }
+export { LibraryState, DebuggerState, DisasmState }
 export { RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell }
 
 // The root is deliberately thin: focus and key handling, and a choice between
@@ -54,13 +54,6 @@ export component AppWindow inherits Window {
     in property <image> screen;
     in property <bool> integer_scaling;
     in property <bool> debugging;
-    in property <[DisasmRow]> disasm_rows;
-    in property <int> disasm_total;
-    in property <int> disasm_focus_index;
-    in property <int> disasm_focus_token;
-    callback disasm_jump_to(int, int, int);
-    callback disasm_toggle_breakpoint(int);
-    callback disasm_visible_range_changed(int, int);
     in-out property <bool> show_ppu_viewer;
     in property <image> ppu_tiles;
     in property <image> ppu_background;
@@ -130,13 +123,6 @@ export component AppWindow inherits Window {
         frame: root.screen;
         integer-scaling: root.integer_scaling;
         debugging: root.debugging;
-        disasm-rows: root.disasm_rows;
-        disasm-total: root.disasm_total;
-        disasm-focus-index: root.disasm_focus_index;
-        disasm-focus-token: root.disasm_focus_token;
-        disasm-jump-to(i, b, a) => { root.disasm_jump_to(i, b, a); }
-        disasm-toggle-breakpoint(a) => { root.disasm_toggle_breakpoint(a); }
-        disasm-visible-range-changed(f, c) => { root.disasm_visible_range_changed(f, c); }
         show-ppu-viewer <=> root.show_ppu_viewer;
         ppu-tiles: root.ppu_tiles;
         ppu-background: root.ppu_background;

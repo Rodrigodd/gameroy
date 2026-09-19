@@ -135,6 +135,11 @@ fn debugger_state(ui: &AppWindow) -> DebuggerState<'_> {
     ui.global::<DebuggerState>()
 }
 
+/// The disassembly listing's half of the UI contract.
+fn disasm_state(ui: &AppWindow) -> DisasmState<'_> {
+    ui.global::<DisasmState>()
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -229,7 +234,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Handed over once: the model is mutated in place afterwards and notifies
     // Slint itself, so the rows are never republished as a fresh VecModel.
     if let Some(model) = with_app(|app| app.disasm.clone()) {
-        ui.set_disasm_rows(ModelRc::from(model));
+        disasm_state(&ui).set_rows(ModelRc::from(model));
     }
 
     wire_callbacks(&ui);
@@ -512,7 +517,7 @@ fn exit_to_library(ui: &AppWindow) {
     ui.set_menu_open(false);
     ui.set_playing(false);
     ui.set_debugging(false);
-    ui.set_disasm_total(0);
+    disasm_state(ui).set_total(0);
     refresh_library(ui);
 }
 
@@ -720,7 +725,7 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_disasm_jump_to(move |index, bank, address| {
+    disasm_state(ui).on_jump_to(move |index, bank, address| {
         let Some(ui) = weak.upgrade() else { return };
         with_app(|app| {
             // Following a link means the user has chosen where to look.
@@ -743,7 +748,7 @@ fn wire_callbacks(ui: &AppWindow) {
         }
     });
 
-    ui.on_disasm_toggle_breakpoint(|address| {
+    disasm_state(ui).on_toggle_breakpoint(|address| {
         let Ok(address) = u16::try_from(address) else {
             return;
         };
@@ -761,7 +766,7 @@ fn wire_callbacks(ui: &AppWindow) {
         });
     });
 
-    ui.on_disasm_visible_range_changed(|first, count| {
+    disasm_state(ui).on_visible_range_changed(|first, count| {
         with_app(|app| {
             let (first, count) = (first.max(0) as u32, count.max(0) as u32);
             let Some((start, want)) =
@@ -954,13 +959,13 @@ const BREAK_EXECUTE: u8 = 1 << 2;
 /// not change when stepping inside a one-instruction loop, and that still has to
 /// re-centre.
 fn focus_disassembly(ui: &AppWindow, index: i32) {
-    ui.set_disasm_focus_index(index);
+    disasm_state(ui).set_focus_index(index);
     let token = with_app(|app| {
         app.disasm_focus_token = app.disasm_focus_token.wrapping_add(1);
         app.disasm_focus_token
     })
     .unwrap_or_default();
-    ui.set_disasm_focus_token(token);
+    disasm_state(ui).set_focus_token(token);
 }
 
 /// Slint has no `[u16]`, so the atlas indices cross as `i32`.
@@ -1151,7 +1156,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
             if let Some(disasm) = update.disassembly.as_ref() {
                 with_app(|app| app.disasm.set_window(disasm));
-                ui.set_disasm_total(disasm.total as i32);
+                disasm_state(ui).set_total(disasm.total as i32);
                 // Re-centre on the PC only while the user is following it.
                 if let Some(pc_index) = disasm.pc_index {
                     let following = with_app(|app| app.disasm_following_pc).unwrap_or(false);
@@ -1183,7 +1188,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 return;
             }
             with_app(|app| app.disasm.set_window(&window));
-            ui.set_disasm_total(window.total as i32);
+            disasm_state(ui).set_total(window.total as i32);
             if let Some(focus) = window.focus_index {
                 focus_disassembly(ui, focus as i32);
             }

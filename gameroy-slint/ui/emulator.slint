@@ -16,10 +16,10 @@ component Divider inherits Rectangle {
     }
 }
 import { DebugPanel } from "debugger.slint";
-import { DisassemblyView, DisasmRow } from "disassembly.slint";
+import { DisassemblyView } from "disassembly.slint";
 import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
 
-export { DisasmRow, SpriteCell }
+export { SpriteCell }
 
 // The whole playing screen: the game, and the debugger beside it when open.
 export component EmulatorView inherits HorizontalLayout {
@@ -27,10 +27,6 @@ export component EmulatorView inherits HorizontalLayout {
     in property <bool> integer-scaling;
 
     in property <bool> debugging;
-    in property <[DisasmRow]> disasm-rows;
-    in property <int> disasm-total;
-    in property <int> disasm-focus-index;
-    in property <int> disasm-focus-token;
 
     /// Which centre tab is showing: false = disassembly, true = PPU viewer.
     in-out property <bool> show-ppu-viewer;
@@ -48,9 +44,6 @@ export component EmulatorView inherits HorizontalLayout {
     in-out property <length> panel-width: 260px;
     in-out property <length> centre-width: 330px;
 
-    callback disasm-jump-to(int, int, int);
-    callback disasm-toggle-breakpoint(int);
-    callback disasm-visible-range-changed(int, int);
     callback ppu-viewer-toggled(bool);
 
     GameScreen {
@@ -94,15 +87,7 @@ export component EmulatorView inherits HorizontalLayout {
             }
         }
 
-        if !root.show-ppu-viewer: DisassemblyView {
-            rows: root.disasm-rows;
-            total: root.disasm-total;
-            focus-index: root.disasm-focus-index;
-            focus-token: root.disasm-focus-token;
-            jump-to(i, b, a) => { root.disasm-jump-to(i, b, a); }
-            toggle-breakpoint(a) => { root.disasm-toggle-breakpoint(a); }
-            visible-range-changed(f, c) => { root.disasm-visible-range-changed(f, c); }
-        }
+        if !root.show-ppu-viewer: DisassemblyView { }
         if root.show-ppu-viewer: PpuViewer {
             tiles: root.ppu-tiles;
             background-map: root.ppu-background;

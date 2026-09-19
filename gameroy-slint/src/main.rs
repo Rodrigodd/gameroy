@@ -657,78 +657,6 @@ fn wire_callbacks(ui: &AppWindow) {
         });
     });
 
-    // --- shortcuts, driven by KeyBinding in the .slint file ---
-
-    ui.on_save_state(|| {
-        with_app(|app| app.send(Command::RequestSaveState));
-    });
-
-    ui.on_load_state(load_state);
-
-    // Stepping is a statement about where you want to be looking, so it re-arms
-    // the follow-the-PC behaviour a scroll or a jump turned off.
-    ui.on_debug_step(|| {
-        with_app(|app| {
-            app.disasm_following_pc = true;
-            app.send(Command::Step);
-        });
-    });
-
-    ui.on_debug_step_back(|| {
-        with_app(|app| {
-            app.disasm_following_pc = true;
-            app.send(Command::StepBack);
-        });
-    });
-
-    ui.on_toggle_run(|| {
-        with_app(|app| {
-            let mode = match app.mode {
-                // Continuing from the debugger must honour breakpoints;
-                // continuing while just playing must not pay for checking them.
-                RunMode::Paused if app.debugging => RunMode::RunningWithBreakpoints,
-                RunMode::Paused => RunMode::Running,
-                _ => RunMode::Paused,
-            };
-            app.send(Command::SetRunMode(mode));
-        });
-    });
-
-    let weak = ui.as_weak();
-    ui.on_toggle_debugger(move || {
-        let Some(ui) = weak.upgrade() else { return };
-        let debugging = with_app(|app| {
-            app.debugging = !app.debugging;
-            app.send(Command::SetDebugViews(debug_views(app)));
-            app.send(Command::SetRunMode(if app.debugging {
-                RunMode::Paused
-            } else {
-                RunMode::Running
-            }));
-            app.debugging
-        })
-        .unwrap_or(false);
-        ui.set_debugging(debugging);
-    });
-
-    let weak = ui.as_weak();
-    ui.on_toggle_menu(move || {
-        let Some(ui) = weak.upgrade() else { return };
-        let open = with_app(|app| {
-            if app.menu_open {
-                app.menu_open = false;
-                app.send(Command::SetRunMode(app.mode_before_menu));
-            } else {
-                app.menu_open = true;
-                app.mode_before_menu = app.mode;
-                app.send(Command::SetRunMode(RunMode::Paused));
-            }
-            app.menu_open
-        })
-        .unwrap_or(false);
-        ui.set_menu_open(open);
-    });
-
     let weak = ui.as_weak();
     disasm_state(ui).on_jump_to(move |index, bank, address| {
         let Some(ui) = weak.upgrade() else { return };
@@ -863,7 +791,7 @@ fn wire_callbacks(ui: &AppWindow) {
 
     let weak = ui.as_weak();
     ui.on_menu_save_state(move || {
-        with_app(|app| app.send(Command::RequestSaveState));
+        save_state();
         if let Some(ui) = weak.upgrade() {
             close_menu(&ui);
         }
@@ -936,6 +864,13 @@ fn dump_disassembly(ui: &AppWindow, path: &str) {
     });
 }
 
+// --- shortcut actions ------------------------------------------------------
+//
+// Plain functions rather than callbacks on the window. No `.slint` file ever
+// referenced them: Rust registered each one and Rust alone invoked it, so the
+// dispatch went out to the UI and straight back for nothing. The pause menu
+// reaches the same behaviour by calling these.
+
 /// Runs a shortcut, exactly as its old `KeyBinding` did.
 ///
 /// Gated on there being a game, which is what `enabled: root.playing` used to do
@@ -945,14 +880,78 @@ fn run_shortcut(ui: &AppWindow, action: Shortcut) {
         return;
     }
     match action {
-        Shortcut::SaveState => ui.invoke_save_state(),
-        Shortcut::LoadState => ui.invoke_load_state(),
-        Shortcut::Menu => ui.invoke_toggle_menu(),
-        Shortcut::ToggleDebugger => ui.invoke_toggle_debugger(),
-        Shortcut::Step => ui.invoke_debug_step(),
-        Shortcut::StepBack => ui.invoke_debug_step_back(),
-        Shortcut::ToggleRun => ui.invoke_toggle_run(),
+        Shortcut::SaveState => save_state(),
+        Shortcut::LoadState => load_state(),
+        Shortcut::Menu => toggle_menu(ui),
+        Shortcut::ToggleDebugger => toggle_debugger(ui),
+        Shortcut::Step => debug_step(),
+        Shortcut::StepBack => debug_step_back(),
+        Shortcut::ToggleRun => toggle_run(),
     }
+}
+
+fn save_state() {
+    with_app(|app| app.send(Command::RequestSaveState));
+}
+
+/// Stepping is a statement about where you want to be looking, so it re-arms the
+/// follow-the-PC behaviour a scroll or a jump turned off.
+fn debug_step() {
+    with_app(|app| {
+        app.disasm_following_pc = true;
+        app.send(Command::Step);
+    });
+}
+
+fn debug_step_back() {
+    with_app(|app| {
+        app.disasm_following_pc = true;
+        app.send(Command::StepBack);
+    });
+}
+
+fn toggle_run() {
+    with_app(|app| {
+        let mode = match app.mode {
+            // Continuing from the debugger must honour breakpoints; continuing
+            // while just playing must not pay for checking them.
+            RunMode::Paused if app.debugging => RunMode::RunningWithBreakpoints,
+            RunMode::Paused => RunMode::Running,
+            _ => RunMode::Paused,
+        };
+        app.send(Command::SetRunMode(mode));
+    });
+}
+
+fn toggle_debugger(ui: &AppWindow) {
+    let debugging = with_app(|app| {
+        app.debugging = !app.debugging;
+        app.send(Command::SetDebugViews(debug_views(app)));
+        app.send(Command::SetRunMode(if app.debugging {
+            RunMode::Paused
+        } else {
+            RunMode::Running
+        }));
+        app.debugging
+    })
+    .unwrap_or(false);
+    ui.set_debugging(debugging);
+}
+
+fn toggle_menu(ui: &AppWindow) {
+    let open = with_app(|app| {
+        if app.menu_open {
+            app.menu_open = false;
+            app.send(Command::SetRunMode(app.mode_before_menu));
+        } else {
+            app.menu_open = true;
+            app.mode_before_menu = app.mode;
+            app.send(Command::SetRunMode(RunMode::Paused));
+        }
+        app.menu_open
+    })
+    .unwrap_or(false);
+    ui.set_menu_open(open);
 }
 
 /// Mirrors `gameroy::debugger::break_flags::EXECUTE`.

@@ -18,7 +18,8 @@ export component EmulatorView inherits HorizontalLayout {
     in property <[string]> console-lines;
     in property <[DisasmRow]> disasm-rows;
     in property <int> disasm-total;
-    in property <int> disasm-start;
+    in property <int> disasm-focus-index;
+    in property <int> disasm-focus-token;
 
     /// Which centre tab is showing: false = disassembly, true = PPU viewer.
     in-out property <bool> show-ppu-viewer;
@@ -35,6 +36,9 @@ export component EmulatorView inherits HorizontalLayout {
     in property <string> ppu-sprite-fifo;
     in-out property <length> panel-width: 260px;
 
+    callback disasm-jump-to(int, int, int);
+    callback disasm-toggle-breakpoint(int);
+    callback disasm-visible-range-changed(int, int);
     callback ppu-viewer-toggled(bool);
     callback remove-breakpoint(int);
     callback remove-watch(int);
@@ -76,7 +80,11 @@ export component EmulatorView inherits HorizontalLayout {
         if !root.show-ppu-viewer: DisassemblyView {
             rows: root.disasm-rows;
             total: root.disasm-total;
-            start-index: root.disasm-start;
+            focus-index: root.disasm-focus-index;
+            focus-token: root.disasm-focus-token;
+            jump-to(i, b, a) => { root.disasm-jump-to(i, b, a); }
+            toggle-breakpoint(a) => { root.disasm-toggle-breakpoint(a); }
+            visible-range-changed(f, c) => { root.disasm-visible-range-changed(f, c); }
         }
         if root.show-ppu-viewer: PpuViewer {
             tiles: root.ppu-tiles;

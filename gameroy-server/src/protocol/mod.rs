@@ -13,8 +13,8 @@ pub mod transport;
 pub use buffer::{AudioChunk, FrameBuffer, FramePacket};
 pub use command::{Command, EmulatorConfig, OpenRom, RequestId, RunMode, SessionEpoch};
 pub use debug::{
-    Address, CpuState, DebugUpdate, DebugViews, DisasmLine, DisassemblyWindow, ImeState,
-    IndexedImage, PartialScreen, PpuState, PpuViewer, SpriteInfo, WatchValue,
+    Address, CpuState, DebugUpdate, DebugViews, DisasmAnchor, DisasmLine, DisassemblyWindow,
+    ImeState, IndexedImage, PartialScreen, PpuState, PpuViewer, SpriteInfo, WatchValue,
 };
 pub use event::{CartridgeInfo, Event, RomOpened, ServerError, StopReason};
 

@@ -128,10 +128,25 @@ pub struct WatchValue {
 }
 
 /// A bank-qualified ROM address, mirroring `gameroy::disassembler::Address`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct Address {
     pub bank: u16,
     pub address: u16,
+}
+
+/// Where a requested disassembly window sits within the trace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DisasmAnchor {
+    /// The window *starts* here. What a scrolling list asks for.
+    Index(u32),
+    /// The window is centred on this address, or on the first row after it. What
+    /// a clicked jump target asks for, and what a client re-anchors on after the
+    /// trace grew and shifted the indices under it.
+    Address(Address),
+    /// Centred on the PC.
+    Pc,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,20 +159,39 @@ pub struct DisassemblyWindow {
     pub lines: Vec<DisasmLine>,
     /// Index of the current PC within the whole trace, when it is traced at all.
     pub pc_index: Option<u32>,
+    /// The row the anchor resolved to, which is the one to scroll into view.
+    pub focus_index: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// One rendered instruction, split into the parts a front-end colours separately.
+///
+/// Rendering happens server-side because it needs the trace's label and jump
+/// maps; shipping raw opcodes instead would make every alternative front-end
+/// reimplement a Game Boy disassembler. It arrives pre-split rather than as one
+/// string with offsets because the operand has to be a separate element to be
+/// clickable at all -- text has no per-run hit testing.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisasmLine {
     pub address: Address,
-    /// The CPU-visible address, which is what the user reads.
+    /// The CPU-visible address, which is what the user reads and what
+    /// `break`/`runto` accept.
     pub pc: u16,
     /// Label attached to this address, if the trace named one.
     pub label: Option<String>,
-    /// Mnemonic and operands, already rendered with jump targets resolved to label
-    /// names. Rendering happens server-side because it needs the trace's label and
-    /// jump maps -- shipping raw opcodes instead would make every alternative
-    /// front-end reimplement a Game Boy disassembler.
-    pub text: String,
+    /// The opcode's name, e.g. `jp`.
+    pub mnemonic: String,
+    /// Operand text before the jump target, e.g. `nz, `. Holds the whole operand
+    /// when there is no jump.
+    pub operand_prefix: String,
+    /// The clickable run: the destination's label, or `$xxxx` when the trace
+    /// named none. Empty when this instruction does not jump.
+    pub link_text: String,
+    pub operand_suffix: String,
+    /// Where the link goes. The stable anchor -- it survives the trace growing.
+    pub jump_target: Option<Address>,
+    /// The destination's row index, valid only for this window's `generation`.
+    /// Lets the client scroll without a round trip while it still matches.
+    pub jump_index: Option<u32>,
     pub is_current: bool,
 }
 

@@ -7,7 +7,8 @@ use std::time::{Duration, Instant};
 
 use gameroy_server::protocol::transport::{ClientTransport, channel};
 use gameroy_server::protocol::{
-    Command, DebugViews, EmulatorConfig, Event, OpenRom, RunMode, SCREEN_PIXELS, StopReason,
+    Command, DebugViews, DisasmAnchor, DisassemblyWindow, EmulatorConfig, Event, OpenRom, RunMode,
+    SCREEN_PIXELS, StopReason,
 };
 
 /// The test ROM is gitignored, so skip rather than fail when it is absent.
@@ -593,7 +594,10 @@ fn disassembles_a_window_around_the_pc() {
     assert!(disasm.total as usize > disasm.lines.len());
 
     for line in &disasm.lines {
-        assert!(!line.text.is_empty(), "every line must render some text");
+        assert!(
+            !line.mnemonic.is_empty(),
+            "every line must render an opcode name"
+        );
     }
 
     // The PC row must be marked, and must agree with the CPU snapshot.
@@ -1154,4 +1158,177 @@ fn ppu_viewer_resolves_map_tiles_into_the_atlas() {
     // The FIFOs hold 2-bit pixels, never more than the fetcher's 8 per side.
     assert!(view.background_fifo.len() <= 16);
     assert!(view.sprite_fifo.len() <= 16);
+}
+
+/// Opens a ROM paused, subscribes to a disassembly window, and returns the first
+/// one pushed. Nothing has executed, so what comes back is purely the seeding.
+fn opened_paused_with_disassembly(h: &Harness, rom: Vec<u8>, lines: u16) -> DisassemblyWindow {
+    open(h, rom, true);
+    h.wait_for("the initial pause", |ev| {
+        matches!(
+            ev,
+            Event::RunState {
+                mode: RunMode::Paused,
+                ..
+            }
+        )
+        .then_some(())
+    });
+    h.send(Command::SetDebugViews(DebugViews {
+        disassembly_lines: lines,
+        ..Default::default()
+    }));
+    h.wait_for("a disassembly window", |ev| match ev {
+        Event::DebugUpdate(u) => u.disassembly,
+        _ => None,
+    })
+}
+
+/// Without seeding, nothing is disassembled until it has executed, so the panel
+/// opens empty. The old front-end seeded the entry point and the RST vectors on
+/// load; the server did not.
+#[test]
+fn the_trace_is_seeded_when_the_rom_opens() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    let window = opened_paused_with_disassembly(&h, rom, 256);
+
+    assert!(
+        window.total > 0,
+        "nothing was traced before the first instruction ran"
+    );
+    let entry = window
+        .lines
+        .iter()
+        .find(|l| l.pc == 0x100)
+        .expect("the entry point should be in the first window");
+    assert_eq!(entry.label.as_deref(), Some("entry point"));
+}
+
+/// The whole feature in one round trip: take a jump the listing shows, ask for
+/// its destination, and check we land on the row the link named.
+#[test]
+fn a_jump_link_points_at_the_row_it_names() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    let window = opened_paused_with_disassembly(&h, rom, 512);
+
+    let jump = window
+        .lines
+        .iter()
+        .find(|l| l.jump_target.is_some() && !l.link_text.is_empty())
+        .expect("seeding the entry point traces at least one jump")
+        .clone();
+    let target = jump.jump_target.unwrap();
+
+    h.send(Command::RequestDisassembly {
+        id: 7,
+        anchor: DisasmAnchor::Address(target),
+        count: 32,
+    });
+    let answer = h.wait_for("the requested window", |ev| match ev {
+        Event::Disassembly { id: 7, window, .. } => Some(window),
+        _ => None,
+    });
+
+    let focus = answer.focus_index.expect("the target resolves to a row");
+    let row = &answer.lines[(focus - answer.start_index) as usize];
+    assert_eq!(
+        row.address, target,
+        "the focused row is not the jump's destination"
+    );
+    // The link text is the destination's label, when it has one.
+    if let Some(label) = row.label.as_deref() {
+        assert_eq!(label, jump.link_text);
+    }
+}
+
+/// Every jump index must address a real row, or clicking a link scrolls nowhere.
+#[test]
+fn jump_indices_stay_inside_the_trace() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    let window = opened_paused_with_disassembly(&h, rom, 512);
+
+    let mut links = 0;
+    for line in &window.lines {
+        if let Some(index) = line.jump_index {
+            links += 1;
+            assert!(
+                index < window.total,
+                "{} -> row {index} is past the end of a {}-row trace",
+                line.pc,
+                window.total
+            );
+        }
+        // A link must have somewhere to go and something to show.
+        assert_eq!(
+            line.jump_target.is_some(),
+            !line.link_text.is_empty(),
+            "line at {:04x} has a target but no text, or the reverse",
+            line.pc
+        );
+    }
+    assert!(links > 0, "no jumps at all in {} rows", window.lines.len());
+}
+
+/// An index anchor starts the window where it was asked to, which is what a
+/// scrollbar needs.
+#[test]
+fn a_window_can_be_requested_by_index() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    opened_paused_with_disassembly(&h, rom, 64);
+
+    h.send(Command::RequestDisassembly {
+        id: 1,
+        anchor: DisasmAnchor::Index(10),
+        count: 8,
+    });
+    let window = h.wait_for("the requested window", |ev| match ev {
+        Event::Disassembly { id: 1, window, .. } => Some(window),
+        _ => None,
+    });
+    assert_eq!(window.start_index, 10);
+    assert_eq!(window.lines.len(), 8);
+    assert_eq!(window.focus_index, Some(10));
+}
+
+/// A client asking for more rows than exist must not be handed a message the size
+/// of the whole trace.
+#[test]
+fn a_disassembly_request_is_clamped() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    opened_paused_with_disassembly(&h, rom, 64);
+
+    h.send(Command::RequestDisassembly {
+        id: 2,
+        anchor: DisasmAnchor::Index(0),
+        count: u16::MAX,
+    });
+    let window = h.wait_for("the requested window", |ev| match ev {
+        Event::Disassembly { id: 2, window, .. } => Some(window),
+        _ => None,
+    });
+    assert!(
+        window.lines.len() <= 512,
+        "got {} rows, which is not clamped",
+        window.lines.len()
+    );
 }

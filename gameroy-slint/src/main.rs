@@ -3,6 +3,7 @@
 
 mod audio;
 mod config;
+mod disasm;
 mod format;
 mod input;
 mod library;
@@ -13,14 +14,16 @@ mod thumbs;
 
 use std::cell::RefCell;
 use std::error::Error;
+use std::rc::Rc;
 
 use gameroy_server::protocol::{
-    Command, DebugViews, EmulatorConfig, Event, OpenRom, RunMode, StopReason,
+    Address, Command, DebugViews, DisasmAnchor, EmulatorConfig, Event, OpenRom, RunMode, StopReason,
 };
 use slint::{ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use audio::{AudioEngineSink, AudioSink};
 use config::Config;
+use disasm::DisasmModel;
 use format::{
     PALETTE, format_break_flags, format_cpu, format_ppu, indexed_to_image, partial_screen_image,
     sprite_cells,
@@ -70,6 +73,17 @@ struct App {
     console: Vec<String>,
     /// The PPU viewer tab is open, so its images are worth generating.
     ppu_viewer: bool,
+    /// The disassembly list's backing model, shared with Slint.
+    disasm: Rc<DisasmModel>,
+    /// Bumped to make the view re-centre; see `focus-token` in disassembly.slint.
+    disasm_focus_token: i32,
+    /// The view follows the PC on each pause. Cleared when the user scrolls or
+    /// follows a link, so browsing is not yanked away by the next step, and
+    /// re-armed by stepping.
+    disasm_following_pc: bool,
+    /// Identifies our disassembly requests; only the newest answer is applied.
+    disasm_request: u64,
+    breakpoints: Vec<u16>,
     /// Run mode to restore when the pause menu closes.
     mode_before_menu: RunMode,
     /// The server announces itself with Ready; a ROM chosen before that (from the
@@ -165,6 +179,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             menu_open: false,
             console: Vec::new(),
             ppu_viewer: false,
+            disasm: Rc::new(DisasmModel::default()),
+            disasm_focus_token: 0,
+            disasm_following_pc: true,
+            disasm_request: 0,
+            breakpoints: Vec::new(),
             mode_before_menu: RunMode::Running,
             rom: cli_rom,
             server_ready: false,
@@ -172,6 +191,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     ui.set_integer_scaling(with_app(|app| app.settings.only_integer_scaling).unwrap_or(false));
+
+    // Handed over once: the model is mutated in place afterwards and notifies
+    // Slint itself, so the rows are never republished as a fresh VecModel.
+    if let Some(model) = with_app(|app| app.disasm.clone()) {
+        ui.set_disasm_rows(ModelRc::from(model));
+    }
 
     wire_callbacks(&ui);
     wire_file_drop(&ui);
@@ -430,6 +455,9 @@ fn open_pending_rom(ui: &AppWindow) {
 /// Returns to the library, pausing whatever was running.
 fn exit_to_library(ui: &AppWindow) {
     with_app(|app| {
+        // The listing describes a machine that is about to go away.
+        app.disasm.clear();
+        app.breakpoints.clear();
         app.send(Command::RequestPersistRam);
         app.send(Command::SetRunMode(RunMode::Paused));
         app.menu_open = false;
@@ -438,6 +466,7 @@ fn exit_to_library(ui: &AppWindow) {
     ui.set_menu_open(false);
     ui.set_playing(false);
     ui.set_debugging(false);
+    ui.set_disasm_total(0);
     refresh_library(ui);
 }
 
@@ -561,12 +590,20 @@ fn wire_callbacks(ui: &AppWindow) {
 
     ui.on_load_state(load_state);
 
+    // Stepping is a statement about where you want to be looking, so it re-arms
+    // the follow-the-PC behaviour a scroll or a jump turned off.
     ui.on_debug_step(|| {
-        with_app(|app| app.send(Command::Step));
+        with_app(|app| {
+            app.disasm_following_pc = true;
+            app.send(Command::Step);
+        });
     });
 
     ui.on_debug_step_back(|| {
-        with_app(|app| app.send(Command::StepBack));
+        with_app(|app| {
+            app.disasm_following_pc = true;
+            app.send(Command::StepBack);
+        });
     });
 
     ui.on_toggle_run(|| {
@@ -615,6 +652,65 @@ fn wire_callbacks(ui: &AppWindow) {
         })
         .unwrap_or(false);
         ui.set_menu_open(open);
+    });
+
+    let weak = ui.as_weak();
+    ui.on_disasm_jump_to(move |index, bank, address| {
+        let Some(ui) = weak.upgrade() else { return };
+        with_app(|app| {
+            // Following a link means the user has chosen where to look.
+            app.disasm_following_pc = false;
+            app.disasm_request += 1;
+            // The index is only valid while the trace has not grown under us, so
+            // the address is what gets sent; the index just lets the view move
+            // now rather than after the round trip.
+            app.send(Command::RequestDisassembly {
+                id: app.disasm_request,
+                anchor: DisasmAnchor::Address(Address {
+                    bank: bank.max(0) as u16,
+                    address: address.max(0) as u16,
+                }),
+                count: disasm::CHUNK,
+            });
+        });
+        if index >= 0 {
+            focus_disassembly(&ui, index);
+        }
+    });
+
+    ui.on_disasm_toggle_breakpoint(|address| {
+        let Ok(address) = u16::try_from(address) else {
+            return;
+        };
+        with_app(|app| {
+            if app.breakpoints.contains(&address) {
+                app.send(Command::RemoveBreakpoint { address });
+            } else {
+                // Execute: the only flag that means anything for a row in the
+                // listing, which is an instruction rather than a data address.
+                app.send(Command::AddBreakpoint {
+                    address,
+                    flags: BREAK_EXECUTE,
+                });
+            }
+        });
+    });
+
+    ui.on_disasm_visible_range_changed(|first, count| {
+        with_app(|app| {
+            let (first, count) = (first.max(0) as u32, count.max(0) as u32);
+            let Some((start, want)) =
+                disasm::window_needed(first, count, app.disasm.cached(), app.disasm.total())
+            else {
+                return;
+            };
+            app.disasm_request += 1;
+            app.send(Command::RequestDisassembly {
+                id: app.disasm_request,
+                anchor: DisasmAnchor::Index(start),
+                count: want,
+            });
+        });
     });
 
     ui.on_ppu_viewer_toggled(|shown| {
@@ -686,7 +782,24 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 }
 
-/// Slint has no `[u16]`, so the atlas indices cross as `i32`.
+/// Mirrors `gameroy::debugger::break_flags::EXECUTE`.
+const BREAK_EXECUTE: u8 = 1 << 2;
+
+/// Scrolls the listing to `index`.
+///
+/// The token is what actually triggers the scroll, because the index alone does
+/// not change when stepping inside a one-instruction loop, and that still has to
+/// re-centre.
+fn focus_disassembly(ui: &AppWindow, index: i32) {
+    ui.set_disasm_focus_index(index);
+    let token = with_app(|app| {
+        app.disasm_focus_token = app.disasm_focus_token.wrapping_add(1);
+        app.disasm_focus_token
+    })
+    .unwrap_or_default();
+    ui.set_disasm_focus_token(token);
+}
+
 fn tile_numbers(tiles: &[u16]) -> ModelRc<i32> {
     ModelRc::new(VecModel::from(
         tiles.iter().map(|&t| t as i32).collect::<Vec<_>>(),
@@ -862,19 +975,15 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 ui.set_ppu_sprite_fifo(format::format_fifo("obj", &view.sprite_fifo).into());
             }
             if let Some(disasm) = update.disassembly.as_ref() {
-                let rows: Vec<DisasmRow> = disasm
-                    .lines
-                    .iter()
-                    .map(|l| DisasmRow {
-                        address_text: format!("{:04x}", l.pc).into(),
-                        label: l.label.clone().unwrap_or_default().into(),
-                        text: l.text.clone().into(),
-                        is_current: l.is_current,
-                    })
-                    .collect();
-                ui.set_disasm_rows(ModelRc::new(VecModel::from(rows)));
+                with_app(|app| app.disasm.set_window(disasm));
                 ui.set_disasm_total(disasm.total as i32);
-                ui.set_disasm_start(disasm.start_index as i32);
+                // Re-centre on the PC only while the user is following it.
+                if let Some(pc_index) = disasm.pc_index {
+                    let following = with_app(|app| app.disasm_following_pc).unwrap_or(false);
+                    if following {
+                        focus_disassembly(ui, pc_index as i32);
+                    }
+                }
             }
             if let Some(watches) = update.watches.as_ref() {
                 let rows: Vec<WatchRow> = watches
@@ -888,6 +997,19 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 ui.set_watches(ModelRc::new(VecModel::from(rows)));
             }
         }
+        Event::Disassembly { id, window, .. } => {
+            // Only the newest request's answer is interesting; an older one
+            // describes a scroll position the user has already left.
+            let current = with_app(|app| app.disasm_request).unwrap_or(0);
+            if id != current {
+                return;
+            }
+            with_app(|app| app.disasm.set_window(&window));
+            ui.set_disasm_total(window.total as i32);
+            if let Some(focus) = window.focus_index {
+                focus_disassembly(ui, focus as i32);
+            }
+        }
         Event::BreakpointsChanged { breakpoints } => {
             let rows: Vec<BreakRow> = breakpoints
                 .iter()
@@ -898,6 +1020,10 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 })
                 .collect();
             ui.set_breakpoints(ModelRc::new(VecModel::from(rows)));
+            with_app(|app| {
+                app.breakpoints = breakpoints.iter().map(|&(a, _)| a).collect();
+                app.disasm.set_breakpoints(app.breakpoints.clone());
+            });
         }
         Event::WatchesChanged { .. } => {
             // The values arrive with the next DebugUpdate; nothing to do here.

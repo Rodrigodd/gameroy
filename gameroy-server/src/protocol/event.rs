@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::{AudioChunk, DebugUpdate, FramePacket, RunMode, SessionEpoch};
+use super::{
+    AudioChunk, DebugUpdate, DisassemblyWindow, FramePacket, RequestId, RunMode, SessionEpoch,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -26,6 +28,14 @@ pub enum Event {
         frame: u32,
     },
     DebugUpdate(Box<DebugUpdate>),
+    /// Answer to [`super::Command::RequestDisassembly`]. Carries the request id
+    /// because a scroll and a jump click can be in flight at once, and the epoch
+    /// because a window describing a machine that has since been reset is junk.
+    Disassembly {
+        id: RequestId,
+        epoch: SessionEpoch,
+        window: Box<DisassemblyWindow>,
+    },
     /// The breakpoint set changed. Sent whole rather than as a delta: it is tiny,
     /// and a whole set cannot desynchronize the way a stream of deltas can.
     BreakpointsChanged {

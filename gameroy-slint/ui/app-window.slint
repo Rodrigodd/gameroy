@@ -54,7 +54,11 @@ export component AppWindow inherits Window {
     in property <[string]> console_lines;
     in property <[DisasmRow]> disasm_rows;
     in property <int> disasm_total;
-    in property <int> disasm_start;
+    in property <int> disasm_focus_index;
+    in property <int> disasm_focus_token;
+    callback disasm_jump_to(int, int, int);
+    callback disasm_toggle_breakpoint(int);
+    callback disasm_visible_range_changed(int, int);
     in-out property <bool> show_ppu_viewer;
     in property <image> ppu_tiles;
     in property <image> ppu_background;
@@ -175,7 +179,11 @@ export component AppWindow inherits Window {
         console-lines: root.console_lines;
         disasm-rows: root.disasm_rows;
         disasm-total: root.disasm_total;
-        disasm-start: root.disasm_start;
+        disasm-focus-index: root.disasm_focus_index;
+        disasm-focus-token: root.disasm_focus_token;
+        disasm-jump-to(i, b, a) => { root.disasm_jump_to(i, b, a); }
+        disasm-toggle-breakpoint(a) => { root.disasm_toggle_breakpoint(a); }
+        disasm-visible-range-changed(f, c) => { root.disasm_visible_range_changed(f, c); }
         show-ppu-viewer <=> root.show_ppu_viewer;
         ppu-tiles: root.ppu_tiles;
         ppu-background: root.ppu_background;

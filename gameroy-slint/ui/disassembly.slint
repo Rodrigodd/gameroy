@@ -1,74 +1,189 @@
-import { ScrollView } from "std-widgets.slint";
+import { ListView } from "std-widgets.slint";
 
 export struct DisasmRow {
     address-text: string,
     label: string,
-    text: string,
+    mnemonic: string,
+    operand-prefix: string,
+    /// The clickable run. Empty when the instruction does not jump.
+    link-text: string,
+    operand-suffix: string,
+    /// Row index of the jump destination, -1 when this row has no link. Valid
+    /// only while the trace has not grown; the host falls back to the address.
+    jump-index: int,
+    jump-bank: int,
+    jump-address: int,
+    /// CPU address, for the breakpoint gutter.
+    address: int,
+    bank: int,
+    in-bank: int,
     is-current: bool,
+    has-breakpoint: bool,
+    /// False for a row the client has not fetched yet.
+    loaded: bool,
 }
 
-// The disassembly view.
+// The disassembly listing.
 //
-// Note there is no scroll-to-index here, and none is needed: the server sends a
-// window already centred on the PC, so following it is just rendering what
-// arrived. Slint's ListView has no programmatic scroll, so doing this client-side
-// would have meant computing viewport-y by hand against a fixed row height.
+// `rows` is a model over the *whole* trace; only the visible rows are ever asked
+// for, so this scrolls through tens of thousands of instructions while the host
+// keeps a few hundred in hand. `visible-range-changed` is how the host knows when
+// to fetch more.
+//
+// The view is scrolled by writing `content-y` from `scroll-to-index`. That
+// property is deliberately left unbound: a binding would be replaced the first
+// time the user turned the wheel, and programmatic scrolling would stop working.
 export component DisassemblyView inherits Rectangle {
     in property <[DisasmRow]> rows;
     in property <int> total;
-    in property <int> start-index;
+
+    /// Row to bring into view, applied when `focus-token` changes rather than
+    /// when this does: stepping inside a one-instruction loop leaves the index
+    /// the same and must still re-centre.
+    in property <int> focus-index: -1;
+    in property <int> focus-token;
+
+    callback jump-to(index: int, bank: int, address: int);
+    callback toggle-breakpoint(address: int);
+    callback visible-range-changed(first: int, count: int);
+
+    property <length> row-h: 16px;
+    /// Leave the row this far from an edge before re-centring, as the old
+    /// viewer's focus margin did. Without it every step nudges the view.
+    property <length> focus-margin: 30px;
 
     background: #131613;
+
+    public function scroll-to-index(i: int) {
+        if (i < 0 || i >= root.total) {
+            return;
+        }
+        // content-y is negative as the view moves down.
+        if (i * root.row-h + list.content-y < root.focus-margin
+            || i * root.row-h + list.content-y + root.row-h
+               > list.visible-height - root.focus-margin) {
+            list.content-y = -clamp(
+                i * root.row-h - list.visible-height / 2,
+                0px,
+                max(0px, root.total * root.row-h - list.visible-height));
+        }
+    }
+
+    changed focus-token => { root.scroll-to-index(root.focus-index); }
 
     VerticalLayout {
         padding: 4px;
         spacing: 2px;
 
         Text {
-            text: "disassembly  " + root.start-index + "-" + (root.start-index + root.rows.length)
-                + " of " + root.total;
+            text: root.total + " instructions traced";
             color: #6f8f6f;
             font-size: 11px;
         }
 
-        ScrollView {
+        list := ListView {
             vertical-stretch: 1;
-            VerticalLayout {
-                alignment: start;
-                for row in root.rows: Rectangle {
-                    height: 16px;
-                    // The row the CPU is on, highlighted as the old viewer did.
-                    background: row.is-current ? #2f3f2f : transparent;
-                    HorizontalLayout {
-                        spacing: 8px;
-                        padding-left: 4px;
-                        Text {
-                            width: 44px;
-                            text: row.address-text;
-                            color: row.is-current ? #cfe3cf : #6f8f6f;
-                            font-family: "monospace";
-                            font-size: 12px;
-                            vertical-alignment: center;
+
+            changed content-y => {
+                root.visible-range-changed(
+                    max(0, floor(-self.content-y / root.row-h)),
+                    ceil(self.visible-height / root.row-h) + 1);
+            }
+
+            for row in root.rows: Rectangle {
+                height: root.row-h;
+                background: row.is-current ? #2f3f2f
+                    : (rowhover.has-hover ? #1a1f1a : transparent);
+                rowhover := TouchArea { }
+
+                HorizontalLayout {
+                    spacing: 0px;
+
+                    // Breakpoint gutter. Clicking toggles one on this address,
+                    // which is the only way to add a breakpoint without typing.
+                    Rectangle {
+                        width: 14px;
+                        gutter := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.toggle-breakpoint(row.address); }
                         }
                         Text {
-                            width: 90px;
-                            text: row.label;
-                            color: #5f9fb2;
-                            font-family: "monospace";
-                            font-size: 12px;
+                            text: row.has-breakpoint ? "\u{25cf}" : (gutter.has-hover ? "\u{25cb}" : "");
+                            color: #c05050;
+                            font-size: 11px;
+                            horizontal-alignment: center;
                             vertical-alignment: center;
-                            overflow: elide;
-                        }
-                        Text {
-                            horizontal-stretch: 1;
-                            text: row.text;
-                            color: row.is-current ? #ffffff : #b9d3b9;
-                            font-family: "monospace";
-                            font-size: 12px;
-                            vertical-alignment: center;
-                            overflow: elide;
                         }
                     }
+
+                    Text {
+                        width: 40px;
+                        text: row.address-text;
+                        color: #6f7e67;
+                        font-family: "monospace";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        width: 88px;
+                        text: row.label;
+                        color: #2e8bb2;
+                        font-family: "monospace";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: 38px;
+                        text: row.loaded ? row.mnemonic : "...";
+                        color: row.loaded ? #ff6a6a : #3a463a;
+                        font-family: "monospace";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.operand-prefix;
+                        color: #d79314;
+                        font-family: "monospace";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+
+                    // The clickable operand is its own element because text has
+                    // no per-run hit testing: a span inside a Text cannot be
+                    // hovered or clicked on its own.
+                    if row.link-text != "": Rectangle {
+                        width: link-label.preferred-width;
+                        link := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => {
+                                root.jump-to(row.jump-index, row.jump-bank, row.jump-address);
+                            }
+                        }
+                        link-label := Text {
+                            text: row.link-text;
+                            color: link.has-hover ? #7fd4f5 : #2e8bb2;
+                            font-family: "monospace";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                        // Text has no `underline` property in Slint 1.18, so the
+                        // hover rule is a rule.
+                        if link.has-hover: Rectangle {
+                            y: parent.height - 3px;
+                            height: 1px;
+                            background: #7fd4f5;
+                        }
+                    }
+
+                    Text {
+                        text: row.operand-suffix;
+                        color: #d79314;
+                        font-family: "monospace";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { horizontal-stretch: 1; }
                 }
             }
         }

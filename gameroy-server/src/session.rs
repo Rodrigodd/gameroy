@@ -13,9 +13,9 @@ use gameroy::{
 use crate::debug_console::{self, ConsoleAction};
 use crate::disasm::DisasmIndex;
 use crate::protocol::{
-    AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, EmulatorConfig, Event,
-    FrameBuffer, FramePacket, ImeState, IndexedImage, OpenRom, PartialScreen, PpuState, RomOpened,
-    RunMode, ServerError, SessionEpoch, StopReason, WatchValue,
+    AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, DisasmAnchor,
+    EmulatorConfig, Event, FrameBuffer, FramePacket, ImeState, IndexedImage, OpenRom,
+    PartialScreen, PpuState, RomOpened, RunMode, ServerError, SessionEpoch, StopReason, WatchValue,
     transport::{ServerTransport, TransportError},
 };
 use crate::timeline::{Timeline, timestamp};
@@ -109,6 +109,11 @@ pub struct Session {
 /// How often to look at cartridge RAM while running. The old front-end only wrote
 /// on a clean exit, so a crash lost the save; this bounds the loss instead.
 const RAM_CHECK_INTERVAL: Duration = Duration::from_secs(5);
+
+/// Ceiling on rows in one disassembly message, for both the subscription and an
+/// explicit request. Neither was bounded before, so a client asking for 65535
+/// rows got a 65535-row message.
+const MAX_DISASM_LINES: u16 = 512;
 
 impl Session {
     pub fn new(config: EmulatorConfig) -> Self {
@@ -394,6 +399,9 @@ impl Session {
                 self.views = views;
                 self.send_debug_update(t);
             }
+            Command::RequestDisassembly { id, anchor, count } => {
+                self.send_disassembly(id, anchor, count, t)
+            }
             Command::ReturnFrame(buf) => self.recycle(buf.0),
             Command::SetRewinding(on) => {
                 self.vblank.lock().unwrap().timeline.rewinding = on;
@@ -499,8 +507,27 @@ impl Session {
             }
         }
 
+        // Seed the listing, as the old front-end did on load. Without this
+        // nothing is disassembled until it has executed, so the debugger opens on
+        // an empty panel.
+        {
+            let banks = gb.cartridge.curr_bank();
+            let mut trace = gb.trace.borrow_mut();
+            trace.trace_starting_at(&gb, banks, 0x100, Some("entry point".into()));
+            for (address, name) in [
+                (0x40, "RST_0x40"),
+                (0x48, "RST_0x48"),
+                (0x50, "RST_0x50"),
+                (0x58, "RST_0x58"),
+                (0x60, "RST_0x60"),
+            ] {
+                trace.trace_starting_at(&gb, banks, address, Some(name.into()));
+            }
+        }
+
         self.config = open.config;
         self.frame_limit = self.config.frame_limit;
+        self.disasm.reset();
         self.gb = Some(gb);
         self.epoch += 1;
         self.cancel_step_back();
@@ -595,10 +622,11 @@ impl Session {
 
         let disassembly = if self.views.disassembly_lines > 0 {
             self.disasm.sync(gb);
-            Some(
-                self.disasm
-                    .window_around_pc(gb, self.views.disassembly_lines),
-            )
+            Some(self.disasm.window(
+                gb,
+                DisasmAnchor::Pc,
+                self.views.disassembly_lines.min(MAX_DISASM_LINES),
+            ))
         } else {
             None
         };
@@ -664,6 +692,53 @@ impl Session {
             }),
         };
         let _ = t.send(Event::DebugUpdate(Box::new(update)));
+    }
+
+    /// Answers a client's disassembly cursor.
+    fn send_disassembly(
+        &mut self,
+        id: crate::protocol::RequestId,
+        anchor: DisasmAnchor,
+        count: u16,
+        t: &mut impl ServerTransport,
+    ) {
+        let Some(gb) = self.gb.as_mut() else {
+            let _ = t.send(Event::Disassembly {
+                id,
+                epoch: self.epoch,
+                window: Box::default(),
+            });
+            return;
+        };
+
+        // Following a jump into code nothing has executed yet used to show an
+        // empty window; tracing it first is what makes a link to an untouched
+        // routine work at all. This grows the trace, which bumps the generation,
+        // and clients already treat that as "cached rows are stale".
+        if let DisasmAnchor::Address(addr) = anchor {
+            let core_addr = gameroy::disassembler::Address {
+                bank: addr.bank,
+                address: addr.address,
+            };
+            if !gb.trace.borrow().is_already_traced(core_addr) {
+                let banks = gb.cartridge.curr_bank();
+                let pc = if addr.bank == 0 {
+                    addr.address
+                } else {
+                    addr.address + 0x4000
+                };
+                let mut trace = gb.trace.borrow_mut();
+                trace.trace_starting_at(gb, banks, pc, None);
+            }
+        }
+
+        self.disasm.sync(gb);
+        let window = self.disasm.window(gb, anchor, count.min(MAX_DISASM_LINES));
+        let _ = t.send(Event::Disassembly {
+            id,
+            epoch: self.epoch,
+            window: Box::new(window),
+        });
     }
 
     /// Executes exactly one instruction, then reports the new state.

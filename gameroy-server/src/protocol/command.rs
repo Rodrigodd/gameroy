@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use super::{FrameBuffer, debug::DebugViews};
+use super::FrameBuffer;
+use super::debug::{DebugViews, DisasmAnchor};
 
 pub type RequestId = u64;
 
@@ -68,6 +69,19 @@ pub enum Command {
         line: String,
     },
     SetDebugViews(DebugViews),
+    /// Asks for an arbitrary window of the disassembly, answered with
+    /// [`super::Event::Disassembly`].
+    ///
+    /// The PC-centred window in [`DebugViews::disassembly_lines`] is a
+    /// subscription pushed on every pause; this is the cursor a scrollbar and a
+    /// clicked jump target drive.
+    RequestDisassembly {
+        id: RequestId,
+        anchor: DisasmAnchor,
+        /// Rows wanted. Clamped server-side, so a client cannot ask for a message
+        /// the size of the whole trace.
+        count: u16,
+    },
 
     // --- flow control ---
     /// Hands a frame buffer back for reuse. A no-op over a serialized transport.

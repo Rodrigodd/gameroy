@@ -130,6 +130,11 @@ fn library_state(ui: &AppWindow) -> LibraryState<'_> {
     ui.global::<LibraryState>()
 }
 
+/// The debugger panel's half of the UI contract.
+fn debugger_state(ui: &AppWindow) -> DebuggerState<'_> {
+    ui.global::<DebuggerState>()
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -782,20 +787,20 @@ fn wire_callbacks(ui: &AppWindow) {
         });
     });
 
-    ui.on_remove_breakpoint(|address| {
+    debugger_state(ui).on_remove_breakpoint(|address| {
         if let Ok(address) = u16::try_from(address) {
             with_app(|app| app.send(Command::RemoveBreakpoint { address }));
         }
     });
 
-    ui.on_remove_watch(|address| {
+    debugger_state(ui).on_remove_watch(|address| {
         if let Ok(address) = u16::try_from(address) {
             with_app(|app| app.send(Command::RemoveWatch { address }));
         }
     });
 
     let weak = ui.as_weak();
-    ui.on_submit_command(move |line| {
+    debugger_state(ui).on_submit_command(move |line| {
         let Some(ui) = weak.upgrade() else { return };
         let line = line.trim().to_string();
         // Echo the input so the log reads as a transcript.
@@ -815,7 +820,7 @@ fn wire_callbacks(ui: &AppWindow) {
         with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
     });
 
-    ui.on_history(|direction| {
+    debugger_state(ui).on_history(|direction| {
         with_app(|app| {
             if app.history.is_empty() {
                 return SharedString::new();
@@ -835,13 +840,13 @@ fn wire_callbacks(ui: &AppWindow) {
         .unwrap_or_default()
     });
 
-    ui.on_add_breakpoint(|text| {
+    debugger_state(ui).on_add_breakpoint(|text| {
         // Reuse the console's parser rather than growing a second one here.
         let line = format!("break {}", text.trim());
         with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
     });
 
-    ui.on_add_watch(|text| {
+    debugger_state(ui).on_add_watch(|text| {
         let line = format!("watch {}", text.trim());
         with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
     });
@@ -1121,10 +1126,11 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 ui.set_screen(partial_screen_image(screen));
             }
             if let Some(cpu) = update.cpu.as_ref() {
-                ui.set_cpu_text(format_cpu(cpu, update.clock_count, update.frame).into());
+                debugger_state(ui)
+                    .set_cpu_text(format_cpu(cpu, update.clock_count, update.frame).into());
             }
             if let Some(ppu) = update.ppu.as_ref() {
-                ui.set_ppu_text(format_ppu(ppu).into());
+                debugger_state(ui).set_ppu_text(format_ppu(ppu).into());
             }
             if let Some(view) = update.ppu_viewer.as_ref() {
                 ui.set_ppu_tiles(indexed_to_image(&view.tiles));
@@ -1163,7 +1169,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                         value_text: format!("{:02x}", w.value).into(),
                     })
                     .collect();
-                ui.set_watches(ModelRc::new(VecModel::from(rows)));
+                debugger_state(ui).set_watches(ModelRc::new(VecModel::from(rows)));
             }
         }
         Event::Disassembly { id, epoch, window } => {
@@ -1191,7 +1197,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                     flags_text: format_break_flags(flags).into(),
                 })
                 .collect();
-            ui.set_breakpoints(ModelRc::new(VecModel::from(rows)));
+            debugger_state(ui).set_breakpoints(ModelRc::new(VecModel::from(rows)));
             with_app(|app| {
                 app.breakpoints = breakpoints.iter().map(|&(a, _)| a).collect();
                 app.disasm.set_breakpoints(app.breakpoints.clone());
@@ -1261,7 +1267,7 @@ fn push_console(ui: &AppWindow, line: String) {
             .collect::<Vec<_>>()
     })
     .unwrap_or_default();
-    ui.set_console_lines(ModelRc::new(VecModel::from(lines)));
+    debugger_state(ui).set_console_lines(ModelRc::new(VecModel::from(lines)));
 }
 
 #[cfg(test)]

@@ -1,4 +1,8 @@
 import { ScrollView, LineEdit } from "std-widgets.slint";
+import { DebuggerState, BreakRow, WatchRow } from "state.slint";
+
+// Re-exported so this panel can be previewed on its own with --load-data.
+export { DebuggerState, BreakRow, WatchRow }
 
 // A small "+ addr" row for adding a breakpoint or a watch without the console.
 // The panel could only ever *remove* one before.
@@ -37,18 +41,6 @@ component AddEntry inherits HorizontalLayout {
             vertical-alignment: center;
         }
     }
-}
-
-export struct BreakRow {
-    address: int,
-    address-text: string,
-    flags-text: string,
-}
-
-export struct WatchRow {
-    address: int,
-    address-text: string,
-    value-text: string,
 }
 
 // Collapsible section. Slint has no such widget, and the old panel stacked four
@@ -104,22 +96,13 @@ component FoldView inherits VerticalLayout {
 }
 
 export component DebugPanel inherits Rectangle {
-    in property <string> cpu-text;
-    in property <string> ppu-text;
-    in property <[BreakRow]> breakpoints;
-    in property <[WatchRow]> watches;
-    in property <[string]> console-lines;
-
-    callback remove-breakpoint(int);
-    callback remove-watch(int);
-    callback add-breakpoint(string);
-    callback add-watch(string);
-    callback submit-command(string);
-    /// Walks the submitted-command history. -1 is older, +1 is newer; the host
-    /// answers with the text to put in the field, or "" at the end.
-    pure callback history(int) -> string;
-
+    /// Purely this panel's own layout, so it stays a property rather than
+    /// joining the host contract: only the splitter below ever writes it.
     in-out property <length> console-height: 120px;
+
+    // A `changed` handler can only watch a property of its own element, so the
+    // log tracks the global through a local mirror.
+    private property <[string]> console-lines: DebuggerState.console-lines;
 
     background: #161a16;
 
@@ -142,7 +125,7 @@ export component DebugPanel inherits Rectangle {
                 FoldView {
                     title: "cpu";
                     Text {
-                        text: root.cpu-text;
+                        text: DebuggerState.cpu-text;
                         color: #9fd39f;
                         font-family: "monospace";
                         font-size: 12px;
@@ -152,7 +135,7 @@ export component DebugPanel inherits Rectangle {
                 FoldView {
                     title: "ppu";
                     Text {
-                        text: root.ppu-text;
+                        text: DebuggerState.ppu-text;
                         color: #9fd39f;
                         font-family: "monospace";
                         font-size: 12px;
@@ -163,14 +146,14 @@ export component DebugPanel inherits Rectangle {
                     title: "breaks";
                     AddEntry {
                         placeholder: "x 0150";
-                        add(text) => { root.add-breakpoint(text); }
+                        add(text) => { DebuggerState.add-breakpoint(text); }
                     }
-                    if root.breakpoints.length == 0: Text {
+                    if DebuggerState.breakpoints.length == 0: Text {
                         text: "none";
                         color: #5f6f5f;
                         font-size: 11px;
                     }
-                    for b in root.breakpoints: HorizontalLayout {
+                    for b in DebuggerState.breakpoints: HorizontalLayout {
                         spacing: 6px;
                         Text {
                             text: b.flags-text + " " + b.address-text;
@@ -186,7 +169,7 @@ export component DebugPanel inherits Rectangle {
                             background: del.has-hover ? #663333 : transparent;
                             border-radius: 3px;
                             del := TouchArea {
-                                clicked => { root.remove-breakpoint(b.address); }
+                                clicked => { DebuggerState.remove-breakpoint(b.address); }
                             }
                             Text {
                                 text: "x";
@@ -203,14 +186,14 @@ export component DebugPanel inherits Rectangle {
                     title: "watchs";
                     AddEntry {
                         placeholder: "ff44";
-                        add(text) => { root.add-watch(text); }
+                        add(text) => { DebuggerState.add-watch(text); }
                     }
-                    if root.watches.length == 0: Text {
+                    if DebuggerState.watches.length == 0: Text {
                         text: "none";
                         color: #5f6f5f;
                         font-size: 11px;
                     }
-                    for w in root.watches: HorizontalLayout {
+                    for w in DebuggerState.watches: HorizontalLayout {
                         spacing: 6px;
                         Text {
                             text: w.address-text + " = " + w.value-text;
@@ -226,7 +209,7 @@ export component DebugPanel inherits Rectangle {
                             background: delw.has-hover ? #663333 : transparent;
                             border-radius: 3px;
                             delw := TouchArea {
-                                clicked => { root.remove-watch(w.address); }
+                                clicked => { DebuggerState.remove-watch(w.address); }
                             }
                             Text {
                                 text: "x";
@@ -287,7 +270,7 @@ export component DebugPanel inherits Rectangle {
                 input := LineEdit {
                     placeholder-text: "command (try: help)";
                     accepted(text) => {
-                        root.submit-command(text);
+                        DebuggerState.submit-command(text);
                         self.text = "";
                     }
                     key-pressed(event) => {
@@ -295,11 +278,11 @@ export component DebugPanel inherits Rectangle {
                         // prompt did. LineEdit has no history of its own, so the
                         // host keeps it.
                         if (event.text == Key.UpArrow) {
-                            self.text = root.history(-1);
+                            self.text = DebuggerState.history(-1);
                             return accept;
                         }
                         if (event.text == Key.DownArrow) {
-                            self.text = root.history(1);
+                            self.text = DebuggerState.history(1);
                             return accept;
                         }
                         if (event.text == Key.Escape) {

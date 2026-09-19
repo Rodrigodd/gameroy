@@ -1,10 +1,10 @@
 import { Library } from "library.slint";
-import { EmulatorView, BreakRow, WatchRow, DisasmRow, SpriteCell } from "emulator.slint";
+import { EmulatorView, DisasmRow, SpriteCell } from "emulator.slint";
 import { PauseMenu } from "pause-menu.slint";
-import { LibraryState, RomRow } from "state.slint";
+import { LibraryState, DebuggerState, RomRow, BreakRow, WatchRow } from "state.slint";
 
 // A global is only reachable from Rust if the compiled entry file exports it.
-export { LibraryState }
+export { LibraryState, DebuggerState }
 export { RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell }
 
 // The root is deliberately thin: focus and key handling, and a choice between
@@ -54,11 +54,6 @@ export component AppWindow inherits Window {
     in property <image> screen;
     in property <bool> integer_scaling;
     in property <bool> debugging;
-    in property <string> cpu_text;
-    in property <string> ppu_text;
-    in property <[BreakRow]> breakpoints;
-    in property <[WatchRow]> watches;
-    in property <[string]> console_lines;
     in property <[DisasmRow]> disasm_rows;
     in property <int> disasm_total;
     in property <int> disasm_focus_index;
@@ -79,12 +74,6 @@ export component AppWindow inherits Window {
     in property <string> ppu_background_fifo;
     in property <string> ppu_sprite_fifo;
     callback ppu_viewer_toggled(bool);
-    callback remove_breakpoint(int);
-    callback remove_watch(int);
-    callback add_breakpoint(string);
-    callback add_watch(string);
-    callback submit_command(string);
-    pure callback history(int) -> string;
 
     title: root.window_title;
     min-width: 160px;
@@ -141,11 +130,6 @@ export component AppWindow inherits Window {
         frame: root.screen;
         integer-scaling: root.integer_scaling;
         debugging: root.debugging;
-        cpu-text: root.cpu_text;
-        ppu-text: root.ppu_text;
-        breakpoints: root.breakpoints;
-        watches: root.watches;
-        console-lines: root.console_lines;
         disasm-rows: root.disasm_rows;
         disasm-total: root.disasm_total;
         disasm-focus-index: root.disasm_focus_index;
@@ -166,12 +150,6 @@ export component AppWindow inherits Window {
         ppu-background-fifo: root.ppu_background_fifo;
         ppu-sprite-fifo: root.ppu_sprite_fifo;
         ppu-viewer-toggled(shown) => { root.ppu_viewer_toggled(shown); }
-        remove-breakpoint(a) => { root.remove_breakpoint(a); }
-        remove-watch(a) => { root.remove_watch(a); }
-        add-breakpoint(t) => { root.add_breakpoint(t); }
-        add-watch(t) => { root.add_watch(t); }
-        submit-command(line) => { root.submit_command(line); }
-        history(d) => { return root.history(d); }
     }
 
     if root.menu_open && root.playing: PauseMenu {

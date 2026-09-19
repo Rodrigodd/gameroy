@@ -40,3 +40,33 @@ export global LibraryState {
     callback pick-rom();
     callback pick-folder();
 }
+
+export struct BreakRow {
+    address: int,
+    address-text: string,
+    flags-text: string,
+}
+
+export struct WatchRow {
+    address: int,
+    address-text: string,
+    value-text: string,
+}
+
+/// The debugger side panel: registers, breaks, watches and the console.
+export global DebuggerState {
+    in property <string> cpu-text;
+    in property <string> ppu-text;
+    in property <[BreakRow]> breakpoints;
+    in property <[WatchRow]> watches;
+    in property <[string]> console-lines;
+
+    callback remove-breakpoint(int);
+    callback remove-watch(int);
+    callback add-breakpoint(string);
+    callback add-watch(string);
+    callback submit-command(string);
+    /// Walks the submitted-command history. -1 is older, +1 is newer; the host
+    /// answers with the text to put in the field, or "" at the end.
+    pure callback history(int) -> string;
+}

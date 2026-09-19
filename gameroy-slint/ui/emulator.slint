@@ -15,11 +15,11 @@ component Divider inherits Rectangle {
         moved => { root.dragged(self.mouse-x - self.pressed-x); }
     }
 }
-import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
+import { DebugPanel } from "debugger.slint";
 import { DisassemblyView, DisasmRow } from "disassembly.slint";
 import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
 
-export { BreakRow, WatchRow, DisasmRow, SpriteCell }
+export { DisasmRow, SpriteCell }
 
 // The whole playing screen: the game, and the debugger beside it when open.
 export component EmulatorView inherits HorizontalLayout {
@@ -27,11 +27,6 @@ export component EmulatorView inherits HorizontalLayout {
     in property <bool> integer-scaling;
 
     in property <bool> debugging;
-    in property <string> cpu-text;
-    in property <string> ppu-text;
-    in property <[BreakRow]> breakpoints;
-    in property <[WatchRow]> watches;
-    in property <[string]> console-lines;
     in property <[DisasmRow]> disasm-rows;
     in property <int> disasm-total;
     in property <int> disasm-focus-index;
@@ -52,18 +47,11 @@ export component EmulatorView inherits HorizontalLayout {
     in property <string> ppu-sprite-fifo;
     in-out property <length> panel-width: 260px;
     in-out property <length> centre-width: 330px;
-    in-out property <length> console-height: 120px;
 
     callback disasm-jump-to(int, int, int);
     callback disasm-toggle-breakpoint(int);
     callback disasm-visible-range-changed(int, int);
     callback ppu-viewer-toggled(bool);
-    callback remove-breakpoint(int);
-    callback remove-watch(int);
-    callback add-breakpoint(string);
-    callback add-watch(string);
-    callback submit-command(string);
-    pure callback history(int) -> string;
 
     GameScreen {
         horizontal-stretch: 1;
@@ -139,17 +127,5 @@ export component EmulatorView inherits HorizontalLayout {
 
     if root.debugging: DebugPanel {
         width: root.panel-width;
-        console-height <=> root.console-height;
-        cpu-text: root.cpu-text;
-        ppu-text: root.ppu-text;
-        breakpoints: root.breakpoints;
-        watches: root.watches;
-        console-lines: root.console-lines;
-        remove-breakpoint(a) => { root.remove-breakpoint(a); }
-        remove-watch(a) => { root.remove-watch(a); }
-        add-breakpoint(t) => { root.add-breakpoint(t); }
-        add-watch(t) => { root.add-watch(t); }
-        submit-command(line) => { root.submit-command(line); }
-        history(d) => { return root.history(d); }
     }
 }

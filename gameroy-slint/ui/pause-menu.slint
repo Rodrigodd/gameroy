@@ -1,21 +1,17 @@
 import { Button, VerticalBox } from "std-widgets.slint";
+import { EmulatorState, MenuActions } from "state.slint";
+
+// Re-exported so this menu can be previewed on its own with --load-data.
+export { EmulatorState, MenuActions }
 
 // The in-game pause menu. Emulation is paused for as long as it is up.
 export component PauseMenu inherits Rectangle {
-    callback save-state();
-    callback load-state();
-    callback reset();
-    callback toggle-scaling();
-    in property <bool> integer-scaling;
-    callback exit-game();
-    callback close();
-
     // Blocker: swallows clicks so none reach what is behind, and closes on a
     // click away, as the old front-end did.
     background: #00000099;
 
     TouchArea {
-        clicked => { root.close(); }
+        clicked => { MenuActions.close(); }
     }
 
     Rectangle {
@@ -36,27 +32,27 @@ export component PauseMenu inherits Rectangle {
             }
             Button {
                 text: "Save State";
-                clicked => { root.save-state(); }
+                clicked => { MenuActions.save-state(); }
             }
             Button {
                 text: "Load State";
-                clicked => { root.load-state(); }
+                clicked => { MenuActions.load-state(); }
             }
             Button {
-                text: root.integer-scaling ? "Scaling: whole pixels" : "Scaling: fit";
-                clicked => { root.toggle-scaling(); }
+                text: EmulatorState.integer-scaling ? "Scaling: whole pixels" : "Scaling: fit";
+                clicked => { MenuActions.toggle-scaling(); }
             }
             Button {
                 text: "Reset";
-                clicked => { root.reset(); }
+                clicked => { MenuActions.reset(); }
             }
             Button {
                 text: "Exit Game";
-                clicked => { root.exit-game(); }
+                clicked => { MenuActions.exit-game(); }
             }
             Button {
                 text: "Resume";
-                clicked => { root.close(); }
+                clicked => { MenuActions.close(); }
             }
         }
     }

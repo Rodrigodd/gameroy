@@ -18,26 +18,23 @@ component Divider inherits Rectangle {
 import { DebugPanel } from "debugger.slint";
 import { DisassemblyView } from "disassembly.slint";
 import { PpuViewer } from "ppu-viewer.slint";
-import { PpuState } from "state.slint";
+import { EmulatorState, PpuState } from "state.slint";
 
 // The whole playing screen: the game, and the debugger beside it when open.
 export component EmulatorView inherits HorizontalLayout {
-    in property <image> frame;
-    in property <bool> integer-scaling;
-
-    in property <bool> debugging;
-
+    // Splitter positions: this layout's own business, and nothing outside it
+    // has any reason to know them.
     in-out property <length> panel-width: 260px;
     in-out property <length> centre-width: 330px;
 
     GameScreen {
         horizontal-stretch: 1;
-        frame: root.frame;
-        integer-scaling: root.integer-scaling;
+        frame: EmulatorState.frame;
+        integer-scaling: EmulatorState.integer-scaling;
     }
 
     // Splits the game screen from the debugger.
-    if root.debugging: Divider {
+    if EmulatorState.debugging: Divider {
         // Dragging right widens the screen, which narrows the centre column.
         dragged(d) => {
             root.centre-width = clamp(root.centre-width - d, 160px, root.width - 320px);
@@ -45,7 +42,7 @@ export component EmulatorView inherits HorizontalLayout {
     }
 
     // Centre column: disassembly or PPU viewer, as tabs.
-    if root.debugging: VerticalLayout {
+    if EmulatorState.debugging: VerticalLayout {
         width: root.centre-width;
         spacing: 0px;
 
@@ -75,14 +72,14 @@ export component EmulatorView inherits HorizontalLayout {
         if PpuState.show-viewer: PpuViewer { }
     }
 
-    if root.debugging: Divider {
+    if EmulatorState.debugging: Divider {
         // Dragging left widens the panel, so the delta is negated.
         dragged(d) => {
             root.panel-width = clamp(root.panel-width - d, 160px, root.width - 320px);
         }
     }
 
-    if root.debugging: DebugPanel {
+    if EmulatorState.debugging: DebugPanel {
         width: root.panel-width;
     }
 }

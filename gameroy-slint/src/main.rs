@@ -125,7 +125,20 @@ fn with_app<T>(f: impl FnOnce(&mut App) -> T) -> Option<T> {
     APP.with(|cell| cell.borrow_mut().as_mut().map(f))
 }
 
-/// The ROM library's half of the UI contract. See `ui/state.slint`.
+/// The window shell's half of the UI contract. See `ui/state.slint`.
+///
+/// `global()` borrows the window, so these are called afresh at each use rather
+/// than held.
+fn shell(ui: &AppWindow) -> Shell<'_> {
+    ui.global::<Shell>()
+}
+
+/// The playing screen's half of the UI contract.
+fn emulator_state(ui: &AppWindow) -> EmulatorState<'_> {
+    ui.global::<EmulatorState>()
+}
+
+/// The ROM library's half of the UI contract.
 fn library_state(ui: &AppWindow) -> LibraryState<'_> {
     ui.global::<LibraryState>()
 }
@@ -229,7 +242,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         })
     });
 
-    ui.set_integer_scaling(with_app(|app| app.settings.only_integer_scaling).unwrap_or(false));
+    emulator_state(&ui)
+        .set_integer_scaling(with_app(|app| app.settings.only_integer_scaling).unwrap_or(false));
 
     if let Some((width, height)) = with_app(|app| app.settings.window_size()).flatten() {
         ui.window()
@@ -287,20 +301,21 @@ fn wire_file_drop(ui: &AppWindow) {
         };
         match event {
             winit::event::WindowEvent::DroppedFile(path) => {
-                ui.set_drop_hover(false);
+                shell(&ui).set_drop_hover(false);
                 if storage::is_rom_path(path) {
                     // `start_rom` parks the ROM until `Event::Ready`, so a drop
                     // before the server announces itself works like any other way
                     // of choosing one.
                     start_rom(&ui, RomFile::new(path.clone()));
                 } else {
-                    ui.set_status_text(format!("{} is not a .gb ROM", path.display()).into());
+                    shell(&ui)
+                        .set_status_text(format!("{} is not a .gb ROM", path.display()).into());
                 }
             }
             winit::event::WindowEvent::HoveredFile(path) => {
-                ui.set_drop_hover(storage::is_rom_path(path));
+                shell(&ui).set_drop_hover(storage::is_rom_path(path));
             }
-            winit::event::WindowEvent::HoveredFileCancelled => ui.set_drop_hover(false),
+            winit::event::WindowEvent::HoveredFileCancelled => shell(&ui).set_drop_hover(false),
             _ => {}
         }
         EventResult::Propagate
@@ -500,10 +515,10 @@ fn open_pending_rom(ui: &AppWindow) {
                 app.debugging
             })
             .unwrap_or(false);
-            ui.set_playing(true);
-            ui.set_debugging(debugging);
+            shell(ui).set_playing(true);
+            emulator_state(ui).set_debugging(debugging);
         }
-        Some(Err(message)) => ui.set_status_text(message.into()),
+        Some(Err(message)) => shell(ui).set_status_text(message.into()),
         None => {}
     }
 }
@@ -519,22 +534,28 @@ fn exit_to_library(ui: &AppWindow) {
         app.menu_open = false;
         app.rom = None;
     });
-    ui.set_menu_open(false);
-    ui.set_playing(false);
-    ui.set_debugging(false);
+    shell(ui).set_menu_open(false);
+    shell(ui).set_playing(false);
+    emulator_state(ui).set_debugging(false);
     disasm_state(ui).set_total(0);
     refresh_library(ui);
 }
 
 // --- callbacks -------------------------------------------------------------
+//
+// One function per global in `ui/state.slint`, so the handlers for a screen sit
+// together and the split matches the contract they answer.
 
 fn wire_callbacks(ui: &AppWindow) {
-    ui.on_is_handled_key(|text| {
-        with_app(|app| app.settings.keymap.is_handled(&text)).unwrap_or(false)
-    });
+    wire_input(ui);
+    wire_library(ui);
+    wire_debugger(ui);
+    wire_disasm(ui);
+    wire_ppu(ui);
+    wire_menu(ui);
+}
 
-    // --- library ---
-
+fn wire_library(ui: &AppWindow) {
     let weak = ui.as_weak();
     library_state(ui).on_sort_by(move |index| {
         let Some(ui) = weak.upgrade() else { return };
@@ -606,13 +627,18 @@ fn wire_callbacks(ui: &AppWindow) {
             refresh_library(&ui);
         }
     });
+}
 
-    // --- input ---
+fn wire_input(ui: &AppWindow) {
+    ui.global::<Input>().on_is_handled_key(|text| {
+        with_app(|app| app.settings.keymap.is_handled(&text)).unwrap_or(false)
+    });
 
     // Joypad and hold actions need to know whether the key is down, so they stay
-    // on the press/release callbacks. Everything momentary is a KeyBinding.
+    // on the press/release callbacks. Everything momentary is a shortcut,
+    // dispatched from the press below.
     let weak = ui.as_weak();
-    ui.on_key_pressed(move |event| {
+    ui.global::<Input>().on_key_pressed(move |event| {
         let Some(ui) = weak.upgrade() else { return };
         let action = with_app(|app| {
             if let Some(mask) = app.joypad.press(&app.settings.keymap, &event.text) {
@@ -635,15 +661,15 @@ fn wire_callbacks(ui: &AppWindow) {
         })
         .flatten();
 
-        // Shortcuts are dispatched here rather than declared as `KeyBinding`s,
-        // which cannot take a key chosen at runtime. Auto-repeat would fire these
-        // repeatedly while held, so each one has to be idempotent or guarded.
+        // Dispatched here rather than declared as `KeyBinding`s, which cannot
+        // take a key chosen at runtime. Auto-repeat would fire these repeatedly
+        // while held, so each one has to be idempotent or guarded.
         if let Some(action) = action {
             run_shortcut(&ui, action);
         }
     });
 
-    ui.on_key_release(move |event| {
+    ui.global::<Input>().on_key_released(move |event| {
         with_app(|app| {
             if let Some(mask) = app.joypad.release(&app.settings.keymap, &event.text) {
                 app.send(Command::SetJoypad(mask));
@@ -656,7 +682,9 @@ fn wire_callbacks(ui: &AppWindow) {
             }
         });
     });
+}
 
+fn wire_disasm(ui: &AppWindow) {
     let weak = ui.as_weak();
     disasm_state(ui).on_jump_to(move |index, bank, address| {
         let Some(ui) = weak.upgrade() else { return };
@@ -715,7 +743,9 @@ fn wire_callbacks(ui: &AppWindow) {
             });
         });
     });
+}
 
+fn wire_ppu(ui: &AppWindow) {
     ppu_state(ui).on_viewer_toggled(|shown| {
         with_app(|app| {
             app.ppu_viewer = shown;
@@ -724,7 +754,9 @@ fn wire_callbacks(ui: &AppWindow) {
             app.send(Command::SetDebugViews(debug_views(app)));
         });
     });
+}
 
+fn wire_debugger(ui: &AppWindow) {
     debugger_state(ui).on_remove_breakpoint(|address| {
         if let Ok(address) = u16::try_from(address) {
             with_app(|app| app.send(Command::RemoveBreakpoint { address }));
@@ -788,9 +820,13 @@ fn wire_callbacks(ui: &AppWindow) {
         let line = format!("watch {}", text.trim());
         with_app(|app| app.send(Command::ExecuteDebugCommand { line }));
     });
+}
+
+fn wire_menu(ui: &AppWindow) {
+    let menu = ui.global::<MenuActions>();
 
     let weak = ui.as_weak();
-    ui.on_menu_save_state(move || {
+    menu.on_save_state(move || {
         save_state();
         if let Some(ui) = weak.upgrade() {
             close_menu(&ui);
@@ -798,7 +834,7 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_menu_load_state(move || {
+    menu.on_load_state(move || {
         load_state();
         if let Some(ui) = weak.upgrade() {
             close_menu(&ui);
@@ -806,7 +842,7 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_menu_toggle_scaling(move || {
+    menu.on_toggle_scaling(move || {
         let Some(ui) = weak.upgrade() else { return };
         let on = with_app(|app| {
             app.settings.only_integer_scaling = !app.settings.only_integer_scaling;
@@ -816,11 +852,11 @@ fn wire_callbacks(ui: &AppWindow) {
             app.settings.only_integer_scaling
         })
         .unwrap_or(false);
-        ui.set_integer_scaling(on);
+        emulator_state(&ui).set_integer_scaling(on);
     });
 
     let weak = ui.as_weak();
-    ui.on_menu_reset(move || {
+    menu.on_reset(move || {
         with_app(|app| app.send(Command::Reset));
         if let Some(ui) = weak.upgrade() {
             close_menu(&ui);
@@ -828,14 +864,14 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_menu_exit(move || {
+    menu.on_exit_game(move || {
         if let Some(ui) = weak.upgrade() {
             exit_to_library(&ui);
         }
     });
 
     let weak = ui.as_weak();
-    ui.on_menu_close(move || {
+    menu.on_close(move || {
         if let Some(ui) = weak.upgrade() {
             close_menu(&ui);
         }
@@ -871,12 +907,11 @@ fn dump_disassembly(ui: &AppWindow, path: &str) {
 // dispatch went out to the UI and straight back for nothing. The pause menu
 // reaches the same behaviour by calling these.
 
-/// Runs a shortcut, exactly as its old `KeyBinding` did.
+/// Runs a shortcut.
 ///
-/// Gated on there being a game, which is what `enabled: root.playing` used to do
-/// declaratively: the library screen must not react to a step.
+/// Gated on there being a game: the library screen must not react to a step.
 fn run_shortcut(ui: &AppWindow, action: Shortcut) {
-    if !ui.get_playing() {
+    if !shell(ui).get_playing() {
         return;
     }
     match action {
@@ -935,7 +970,7 @@ fn toggle_debugger(ui: &AppWindow) {
         app.debugging
     })
     .unwrap_or(false);
-    ui.set_debugging(debugging);
+    emulator_state(ui).set_debugging(debugging);
 }
 
 fn toggle_menu(ui: &AppWindow) {
@@ -951,7 +986,7 @@ fn toggle_menu(ui: &AppWindow) {
         app.menu_open
     })
     .unwrap_or(false);
-    ui.set_menu_open(open);
+    shell(ui).set_menu_open(open);
 }
 
 /// Mirrors `gameroy::debugger::break_flags::EXECUTE`.
@@ -1011,7 +1046,7 @@ fn close_menu(ui: &AppWindow) {
             app.send(Command::SetRunMode(app.mode_before_menu));
         }
     });
-    ui.set_menu_open(false);
+    shell(ui).set_menu_open(false);
 }
 
 // --- events ----------------------------------------------------------------
@@ -1048,7 +1083,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                     gameroy_server::protocol::PROTOCOL_VERSION
                 );
                 log::error!("{message}");
-                ui.set_status_text(message.into());
+                shell(ui).set_status_text(message.into());
                 with_app(|app| app.server = None);
                 return;
             }
@@ -1065,7 +1100,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
         Event::RomOpened(opened) => {
             with_app(|app| app.epoch = opened.epoch);
             let title = opened.header.title.trim().to_string();
-            ui.set_window_title(if title.is_empty() {
+            shell(ui).set_window_title(if title.is_empty() {
                 "GameRoy".into()
             } else {
                 SharedString::from(format!("{title} - GameRoy"))
@@ -1089,7 +1124,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 let l = PALETTE[(shade & 3) as usize];
                 *out = Rgb8Pixel::new(l, l, l);
             }
-            ui.set_screen(slint::Image::from_rgb8(buffer));
+            emulator_state(ui).set_frame(slint::Image::from_rgb8(buffer));
             // Hand the allocation back so the server can reuse it.
             with_app(|app| app.send(Command::ReturnFrame(packet.pixels)));
         }
@@ -1111,7 +1146,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 app.epoch = epoch;
                 app.mode = mode;
             });
-            ui.set_status_text(format!("{mode:?} @ {clock_count}").into());
+            shell(ui).set_status_text(format!("{mode:?} @ {clock_count}").into());
             // A breakpoint hit is worth saying out loud; the user asked for it.
             if let StopReason::Breakpoint { address, flags } = reason {
                 push_console(
@@ -1132,7 +1167,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
             if let Some(screen) = update.screen.as_ref()
                 && with_app(|app| app.mode == RunMode::Paused).unwrap_or(false)
             {
-                ui.set_screen(partial_screen_image(screen));
+                emulator_state(ui).set_frame(partial_screen_image(screen));
             }
             if let Some(cpu) = update.cpu.as_ref() {
                 debugger_state(ui)
@@ -1254,7 +1289,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
         }
         Event::Fatal(err) => {
             log::error!("server error: {err}");
-            ui.set_status_text(format!("error: {err}").into());
+            shell(ui).set_status_text(format!("error: {err}").into());
         }
         other => log::debug!("unhandled event: {other:?}"),
     }

@@ -142,3 +142,46 @@ export global PpuState {
     in property <string> background-fifo-text;
     in property <string> sprite-fifo-text;
 }
+
+/// The window shell: which screen is up, and what the title bar and the status
+/// line say.
+export global Shell {
+    in property <string> window-title: "GameRoy";
+    in property <string> status-text;
+    /// False shows the ROM library instead of the emulator.
+    in property <bool> playing;
+    in property <bool> menu-open;
+    /// A file is being dragged over the window. Set from the winit hook in
+    /// main.rs, not from a DropArea: see the comment there.
+    in property <bool> drop-hover;
+}
+
+/// Raw key events.
+///
+/// Only the joypad and the two hold-to-act keys come through here, because those
+/// need to know whether the key is down. Momentary shortcuts are dispatched by
+/// the host from `key-pressed`, since their bindings are configurable and a
+/// `KeyBinding`'s keys are fixed at compile time.
+export global Input {
+    callback key-pressed(KeyEvent);
+    callback key-released(KeyEvent);
+    /// True when the key is one the joypad or a hold action uses.
+    pure callback is-handled-key(string) -> bool;
+}
+
+/// The playing screen.
+export global EmulatorState {
+    in property <image> frame;
+    in property <bool> integer-scaling;
+    in property <bool> debugging;
+}
+
+/// The in-game pause menu. Emulation is paused for as long as it is up.
+export global MenuActions {
+    callback save-state();
+    callback load-state();
+    callback reset();
+    callback toggle-scaling();
+    callback exit-game();
+    callback close();
+}

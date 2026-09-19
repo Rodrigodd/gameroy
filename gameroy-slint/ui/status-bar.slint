@@ -1,0 +1,32 @@
+import { Shell } from "state.slint";
+
+export { Shell }
+
+// The status line along the bottom edge.
+//
+// It covers the window and pins its bar to the bottom itself, rather than being
+// positioned by whoever mounts it: a component's root element cannot see
+// `parent`, and a `y:` binding at the use site is exactly the kind of knowledge
+// about a child that this file exists to hold.
+export component StatusBar inherits Rectangle {
+    background: transparent;
+
+    VerticalLayout {
+        alignment: end;
+        Rectangle {
+            height: 20px;
+            background: #1a1f1acc;
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                Text {
+                    text: Shell.status-text;
+                    color: #9fb39f;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+}

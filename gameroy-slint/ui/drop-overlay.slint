@@ -1,0 +1,15 @@
+// The invitation shown while a file is dragged over the window.
+//
+// Mounted above everything, including the pause menu: a drop lands on whatever
+// is on screen, so it has to be visible from any of them.
+export component DropOverlay inherits Rectangle {
+    background: #000000b0;
+
+    Text {
+        text: "Drop a .gb ROM to play";
+        color: #cfe3cf;
+        font-size: 18px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

@@ -1,0 +1,14 @@
+import { EmulatorView } from "emulator.slint";
+import { PauseMenu } from "pause-menu.slint";
+import { Shell } from "state.slint";
+
+// Everything that is on screen while a game is loaded.
+//
+// The pause menu belongs here rather than beside the screens: it can only ever
+// appear over a running game, and mounting it here is what lets that be implied
+// by where it sits instead of re-tested against `playing`.
+export component PlayScreen inherits Rectangle {
+    EmulatorView { }
+
+    if Shell.menu-open: PauseMenu { }
+}

@@ -1209,7 +1209,7 @@ impl Ppu {
                         if should_activate {
                             // wrapping add, because wyc starts at -1
                             ppu.wyc = ppu.wyc.wrapping_add(1);
-                            if ppu.wx == 0 && ppu.scx % 8 != 0 {
+                            if ppu.wx == 0 && !ppu.scx.is_multiple_of(8) {
                                 // wait 1
                                 ppu.next_clock_count += 1;
                             }

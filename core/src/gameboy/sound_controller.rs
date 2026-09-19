@@ -391,9 +391,9 @@ impl SoundController {
         let ch4_right = (self.nr51 & 0x08) != 0;
 
         // round up, to nearest even, including self
-        let l = self.last_clock_count + (self.last_clock_count % 2 != 0) as u64;
-        let r = clock_count + (clock_count % 2 != 0) as u64;
-        debug_assert!(l % 2 == 0 && r % 2 == 0);
+        let l = self.last_clock_count + (!self.last_clock_count.is_multiple_of(2)) as u64;
+        let r = clock_count + (!clock_count.is_multiple_of(2)) as u64;
+        debug_assert!(l.is_multiple_of(2) && r.is_multiple_of(2));
 
         let mut last_run = l - 2;
         let mut clock = l - 2;
@@ -407,7 +407,7 @@ impl SoundController {
             } else {
                 let fs = self.sample_frequency;
                 let next_sample = clock + (CLOCK_SPEED - self.sample_mod).div_ceil(fs);
-                next_sample + (next_sample % 2 != 0) as u64
+                next_sample + (!next_sample.is_multiple_of(2)) as u64
             };
             debug_assert!(clock < next_step);
             debug_assert!(clock < next_sample);
@@ -427,7 +427,7 @@ impl SoundController {
             if next_step == clock {
                 // TODO: a step should happens in a falling edge of the bit 13 of the Timer's DIV
                 // register. We only need to keep track of the DIV's phase, and update it when need.
-                if clock % (CLOCK_SPEED / 512) == 0 {
+                if clock.is_multiple_of(CLOCK_SPEED / 512) {
                     self.run_timers(
                         (clock - last_run) / 2,
                         ch1_freq,
@@ -440,7 +440,7 @@ impl SoundController {
                     last_run = clock;
 
                     // step
-                    let lenght_ctr = self.frame_sequencer_step % 2 == 0;
+                    let lenght_ctr = self.frame_sequencer_step.is_multiple_of(2);
                     let volume_env = self.frame_sequencer_step % 8 == 7;
                     let sweep = self.frame_sequencer_step % 4 == 2;
                     self.frame_sequencer_step = (self.frame_sequencer_step + 1) % 8;
@@ -821,7 +821,7 @@ impl SoundController {
             // TODO: a step should happens in a falling edge of the bit 5 of the DIV timer.
             if clock % (CLOCK_SPEED / 512) == 0 {
                 // step
-                let lenght_ctr = self.frame_sequencer_step % 2 == 0;
+                let lenght_ctr = self.frame_sequencer_step.is_multiple_of(2);
                 let volume_env = self.frame_sequencer_step % 8 == 7;
                 let sweep = self.frame_sequencer_step % 4 == 2;
                 self.frame_sequencer_step = (self.frame_sequencer_step + 1) % 8;

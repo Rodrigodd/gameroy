@@ -382,10 +382,7 @@ impl Debugger {
                 self.target_address = None;
                 break RunResult::ReachTargetAddress;
             } else if inter.0.clock_count >= timeout_clock {
-                if self
-                    .target_clock
-                    .map_or(false, |x| inter.0.clock_count >= x)
-                {
+                if self.target_clock.is_some_and(|x| inter.0.clock_count >= x) {
                     self.target_clock = None;
                     self.skip_breakpoints_until_target_clock = false;
                     break RunResult::ReachTargetClock;

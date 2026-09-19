@@ -389,7 +389,7 @@ impl<'a> BlockCompiler<'a> {
             };
 
             // The IE instruction may trigger a interrupt a instruction later, observing all flags
-            if previous_instr.map_or(false, |x| x.op[0] == 0xfb) {
+            if previous_instr.is_some_and(|x| x.op[0] == 0xfb) {
                 observed_flags |= 0b1111;
             }
 
@@ -4152,7 +4152,7 @@ impl<'a> BlockCompiler<'a> {
 
         dynasm!(ops
             ; .arch x64
-            ; mov rax, QWORD read as usize as i64
+            ; mov rax, QWORD read as *const () as usize as i64
             // ; mov rdi, rbx
             // ; mov si, WORD address as i16);
             ; call rax
@@ -4191,7 +4191,7 @@ impl<'a> BlockCompiler<'a> {
 
         dynasm!(ops
             ; .arch x64
-            ; mov rax, QWORD write as usize as i64
+            ; mov rax, QWORD write as *const () as usize as i64
             // ; mov rdi, rbx
             // ; mov si, WORD [rbx + address as i32]
             // ; mov dl, BYTE [rbx + src as i32]

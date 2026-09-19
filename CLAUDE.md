@@ -48,8 +48,7 @@ cargo clippy --workspace --all-targets
 `.rustfmt.toml` sets import options that are nightly-only. `cargo fmt` on stable works
 but warns and skips them; `cargo +nightly fmt --all` applies them.
 
-Keep new code clippy-clean. The older crates still carry warnings — don't treat those as
-a licence to add more, and don't bulk-fix them in an unrelated change.
+The workspace is clippy-clean; keep it that way.
 
 ## Comments
 

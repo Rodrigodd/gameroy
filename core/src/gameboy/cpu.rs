@@ -2,9 +2,10 @@ use std::fmt;
 
 use crate::save_state::{LoadStateError, SaveState, SaveStateContext};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum CpuState {
+    #[default]
     Running = 0,
     Halt = 1,
     Stopped = 2,
@@ -34,16 +35,12 @@ impl SaveState for CpuState {
         Ok(())
     }
 }
-impl Default for CpuState {
-    fn default() -> Self {
-        Self::Running
-    }
-}
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum ImeState {
     /// Interrupts are disable
+    #[default]
     Disabled = 0,
     /// Interrupts are enable
     Enabled = 1,
@@ -73,11 +70,6 @@ impl SaveState for ImeState {
             x => return Err(LoadStateError::InvalidImeState(x)),
         };
         Ok(())
-    }
-}
-impl Default for ImeState {
-    fn default() -> Self {
-        Self::Disabled
     }
 }
 

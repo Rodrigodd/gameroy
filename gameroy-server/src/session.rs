@@ -84,8 +84,6 @@ pub struct Session {
 
     mode: RunMode,
     frame_limit: bool,
-    /// Set by `Step`: run until one more frame is produced, then pause.
-    step_pending: bool,
 
     epoch: SessionEpoch,
     seq: u64,
@@ -125,7 +123,6 @@ impl Session {
             frame_limit: config.frame_limit,
             config,
             mode: RunMode::Paused,
-            step_pending: false,
             epoch: 0,
             seq: 0,
             views: DebugViews::default(),
@@ -328,7 +325,6 @@ impl Session {
             )
         };
 
-        let produced_any = !frames.is_empty();
         for pixels in frames {
             self.seq += 1;
             let packet = FramePacket {
@@ -346,13 +342,6 @@ impl Session {
                 Ok(_) => {}
                 Err(_) => return,
             }
-        }
-
-        // `Step` completes when a frame boundary is reached, which is the same
-        // granularity the old front-end's single-frame stepping used.
-        if produced_any && self.step_pending {
-            self.step_pending = false;
-            self.set_mode(RunMode::Paused, StopReason::StepComplete, t);
         }
     }
 
@@ -388,10 +377,7 @@ impl Session {
             Command::SetJoypad(joypad) => {
                 self.vblank.lock().unwrap().timeline.current_joypad = joypad;
             }
-            Command::Step => {
-                self.step_pending = true;
-                self.set_mode(RunMode::Running, StopReason::UserRequest, t);
-            }
+            Command::Step => self.step_instruction(t),
             Command::SetDebugViews(views) => {
                 self.views = views;
                 self.send_debug_update(t);
@@ -648,6 +634,27 @@ impl Session {
         let _ = t.send(Event::DebugUpdate(Box::new(update)));
     }
 
+    /// Executes exactly one instruction, then reports the new state.
+    ///
+    /// Goes straight through `Debugger::step`, which runs a single `interpret_op`
+    /// on the interpreter. Stepping must never touch the recompiler: a compiled
+    /// block is many instructions, so there is no such thing as stepping one.
+    ///
+    /// It also stays in `Paused` rather than briefly entering a running mode. An
+    /// earlier version ran until the next frame boundary instead, which stepped
+    /// roughly 70000 clocks at a time.
+    fn step_instruction(&mut self, t: &mut impl ServerTransport) {
+        let Some(gb) = self.gb.as_mut() else {
+            let _ = t.send(Event::Fatal(ServerError::NoRom));
+            return;
+        };
+        self.debugger.step(gb);
+        // Wall time passed while the user was reading; do not let the pacing
+        // treat it as emulation debt to sprint through on resume.
+        self.resync_pacing();
+        self.set_mode(RunMode::Paused, StopReason::StepComplete, t);
+    }
+
     fn send_breakpoints(&mut self, t: &mut impl ServerTransport) {
         let breakpoints = self
             .debugger
@@ -687,10 +694,7 @@ impl Session {
 
         match outcome.action {
             None => {}
-            Some(ConsoleAction::Step) => {
-                self.step_pending = true;
-                self.set_mode(RunMode::Running, StopReason::UserRequest, t);
-            }
+            Some(ConsoleAction::Step) => self.step_instruction(t),
             Some(ConsoleAction::StepBack) => {
                 let _ = t.send(Event::DebugConsole {
                     ok: false,

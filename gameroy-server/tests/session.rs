@@ -703,3 +703,105 @@ fn ppu_viewer_renders_images_only_when_asked() {
         "tile sheet is a single flat value; VRAM is not being read"
     );
 }
+
+/// A single `Step` must advance exactly one instruction.
+///
+/// Regression: `Step` used to switch into a running mode and stop at the next
+/// frame boundary, so each press advanced ~70000 clocks. It also went through the
+/// recompiler, which executes whole compiled blocks and so cannot express a
+/// single-instruction step at all.
+#[test]
+fn step_advances_one_instruction_not_one_frame() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    // Explicitly with the JIT enabled, since that is the configuration the bug
+    // needed: a debugging step must use the interpreter regardless.
+    let config = EmulatorConfig {
+        jit: true,
+        ..EmulatorConfig::default()
+    };
+    let h = Harness::start(config.clone());
+    h.wait_for("Ready", |ev| {
+        matches!(ev, Event::Ready { .. }).then_some(())
+    });
+    h.send(Command::OpenRom(Box::new(OpenRom {
+        rom,
+        save_ram: None,
+        boot_rom: None,
+        config,
+        start_paused: false,
+    })));
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+    h.send(Command::SetRunMode(RunMode::Paused));
+
+    let mut last = h.wait_for("paused snapshot", |ev| match ev {
+        Event::DebugUpdate(u) => u.cpu.map(|cpu| (u.clock_count, cpu.pc)),
+        _ => None,
+    });
+
+    // One Game Boy instruction is 4-24 clocks; a frame is 70224. Step several
+    // times so a single lucky short step cannot pass by accident.
+    for i in 0..8 {
+        h.send(Command::Step);
+        let now = h.wait_for("snapshot after Step", |ev| match ev {
+            Event::DebugUpdate(u) => match u.cpu {
+                Some(cpu) if u.clock_count != last.0 => Some((u.clock_count, cpu.pc)),
+                _ => None,
+            },
+            _ => None,
+        });
+
+        let advanced = now.0 - last.0;
+        assert!(
+            advanced > 0 && advanced <= 32,
+            "step {i} advanced {advanced} clocks; one instruction is 4-24, a frame is 70224"
+        );
+        assert_ne!(now.1, last.1, "step {i} left the PC unchanged");
+        last = now;
+    }
+}
+
+/// Stepping must leave the emulator paused, not running.
+#[test]
+fn step_leaves_the_emulator_paused() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, true);
+    h.wait_for("paused at start", |ev| {
+        matches!(
+            ev,
+            Event::RunState {
+                mode: RunMode::Paused,
+                ..
+            }
+        )
+        .then_some(())
+    });
+
+    h.send(Command::Step);
+    let (mode, reason) = h.wait_for("RunState after Step", |ev| match ev {
+        Event::RunState { mode, reason, .. } => Some((mode, reason)),
+        _ => None,
+    });
+    assert_eq!(
+        mode,
+        RunMode::Paused,
+        "Step must not leave the emulator running"
+    );
+    assert!(
+        matches!(reason, StopReason::StepComplete),
+        "expected StepComplete, got {reason:?}"
+    );
+}

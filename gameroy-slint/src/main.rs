@@ -19,7 +19,9 @@ use std::rc::Rc;
 use gameroy_server::protocol::{
     Address, Command, DebugViews, DisasmAnchor, EmulatorConfig, Event, OpenRom, RunMode, StopReason,
 };
-use slint::{ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
+use slint::{
+    ComponentHandle, ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel,
+};
 
 use audio::{AudioEngineSink, AudioSink};
 use config::Config;
@@ -121,6 +123,11 @@ thread_local! {
 
 fn with_app<T>(f: impl FnOnce(&mut App) -> T) -> Option<T> {
     APP.with(|cell| cell.borrow_mut().as_mut().map(f))
+}
+
+/// The ROM library's half of the UI contract. See `ui/state.slint`.
+fn library_state(ui: &AppWindow) -> LibraryState<'_> {
+    ui.global::<LibraryState>()
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -318,7 +325,7 @@ fn refresh_library(ui: &AppWindow) {
     });
 
     publish_library(ui);
-    ui.set_folder_text(
+    library_state(ui).set_folder_text(
         folder
             .map(SharedString::from)
             .unwrap_or_else(|| "no ROM folder set".into()),
@@ -403,7 +410,7 @@ fn publish_library(ui: &AppWindow) {
     })
     .unwrap_or_default();
 
-    ui.set_roms(ModelRc::new(VecModel::from(rows)));
+    library_state(ui).set_roms(ModelRc::new(VecModel::from(rows)));
     let (col, asc, sel) = with_app(|app| {
         (
             app.sort.column.index(),
@@ -412,9 +419,9 @@ fn publish_library(ui: &AppWindow) {
         )
     })
     .unwrap_or((0, true, -1));
-    ui.set_sort_column(col);
-    ui.set_sort_ascending(asc);
-    ui.set_selected_rom(sel);
+    library_state(ui).set_sort_column(col);
+    library_state(ui).set_sort_ascending(asc);
+    library_state(ui).set_selected(sel);
 }
 
 /// Starts playing the ROM at display position `row`.
@@ -514,7 +521,7 @@ fn wire_callbacks(ui: &AppWindow) {
     // --- library ---
 
     let weak = ui.as_weak();
-    ui.on_sort_by(move |index| {
+    library_state(ui).on_sort_by(move |index| {
         let Some(ui) = weak.upgrade() else { return };
         let Some(column) = SortColumn::from_index(index) else {
             return;
@@ -544,15 +551,15 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_select_rom(move |index| {
+    library_state(ui).on_select(move |index| {
         with_app(|app| app.selected = usize::try_from(index).ok());
         if let Some(ui) = weak.upgrade() {
-            ui.set_selected_rom(index);
+            library_state(&ui).set_selected(index);
         }
     });
 
     let weak = ui.as_weak();
-    ui.on_activate_rom(move |index| {
+    library_state(ui).on_activate(move |index| {
         let Some(ui) = weak.upgrade() else { return };
         if let Ok(i) = usize::try_from(index) {
             activate_rom(&ui, i);
@@ -560,7 +567,7 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_pick_rom(move || {
+    library_state(ui).on_pick_rom(move || {
         let Some(ui) = weak.upgrade() else { return };
         let picked = rfd::FileDialog::new()
             .add_filter("Game Boy ROM", &["gb"])
@@ -571,7 +578,7 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
-    ui.on_pick_folder(move || {
+    library_state(ui).on_pick_folder(move || {
         let Some(ui) = weak.upgrade() else { return };
         let picked = rfd::FileDialog::new().pick_folder();
         if let Some(path) = picked {

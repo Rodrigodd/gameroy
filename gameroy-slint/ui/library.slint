@@ -1,15 +1,9 @@
 import { Button, ListView, ScrollView } from "std-widgets.slint";
+import { LibraryState, RomRow } from "state.slint";
 
-export struct RomRow {
-    file: string,
-    title: string,
-    size: string,
-    last-played: string,
-    /// Box art. An empty image until the loader has one, which is most of them.
-    thumb: image,
-    /// The loader has not reached this row yet.
-    loading: bool,
-}
+// Re-exported so this file can be previewed on its own: --load-data only reaches
+// a global exported from the file being previewed.
+export { LibraryState, RomRow }
 
 /// Width of the thumbnail column, shared by the header spacer and every row so
 /// the two cannot drift apart.
@@ -23,17 +17,17 @@ global Layout {
 // One clickable column header. Kept as its own component so the stretchy column
 // can simply omit `width`: setting `width` at all defeats `horizontal-stretch`,
 // which silently collapsed the File column to zero.
+//
+// Private to this table, so it reads the sort state itself rather than having it
+// handed down and handed back through a callback.
 component HeaderCell inherits Rectangle {
     in property <string> title;
     in property <int> index;
-    in property <int> sort-column;
-    in property <bool> sort-ascending;
-    callback clicked(int);
 
     background: touch.has-hover ? #222922 : #1a1f1a;
 
     touch := TouchArea {
-        clicked => { root.clicked(root.index); }
+        clicked => { LibraryState.sort-by(root.index); }
     }
     HorizontalLayout {
         padding-left: 8px;
@@ -48,7 +42,7 @@ component HeaderCell inherits Rectangle {
         }
         Text {
             // Arrow marks the active column and its direction.
-            text: root.sort-column == root.index ? (root.sort-ascending ? "\u{25b2}" : "\u{25bc}") : "";
+            text: LibraryState.sort-column == root.index ? (LibraryState.sort-ascending ? "\u{25b2}" : "\u{25bc}") : "";
             color: #6f8f6f;
             font-size: 10px;
             vertical-alignment: center;
@@ -63,18 +57,6 @@ component HeaderCell inherits Rectangle {
 // StandardListViewItem and therefore text only -- the thumbnail column needs an
 // Image per row, which that widget cannot hold.
 export component Library inherits Rectangle {
-    in property <[RomRow]> roms;
-    in property <int> sort-column;
-    in property <bool> sort-ascending;
-    in property <string> folder-text;
-    in property <int> selected: -1;
-
-    callback sort-by(int);
-    callback activate(int);
-    callback select(int);
-    callback pick-rom();
-    callback pick-folder();
-
     background: #101210;
 
     VerticalLayout {
@@ -85,14 +67,14 @@ export component Library inherits Rectangle {
             spacing: 8px;
             Button {
                 text: "Open ROM";
-                clicked => { root.pick-rom(); }
+                clicked => { LibraryState.pick-rom(); }
             }
             Button {
                 text: "Choose Folder";
-                clicked => { root.pick-folder(); }
+                clicked => { LibraryState.pick-folder(); }
             }
             Text {
-                text: root.folder-text;
+                text: LibraryState.folder-text;
                 color: #6f8f6f;
                 vertical-alignment: center;
                 overflow: elide;
@@ -114,46 +96,34 @@ export component Library inherits Rectangle {
                 horizontal-stretch: 1;
                 title: "File";
                 index: 0;
-                sort-column: root.sort-column;
-                sort-ascending: root.sort-ascending;
-                clicked(i) => { root.sort-by(i); }
             }
             HeaderCell {
                 width: 150px;
                 title: "Header Name";
                 index: 1;
-                sort-column: root.sort-column;
-                sort-ascending: root.sort-ascending;
-                clicked(i) => { root.sort-by(i); }
             }
             HeaderCell {
                 width: 80px;
                 title: "Size";
                 index: 2;
-                sort-column: root.sort-column;
-                sort-ascending: root.sort-ascending;
-                clicked(i) => { root.sort-by(i); }
             }
             HeaderCell {
                 width: 110px;
                 title: "Last played";
                 index: 3;
-                sort-column: root.sort-column;
-                sort-ascending: root.sort-ascending;
-                clicked(i) => { root.sort-by(i); }
             }
         }
 
         ListView {
-            for row[i] in root.roms: Rectangle {
+            for row[i] in LibraryState.roms: Rectangle {
                 height: Layout.row-height;
-                background: root.selected == i
+                background: LibraryState.selected == i
                     ? #2c3a2c
                     : (row-touch.has-hover ? #1a1f1a : transparent);
 
                 row-touch := TouchArea {
-                    clicked => { root.select(i); }
-                    double-clicked => { root.activate(i); }
+                    clicked => { LibraryState.select(i); }
+                    double-clicked => { LibraryState.activate(i); }
                 }
 
                 HorizontalLayout {
@@ -212,7 +182,7 @@ export component Library inherits Rectangle {
             }
         }
 
-        if root.roms.length == 0: Text {
+        if LibraryState.roms.length == 0: Text {
             text: "No .gb files found. Use \"Choose Folder\" to pick a ROM folder.";
             color: #6f8f6f;
             horizontal-alignment: center;

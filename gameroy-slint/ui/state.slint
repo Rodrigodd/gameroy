@@ -1,0 +1,42 @@
+// The whole contract between the host and the UI.
+//
+// Every value the front-end pushes in, and every action the UI reports back,
+// lives on a global here. That is not decoration: Slint only exposes a property
+// to Rust if it sits on the compiled root or on an exported global, and routing
+// everything through the root is what forced each screen's data to be declared
+// once on the window, once on every intermediate component, and once more where
+// it was finally used.
+//
+// A global reaches any depth without help from its ancestors, so a screen binds
+// what it needs directly and the components above it stay ignorant of it.
+//
+// Reusable widgets -- GameScreen, SpriteGrid, TileMapView and the file-private
+// helpers -- deliberately do *not* read these. They take properties, so they can
+// still be previewed on their own.
+
+export struct RomRow {
+    file: string,
+    title: string,
+    size: string,
+    last-played: string,
+    /// Box art. An empty image until the loader has one, which is most of them.
+    thumb: image,
+    /// The loader has not reached this row yet.
+    loading: bool,
+}
+
+/// The ROM library screen.
+export global LibraryState {
+    in property <[RomRow]> roms;
+    in property <int> sort-column;
+    in property <bool> sort-ascending;
+    in property <string> folder-text;
+    /// Position in `roms`, or -1 for no selection.
+    in property <int> selected: -1;
+
+    callback sort-by(int);
+    callback activate(int);
+    callback select(int);
+    callback pick-rom();
+    callback pick-folder();
+}

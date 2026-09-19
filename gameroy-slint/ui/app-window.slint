@@ -1,7 +1,10 @@
-import { Library, RomRow } from "library.slint";
+import { Library } from "library.slint";
 import { EmulatorView, BreakRow, WatchRow, DisasmRow, SpriteCell } from "emulator.slint";
 import { PauseMenu } from "pause-menu.slint";
+import { LibraryState, RomRow } from "state.slint";
 
+// A global is only reachable from Rust if the compiled entry file exports it.
+export { LibraryState }
 export { RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell }
 
 // The root is deliberately thin: focus and key handling, and a choice between
@@ -83,18 +86,6 @@ export component AppWindow inherits Window {
     callback submit_command(string);
     pure callback history(int) -> string;
 
-    // --- library ---
-    in property <[RomRow]> roms;
-    in property <int> sort_column;
-    in property <bool> sort_ascending;
-    in property <string> folder_text;
-    in property <int> selected_rom: -1;
-    callback sort_by(int);
-    callback activate_rom(int);
-    callback select_rom(int);
-    callback pick_rom();
-    callback pick_folder();
-
     title: root.window_title;
     min-width: 160px;
     min-height: 144px;
@@ -124,18 +115,7 @@ export component AppWindow inherits Window {
 
     }
 
-    if !root.playing: Library {
-        roms: root.roms;
-        sort-column: root.sort_column;
-        sort-ascending: root.sort_ascending;
-        folder-text: root.folder_text;
-        selected: root.selected_rom;
-        sort-by(i) => { root.sort_by(i); }
-        activate(i) => { root.activate_rom(i); }
-        select(i) => { root.select_rom(i); }
-        pick-rom() => { root.pick_rom(); }
-        pick-folder() => { root.pick_folder(); }
-    }
+    if !root.playing: Library { }
 
     // The status line. It was set from three places -- a ROM that would not
     // read, the run state, a fatal server error -- and rendered nowhere, so all

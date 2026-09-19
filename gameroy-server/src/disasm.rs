@@ -29,6 +29,11 @@ pub struct DisasmIndex {
     /// Number of directives the index was built from. The trace only grows, so a
     /// length change is a sufficient and very cheap staleness check.
     built_from_len: usize,
+    /// Whether `built_from_len` describes a build that actually happened. A
+    /// length of zero is a real state -- a trace that has not run yet -- and
+    /// telling it apart from "never built" is what stops the generation from
+    /// being bumped on every pause while it lasts.
+    built: bool,
     generation: u32,
 }
 
@@ -37,11 +42,12 @@ impl DisasmIndex {
     /// common path must stay a single length comparison.
     pub fn sync(&mut self, gb: &GameBoy) {
         let trace = gb.trace.borrow();
-        if trace.directives.len() == self.built_from_len && !self.directives.is_empty() {
+        if self.built && trace.directives.len() == self.built_from_len {
             return;
         }
         self.directives = trace.directives.iter().cloned().collect();
         self.built_from_len = self.directives.len();
+        self.built = true;
         self.generation = self.generation.wrapping_add(1);
     }
 
@@ -53,6 +59,7 @@ impl DisasmIndex {
     pub fn reset(&mut self) {
         self.directives.clear();
         self.built_from_len = 0;
+        self.built = false;
         self.generation = self.generation.wrapping_add(1);
     }
 

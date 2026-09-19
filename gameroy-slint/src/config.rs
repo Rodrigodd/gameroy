@@ -98,10 +98,10 @@ fn config_path() -> PathBuf {
 /// `target/`. That matches the old front-end; changing it would silently move
 /// everyone's config.
 fn base_folder() -> PathBuf {
-    if let Some(dir) = option_env!("CARGO_WORKSPACE_DIR") {
-        if !dir.is_empty() {
-            return PathBuf::from(dir);
-        }
+    if let Some(dir) = option_env!("CARGO_WORKSPACE_DIR")
+        && !dir.is_empty()
+    {
+        return PathBuf::from(dir);
     }
     std::env::current_exe()
         .ok()

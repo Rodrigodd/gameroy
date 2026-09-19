@@ -93,7 +93,7 @@ fn read_header(path: &Path) -> Option<Header> {
         .collect::<String>()
         .trim()
         .to_string();
-    let rom_size = 32 * 1024u64 << bytes[ROM_SIZE_OFFSET];
+    let rom_size = (32 * 1024u64) << bytes[ROM_SIZE_OFFSET];
     Some(Header { title, rom_size })
 }
 

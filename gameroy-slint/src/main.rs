@@ -14,6 +14,7 @@ mod thumbs;
 
 use std::cell::RefCell;
 use std::error::Error;
+use std::ops::Range;
 use std::rc::Rc;
 
 use gameroy_server::protocol::{
@@ -86,12 +87,24 @@ struct App {
     disasm: Rc<DisasmModel>,
     /// Bumped to make the view re-centre; see `focus-token` in disassembly.slint.
     disasm_focus_token: i32,
-    /// The view follows the PC on each pause. Cleared when the user scrolls or
-    /// follows a link, so browsing is not yanked away by the next step, and
-    /// re-armed by stepping.
-    disasm_following_pc: bool,
+    /// The rows the view is showing, as it last reported them. Stored rather
+    /// than acted on: whether to follow the PC is decided when an update
+    /// arrives, because Slint runs `changed` handlers from the event loop and a
+    /// scroll report can otherwise land after a step has already decided.
+    disasm_visible: Range<u32>,
+    /// A step asked to be taken back to the PC, wherever the view had wandered.
+    disasm_force_follow: bool,
     /// Identifies our disassembly requests; only the newest answer is applied.
-    disasm_request: u64,
+    disasm_next_id: u64,
+    /// The newest request of each kind. A prefetch must not invalidate a jump:
+    /// the jump's optimistic scroll fires a scroll report, which sends a
+    /// prefetch, which would otherwise discard the jump's own answer.
+    disasm_prefetch_id: u64,
+    disasm_focus_id: u64,
+    /// The chunk already asked for and not yet answered. Without it a drag sends
+    /// one request per mouse-move frame and the list stays in placeholders until
+    /// the user lets go.
+    disasm_pending: Option<u32>,
     /// The session the front-end believes it is looking at. The server bumps this
     /// on every reset, state load and ROM open, and anything older describes a
     /// machine that no longer exists.
@@ -232,8 +245,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             ppu_viewer: false,
             disasm: Rc::new(DisasmModel::default()),
             disasm_focus_token: 0,
-            disasm_following_pc: true,
-            disasm_request: 0,
+            disasm_visible: 0..0,
+            disasm_force_follow: true,
+            disasm_next_id: 0,
+            disasm_prefetch_id: 0,
+            disasm_focus_id: 0,
+            disasm_pending: None,
             epoch: 0,
             breakpoints: Vec::new(),
             mode_before_menu: RunMode::Running,
@@ -684,25 +701,58 @@ fn wire_input(ui: &AppWindow) {
     });
 }
 
+/// What a disassembly answer is allowed to do when it arrives.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reply {
+    /// The user asked to be taken somewhere, so the view moves.
+    Focus,
+    /// The view is filling in rows it is already looking at, and must not move.
+    Prefetch,
+}
+
+/// Sends a disassembly request and records it as the newest of its kind.
+fn request_disassembly(app: &mut App, kind: Reply, anchor: DisasmAnchor, count: u16) {
+    app.disasm_next_id += 1;
+    let id = app.disasm_next_id;
+    match kind {
+        Reply::Focus => app.disasm_focus_id = id,
+        Reply::Prefetch => app.disasm_prefetch_id = id,
+    }
+    app.send(Command::RequestDisassembly { id, anchor, count });
+}
+
+/// Re-requests the rows around where the user is looking, by address.
+///
+/// Growing the trace inserts rows in the middle of it, so every index after the
+/// new code shifts and a scroll offset silently comes to name different
+/// instructions. The address is the thing that did not move.
+fn reanchor_disassembly(app: &mut App, at: (u16, u16)) {
+    let (bank, address) = at;
+    request_disassembly(
+        app,
+        Reply::Focus,
+        DisasmAnchor::Address(Address { bank, address }),
+        disasm::CHUNK,
+    );
+}
+
 fn wire_disasm(ui: &AppWindow) {
     let weak = ui.as_weak();
     disasm_state(ui).on_jump_to(move |index, bank, address| {
         let Some(ui) = weak.upgrade() else { return };
         with_app(|app| {
-            // Following a link means the user has chosen where to look.
-            app.disasm_following_pc = false;
-            app.disasm_request += 1;
             // The index is only valid while the trace has not grown under us, so
             // the address is what gets sent; the index just lets the view move
             // now rather than after the round trip.
-            app.send(Command::RequestDisassembly {
-                id: app.disasm_request,
-                anchor: DisasmAnchor::Address(Address {
+            request_disassembly(
+                app,
+                Reply::Focus,
+                DisasmAnchor::Address(Address {
                     bank: bank.max(0) as u16,
                     address: address.max(0) as u16,
                 }),
-                count: disasm::CHUNK,
-            });
+                disasm::CHUNK,
+            );
         });
         if index >= 0 {
             focus_disassembly(&ui, index);
@@ -730,17 +780,18 @@ fn wire_disasm(ui: &AppWindow) {
     disasm_state(ui).on_visible_range_changed(|first, count| {
         with_app(|app| {
             let (first, count) = (first.max(0) as u32, count.max(0) as u32);
+            app.disasm_visible = first..first + count;
             let Some((start, want)) =
                 disasm::window_needed(first, count, app.disasm.cached(), app.disasm.total())
             else {
                 return;
             };
-            app.disasm_request += 1;
-            app.send(Command::RequestDisassembly {
-                id: app.disasm_request,
-                anchor: DisasmAnchor::Index(start),
-                count: want,
-            });
+            // Already asked for; the answer is on its way.
+            if app.disasm_pending == Some(start) {
+                return;
+            }
+            app.disasm_pending = Some(start);
+            request_disassembly(app, Reply::Prefetch, DisasmAnchor::Index(start), want);
         });
     });
 }
@@ -933,14 +984,14 @@ fn save_state() {
 /// follow-the-PC behaviour a scroll or a jump turned off.
 fn debug_step() {
     with_app(|app| {
-        app.disasm_following_pc = true;
+        app.disasm_force_follow = true;
         app.send(Command::Step);
     });
 }
 
 fn debug_step_back() {
     with_app(|app| {
-        app.disasm_following_pc = true;
+        app.disasm_force_follow = true;
         app.send(Command::StepBack);
     });
 }
@@ -1195,14 +1246,31 @@ fn handle_event(ui: &AppWindow, event: Event) {
                     .set_sprite_fifo_text(format::format_fifo("obj", &view.sprite_fifo).into());
             }
             if let Some(disasm) = update.disassembly.as_ref() {
-                with_app(|app| app.disasm.set_window(disasm));
+                // Read before the window lands: growing the trace throws away
+                // the rows this address would have been looked up in.
+                let anchor =
+                    with_app(|app| app.disasm.address_of(app.disasm_visible.start)).flatten();
+                let grew = with_app(|app| app.disasm.set_pc_window(disasm)).unwrap_or(false);
                 disasm_state(ui).set_total(disasm.total as i32);
-                // Re-centre on the PC only while the user is following it.
-                if let Some(pc_index) = disasm.pc_index {
-                    let following = with_app(|app| app.disasm_following_pc).unwrap_or(false);
-                    if following {
-                        focus_disassembly(ui, pc_index as i32);
+
+                // Decided here rather than kept as a flag: Slint runs `changed`
+                // handlers from the event loop, so a scroll report can land
+                // after a step has already asked to be taken back to the PC.
+                let follow = with_app(|app| {
+                    let forced = std::mem::take(&mut app.disasm_force_follow);
+                    forced || disasm::follows_pc(&app.disasm_visible, disasm.pc_index)
+                })
+                .unwrap_or(false);
+
+                match (follow, disasm.pc_index) {
+                    (true, Some(pc_index)) => focus_disassembly(ui, pc_index as i32),
+                    // Browsing, and the indices just moved underneath.
+                    _ if grew => {
+                        if let Some(at) = anchor {
+                            with_app(|app| reanchor_disassembly(app, at));
+                        }
                     }
+                    _ => {}
                 }
             }
             if let Some(watches) = update.watches.as_ref() {
@@ -1221,15 +1289,30 @@ fn handle_event(ui: &AppWindow, event: Event) {
             if with_app(|app| epoch < app.epoch).unwrap_or(false) {
                 return;
             }
-            // Only the newest request's answer is interesting; an older one
+            // Only the newest request of each kind is interesting; an older one
             // describes a scroll position the user has already left.
-            let current = with_app(|app| app.disasm_request).unwrap_or(0);
-            if id != current {
-                return;
-            }
-            with_app(|app| app.disasm.set_window(&window));
+            let kind = with_app(|app| {
+                if id == app.disasm_focus_id {
+                    Some(Reply::Focus)
+                } else if id == app.disasm_prefetch_id {
+                    app.disasm_pending = None;
+                    Some(Reply::Prefetch)
+                } else {
+                    None
+                }
+            })
+            .flatten();
+            let Some(kind) = kind else { return };
+
+            with_app(|app| app.disasm.set_browse_window(&window));
             disasm_state(ui).set_total(window.total as i32);
-            if let Some(focus) = window.focus_index {
+            // A prefetch is the view filling in rows it is already looking at.
+            // Only a jump asked to be taken somewhere, and the server answers
+            // every index anchor with a `focus_index` whether or not one was
+            // wanted -- honouring that is what threw the view back to the top.
+            if kind == Reply::Focus
+                && let Some(focus) = window.focus_index
+            {
                 focus_disassembly(ui, focus as i32);
             }
         }

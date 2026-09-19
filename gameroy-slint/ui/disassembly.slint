@@ -41,7 +41,22 @@ export component DisassemblyView inherits Rectangle {
         }
     }
 
+    /// Tells the host which rows are on screen. It is the host's only source of
+    /// that, and it decides both what to fetch and whether the view is still
+    /// sitting on the PC, so every way the answer can change has to call this.
+    function report-visible() {
+        DisasmState.visible-range-changed(
+            max(0, floor(-list.content-y / root.row-h)),
+            ceil(list.visible-height / root.row-h) + 1);
+    }
+
     changed focus-token => { root.scroll-to-index(DisasmState.focus-index); }
+
+    // The centre column is mounted behind a tab, so switching to the PPU viewer
+    // and back builds a fresh view: a Flickable at row 0, and a change tracker
+    // that baselines on the current token and so never fires. Without this you
+    // come back to the top of the trace.
+    init => { root.scroll-to-index(DisasmState.focus-index); }
 
     VerticalLayout {
         padding: 4px;
@@ -56,11 +71,11 @@ export component DisassemblyView inherits Rectangle {
         list := ListView {
             vertical-stretch: 1;
 
-            changed content-y => {
-                DisasmState.visible-range-changed(
-                    max(0, floor(-self.content-y / root.row-h)),
-                    ceil(self.visible-height / root.row-h) + 1);
-            }
+            changed content-y => { root.report-visible(); }
+            // Layout settling is the first time the range is knowable at all,
+            // and a resize changes how many rows fit. Without this a view that
+            // never happens to scroll never reports anything.
+            changed visible-height => { root.report-visible(); }
 
             for row in DisasmState.rows: Rectangle {
                 height: root.row-h;
@@ -89,7 +104,8 @@ export component DisassemblyView inherits Rectangle {
                     }
 
                     Text {
-                        width: 40px;
+                        // Seven characters: `bb_aaaa`, bank and CPU address.
+                        width: 62px;
                         text: row.address-text;
                         color: #6f7e67;
                         font-family: "monospace";

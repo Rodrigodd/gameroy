@@ -13,7 +13,10 @@ license.workspace = true
 # through the protocol; if this list ever grows a `gameroy-core`, the client/server
 # boundary has rotted.
 gameroy-server = { path = "../gameroy-server" }
-slint = "1.18.0"
+# `unstable-winit-030` is the only way to receive an OS file drop: Slint 1.18 has a
+# `DropArea` element, but only the Qt backend ever feeds it, and there is no public
+# API to inject a drop event. See the hook in main.rs.
+slint = { version = "1.18.0", features = ["unstable-winit-030"] }
 log = "0.4"
 env_logger = "0.11"
 audio-engine = "0.4.2"

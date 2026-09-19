@@ -84,6 +84,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     let settings = Config::load();
     let cli_rom = std::env::args().nth(1).map(RomFile::new);
 
+    // Pin the backend before the first window exists. `on_winit_window_event`
+    // below is a silent no-op under any other backend, and a drag-and-drop that
+    // quietly does nothing is worse than refusing to start.
+    slint::BackendSelector::new()
+        .backend_name("winit".into())
+        .select()?;
+
     let ui = AppWindow::new()?;
     let weak = ui.as_weak();
 
@@ -144,6 +151,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     ui.set_integer_scaling(with_app(|app| app.settings.only_integer_scaling).unwrap_or(false));
 
     wire_callbacks(&ui);
+    wire_file_drop(&ui);
     refresh_library(&ui);
 
     ui.run()?;
@@ -168,6 +176,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+/// Accepts a ROM dragged onto the window.
+///
+/// This reaches through to winit rather than using Slint's `DropArea`, because in
+/// Slint 1.18 only the Qt backend ever feeds that element an OS drop -- the winit
+/// backend never calls `process_drag_event`, and there is no public API to inject
+/// one. `unstable-winit-030` is documented as removable in a future minor release,
+/// so a Slint upgrade may well break this function; nothing else depends on it.
+fn wire_file_drop(ui: &AppWindow) {
+    use slint::winit_030::{EventResult, WinitWindowAccessor, winit};
+
+    let weak = ui.as_weak();
+    ui.window().on_winit_window_event(move |_window, event| {
+        let Some(ui) = weak.upgrade() else {
+            return EventResult::Propagate;
+        };
+        match event {
+            winit::event::WindowEvent::DroppedFile(path) => {
+                ui.set_drop_hover(false);
+                if storage::is_rom_path(path) {
+                    // `start_rom` parks the ROM until `Event::Ready`, so a drop
+                    // before the server announces itself works like any other way
+                    // of choosing one.
+                    start_rom(&ui, RomFile::new(path.clone()));
+                } else {
+                    ui.set_status_text(format!("{} is not a .gb ROM", path.display()).into());
+                }
+            }
+            winit::event::WindowEvent::HoveredFile(path) => {
+                ui.set_drop_hover(storage::is_rom_path(path));
+            }
+            winit::event::WindowEvent::HoveredFileCancelled => ui.set_drop_hover(false),
+            _ => {}
+        }
+        EventResult::Propagate
+    });
 }
 
 // --- library ---------------------------------------------------------------

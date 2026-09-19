@@ -60,3 +60,28 @@ impl RomFile {
         std::fs::rename(&tmp_path, &final_path)
     }
 }
+
+/// True for a path the emulator will accept as a ROM.
+///
+/// The extension is all there is to go on: a drop hands over a path, and reading
+/// the file to sniff a cartridge header before deciding whether to react would
+/// stall the event loop on whatever the user happened to drag.
+pub fn is_rom_path(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("gb"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognises_rom_paths_whatever_the_case() {
+        assert!(is_rom_path(Path::new("/roms/tetris.gb")));
+        assert!(is_rom_path(Path::new("/roms/Tetris.GB")));
+        assert!(!is_rom_path(Path::new("/roms/tetris.gbc")));
+        assert!(!is_rom_path(Path::new("/roms/tetris.sav")));
+        assert!(!is_rom_path(Path::new("/roms/tetris")));
+        assert!(!is_rom_path(Path::new("/roms")));
+    }
+}

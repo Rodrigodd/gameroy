@@ -76,5 +76,32 @@ pub fn capture(gb: &GameBoy) -> PpuViewer {
         oam,
         sprite_buffer,
         sprite_buffer_len: ppu.sprite_buffer_len,
+        tall_sprites: ppu.lcdc & 0x04 != 0,
+        background_tiles: map_tiles(&ppu, ppu.lcdc & 0x08 != 0),
+        window_tiles: map_tiles(&ppu, ppu.lcdc & 0x40 != 0),
+        background_fifo: ppu.background_fifo.iter().collect(),
+        sprite_fifo: ppu.sprite_fifo.iter().collect(),
     }
+}
+
+/// Tile index per cell of a 32x32 map, as an index into the `tiles` atlas.
+///
+/// `high_map` picks 0x9C00 over 0x9800 -- LCDC bit 3 for the background, bit 6
+/// for the window. The 0x8800 signed addressing (LCDC bit 4 clear) is folded in
+/// here so the client never needs VRAM or the addressing rules.
+fn map_tiles(ppu: &gameroy::gameboy::ppu::Ppu, high_map: bool) -> Vec<u16> {
+    let base = if high_map { 0x9C00 } else { 0x9800 } - 0x8000;
+    let signed_addressing = ppu.lcdc & 0x10 == 0;
+    (0..32 * 32)
+        .map(|i| {
+            let mut tile = ppu.vram[base + i] as u16;
+            if signed_addressing {
+                tile += 0x100;
+                if tile >= 0x180 {
+                    tile -= 0x100;
+                }
+            }
+            tile
+        })
+        .collect()
 }

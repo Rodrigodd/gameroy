@@ -3,6 +3,7 @@
 
 mod audio;
 mod config;
+mod format;
 mod input;
 mod library;
 mod library_loader;
@@ -14,13 +15,16 @@ use std::cell::RefCell;
 use std::error::Error;
 
 use gameroy_server::protocol::{
-    Command, CpuState, DebugViews, EmulatorConfig, Event, IndexedImage, OpenRom, PpuState, RunMode,
-    SpriteInfo, StopReason,
+    Command, DebugViews, EmulatorConfig, Event, OpenRom, RunMode, StopReason,
 };
 use slint::{ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use audio::{AudioEngineSink, AudioSink};
 use config::Config;
+use format::{
+    PALETTE, format_break_flags, format_cpu, format_ppu, indexed_to_image, partial_screen_image,
+    sprite_cells,
+};
 use input::{HoldKey, Joypad};
 use library::{RomEntry, Sort, SortColumn};
 use library_loader::{LibraryLoader, LibraryMsg};
@@ -32,15 +36,6 @@ slint::include_modules!();
 /// How many disassembly lines to keep around the PC. Enough to fill a tall panel
 /// without shipping a large slice on every single step.
 const DISASM_WINDOW: u16 = 64;
-
-/// The four Game Boy shades, lightest first, as the old front-end had them.
-const PALETTE: [u8; 4] = [255, 180, 100, 0];
-
-/// The same four shades tinted blue, for the part of a paused screen that the
-/// frame in progress has not reached yet and so still holds the previous frame.
-/// Blue because the Game Boy's own output is grey, so nothing else can be.
-const STALE_PALETTE: [(u8, u8, u8); 4] =
-    [(120, 140, 255), (85, 100, 190), (48, 58, 125), (14, 18, 60)];
 
 /// UI-thread state. The server thread never touches this; it only posts a wake-up
 /// and the draining happens here.
@@ -691,6 +686,13 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 }
 
+/// Slint has no `[u16]`, so the atlas indices cross as `i32`.
+fn tile_numbers(tiles: &[u16]) -> ModelRc<i32> {
+    ModelRc::new(VecModel::from(
+        tiles.iter().map(|&t| t as i32).collect::<Vec<_>>(),
+    ))
+}
+
 /// The view subscription implied by the current UI state.
 fn debug_views(app: &App) -> DebugViews {
     DebugViews {
@@ -851,6 +853,13 @@ fn handle_event(ui: &AppWindow, event: Event) {
                     &view.sprite_buffer,
                 ))));
                 ui.set_ppu_sprite_buffer_len(view.sprite_buffer_len as i32);
+                ui.set_ppu_tall_sprites(view.tall_sprites);
+                ui.set_ppu_background_tiles(tile_numbers(&view.background_tiles));
+                ui.set_ppu_window_tiles(tile_numbers(&view.window_tiles));
+                ui.set_ppu_background_fifo(
+                    format::format_fifo("bg ", &view.background_fifo).into(),
+                );
+                ui.set_ppu_sprite_fifo(format::format_fifo("obj", &view.sprite_fifo).into());
             }
             if let Some(disasm) = update.disassembly.as_ref() {
                 let rows: Vec<DisasmRow> = disasm
@@ -926,63 +935,6 @@ fn handle_event(ui: &AppWindow, event: Event) {
     }
 }
 
-fn format_cpu(cpu: &CpuState, clock: u64, frame: u32) -> String {
-    let flag = |bit: u8, name: char| if cpu.f & (1 << bit) != 0 { name } else { '-' };
-    format!(
-        "clock {clock}\n\
-         frame {frame}\n\
-         \n\
-         AF {:02x}{:02x}  {}{}{}{}\n\
-         BC {:02x}{:02x}\n\
-         DE {:02x}{:02x}\n\
-         HL {:02x}{:02x}\n\
-         SP {:04x}\n\
-         PC {:04x}\n\
-         \n\
-         IME {:?}\n\
-         IF {:02x}  IE {:02x}\n\
-         bank {:x}/{:x}",
-        cpu.a,
-        cpu.f,
-        flag(7, 'Z'),
-        flag(6, 'N'),
-        flag(5, 'H'),
-        flag(4, 'C'),
-        cpu.b,
-        cpu.c,
-        cpu.d,
-        cpu.e,
-        cpu.h,
-        cpu.l,
-        cpu.sp,
-        cpu.pc,
-        cpu.ime,
-        cpu.interrupt_flag,
-        cpu.interrupt_enabled,
-        cpu.banks.0,
-        cpu.banks.1,
-    )
-}
-
-/// Renders breakpoint flags as `wrxj`, dashes for the ones that are off. Formatting
-/// is a front-end concern: the server sends the bitmask.
-fn format_break_flags(flags: u8) -> String {
-    // Mirrors gameroy::debugger::break_flags.
-    const WRITE: u8 = 1 << 0;
-    const READ: u8 = 1 << 1;
-    const EXECUTE: u8 = 1 << 2;
-    const JUMP: u8 = 1 << 3;
-    let bit = |f: u8, c: char| if flags & f != 0 { c } else { '-' };
-    [
-        bit(WRITE, 'w'),
-        bit(READ, 'r'),
-        bit(EXECUTE, 'x'),
-        bit(JUMP, 'j'),
-    ]
-    .iter()
-    .collect()
-}
-
 /// Maximum console scrollback. Beyond this the oldest lines are dropped, so a long
 /// debugging session cannot grow the model without bound.
 const CONSOLE_LIMIT: usize = 200;
@@ -1001,123 +953,4 @@ fn push_console(ui: &AppWindow, line: String) {
     })
     .unwrap_or_default();
     ui.set_console_lines(ModelRc::new(VecModel::from(lines)));
-}
-
-fn format_ppu(ppu: &PpuState) -> String {
-    format!(
-        "LCDC {:02x}  STAT {:02x}\n\
-         SCY  {:02x}  SCX  {:02x}\n\
-         LY   {:02x}  LYC  {:02x}\n\
-         LX   {:>3}\n\
-         BGP  {:02x}\n\
-         OBP0 {:02x}  OBP1 {:02x}\n\
-         WY   {:02x}  WX   {:02x}\n\
-         WYC  {:02x}\n\
-         state {}\n\
-         next  {}",
-        ppu.lcdc,
-        ppu.stat,
-        ppu.scy,
-        ppu.scx,
-        ppu.ly,
-        ppu.lyc,
-        ppu.lx,
-        ppu.bgp,
-        ppu.obp0,
-        ppu.obp1,
-        ppu.wy,
-        ppu.wx,
-        ppu.wyc,
-        ppu.state,
-        ppu.next_clock_count,
-    )
-}
-
-/// The paused screen, with the pixels this frame has not reached yet tinted.
-///
-/// Those hold whatever the previous frame left there, so showing them in the
-/// normal palette would be showing stale output as if it were current -- the
-/// distinction is the entire point of the view.
-fn partial_screen_image(screen: &gameroy_server::protocol::PartialScreen) -> slint::Image {
-    let img = &screen.pixels;
-    let mut buffer = SharedPixelBuffer::<Rgb8Pixel>::new(img.width as u32, img.height as u32);
-    let drawn = screen.drawn_pixels as usize;
-    for (i, (out, &shade)) in buffer
-        .make_mut_slice()
-        .iter_mut()
-        .zip(img.data.iter())
-        .enumerate()
-    {
-        let shade = (shade & 3) as usize;
-        *out = if i < drawn {
-            let l = PALETTE[shade];
-            Rgb8Pixel::new(l, l, l)
-        } else {
-            let (r, g, b) = STALE_PALETTE[shade];
-            Rgb8Pixel::new(r, g, b)
-        };
-    }
-    slint::Image::from_rgb8(buffer)
-}
-
-/// Expands a palette-index image into RGB for display. The server ships indices,
-/// so the palette stays a front-end decision.
-fn indexed_to_image(img: &IndexedImage) -> slint::Image {
-    let mut buffer = SharedPixelBuffer::<Rgb8Pixel>::new(img.width as u32, img.height as u32);
-    for (out, &shade) in buffer.make_mut_slice().iter_mut().zip(img.data.iter()) {
-        let l = PALETTE[(shade & 3) as usize];
-        *out = Rgb8Pixel::new(l, l, l);
-    }
-    slint::Image::from_rgb8(buffer)
-}
-
-fn sprite_cells(sprites: &[SpriteInfo]) -> Vec<SpriteCell> {
-    sprites
-        .iter()
-        .enumerate()
-        .map(|(i, s)| SpriteCell {
-            text: format!(
-                "{i:>2}  x {:>3}  y {:>3}  tile {:02x}  flags {:02x}",
-                s.sx, s.sy, s.tile, s.flags
-            )
-            .into(),
-            offscreen: s.is_offscreen(),
-        })
-        .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gameroy_server::protocol::{IndexedImage, PartialScreen};
-
-    /// The boundary is the whole point: everything before `drawn_pixels` is this
-    /// frame's output and must read as the Game Boy's grey, everything after is
-    /// the previous frame's and must not.
-    #[test]
-    fn a_partial_screen_tints_only_what_the_frame_has_not_reached() {
-        let screen = PartialScreen {
-            pixels: IndexedImage {
-                width: 4,
-                height: 2,
-                // Same shade throughout, so only the palette can differ.
-                data: vec![0; 8],
-            },
-            drawn_pixels: 5,
-        };
-
-        let image = partial_screen_image(&screen);
-        let buffer = image.to_rgb8().expect("built from rgb8");
-        let pixels: Vec<_> = buffer.as_slice().to_vec();
-        assert_eq!(pixels.len(), 8);
-
-        for (i, p) in pixels.iter().enumerate() {
-            let grey = p.r == p.g && p.g == p.b;
-            if i < 5 {
-                assert!(grey, "pixel {i} is inside the drawn prefix but was tinted");
-            } else {
-                assert!(!grey, "pixel {i} is stale but was left untinted");
-            }
-        }
-    }
 }

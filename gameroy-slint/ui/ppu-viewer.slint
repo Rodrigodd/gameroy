@@ -1,17 +1,26 @@
 import { ScrollView } from "std-widgets.slint";
+import { SpriteGrid, SpriteCell } from "sprite-grid.slint";
+import { TileMapView } from "tile-map-view.slint";
 
-export struct SpriteCell {
-    text: string,
-    offscreen: bool,
+export { SpriteCell }
+
+component SectionLabel inherits Text {
+    color: #6f8f6f;
+    font-size: 11px;
 }
 
 export component PpuViewer inherits Rectangle {
     in property <image> tiles;
     in property <image> background-map;
     in property <image> window-map;
+    in property <[int]> background-tiles;
+    in property <[int]> window-tiles;
     in property <[SpriteCell]> oam;
     in property <[SpriteCell]> sprite-buffer;
     in property <int> sprite-buffer-len;
+    in property <bool> tall-sprites;
+    in property <string> background-fifo-text;
+    in property <string> sprite-fifo-text;
 
     background: #131613;
 
@@ -21,64 +30,62 @@ export component PpuViewer inherits Rectangle {
             spacing: 8px;
             alignment: start;
 
-            Text {
-                text: "tiles (128x192)";
-                color: #6f8f6f;
-                font-size: 11px;
-            }
-            Image {
+            SectionLabel { text: "tiles (384, 16 across)"; }
+            TileMapView {
                 source: root.tiles;
-                width: 256px;
-                height: 384px;
-                image-rendering: pixelated;
+                title: "tilemap";
+                cells-x: 16;
+                cells-y: 24;
+                scale: 2;
             }
 
-            Text {
-                text: "background (256x256)";
-                color: #6f8f6f;
-                font-size: 11px;
-            }
-            Image {
+            SectionLabel { text: "background map"; }
+            TileMapView {
                 source: root.background-map;
-                width: 256px;
-                height: 256px;
-                image-rendering: pixelated;
+                title: "background";
+                cells-x: 32;
+                cells-y: 32;
+                tile-numbers: root.background-tiles;
+                scale: 1;
             }
 
-            Text {
-                text: "window (256x256)";
-                color: #6f8f6f;
-                font-size: 11px;
-            }
-            Image {
+            SectionLabel { text: "window map"; }
+            TileMapView {
                 source: root.window-map;
-                width: 256px;
-                height: 256px;
-                image-rendering: pixelated;
+                title: "window";
+                cells-x: 32;
+                cells-y: 32;
+                tile-numbers: root.window-tiles;
+                scale: 1;
             }
 
-            Text {
-                text: "OAM (40 sprites)";
-                color: #6f8f6f;
-                font-size: 11px;
+            SectionLabel {
+                text: "OAM (40 sprites" + (root.tall-sprites ? ", 8x16)" : ", 8x8)");
             }
-            for s in root.oam: Text {
-                text: s.text;
-                // Off-screen sprites tinted red, as the old viewer did.
-                color: s.offscreen ? #b06060 : #9fd39f;
-                font-family: "monospace";
-                font-size: 11px;
+            SpriteGrid {
+                atlas: root.tiles;
+                sprites: root.oam;
+                tall: root.tall-sprites;
+                columns: 8;
+                scale: 3;
             }
 
-            Text {
+            SectionLabel {
                 text: "sprite buffer (" + root.sprite-buffer-len + " active)";
-                color: #6f8f6f;
-                font-size: 11px;
             }
-            for s[i] in root.sprite-buffer: Text {
-                text: s.text;
-                // Slots past the active count hold stale data.
-                color: i < root.sprite-buffer-len ? #9fd39f : #b06060;
+            SpriteGrid {
+                atlas: root.tiles;
+                sprites: root.sprite-buffer;
+                tall: root.tall-sprites;
+                columns: 5;
+                active-count: root.sprite-buffer-len;
+                scale: 3;
+            }
+
+            SectionLabel { text: "pixel FIFOs"; }
+            Text {
+                text: root.background-fifo-text + "\n" + root.sprite-fifo-text;
+                color: #9fd39f;
                 font-family: "monospace";
                 font-size: 11px;
             }

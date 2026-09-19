@@ -28,6 +28,11 @@ export component EmulatorView inherits HorizontalLayout {
     in property <[SpriteCell]> ppu-oam;
     in property <[SpriteCell]> ppu-sprite-buffer;
     in property <int> ppu-sprite-buffer-len;
+    in property <[int]> ppu-background-tiles;
+    in property <[int]> ppu-window-tiles;
+    in property <bool> ppu-tall-sprites;
+    in property <string> ppu-background-fifo;
+    in property <string> ppu-sprite-fifo;
     in-out property <length> panel-width: 260px;
 
     callback ppu-viewer-toggled(bool);
@@ -80,6 +85,11 @@ export component EmulatorView inherits HorizontalLayout {
             oam: root.ppu-oam;
             sprite-buffer: root.ppu-sprite-buffer;
             sprite-buffer-len: root.ppu-sprite-buffer-len;
+            background-tiles: root.ppu-background-tiles;
+            window-tiles: root.ppu-window-tiles;
+            tall-sprites: root.ppu-tall-sprites;
+            background-fifo-text: root.ppu-background-fifo;
+            sprite-fifo-text: root.ppu-sprite-fifo;
         }
     }
 

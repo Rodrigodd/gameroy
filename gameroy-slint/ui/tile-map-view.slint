@@ -1,0 +1,65 @@
+// An indexed image shown as a grid of 8x8 tiles, with a hover readout.
+//
+// Used for the tile atlas and for both tile maps. The old viewer reported the
+// tile number under the cursor for each of them; this adds a highlight on the
+// hovered cell, which it did not have and which makes the readout easier to trust.
+
+export component TileMapView inherits Rectangle {
+    in property <image> source;
+    /// Named in the readout, so the three uses are distinguishable.
+    in property <string> title;
+    in property <int> cells-x;
+    in property <int> cells-y;
+    in property <int> scale: 2;
+    /// Tile number per cell, row-major. Empty for the atlas, where a cell's
+    /// number is its own index.
+    in property <[int]> tile-numbers;
+
+    property <length> cell: 8px * root.scale;
+    out property <int> hover-x: clamp(floor(touch.mouse-x / root.cell), 0, root.cells-x - 1);
+    out property <int> hover-y: clamp(floor(touch.mouse-y / root.cell), 0, root.cells-y - 1);
+    property <int> hover-index: root.hover-y * root.cells-x + root.hover-x;
+    property <int> hover-tile: root.tile-numbers.length > 0
+        ? root.tile-numbers[root.hover-index]
+        : root.hover-index;
+
+    background: transparent;
+    width: root.cells-x * root.cell;
+    height: root.cells-y * root.cell;
+
+    Image {
+        source: root.source;
+        width: parent.width;
+        height: parent.height;
+        image-rendering: pixelated;
+    }
+
+    touch := TouchArea { }
+
+    if touch.has-hover: Rectangle {
+        x: root.hover-x * root.cell;
+        y: root.hover-y * root.cell;
+        width: root.cell;
+        height: root.cell;
+        border-width: 1px;
+        border-color: #ff5f5f;
+    }
+
+    if touch.has-hover: Rectangle {
+        // Kept inside the view, so a cell near the right edge does not push the
+        // readout off the panel.
+        x: min(touch.mouse-x + 12px, root.width - self.width);
+        y: min(touch.mouse-y + 12px, root.height - self.height);
+        width: readout.preferred-width + 10px;
+        height: readout.preferred-height + 8px;
+        background: #000000d8;
+        border-radius: 3px;
+        readout := Text {
+            text: root.title + "\ntile " + root.hover-tile
+                + "\nx " + root.hover-x + "  y " + root.hover-y;
+            color: #cfe3cf;
+            font-family: "monospace";
+            font-size: 11px;
+        }
+    }
+}

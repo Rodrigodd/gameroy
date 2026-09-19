@@ -1,0 +1,100 @@
+// A grid of sprite previews, drawn as sub-rectangles of the tile atlas.
+//
+// Every cell binds the *same* `atlas` image and selects its tile with
+// `source-clip`. A `slint::Image` is refcounted over one `SharedPixelBuffer`, so
+// forty cells cost one 128x192 upload rather than forty -- the same trick the old
+// viewer played with UV rects.
+//
+// The atlas is rendered through `bgp`, so these show background-palette colours
+// rather than OBP0/OBP1. The old viewer had the same limitation; fixing it needs
+// the server to send a second, object-palettised atlas.
+
+export struct SpriteCell {
+    /// Index into the atlas, 16 tiles per row.
+    tile: int,
+    /// "x 4c  y 1a  tile 2f  flags 00", formatted on the Rust side.
+    text: string,
+    /// Parked outside the visible area. The old viewer tinted these red.
+    offscreen: bool,
+}
+
+export component SpriteGrid inherits Rectangle {
+    in property <image> atlas;
+    in property <[SpriteCell]> sprites;
+    /// 8x16 sprite mode: a preview is two stacked tiles.
+    in property <bool> tall;
+    in property <int> columns: 5;
+    /// Slots at or past this are stale leftovers, not live sprites. -1 means
+    /// every slot is live, which is the case for OAM.
+    in property <int> active-count: -1;
+    /// Logical pixels per source pixel.
+    in property <int> scale: 3;
+
+    property <length> cell-w: 8px * root.scale;
+    property <length> cell-h: (root.tall ? 16px : 8px) * root.scale;
+    property <int> rows: ceil(root.sprites.length / root.columns);
+
+    background: transparent;
+
+    VerticalLayout {
+        alignment: start;
+        spacing: 4px;
+
+        for r in root.rows: HorizontalLayout {
+            alignment: start;
+            spacing: 6px;
+
+            for c in root.columns: Rectangle {
+                property <int> i: r * root.columns + c;
+                property <bool> present: i < root.sprites.length;
+                property <SpriteCell> cell: root.sprites[i];
+                // A slot past `active-count` holds whatever the last scanline
+                // left there; it is not a sprite that is being drawn.
+                property <bool> stale: root.active-count >= 0 && i >= root.active-count;
+
+                visible: present;
+                width: present ? root.cell-w : 0px;
+                height: root.cell-h;
+
+                Image {
+                    // In 8x16 mode the pair starts at the even tile, so the low
+                    // bit of the OAM tile byte is ignored.
+                    property <int> t: root.tall ? floor(cell.tile / 2) * 2 : cell.tile;
+                    source: root.atlas;
+                    source-clip-x: mod(t, 16) * 8;
+                    source-clip-y: floor(t / 16) * 8;
+                    source-clip-width: 8;
+                    source-clip-height: root.tall ? 16 : 8;
+                    width: root.cell-w;
+                    height: root.cell-h;
+                    image-rendering: pixelated;
+                }
+
+                // An overlay, not `colorize`: the atlas has no alpha, so
+                // colorizing it replaces the sprite with a flat block of colour
+                // instead of tinting it.
+                if cell.offscreen || stale: Rectangle {
+                    background: #ff000055;
+                }
+
+                hover := TouchArea { }
+                if hover.has-hover && present: Rectangle {
+                    // Follows the cursor rather than sitting under the cell: at
+                    // this scale a fixed label would be wider than the grid.
+                    x: root.cell-w + 4px;
+                    y: 0px;
+                    width: label.preferred-width + 8px;
+                    height: label.preferred-height + 6px;
+                    background: #000000d0;
+                    border-radius: 3px;
+                    label := Text {
+                        text: cell.text;
+                        color: #cfe3cf;
+                        font-family: "monospace";
+                        font-size: 11px;
+                    }
+                }
+            }
+        }
+    }
+}

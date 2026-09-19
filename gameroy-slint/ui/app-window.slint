@@ -62,6 +62,11 @@ export component AppWindow inherits Window {
     in property <[SpriteCell]> ppu_oam;
     in property <[SpriteCell]> ppu_sprite_buffer;
     in property <int> ppu_sprite_buffer_len;
+    in property <[int]> ppu_background_tiles;
+    in property <[int]> ppu_window_tiles;
+    in property <bool> ppu_tall_sprites;
+    in property <string> ppu_background_fifo;
+    in property <string> ppu_sprite_fifo;
     callback ppu_viewer_toggled(bool);
     callback remove_breakpoint(int);
     callback remove_watch(int);
@@ -178,6 +183,11 @@ export component AppWindow inherits Window {
         ppu-oam: root.ppu_oam;
         ppu-sprite-buffer: root.ppu_sprite_buffer;
         ppu-sprite-buffer-len: root.ppu_sprite_buffer_len;
+        ppu-background-tiles: root.ppu_background_tiles;
+        ppu-window-tiles: root.ppu_window_tiles;
+        ppu-tall-sprites: root.ppu_tall_sprites;
+        ppu-background-fifo: root.ppu_background_fifo;
+        ppu-sprite-fifo: root.ppu_sprite_fifo;
         ppu-viewer-toggled(shown) => { root.ppu_viewer_toggled(shown); }
         remove-breakpoint(a) => { root.remove_breakpoint(a); }
         remove-watch(a) => { root.remove_watch(a); }

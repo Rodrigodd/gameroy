@@ -1113,3 +1113,45 @@ fn partial_screen_advances_while_stepping() {
         "drawn_pixels never moved across 400 instructions: {seen:?}"
     );
 }
+
+/// The map tile indices exist so a client can slice the atlas without VRAM or
+/// the LCDC addressing rules. That only works if every one of them is in range.
+#[test]
+fn ppu_viewer_resolves_map_tiles_into_the_atlas() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    h.send(Command::SetDebugViews(DebugViews {
+        ppu_viewer: true,
+        ..Default::default()
+    }));
+    let update = h.wait_for("a DebugUpdate with the ppu viewer", |ev| match ev {
+        Event::DebugUpdate(u) if u.ppu_viewer.is_some() => Some(u),
+        _ => None,
+    });
+    let view = update.ppu_viewer.as_ref().unwrap();
+
+    // 16 tiles across, 8x8 each, so the atlas holds width/8 * height/8 of them.
+    let atlas_tiles = (view.tiles.width as usize / 8) * (view.tiles.height as usize / 8);
+    assert_eq!(atlas_tiles, 384);
+
+    for (name, map) in [
+        ("background", &view.background_tiles),
+        ("window", &view.window_tiles),
+    ] {
+        assert_eq!(map.len(), 32 * 32, "{name} map is not 32x32");
+        assert!(
+            map.iter().all(|&t| (t as usize) < atlas_tiles),
+            "{name} map has a tile index outside the atlas: {:?}",
+            map.iter().max()
+        );
+    }
+
+    // The FIFOs hold 2-bit pixels, never more than the fetcher's 8 per side.
+    assert!(view.background_fifo.len() <= 16);
+    assert!(view.sprite_fifo.len() <= 16);
+}

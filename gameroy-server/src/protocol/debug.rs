@@ -179,6 +179,20 @@ pub struct PpuViewer {
     /// The sprites selected for the current scanline.
     pub sprite_buffer: Vec<SpriteInfo>,
     pub sprite_buffer_len: u8,
+    /// LCDC bit 2: sprites are 8x16 rather than 8x8. Decides how tall a slice of
+    /// `tiles` one sprite's preview is.
+    pub tall_sprites: bool,
+    /// Index into `tiles` for each of the 32x32 background map cells, with the
+    /// 0x8800 signed addressing already applied. Resolved here so a front-end can
+    /// index the atlas without a copy of VRAM and the LCDC rules.
+    ///
+    /// `u16` because the resolved index runs to 0x17F, past what a byte holds.
+    pub background_tiles: Vec<u16>,
+    /// The same for the window map.
+    pub window_tiles: Vec<u16>,
+    /// The two pixel FIFOs, as the old viewer's hex dump showed them.
+    pub background_fifo: Vec<u8>,
+    pub sprite_fifo: Vec<u8>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

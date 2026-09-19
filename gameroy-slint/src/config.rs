@@ -97,7 +97,7 @@ fn config_path() -> PathBuf {
 /// `cargo run` the config resolves at the workspace root rather than somewhere in
 /// `target/`. That matches the old front-end; changing it would silently move
 /// everyone's config.
-fn base_folder() -> PathBuf {
+pub fn base_folder() -> PathBuf {
     if let Some(dir) = option_env!("CARGO_WORKSPACE_DIR")
         && !dir.is_empty()
     {

@@ -23,6 +23,10 @@ audio-engine = "0.4.2"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 rfd = "0.15"
+# Box art: decode whatever libretro serves, resize it, re-encode as the cache PNG.
+image = { version = "0.25.4", default-features = false, features = ["png", "jpeg"] }
+# Default features, unlike the old front-end's: the thumbnail URL is https now.
+ureq = "2.12"
 
 [build-dependencies]
 slint-build = "1.18.0"

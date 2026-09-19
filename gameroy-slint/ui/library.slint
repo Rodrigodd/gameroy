@@ -5,6 +5,19 @@ export struct RomRow {
     title: string,
     size: string,
     last-played: string,
+    /// Box art. An empty image until the loader has one, which is most of them.
+    thumb: image,
+    /// The loader has not reached this row yet.
+    loading: bool,
+}
+
+/// Width of the thumbnail column, shared by the header spacer and every row so
+/// the two cannot drift apart.
+global Layout {
+    out property <length> thumb-column: 52px;
+    out property <length> thumb-size: 44px;
+    /// Tall enough for the thumbnail plus a little breathing room.
+    out property <length> row-height: 52px;
 }
 
 // One clickable column header. Kept as its own component so the stretchy column
@@ -47,8 +60,8 @@ component HeaderCell inherits Rectangle {
 }
 
 // A hand-built table rather than StandardTableView, whose cells are
-// StandardListViewItem and therefore text only -- the thumbnail column the old
-// front-end had needs an Image per row, so the structure has to allow one.
+// StandardListViewItem and therefore text only -- the thumbnail column needs an
+// Image per row, which that widget cannot hold.
 export component Library inherits Rectangle {
     in property <[RomRow]> roms;
     in property <int> sort-column;
@@ -90,6 +103,12 @@ export component Library inherits Rectangle {
         HorizontalLayout {
             height: 26px;
             spacing: 0px;
+            // Inert: there is nothing to sort a picture by, and a HeaderCell here
+            // would be a click target that silently does nothing.
+            Rectangle {
+                width: Layout.thumb-column;
+                background: #1a1f1a;
+            }
             HeaderCell {
                 // No width: this is the column that takes the slack.
                 horizontal-stretch: 1;
@@ -127,7 +146,7 @@ export component Library inherits Rectangle {
 
         ListView {
             for row[i] in root.roms: Rectangle {
-                height: 24px;
+                height: Layout.row-height;
                 background: root.selected == i
                     ? #2c3a2c
                     : (row-touch.has-hover ? #1a1f1a : transparent);
@@ -139,6 +158,26 @@ export component Library inherits Rectangle {
 
                 HorizontalLayout {
                     spacing: 0px;
+                    Rectangle {
+                        width: Layout.thumb-column;
+                        // The frame is drawn whether or not there is box art, so
+                        // a row without one is an empty slot rather than a gap
+                        // that makes the column look ragged.
+                        Rectangle {
+                            width: Layout.thumb-size;
+                            height: Layout.thumb-size;
+                            background: #1a1f1a;
+                            border-radius: 3px;
+                            Image {
+                                source: row.thumb;
+                                width: parent.width;
+                                height: parent.height;
+                                // The cache is 96x96 shown at 44: smoothing beats
+                                // the shimmer a non-integer pixelated scale gives.
+                                image-rendering: smooth;
+                            }
+                        }
+                    }
                     Text {
                         horizontal-stretch: 1;
                         text: row.file;
@@ -150,7 +189,7 @@ export component Library inherits Rectangle {
                     Text {
                         width: 150px;
                         text: row.title;
-                        color: #9fb39f;
+                        color: row.loading ? #6f8f6f : #9fb39f;
                         font-size: 12px;
                         vertical-alignment: center;
                         overflow: elide;

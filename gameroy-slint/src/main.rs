@@ -5,8 +5,10 @@ mod audio;
 mod config;
 mod input;
 mod library;
+mod library_loader;
 mod server_handle;
 mod storage;
+mod thumbs;
 
 use std::cell::RefCell;
 use std::error::Error;
@@ -15,12 +17,13 @@ use gameroy_server::protocol::{
     Command, CpuState, DebugViews, EmulatorConfig, Event, IndexedImage, OpenRom, PpuState, RunMode,
     SpriteInfo, StopReason,
 };
-use slint::{ModelRc, Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel};
+use slint::{ModelRc, Rgb8Pixel, Rgba8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use audio::{AudioEngineSink, AudioSink};
 use config::Config;
 use input::{HoldKey, Joypad};
 use library::{RomEntry, Sort, SortColumn};
+use library_loader::{LibraryLoader, LibraryMsg};
 use server_handle::ServerHandle;
 use storage::RomFile;
 
@@ -41,8 +44,19 @@ struct App {
     config: EmulatorConfig,
     settings: Config,
 
+    /// In scan order, never permuted: the loader addresses rows by their index
+    /// here, and a message in flight must not land on somebody else's row.
     entries: Vec<RomEntry>,
+    /// Indices into `entries`, in the order the table shows them.
+    order: Vec<usize>,
+    /// Box art per entry, parallel to `entries`. Kept out of `RomEntry` so the
+    /// library module stays free of Slint and testable without a window.
+    thumbs: Vec<Option<slint::Image>>,
+    /// The scan in progress. Dropping it cancels the workers.
+    loader: Option<LibraryLoader>,
     sort: Sort,
+    /// A position in `order`, not an index into `entries`; it is reset whenever
+    /// the order changes.
     selected: Option<usize>,
 
     /// None while the library is showing.
@@ -63,6 +77,11 @@ struct App {
 }
 
 impl App {
+    /// Recomputes the display order from the current entries and sort.
+    fn reorder(&mut self) {
+        self.order = library::sort_order(&self.entries, self.sort);
+    }
+
     fn send(&self, cmd: Command) {
         if let Some(server) = self.server.as_ref() {
             server.send(cmd);
@@ -135,6 +154,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             sort: settings.sort(),
             settings,
             entries: Vec::new(),
+            order: Vec::new(),
+            thumbs: Vec::new(),
+            loader: None,
             selected: None,
             joypad: Joypad::default(),
             debugging: false,
@@ -218,12 +240,16 @@ fn wire_file_drop(ui: &AppWindow) {
 // --- library ---------------------------------------------------------------
 
 /// Rescans the configured folder and republishes the table model.
+///
+/// Only the folder listing happens here. Headers and thumbnails arrive from
+/// [`LibraryLoader`], so a folder of several hundred ROMs draws immediately
+/// instead of after every one of them has been opened.
 fn refresh_library(ui: &AppWindow) {
     let folder = with_app(|app| app.settings.rom_folder.clone()).flatten();
 
-    let entries = match folder.as_deref() {
-        Some(dir) => match library::scan(std::path::Path::new(dir)) {
-            Ok(e) => e,
+    let paths = match folder.as_deref() {
+        Some(dir) => match library::list_roms(std::path::Path::new(dir)) {
+            Ok(p) => p,
             Err(e) => {
                 log::warn!("could not scan {dir}: {e}");
                 Vec::new()
@@ -233,9 +259,13 @@ fn refresh_library(ui: &AppWindow) {
     };
 
     with_app(|app| {
-        app.entries = entries;
-        let sort = app.sort;
-        library::sort_entries(&mut app.entries, sort);
+        // Assigning the new loader drops the old one, which cancels its workers.
+        // Anything they still post lands in the queue they own, which dies with
+        // them, so a stale message can never reach the new list.
+        app.loader = None;
+        app.thumbs = vec![None; paths.len()];
+        app.entries = paths.iter().cloned().map(RomEntry::pending).collect();
+        app.reorder();
         app.selected = None;
     });
 
@@ -245,18 +275,81 @@ fn refresh_library(ui: &AppWindow) {
             .map(SharedString::from)
             .unwrap_or_else(|| "no ROM folder set".into()),
     );
+
+    if !paths.is_empty() {
+        let weak = ui.as_weak();
+        let wake = move || {
+            let weak = weak.clone();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade() {
+                    drain_library(&ui);
+                }
+            });
+        };
+        with_app(|app| app.loader = Some(LibraryLoader::spawn(paths, wake)));
+    }
 }
 
-/// Pushes the current entries into the Slint model.
+/// Folds in whatever the loader has found since the last drain.
+fn drain_library(ui: &AppWindow) {
+    with_app(|app| {
+        let Some(loader) = app.loader.as_ref() else {
+            return;
+        };
+        loader.begin_drain();
+        let messages = loader.drain();
+        if messages.is_empty() {
+            return;
+        }
+        for message in messages {
+            match message {
+                LibraryMsg::Header {
+                    index,
+                    header,
+                    last_played,
+                } => {
+                    if let Some(entry) = app.entries.get_mut(index) {
+                        entry.apply(header, last_played);
+                    }
+                }
+                LibraryMsg::Thumb {
+                    index,
+                    width,
+                    height,
+                    rgba,
+                } => {
+                    if let Some(slot) = app.thumbs.get_mut(index) {
+                        let buffer =
+                            SharedPixelBuffer::<Rgba8Pixel>::clone_from_slice(&rgba, width, height);
+                        *slot = Some(slint::Image::from_rgba8(buffer));
+                    }
+                }
+            }
+        }
+        // A title or size that only just arrived can change where its row
+        // belongs, so the order is recomputed rather than left stale. Rows do
+        // shuffle while a folder loads; a list that is sorted only once the
+        // data is complete would be worse.
+        app.reorder();
+    });
+    publish_library(ui);
+}
+
+/// Pushes the current entries into the Slint model, in display order.
 fn publish_library(ui: &AppWindow) {
     let rows: Vec<RomRow> = with_app(|app| {
-        app.entries
+        app.order
             .iter()
-            .map(|e| RomRow {
-                file: e.file_name.clone().into(),
-                title: e.title_text().into(),
-                size: e.size_text().into(),
-                last_played: e.last_played_text().into(),
+            .map(|&i| {
+                let e = &app.entries[i];
+                RomRow {
+                    file: e.file_name.clone().into(),
+                    title: e.title_text().into(),
+                    size: e.size_text().into(),
+                    last_played: e.last_played_text().into(),
+                    thumb: app.thumbs[i].clone().unwrap_or_default(),
+                    loading: e.loading,
+                }
             })
             .collect()
     })
@@ -276,10 +369,13 @@ fn publish_library(ui: &AppWindow) {
     ui.set_selected_rom(sel);
 }
 
-/// Starts playing the ROM at `index` in the library.
-fn activate_rom(ui: &AppWindow, index: usize) {
-    let rom =
-        with_app(|app| app.entries.get(index).map(|e| RomFile::new(e.path.clone()))).flatten();
+/// Starts playing the ROM at display position `row`.
+fn activate_rom(ui: &AppWindow, row: usize) {
+    let rom = with_app(|app| {
+        let &index = app.order.get(row)?;
+        Some(RomFile::new(app.entries[index].path.clone()))
+    })
+    .flatten();
     let Some(rom) = rom else { return };
     start_rom(ui, rom);
 }
@@ -371,7 +467,7 @@ fn wire_callbacks(ui: &AppWindow) {
                 }
             };
             let sort = app.sort;
-            library::sort_entries(&mut app.entries, sort);
+            app.reorder();
             app.selected = None;
             app.settings.set_sort(sort);
             if let Err(e) = app.settings.save() {

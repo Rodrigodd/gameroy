@@ -13,11 +13,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::input::KeyMap;
 use crate::library::Sort;
 
 const FILE_NAME: &str = "gameroy-slint.toml";
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// Folder scanned for `.gb` files.
@@ -32,6 +33,48 @@ pub struct Config {
     pub start_in_debug: bool,
     /// Use the x86_64 recompiler. No effect on other architectures.
     pub jit: bool,
+    /// Let the emulator predict interrupts. An accuracy/speed trade-off the old
+    /// front-end exposed and this one did not.
+    pub interrupt_prediction: bool,
+    /// Start with the frame limiter off, i.e. as fast as the host can manage.
+    pub frame_skip: bool,
+    /// A 256-byte boot ROM to run before the cartridge. Without one the machine
+    /// starts in its post-boot state.
+    pub boot_rom: Option<String>,
+    /// Initial window size, as `"WIDTHxHEIGHT"`.
+    pub screen_size: Option<String>,
+    /// Keyboard bindings.
+    pub keymap: KeyMap,
+}
+
+/// Parses the `"WIDTHxHEIGHT"` form the old config used.
+pub fn parse_screen_size(text: &str) -> Option<(u32, u32)> {
+    let (w, h) = text.split_once(['x', 'X'])?;
+    let (w, h) = (w.trim().parse().ok()?, h.trim().parse().ok()?);
+    // A zero-sized window is not a size; treat it as a malformed value rather
+    // than handing it to the windowing system.
+    (w > 0 && h > 0).then_some((w, h))
+}
+
+impl Default for Config {
+    /// Matches `with_defaults`, so a config file that omits a field means the
+    /// same thing as no config file at all. Deriving this instead would default
+    /// every bool to false and quietly turn off rewinding and the recompiler.
+    fn default() -> Self {
+        Self {
+            rom_folder: None,
+            sort_list: None,
+            only_integer_scaling: false,
+            rewinding: true,
+            start_in_debug: false,
+            jit: true,
+            interrupt_prediction: true,
+            frame_skip: false,
+            boot_rom: None,
+            screen_size: None,
+            keymap: KeyMap::default(),
+        }
+    }
 }
 
 impl Config {
@@ -68,10 +111,38 @@ impl Config {
     }
 
     fn with_defaults() -> Self {
-        Self {
-            rewinding: true,
-            jit: true,
-            ..Self::default()
+        Self::default()
+    }
+
+    /// The boot ROM's bytes, if one is configured and readable.
+    ///
+    /// Reading it is this side's job; the server only ever sees the bytes.
+    pub fn read_boot_rom(&self) -> Option<Vec<u8>> {
+        let path = self.boot_rom.as_deref()?;
+        match std::fs::read(path) {
+            Ok(bytes) if bytes.len() == 256 => Some(bytes),
+            Ok(bytes) => {
+                log::warn!(
+                    "ignoring boot ROM {path}: {} bytes, expected 256",
+                    bytes.len()
+                );
+                None
+            }
+            Err(e) => {
+                log::warn!("ignoring boot ROM {path}: {e}");
+                None
+            }
+        }
+    }
+
+    pub fn window_size(&self) -> Option<(u32, u32)> {
+        let text = self.screen_size.as_deref()?;
+        match parse_screen_size(text) {
+            Some(size) => Some(size),
+            None => {
+                log::warn!("ignoring malformed screen_size {text:?}");
+                None
+            }
         }
     }
 
@@ -121,10 +192,7 @@ mod tests {
         let mut c = Config {
             rom_folder: Some("/roms".into()),
             only_integer_scaling: true,
-            rewinding: true,
-            start_in_debug: false,
-            jit: true,
-            sort_list: None,
+            ..Config::default()
         };
         c.set_sort(Sort {
             column: SortColumn::Size,
@@ -137,6 +205,26 @@ mod tests {
         assert!(back.only_integer_scaling);
         assert_eq!(back.sort().column, SortColumn::Size);
         assert!(!back.sort().ascending);
+    }
+
+    #[test]
+    fn an_omitted_field_means_what_no_file_means() {
+        // Deriving Default would make every bool false here, silently disabling
+        // rewinding and the recompiler for anyone with an older config file.
+        let c: Config = toml::from_str(r#"rom_folder = "/roms""#).unwrap();
+        assert!(c.rewinding);
+        assert!(c.jit);
+        assert!(c.interrupt_prediction);
+        assert_eq!(c.keymap, KeyMap::default());
+    }
+
+    #[test]
+    fn parses_a_screen_size_and_rejects_nonsense() {
+        assert_eq!(parse_screen_size("768x400"), Some((768, 400)));
+        assert_eq!(parse_screen_size(" 640 X 480 "), Some((640, 480)));
+        assert_eq!(parse_screen_size("768"), None);
+        assert_eq!(parse_screen_size("0x400"), None);
+        assert_eq!(parse_screen_size("widexhigh"), None);
     }
 
     #[test]

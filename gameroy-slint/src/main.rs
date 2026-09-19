@@ -28,7 +28,7 @@ use format::{
     PALETTE, format_break_flags, format_cpu, format_ppu, indexed_to_image, partial_screen_image,
     sprite_cells,
 };
-use input::{HoldKey, Joypad};
+use input::{HoldKey, Joypad, Shortcut};
 use library::{RomEntry, Sort, SortColumn};
 use library_loader::{LibraryLoader, LibraryMsg};
 use server_handle::ServerHandle;
@@ -164,7 +164,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             0
         },
         jit: settings.jit,
-        ..EmulatorConfig::default()
+        interrupt_prediction: settings.interrupt_prediction,
+        // `frame_skip` means "start unthrottled", which is the frame limiter off.
+        frame_limit: !settings.frame_skip,
     };
     if let Some(a) = audio.as_ref() {
         log::info!("audio device at {} Hz", a.sample_rate());
@@ -206,6 +208,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     });
 
     ui.set_integer_scaling(with_app(|app| app.settings.only_integer_scaling).unwrap_or(false));
+
+    if let Some((width, height)) = with_app(|app| app.settings.window_size()).flatten() {
+        ui.window()
+            .set_size(slint::PhysicalSize::new(width, height));
+    }
 
     // Handed over once: the model is mutated in place afterwards and notifies
     // Slint itself, so the rows are never republished as a fresh VecModel.
@@ -447,20 +454,32 @@ fn open_pending_rom(ui: &AppWindow) {
             }
         };
         let save_ram = rom.read_save_ram();
+        let boot_rom = app.settings.read_boot_rom();
         Some(Ok(Command::OpenRom(Box::new(OpenRom {
             rom: bytes,
             save_ram,
-            boot_rom: None,
+            boot_rom,
             config: app.config.clone(),
-            start_paused: false,
+            // `start_in_debug` wants the machine stopped before the first
+            // instruction, not after a frame has already gone by.
+            start_paused: app.settings.start_in_debug,
         }))))
     })
     .flatten();
 
     match request {
         Some(Ok(cmd)) => {
-            with_app(|app| app.send(cmd));
+            let debugging = with_app(|app| {
+                app.send(cmd);
+                if app.settings.start_in_debug {
+                    app.debugging = true;
+                    app.send(Command::SetDebugViews(debug_views(app)));
+                }
+                app.debugging
+            })
+            .unwrap_or(false);
             ui.set_playing(true);
+            ui.set_debugging(debugging);
         }
         Some(Err(message)) => ui.set_status_text(message.into()),
         None => {}
@@ -488,7 +507,9 @@ fn exit_to_library(ui: &AppWindow) {
 // --- callbacks -------------------------------------------------------------
 
 fn wire_callbacks(ui: &AppWindow) {
-    ui.on_is_handled_key(|text| input::is_handled(&text));
+    ui.on_is_handled_key(|text| {
+        with_app(|app| app.settings.keymap.is_handled(&text)).unwrap_or(false)
+    });
 
     // --- library ---
 
@@ -568,28 +589,45 @@ fn wire_callbacks(ui: &AppWindow) {
 
     // Joypad and hold actions need to know whether the key is down, so they stay
     // on the press/release callbacks. Everything momentary is a KeyBinding.
+    let weak = ui.as_weak();
     ui.on_key_pressed(move |event| {
-        with_app(|app| {
-            if let Some(mask) = app.joypad.press(&event.text) {
+        let Some(ui) = weak.upgrade() else { return };
+        let action = with_app(|app| {
+            if let Some(mask) = app.joypad.press(&app.settings.keymap, &event.text) {
                 app.send(Command::SetJoypad(mask));
-                return;
+                return None;
             }
             // Auto-repeat re-sends these; harmless, since both are idempotent.
-            match input::hold_key(&event.text) {
-                Some(HoldKey::FastForward) => app.send(Command::SetFrameLimit(false)),
-                Some(HoldKey::Rewind) => app.send(Command::SetRewinding(true)),
+            match app.settings.keymap.hold_key(&event.text) {
+                Some(HoldKey::FastForward) => {
+                    app.send(Command::SetFrameLimit(false));
+                    return None;
+                }
+                Some(HoldKey::Rewind) => {
+                    app.send(Command::SetRewinding(true));
+                    return None;
+                }
                 None => {}
             }
-        });
+            app.settings.keymap.shortcut(&event.text)
+        })
+        .flatten();
+
+        // Shortcuts are dispatched here rather than declared as `KeyBinding`s,
+        // which cannot take a key chosen at runtime. Auto-repeat would fire these
+        // repeatedly while held, so each one has to be idempotent or guarded.
+        if let Some(action) = action {
+            run_shortcut(&ui, action);
+        }
     });
 
     ui.on_key_release(move |event| {
         with_app(|app| {
-            if let Some(mask) = app.joypad.release(&event.text) {
+            if let Some(mask) = app.joypad.release(&app.settings.keymap, &event.text) {
                 app.send(Command::SetJoypad(mask));
                 return;
             }
-            match input::hold_key(&event.text) {
+            match app.settings.keymap.hold_key(&event.text) {
                 Some(HoldKey::FastForward) => app.send(Command::SetFrameLimit(true)),
                 Some(HoldKey::Rewind) => app.send(Command::SetRewinding(false)),
                 None => {}
@@ -818,6 +856,20 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 
     let weak = ui.as_weak();
+    ui.on_menu_toggle_scaling(move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let on = with_app(|app| {
+            app.settings.only_integer_scaling = !app.settings.only_integer_scaling;
+            if let Err(e) = app.settings.save() {
+                log::warn!("could not save config: {e}");
+            }
+            app.settings.only_integer_scaling
+        })
+        .unwrap_or(false);
+        ui.set_integer_scaling(on);
+    });
+
+    let weak = ui.as_weak();
     ui.on_menu_reset(move || {
         with_app(|app| app.send(Command::Reset));
         if let Some(ui) = weak.upgrade() {
@@ -862,6 +914,25 @@ fn dump_disassembly(ui: &AppWindow, path: &str) {
     });
 }
 
+/// Runs a shortcut, exactly as its old `KeyBinding` did.
+///
+/// Gated on there being a game, which is what `enabled: root.playing` used to do
+/// declaratively: the library screen must not react to a step.
+fn run_shortcut(ui: &AppWindow, action: Shortcut) {
+    if !ui.get_playing() {
+        return;
+    }
+    match action {
+        Shortcut::SaveState => ui.invoke_save_state(),
+        Shortcut::LoadState => ui.invoke_load_state(),
+        Shortcut::Menu => ui.invoke_toggle_menu(),
+        Shortcut::ToggleDebugger => ui.invoke_toggle_debugger(),
+        Shortcut::Step => ui.invoke_debug_step(),
+        Shortcut::StepBack => ui.invoke_debug_step_back(),
+        Shortcut::ToggleRun => ui.invoke_toggle_run(),
+    }
+}
+
 /// Mirrors `gameroy::debugger::break_flags::EXECUTE`.
 const BREAK_EXECUTE: u8 = 1 << 2;
 
@@ -880,6 +951,7 @@ fn focus_disassembly(ui: &AppWindow, index: i32) {
     ui.set_disasm_focus_token(token);
 }
 
+/// Slint has no `[u16]`, so the atlas indices cross as `i32`.
 fn tile_numbers(tiles: &[u16]) -> ModelRc<i32> {
     ModelRc::new(VecModel::from(
         tiles.iter().map(|&t| t as i32).collect::<Vec<_>>(),
@@ -1183,4 +1255,40 @@ fn push_console(ui: &AppWindow, line: String) {
     })
     .unwrap_or_default();
     ui.set_console_lines(ModelRc::new(VecModel::from(lines)));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gameroy_server::protocol::{IndexedImage, PartialScreen};
+
+    /// The boundary is the whole point: everything before `drawn_pixels` is this
+    /// frame's output and must read as the Game Boy's grey, everything after is
+    /// the previous frame's and must not.
+    #[test]
+    fn a_partial_screen_tints_only_what_the_frame_has_not_reached() {
+        let screen = PartialScreen {
+            pixels: IndexedImage {
+                width: 4,
+                height: 2,
+                // Same shade throughout, so only the palette can differ.
+                data: vec![0; 8],
+            },
+            drawn_pixels: 5,
+        };
+
+        let image = partial_screen_image(&screen);
+        let buffer = image.to_rgb8().expect("built from rgb8");
+        let pixels: Vec<_> = buffer.as_slice().to_vec();
+        assert_eq!(pixels.len(), 8);
+
+        for (i, p) in pixels.iter().enumerate() {
+            let grey = p.r == p.g && p.g == p.b;
+            if i < 5 {
+                assert!(grey, "pixel {i} is inside the drawn prefix but was tinted");
+            } else {
+                assert!(!grey, "pixel {i} is stale but was left untinted");
+            }
+        }
+    }
 }

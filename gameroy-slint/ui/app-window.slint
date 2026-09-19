@@ -19,6 +19,9 @@ export component AppWindow inherits Window {
     pure callback is_handled_key(string) -> bool;
 
     // --- shortcut actions ---
+    //
+    // Invoked from Rust rather than bound to a key here: the bindings are
+    // configurable, and a KeyBinding's keys are fixed at compile time.
     callback save_state();
     callback load_state();
     callback toggle_debugger();
@@ -31,6 +34,7 @@ export component AppWindow inherits Window {
     callback menu_save_state();
     callback menu_load_state();
     callback menu_reset();
+    callback menu_toggle_scaling();
     callback menu_close();
     callback menu_exit();
 
@@ -118,44 +122,6 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Shortcuts. `enabled` gates them on there being a game, so the library
-        // screen does not react to F8 -- which beats checking `playing` again on
-        // the Rust side of every handler.
-        KeyBinding {
-            keys: @keys(F5);
-            enabled: root.playing;
-            activated => { root.save_state(); }
-        }
-        KeyBinding {
-            keys: @keys(F6);
-            enabled: root.playing;
-            activated => { root.load_state(); }
-        }
-        KeyBinding {
-            keys: @keys(F7);
-            enabled: root.playing;
-            activated => { root.debug_step_back(); }
-        }
-        KeyBinding {
-            keys: @keys(F8);
-            enabled: root.playing;
-            activated => { root.debug_step(); }
-        }
-        KeyBinding {
-            keys: @keys(F9);
-            enabled: root.playing;
-            activated => { root.toggle_run(); }
-        }
-        KeyBinding {
-            keys: @keys(F12);
-            enabled: root.playing;
-            activated => { root.toggle_debugger(); }
-        }
-        KeyBinding {
-            keys: @keys(M);
-            enabled: root.playing;
-            activated => { root.toggle_menu(); }
-        }
     }
 
     if !root.playing: Library {
@@ -232,6 +198,8 @@ export component AppWindow inherits Window {
         save-state() => { root.menu_save_state(); }
         load-state() => { root.menu_load_state(); }
         reset() => { root.menu_reset(); }
+        integer-scaling: root.integer_scaling;
+        toggle-scaling() => { root.menu_toggle_scaling(); }
         exit-game() => { root.menu_exit(); }
         close() => { root.menu_close(); }
     }

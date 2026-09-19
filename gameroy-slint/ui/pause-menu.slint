@@ -5,6 +5,8 @@ export component PauseMenu inherits Rectangle {
     callback save-state();
     callback load-state();
     callback reset();
+    callback toggle-scaling();
+    in property <bool> integer-scaling;
     callback exit-game();
     callback close();
 
@@ -39,6 +41,10 @@ export component PauseMenu inherits Rectangle {
             Button {
                 text: "Load State";
                 clicked => { root.load-state(); }
+            }
+            Button {
+                text: root.integer-scaling ? "Scaling: whole pixels" : "Scaling: fit";
+                clicked => { root.toggle-scaling(); }
             }
             Button {
                 text: "Reset";

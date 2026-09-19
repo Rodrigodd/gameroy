@@ -26,13 +26,33 @@ Two consequences worth keeping in mind whenever you touch the boundary:
 
 - `src/` — application state and the event loop wiring, plus one module per concern
   (input, audio, storage, config, the ROM library, the server connection).
-- `ui/` — the Slint files. The root window is deliberately thin: it handles focus and
-  keys and picks a screen. Each screen and reusable widget is its own component in its
-  own file.
+- `ui/` — the Slint files. `app-window.slint` is the window shell and nothing else: it
+  sizes the window, routes keys, and picks a screen. Each screen and reusable widget is
+  its own component in its own file.
+- `ui/state.slint` — the whole contract between the host and the UI, as exported
+  globals.
 
-Prefer adding a new component file over growing an existing one. A component that takes
-its data as properties and reports back through callbacks can be previewed and reasoned
-about on its own.
+Prefer adding a new component file over growing an existing one.
+
+## Where a component's data comes from
+
+Two kinds of component, and they get their data differently.
+
+**Screens and panels read a global.** Slint exposes a property to Rust only if it is on
+the compiled root or on an exported global, so routing everything through the root is
+what once forced each screen's data to be declared on the window, again on every
+component in between, and once more where it was used. A global reaches any depth with
+no help from its ancestors. Add the properties and callbacks to `ui/state.slint`, and
+**export the global from `app-window.slint`** — that re-export is what creates
+`ui.global::<X>()`, and without it the global silently has no Rust API.
+
+**Reusable widgets take properties and report through callbacks.** `GameScreen`,
+`SpriteGrid`, `TileMapView` and the file-private helpers know nothing about the
+emulator. Keep them that way: they are the ones worth previewing and reasoning about
+alone.
+
+If a value is a component's own business — a splitter position, a fold's state — it is a
+property on that component, not part of the contract.
 
 ## Build, run, test
 
@@ -62,9 +82,20 @@ slint-viewer --check gameroy-slint/ui/app-window.slint
 It is much faster than `cargo build` and reports the same diagnostics.
 
 **Never call UI work done without looking at a render.** `slint-viewer --screenshot`
-renders a file headlessly, and a component written to take its data as properties can be
-previewed by wrapping it in a small throwaway file that supplies sample values. Several
-layout mistakes are invisible in the source and obvious in a picture.
+renders a file headlessly. Several layout mistakes are invisible in the source and
+obvious in a picture.
+
+A widget that takes properties is previewed by wrapping it in a small throwaway file
+that supplies sample values. A screen that reads a global is previewed with
+`--load-data`:
+
+```sh
+slint-viewer --component Library --load-data sample.json ui/library.slint
+```
+
+`--load-data` only reaches a global exported from the file being previewed, which is why
+each screen file re-exports the global it reads. Note that `--on` cannot set a global
+callback, so a button's handler has to be exercised in the real app.
 
 `slint-viewer --auto-reload <file>` gives a live preview while editing.
 

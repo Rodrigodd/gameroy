@@ -351,7 +351,7 @@ impl Trace {
         let cursor = cursors.pop().unwrap();
 
         let Some(address) = Address::from_cursor(&cursor) else {
-            return
+            return;
         };
 
         let (op, len) = cursor.get_op(rom);

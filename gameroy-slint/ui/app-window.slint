@@ -1,29 +1,47 @@
-import { Button, VerticalBox } from "std-widgets.slint";
 import { Library, RomRow } from "library.slint";
-import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
-import { DisassemblyView, DisasmRow } from "disassembly.slint";
-import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
+import { EmulatorView, BreakRow, WatchRow, DisasmRow, SpriteCell } from "emulator.slint";
+import { PauseMenu } from "pause-menu.slint";
 
 export { RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell }
 
+// The root is deliberately thin: focus and key handling, and a choice between
+// the library and the emulator. The screens themselves are components.
 export component AppWindow inherits Window {
-    /// Every key the app handles is dispatched from Rust, so the keymap lives in
-    /// exactly one place rather than being split across the UI and the host.
+    // --- input ---
+    //
+    // Only the joypad and the two hold-to-act keys go through key-pressed and
+    // key-released, because those need to know whether the key is down. Every
+    // momentary action is a KeyBinding below, which is declarative and cannot
+    // drift out of sync with the UI the way a hand-rolled dispatch can.
     callback key_pressed(KeyEvent);
     callback key_release(KeyEvent);
-    /// True when the key does something, so the FocusScope knows to consume it.
+    /// True when the key is one the joypad or a hold action uses.
     pure callback is_handled_key(string) -> bool;
 
+    // --- shortcut actions ---
+    callback save_state();
+    callback load_state();
+    callback toggle_debugger();
+    callback debug_step();
+    callback toggle_run();
+    callback toggle_menu();
+
+    // --- menu ---
     callback menu_save_state();
     callback menu_load_state();
     callback menu_reset();
     callback menu_close();
     callback menu_exit();
 
-    in property <image> screen;
+    in property <string> window_title: "GameRoy";
     in property <string> status_text;
+    in property <bool> menu_open;
+    /// False shows the ROM library instead of the emulator.
+    in property <bool> playing;
 
-    // --- debugger ---
+    // --- emulator ---
+    in property <image> screen;
+    in property <bool> integer_scaling;
     in property <bool> debugging;
     in property <string> cpu_text;
     in property <string> ppu_text;
@@ -33,8 +51,6 @@ export component AppWindow inherits Window {
     in property <[DisasmRow]> disasm_rows;
     in property <int> disasm_total;
     in property <int> disasm_start;
-
-    /// Which centre tab is showing: false = disassembly, true = PPU viewer.
     in-out property <bool> show_ppu_viewer;
     in property <image> ppu_tiles;
     in property <image> ppu_background;
@@ -43,17 +59,9 @@ export component AppWindow inherits Window {
     in property <[SpriteCell]> ppu_sprite_buffer;
     in property <int> ppu_sprite_buffer_len;
     callback ppu_viewer_toggled(bool);
-    in-out property <length> panel_width: 260px;
     callback remove_breakpoint(int);
     callback remove_watch(int);
     callback submit_command(string);
-    in property <string> window_title: "GameRoy";
-    in property <bool> menu_open;
-    /// False shows the ROM library instead of the emulator.
-    in property <bool> playing;
-    /// Scale the screen by whole pixels only. Off means fill while keeping the
-    /// 160x144 aspect ratio, which uses the window better on odd sizes.
-    in property <bool> integer_scaling;
 
     // --- library ---
     in property <[RomRow]> roms;
@@ -93,6 +101,40 @@ export component AppWindow inherits Window {
                 reject
             }
         }
+
+        // Shortcuts. `enabled` gates them on there being a game, so the library
+        // screen does not react to F8 -- which beats checking `playing` again on
+        // the Rust side of every handler.
+        KeyBinding {
+            keys: @keys(F5);
+            enabled: root.playing;
+            activated => { root.save_state(); }
+        }
+        KeyBinding {
+            keys: @keys(F6);
+            enabled: root.playing;
+            activated => { root.load_state(); }
+        }
+        KeyBinding {
+            keys: @keys(F8);
+            enabled: root.playing;
+            activated => { root.debug_step(); }
+        }
+        KeyBinding {
+            keys: @keys(F9);
+            enabled: root.playing;
+            activated => { root.toggle_run(); }
+        }
+        KeyBinding {
+            keys: @keys(F12);
+            enabled: root.playing;
+            activated => { root.toggle_debugger(); }
+        }
+        KeyBinding {
+            keys: @keys(M);
+            enabled: root.playing;
+            activated => { root.toggle_menu(); }
+        }
     }
 
     if !root.playing: Library {
@@ -108,151 +150,36 @@ export component AppWindow inherits Window {
         pick-folder() => { root.pick_folder(); }
     }
 
-    if root.playing: HorizontalLayout {
-        // The emulated screen, scaled by whole pixels only and centred.
-        Rectangle {
-            horizontal-stretch: 1;
-            Image {
-                // Whole-pixel scale factor, at least 1.
-                property <int> int-scale: max(1, min(parent.width / 160px, parent.height / 144px));
-                // Fractional factor that fits the box while keeping the aspect ratio.
-                property <float> fit-scale: min(parent.width / 160px, parent.height / 144px);
-                property <float> scale: root.integer_scaling ? int-scale : max(1.0, fit-scale);
-
-                // Pin the layout constraints to the native resolution: otherwise the
-                // Image's implicit preferred size follows its scaled width, which the
-                // window's layout info depends on -> binding loop.
-                preferred-width: 160px;
-                preferred-height: 144px;
-
-                width: 160px * scale;
-                height: 144px * scale;
-
-                source: root.screen;
-                // Pixelated only makes sense at whole-pixel scales; smoothing a
-                // fractional scale avoids uneven pixel sizes.
-                image-rendering: root.integer_scaling ? ImageRendering.pixelated : ImageRendering.smooth;
-            }
-        }
-
-        // Centre column: disassembly or PPU viewer, as tabs.
-        if root.debugging: VerticalLayout {
-            width: 330px;
-            spacing: 0px;
-
-            HorizontalLayout {
-                height: 24px;
-                spacing: 0px;
-                for tab[i] in ["disassembly", "ppu"] : Rectangle {
-                    horizontal-stretch: 1;
-                    background: (root.show_ppu_viewer == (i == 1)) ? #2a332a : #1a1f1a;
-                    TouchArea {
-                        clicked => {
-                            root.show_ppu_viewer = i == 1;
-                            root.ppu_viewer_toggled(root.show_ppu_viewer);
-                        }
-                    }
-                    Text {
-                        text: tab;
-                        color: (root.show_ppu_viewer == (i == 1)) ? #cfe3cf : #6f8f6f;
-                        font-size: 11px;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-            }
-
-            if !root.show_ppu_viewer: DisassemblyView {
-                rows: root.disasm_rows;
-                total: root.disasm_total;
-                start-index: root.disasm_start;
-            }
-            if root.show_ppu_viewer: PpuViewer {
-                tiles: root.ppu_tiles;
-                background-map: root.ppu_background;
-                window-map: root.ppu_window;
-                oam: root.ppu_oam;
-                sprite-buffer: root.ppu_sprite_buffer;
-                sprite-buffer-len: root.ppu_sprite_buffer_len;
-            }
-        }
-
-        // Draggable divider. Slint has no splitter widget, so this is the whole
-        // of it: a thin strip that adjusts the panel width as it is dragged.
-        if root.debugging: Rectangle {
-            width: 5px;
-            background: divider.has-hover || divider.pressed ? #3a4a3a : #232a23;
-            divider := TouchArea {
-                mouse-cursor: ew-resize;
-                moved => {
-                    // Dragging left widens the panel, so the delta is negated.
-                    root.panel_width = clamp(
-                        root.panel_width - (self.mouse-x - self.pressed-x),
-                        160px,
-                        root.width - 160px);
-                }
-            }
-        }
-
-        if root.debugging: DebugPanel {
-            width: root.panel_width;
-            cpu-text: root.cpu_text;
-            ppu-text: root.ppu_text;
-            breakpoints: root.breakpoints;
-            watches: root.watches;
-            console-lines: root.console_lines;
-            remove-breakpoint(a) => { root.remove_breakpoint(a); }
-            remove-watch(a) => { root.remove_watch(a); }
-            submit-command(line) => { root.submit_command(line); }
-        }
+    if root.playing: EmulatorView {
+        frame: root.screen;
+        integer-scaling: root.integer_scaling;
+        debugging: root.debugging;
+        cpu-text: root.cpu_text;
+        ppu-text: root.ppu_text;
+        breakpoints: root.breakpoints;
+        watches: root.watches;
+        console-lines: root.console_lines;
+        disasm-rows: root.disasm_rows;
+        disasm-total: root.disasm_total;
+        disasm-start: root.disasm_start;
+        show-ppu-viewer <=> root.show_ppu_viewer;
+        ppu-tiles: root.ppu_tiles;
+        ppu-background: root.ppu_background;
+        ppu-window: root.ppu_window;
+        ppu-oam: root.ppu_oam;
+        ppu-sprite-buffer: root.ppu_sprite_buffer;
+        ppu-sprite-buffer-len: root.ppu_sprite_buffer_len;
+        ppu-viewer-toggled(shown) => { root.ppu_viewer_toggled(shown); }
+        remove-breakpoint(a) => { root.remove_breakpoint(a); }
+        remove-watch(a) => { root.remove_watch(a); }
+        submit-command(line) => { root.submit_command(line); }
     }
 
-    // Pause menu. Emulation is paused while this is up.
-    if root.menu_open && root.playing: Rectangle {
-        // Blocker: swallows clicks so they cannot reach anything behind, and
-        // closes the menu, matching the old front-end's click-away behaviour.
-        background: #00000099;
-        TouchArea {
-            clicked => { root.menu_close(); }
-        }
-
-        Rectangle {
-            width: 220px;
-            height: menu_layout.preferred-height;
-            y: parent.height - self.height;
-            background: #1b201b;
-            border-radius: 6px;
-            // Slide up from the bottom edge.
-            animate y { duration: 180ms; easing: ease-out; }
-
-            menu_layout := VerticalBox {
-                spacing: 6px;
-                Text {
-                    text: "Paused";
-                    color: #9fd39f;
-                    horizontal-alignment: center;
-                }
-                Button {
-                    text: "Save State";
-                    clicked => { root.menu_save_state(); }
-                }
-                Button {
-                    text: "Load State";
-                    clicked => { root.menu_load_state(); }
-                }
-                Button {
-                    text: "Reset";
-                    clicked => { root.menu_reset(); }
-                }
-                Button {
-                    text: "Exit Game";
-                    clicked => { root.menu_exit(); }
-                }
-                Button {
-                    text: "Resume";
-                    clicked => { root.menu_close(); }
-                }
-            }
-        }
+    if root.menu_open && root.playing: PauseMenu {
+        save-state() => { root.menu_save_state(); }
+        load-state() => { root.menu_load_state(); }
+        reset() => { root.menu_reset(); }
+        exit-game() => { root.menu_exit(); }
+        close() => { root.menu_close(); }
     }
 }

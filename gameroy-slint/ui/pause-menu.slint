@@ -1,0 +1,57 @@
+import { Button, VerticalBox } from "std-widgets.slint";
+
+// The in-game pause menu. Emulation is paused for as long as it is up.
+export component PauseMenu inherits Rectangle {
+    callback save-state();
+    callback load-state();
+    callback reset();
+    callback exit-game();
+    callback close();
+
+    // Blocker: swallows clicks so none reach what is behind, and closes on a
+    // click away, as the old front-end did.
+    background: #00000099;
+
+    TouchArea {
+        clicked => { root.close(); }
+    }
+
+    Rectangle {
+        width: 220px;
+        height: layout.preferred-height;
+        y: parent.height - self.height;
+        background: #1b201b;
+        border-radius: 6px;
+        // Slide up from the bottom edge.
+        animate y { duration: 180ms; easing: ease-out; }
+
+        layout := VerticalBox {
+            spacing: 6px;
+            Text {
+                text: "Paused";
+                color: #9fd39f;
+                horizontal-alignment: center;
+            }
+            Button {
+                text: "Save State";
+                clicked => { root.save-state(); }
+            }
+            Button {
+                text: "Load State";
+                clicked => { root.load-state(); }
+            }
+            Button {
+                text: "Reset";
+                clicked => { root.reset(); }
+            }
+            Button {
+                text: "Exit Game";
+                clicked => { root.exit-game(); }
+            }
+            Button {
+                text: "Resume";
+                clicked => { root.close(); }
+            }
+        }
+    }
+}

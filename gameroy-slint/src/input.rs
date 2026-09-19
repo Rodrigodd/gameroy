@@ -80,67 +80,66 @@ mod tests {
     }
 }
 
-/// A non-joypad action bound to a key.
+/// An action that is held rather than triggered.
+///
+/// Only these two live here. Every momentary shortcut (save/load state, step,
+/// run, debugger, menu) is a `KeyBinding` in the .slint file, which cannot report
+/// a release -- fine for those, but useless for anything hold-to-act.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hotkey {
-    /// Held, not toggled.
+pub enum HoldKey {
     FastForward,
-    /// Held, not toggled.
     Rewind,
-    SaveState,
-    LoadState,
-    ToggleDebugger,
-    DebugStep,
-    ToggleRun,
-    ToggleMenu,
 }
 
-/// Mirrors the old front-end's defaults, minus the keys that had no binding.
-pub fn hotkey(text: &SharedString) -> Option<Hotkey> {
-    let named = |k: Key| *text == SharedString::from(k);
-    Some(match () {
-        _ if named(Key::Shift) => Hotkey::FastForward,
-        _ if text.as_str() == "r" || text.as_str() == "R" => Hotkey::Rewind,
-        _ if named(Key::F5) => Hotkey::SaveState,
-        _ if named(Key::F6) => Hotkey::LoadState,
-        _ if named(Key::F12) => Hotkey::ToggleDebugger,
-        _ if named(Key::F8) => Hotkey::DebugStep,
-        _ if named(Key::F9) => Hotkey::ToggleRun,
-        _ if text.as_str() == "m" || text.as_str() == "M" => Hotkey::ToggleMenu,
-        _ => return None,
-    })
+pub fn hold_key(text: &SharedString) -> Option<HoldKey> {
+    if *text == SharedString::from(Key::Shift) {
+        Some(HoldKey::FastForward)
+    } else if text.eq_ignore_ascii_case("r") {
+        Some(HoldKey::Rewind)
+    } else {
+        None
+    }
 }
 
-/// True when the key does something, so the UI knows whether to consume it.
+/// True when the key needs press/release tracking, so the UI knows to consume it.
+/// Shortcut keys are deliberately absent: `KeyBinding` claims those itself.
 pub fn is_handled(text: &SharedString) -> bool {
-    joypad_bit(text).is_some() || hotkey(text).is_some()
+    joypad_bit(text).is_some() || hold_key(text).is_some()
 }
 
 #[cfg(test)]
-mod hotkey_tests {
+mod hold_key_tests {
     use super::*;
 
     #[test]
-    fn recognises_holds_and_actions() {
+    fn recognises_the_two_hold_actions() {
         assert_eq!(
-            hotkey(&SharedString::from(Key::Shift)),
-            Some(Hotkey::FastForward)
+            hold_key(&SharedString::from(Key::Shift)),
+            Some(HoldKey::FastForward)
         );
-        assert_eq!(hotkey(&SharedString::from("r")), Some(Hotkey::Rewind));
-        assert_eq!(
-            hotkey(&SharedString::from(Key::F5)),
-            Some(Hotkey::SaveState)
-        );
-        assert_eq!(hotkey(&SharedString::from("q")), None);
+        assert_eq!(hold_key(&SharedString::from("r")), Some(HoldKey::Rewind));
+        assert_eq!(hold_key(&SharedString::from("R")), Some(HoldKey::Rewind));
+        assert_eq!(hold_key(&SharedString::from("q")), None);
+    }
+
+    /// Shortcut keys belong to KeyBinding now. If one also claimed a press/release
+    /// handler, both would fire for a single press.
+    #[test]
+    fn shortcut_keys_are_left_to_key_binding() {
+        for key in [Key::F5, Key::F6, Key::F8, Key::F9, Key::F12] {
+            let text = SharedString::from(key);
+            assert!(!is_handled(&text), "{key:?} must be left to KeyBinding");
+        }
+        assert!(!is_handled(&SharedString::from("m")));
     }
 
     #[test]
-    fn joypad_and_hotkeys_do_not_overlap() {
+    fn joypad_and_hold_keys_do_not_overlap() {
         for (key, _) in JOYPAD_KEYS {
             let text = SharedString::from(key);
             assert!(
-                hotkey(&text).is_none(),
-                "{key:?} is both a joypad key and a hotkey"
+                hold_key(&text).is_none(),
+                "{key:?} is both a joypad key and a hold action"
             );
             assert!(is_handled(&text));
         }

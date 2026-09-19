@@ -19,7 +19,7 @@ use slint::{ModelRc, Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel};
 
 use audio::{AudioEngineSink, AudioSink};
 use config::Config;
-use input::{Hotkey, Joypad};
+use input::{HoldKey, Joypad};
 use library::{RomEntry, Sort, SortColumn};
 use server_handle::ServerHandle;
 use storage::RomFile;
@@ -304,38 +304,7 @@ fn exit_to_library(ui: &AppWindow) {
 fn wire_callbacks(ui: &AppWindow) {
     ui.on_is_handled_key(|text| input::is_handled(&text));
 
-    let weak = ui.as_weak();
-    ui.on_key_pressed(move |event| {
-        let Some(ui) = weak.upgrade() else { return };
-        // The library screen has no joypad and no hotkeys of its own.
-        if !ui.get_playing() {
-            return;
-        }
-        let hotkey = input::hotkey(&event.text);
-        with_app(|app| {
-            if let Some(mask) = app.joypad.press(&event.text) {
-                app.send(Command::SetJoypad(mask));
-            }
-        });
-        if let Some(key) = hotkey {
-            press_hotkey(&ui, key);
-        }
-    });
-
-    ui.on_key_release(move |event| {
-        with_app(|app| {
-            if let Some(mask) = app.joypad.release(&event.text) {
-                app.send(Command::SetJoypad(mask));
-                return;
-            }
-            // Only the held actions do anything on release.
-            match input::hotkey(&event.text) {
-                Some(Hotkey::FastForward) => app.send(Command::SetFrameLimit(true)),
-                Some(Hotkey::Rewind) => app.send(Command::SetRewinding(false)),
-                _ => {}
-            }
-        });
-    });
+    // --- library ---
 
     let weak = ui.as_weak();
     ui.on_sort_by(move |index| {
@@ -409,18 +378,105 @@ fn wire_callbacks(ui: &AppWindow) {
         }
     });
 
+    // --- input ---
+
+    // Joypad and hold actions need to know whether the key is down, so they stay
+    // on the press/release callbacks. Everything momentary is a KeyBinding.
+    ui.on_key_pressed(move |event| {
+        with_app(|app| {
+            if let Some(mask) = app.joypad.press(&event.text) {
+                app.send(Command::SetJoypad(mask));
+                return;
+            }
+            // Auto-repeat re-sends these; harmless, since both are idempotent.
+            match input::hold_key(&event.text) {
+                Some(HoldKey::FastForward) => app.send(Command::SetFrameLimit(false)),
+                Some(HoldKey::Rewind) => app.send(Command::SetRewinding(true)),
+                None => {}
+            }
+        });
+    });
+
+    ui.on_key_release(move |event| {
+        with_app(|app| {
+            if let Some(mask) = app.joypad.release(&event.text) {
+                app.send(Command::SetJoypad(mask));
+                return;
+            }
+            match input::hold_key(&event.text) {
+                Some(HoldKey::FastForward) => app.send(Command::SetFrameLimit(true)),
+                Some(HoldKey::Rewind) => app.send(Command::SetRewinding(false)),
+                None => {}
+            }
+        });
+    });
+
+    // --- shortcuts, driven by KeyBinding in the .slint file ---
+
+    ui.on_save_state(|| {
+        with_app(|app| app.send(Command::RequestSaveState));
+    });
+
+    ui.on_load_state(load_state);
+
+    ui.on_debug_step(|| {
+        with_app(|app| app.send(Command::Step));
+    });
+
+    ui.on_toggle_run(|| {
+        with_app(|app| {
+            let mode = match app.mode {
+                // Continuing from the debugger must honour breakpoints;
+                // continuing while just playing must not pay for checking them.
+                RunMode::Paused if app.debugging => RunMode::RunningWithBreakpoints,
+                RunMode::Paused => RunMode::Running,
+                _ => RunMode::Paused,
+            };
+            app.send(Command::SetRunMode(mode));
+        });
+    });
+
+    let weak = ui.as_weak();
+    ui.on_toggle_debugger(move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let debugging = with_app(|app| {
+            app.debugging = !app.debugging;
+            app.send(Command::SetDebugViews(debug_views(app)));
+            app.send(Command::SetRunMode(if app.debugging {
+                RunMode::Paused
+            } else {
+                RunMode::Running
+            }));
+            app.debugging
+        })
+        .unwrap_or(false);
+        ui.set_debugging(debugging);
+    });
+
+    let weak = ui.as_weak();
+    ui.on_toggle_menu(move || {
+        let Some(ui) = weak.upgrade() else { return };
+        let open = with_app(|app| {
+            if app.menu_open {
+                app.menu_open = false;
+                app.send(Command::SetRunMode(app.mode_before_menu));
+            } else {
+                app.menu_open = true;
+                app.mode_before_menu = app.mode;
+                app.send(Command::SetRunMode(RunMode::Paused));
+            }
+            app.menu_open
+        })
+        .unwrap_or(false);
+        ui.set_menu_open(open);
+    });
+
     ui.on_ppu_viewer_toggled(|shown| {
         with_app(|app| {
             app.ppu_viewer = shown;
             // Re-declare the subscription so the server starts or stops paying for
             // the four image buffers.
-            app.send(Command::SetDebugViews(DebugViews {
-                cpu: app.debugging,
-                ppu: app.debugging,
-                watches: app.debugging,
-                disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
-                ppu_viewer: app.debugging && shown,
-            }));
+            app.send(Command::SetDebugViews(debug_views(app)));
         });
     });
 
@@ -484,6 +540,17 @@ fn wire_callbacks(ui: &AppWindow) {
     });
 }
 
+/// The view subscription implied by the current UI state.
+fn debug_views(app: &App) -> DebugViews {
+    DebugViews {
+        cpu: app.debugging,
+        ppu: app.debugging,
+        watches: app.debugging,
+        disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
+        ppu_viewer: app.debugging && app.ppu_viewer,
+    }
+}
+
 fn load_state() {
     with_app(|app| {
         let Some(rom) = app.rom.as_ref() else { return };
@@ -492,74 +559,6 @@ fn load_state() {
             Err(e) => log::warn!("no save state to load: {e}"),
         }
     });
-}
-
-fn press_hotkey(ui: &AppWindow, key: Hotkey) {
-    match key {
-        // Held, not toggled: the key repeat re-sends, which is harmless.
-        Hotkey::FastForward => {
-            with_app(|app| app.send(Command::SetFrameLimit(false)));
-        }
-        Hotkey::Rewind => {
-            with_app(|app| app.send(Command::SetRewinding(true)));
-        }
-        Hotkey::SaveState => {
-            with_app(|app| app.send(Command::RequestSaveState));
-        }
-        Hotkey::LoadState => load_state(),
-        Hotkey::ToggleDebugger => {
-            let debugging = with_app(|app| {
-                app.debugging = !app.debugging;
-                app.send(Command::SetDebugViews(DebugViews {
-                    cpu: app.debugging,
-                    ppu: app.debugging,
-                    watches: app.debugging,
-                    // A window, not the whole trace. The server centres it on the
-                    // PC, so following the PC costs the client nothing.
-                    disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
-                    ppu_viewer: app.debugging && app.ppu_viewer,
-                }));
-                app.send(Command::SetRunMode(if app.debugging {
-                    RunMode::Paused
-                } else {
-                    RunMode::Running
-                }));
-                app.debugging
-            })
-            .unwrap_or(false);
-            ui.set_debugging(debugging);
-        }
-        Hotkey::DebugStep => {
-            with_app(|app| app.send(Command::Step));
-        }
-        Hotkey::ToggleRun => {
-            with_app(|app| {
-                let mode = match app.mode {
-                    // Continuing from the debugger must honour breakpoints;
-                    // continuing while just playing must not pay for checking them.
-                    RunMode::Paused if app.debugging => RunMode::RunningWithBreakpoints,
-                    RunMode::Paused => RunMode::Running,
-                    _ => RunMode::Paused,
-                };
-                app.send(Command::SetRunMode(mode));
-            });
-        }
-        Hotkey::ToggleMenu => {
-            let open = with_app(|app| {
-                if app.menu_open {
-                    app.menu_open = false;
-                    app.send(Command::SetRunMode(app.mode_before_menu));
-                } else {
-                    app.menu_open = true;
-                    app.mode_before_menu = app.mode;
-                    app.send(Command::SetRunMode(RunMode::Paused));
-                }
-                app.menu_open
-            })
-            .unwrap_or(false);
-            ui.set_menu_open(open);
-        }
-    }
 }
 
 /// Closes the pause menu and resumes whatever was running before it opened.

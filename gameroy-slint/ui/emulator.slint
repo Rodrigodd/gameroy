@@ -1,0 +1,114 @@
+import { GameScreen } from "game-screen.slint";
+import { DebugPanel, BreakRow, WatchRow } from "debugger.slint";
+import { DisassemblyView, DisasmRow } from "disassembly.slint";
+import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
+
+export { BreakRow, WatchRow, DisasmRow, SpriteCell }
+
+// The whole playing screen: the game, and the debugger beside it when open.
+export component EmulatorView inherits HorizontalLayout {
+    in property <image> frame;
+    in property <bool> integer-scaling;
+
+    in property <bool> debugging;
+    in property <string> cpu-text;
+    in property <string> ppu-text;
+    in property <[BreakRow]> breakpoints;
+    in property <[WatchRow]> watches;
+    in property <[string]> console-lines;
+    in property <[DisasmRow]> disasm-rows;
+    in property <int> disasm-total;
+    in property <int> disasm-start;
+
+    /// Which centre tab is showing: false = disassembly, true = PPU viewer.
+    in-out property <bool> show-ppu-viewer;
+    in property <image> ppu-tiles;
+    in property <image> ppu-background;
+    in property <image> ppu-window;
+    in property <[SpriteCell]> ppu-oam;
+    in property <[SpriteCell]> ppu-sprite-buffer;
+    in property <int> ppu-sprite-buffer-len;
+    in-out property <length> panel-width: 260px;
+
+    callback ppu-viewer-toggled(bool);
+    callback remove-breakpoint(int);
+    callback remove-watch(int);
+    callback submit-command(string);
+
+    GameScreen {
+        horizontal-stretch: 1;
+        frame: root.frame;
+        integer-scaling: root.integer-scaling;
+    }
+
+    // Centre column: disassembly or PPU viewer, as tabs.
+    if root.debugging: VerticalLayout {
+        width: 330px;
+        spacing: 0px;
+
+        HorizontalLayout {
+            height: 24px;
+            spacing: 0px;
+            for tab[i] in ["disassembly", "ppu"] : Rectangle {
+                horizontal-stretch: 1;
+                background: (root.show-ppu-viewer == (i == 1)) ? #2a332a : #1a1f1a;
+                TouchArea {
+                    clicked => {
+                        root.show-ppu-viewer = i == 1;
+                        root.ppu-viewer-toggled(root.show-ppu-viewer);
+                    }
+                }
+                Text {
+                    text: tab;
+                    color: (root.show-ppu-viewer == (i == 1)) ? #cfe3cf : #6f8f6f;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        if !root.show-ppu-viewer: DisassemblyView {
+            rows: root.disasm-rows;
+            total: root.disasm-total;
+            start-index: root.disasm-start;
+        }
+        if root.show-ppu-viewer: PpuViewer {
+            tiles: root.ppu-tiles;
+            background-map: root.ppu-background;
+            window-map: root.ppu-window;
+            oam: root.ppu-oam;
+            sprite-buffer: root.ppu-sprite-buffer;
+            sprite-buffer-len: root.ppu-sprite-buffer-len;
+        }
+    }
+
+    // Draggable divider. Slint has no splitter widget, so this is the whole of
+    // it: a thin strip that adjusts the panel width as it is dragged.
+    if root.debugging: Rectangle {
+        width: 5px;
+        background: divider.has-hover || divider.pressed ? #3a4a3a : #232a23;
+        divider := TouchArea {
+            mouse-cursor: ew-resize;
+            moved => {
+                // Dragging left widens the panel, so the delta is negated.
+                root.panel-width = clamp(
+                    root.panel-width - (self.mouse-x - self.pressed-x),
+                    160px,
+                    root.width - 160px);
+            }
+        }
+    }
+
+    if root.debugging: DebugPanel {
+        width: root.panel-width;
+        cpu-text: root.cpu-text;
+        ppu-text: root.ppu-text;
+        breakpoints: root.breakpoints;
+        watches: root.watches;
+        console-lines: root.console-lines;
+        remove-breakpoint(a) => { root.remove-breakpoint(a); }
+        remove-watch(a) => { root.remove-watch(a); }
+        submit-command(line) => { root.submit-command(line); }
+    }
+}

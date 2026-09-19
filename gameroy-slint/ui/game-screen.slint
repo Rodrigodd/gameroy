@@ -1,0 +1,43 @@
+// The emulated Game Boy display.
+//
+// Self-contained: give it a frame and a scaling mode and it draws the screen,
+// centred, at the right aspect ratio. Nothing about the debugger, the menu or the
+// key handling belongs here.
+export component GameScreen inherits Rectangle {
+    in property <image> frame;
+    /// Scale by whole pixels only. Off fills the box at a fractional scale, which
+    /// uses an oddly-sized window better.
+    in property <bool> integer-scaling;
+
+    // The Game Boy's native resolution. Everything here is derived from it.
+    out property <length> native-width: 160px;
+    out property <length> native-height: 144px;
+
+    background: #000000;
+
+    Image {
+        // Whole-pixel factor, never below 1.
+        property <int> int-scale: max(1, min(
+            parent.width / root.native-width,
+            parent.height / root.native-height));
+        // Fractional factor that fits the box while keeping the aspect ratio.
+        property <float> fit-scale: min(
+            parent.width / root.native-width,
+            parent.height / root.native-height);
+        property <float> scale: root.integer-scaling ? int-scale : max(1.0, fit-scale);
+
+        // Pin the layout constraints to the native resolution: otherwise this
+        // Image's implicit preferred size follows its own scaled width, which the
+        // enclosing layout depends on -> binding loop.
+        preferred-width: root.native-width;
+        preferred-height: root.native-height;
+
+        width: root.native-width * scale;
+        height: root.native-height * scale;
+
+        source: root.frame;
+        // Pixelated only makes sense at whole-pixel scales; smoothing a fractional
+        // scale avoids visibly uneven pixel sizes.
+        image-rendering: root.integer-scaling ? ImageRendering.pixelated : ImageRendering.smooth;
+    }
+}

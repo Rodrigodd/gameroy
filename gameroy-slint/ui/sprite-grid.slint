@@ -9,14 +9,9 @@
 // rather than OBP0/OBP1. The old viewer had the same limitation; fixing it needs
 // the server to send a second, object-palettised atlas.
 
-export struct SpriteCell {
-    /// Index into the atlas, 16 tiles per row.
-    tile: int,
-    /// "x 4c  y 1a  tile 2f  flags 00", formatted on the Rust side.
-    text: string,
-    /// Parked outside the visible area. The old viewer tinted these red.
-    offscreen: bool,
-}
+import { SpriteCell } from "state.slint";
+
+export { SpriteCell }
 
 export component SpriteGrid inherits Rectangle {
     in property <image> atlas;

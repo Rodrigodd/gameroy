@@ -112,3 +112,33 @@ export global DisasmState {
     callback toggle-breakpoint(address: int);
     callback visible-range-changed(first: int, count: int);
 }
+
+export struct SpriteCell {
+    /// Index into the atlas, 16 tiles per row.
+    tile: int,
+    /// "x 4c  y 1a  tile 2f  flags 00", formatted on the Rust side.
+    text: string,
+    /// Parked outside the visible area. The old viewer tinted these red.
+    offscreen: bool,
+}
+
+/// The PPU viewer tab.
+///
+/// `show-viewer` is the tab selection, written by the UI and reported back so
+/// the host can start or stop paying for the image buffers behind the rest.
+export global PpuState {
+    in-out property <bool> show-viewer;
+    callback viewer-toggled(bool);
+
+    in property <image> tiles;
+    in property <image> background-map;
+    in property <image> window-map;
+    in property <[int]> background-tiles;
+    in property <[int]> window-tiles;
+    in property <[SpriteCell]> oam;
+    in property <[SpriteCell]> sprite-buffer;
+    in property <int> sprite-buffer-len;
+    in property <bool> tall-sprites;
+    in property <string> background-fifo-text;
+    in property <string> sprite-fifo-text;
+}

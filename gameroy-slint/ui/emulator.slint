@@ -17,9 +17,8 @@ component Divider inherits Rectangle {
 }
 import { DebugPanel } from "debugger.slint";
 import { DisassemblyView } from "disassembly.slint";
-import { PpuViewer, SpriteCell } from "ppu-viewer.slint";
-
-export { SpriteCell }
+import { PpuViewer } from "ppu-viewer.slint";
+import { PpuState } from "state.slint";
 
 // The whole playing screen: the game, and the debugger beside it when open.
 export component EmulatorView inherits HorizontalLayout {
@@ -28,23 +27,8 @@ export component EmulatorView inherits HorizontalLayout {
 
     in property <bool> debugging;
 
-    /// Which centre tab is showing: false = disassembly, true = PPU viewer.
-    in-out property <bool> show-ppu-viewer;
-    in property <image> ppu-tiles;
-    in property <image> ppu-background;
-    in property <image> ppu-window;
-    in property <[SpriteCell]> ppu-oam;
-    in property <[SpriteCell]> ppu-sprite-buffer;
-    in property <int> ppu-sprite-buffer-len;
-    in property <[int]> ppu-background-tiles;
-    in property <[int]> ppu-window-tiles;
-    in property <bool> ppu-tall-sprites;
-    in property <string> ppu-background-fifo;
-    in property <string> ppu-sprite-fifo;
     in-out property <length> panel-width: 260px;
     in-out property <length> centre-width: 330px;
-
-    callback ppu-viewer-toggled(bool);
 
     GameScreen {
         horizontal-stretch: 1;
@@ -70,16 +54,16 @@ export component EmulatorView inherits HorizontalLayout {
             spacing: 0px;
             for tab[i] in ["disassembly", "ppu"] : Rectangle {
                 horizontal-stretch: 1;
-                background: (root.show-ppu-viewer == (i == 1)) ? #2a332a : #1a1f1a;
+                background: (PpuState.show-viewer == (i == 1)) ? #2a332a : #1a1f1a;
                 TouchArea {
                     clicked => {
-                        root.show-ppu-viewer = i == 1;
-                        root.ppu-viewer-toggled(root.show-ppu-viewer);
+                        PpuState.show-viewer = i == 1;
+                        PpuState.viewer-toggled(PpuState.show-viewer);
                     }
                 }
                 Text {
                     text: tab;
-                    color: (root.show-ppu-viewer == (i == 1)) ? #cfe3cf : #6f8f6f;
+                    color: (PpuState.show-viewer == (i == 1)) ? #cfe3cf : #6f8f6f;
                     font-size: 11px;
                     horizontal-alignment: center;
                     vertical-alignment: center;
@@ -87,20 +71,8 @@ export component EmulatorView inherits HorizontalLayout {
             }
         }
 
-        if !root.show-ppu-viewer: DisassemblyView { }
-        if root.show-ppu-viewer: PpuViewer {
-            tiles: root.ppu-tiles;
-            background-map: root.ppu-background;
-            window-map: root.ppu-window;
-            oam: root.ppu-oam;
-            sprite-buffer: root.ppu-sprite-buffer;
-            sprite-buffer-len: root.ppu-sprite-buffer-len;
-            background-tiles: root.ppu-background-tiles;
-            window-tiles: root.ppu-window-tiles;
-            tall-sprites: root.ppu-tall-sprites;
-            background-fifo-text: root.ppu-background-fifo;
-            sprite-fifo-text: root.ppu-sprite-fifo;
-        }
+        if !PpuState.show-viewer: DisassemblyView { }
+        if PpuState.show-viewer: PpuViewer { }
     }
 
     if root.debugging: Divider {

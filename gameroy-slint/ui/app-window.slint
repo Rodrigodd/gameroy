@@ -1,10 +1,11 @@
 import { Library } from "library.slint";
-import { EmulatorView, SpriteCell } from "emulator.slint";
+import { EmulatorView } from "emulator.slint";
 import { PauseMenu } from "pause-menu.slint";
-import { LibraryState, DebuggerState, DisasmState, RomRow, BreakRow, WatchRow, DisasmRow } from "state.slint";
+import { LibraryState, DebuggerState, DisasmState, PpuState,
+    RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell } from "state.slint";
 
 // A global is only reachable from Rust if the compiled entry file exports it.
-export { LibraryState, DebuggerState, DisasmState }
+export { LibraryState, DebuggerState, DisasmState, PpuState }
 export { RomRow, BreakRow, WatchRow, DisasmRow, SpriteCell }
 
 // The root is deliberately thin: focus and key handling, and a choice between
@@ -54,19 +55,6 @@ export component AppWindow inherits Window {
     in property <image> screen;
     in property <bool> integer_scaling;
     in property <bool> debugging;
-    in-out property <bool> show_ppu_viewer;
-    in property <image> ppu_tiles;
-    in property <image> ppu_background;
-    in property <image> ppu_window;
-    in property <[SpriteCell]> ppu_oam;
-    in property <[SpriteCell]> ppu_sprite_buffer;
-    in property <int> ppu_sprite_buffer_len;
-    in property <[int]> ppu_background_tiles;
-    in property <[int]> ppu_window_tiles;
-    in property <bool> ppu_tall_sprites;
-    in property <string> ppu_background_fifo;
-    in property <string> ppu_sprite_fifo;
-    callback ppu_viewer_toggled(bool);
 
     title: root.window_title;
     min-width: 160px;
@@ -123,19 +111,6 @@ export component AppWindow inherits Window {
         frame: root.screen;
         integer-scaling: root.integer_scaling;
         debugging: root.debugging;
-        show-ppu-viewer <=> root.show_ppu_viewer;
-        ppu-tiles: root.ppu_tiles;
-        ppu-background: root.ppu_background;
-        ppu-window: root.ppu_window;
-        ppu-oam: root.ppu_oam;
-        ppu-sprite-buffer: root.ppu_sprite_buffer;
-        ppu-sprite-buffer-len: root.ppu_sprite_buffer_len;
-        ppu-background-tiles: root.ppu_background_tiles;
-        ppu-window-tiles: root.ppu_window_tiles;
-        ppu-tall-sprites: root.ppu_tall_sprites;
-        ppu-background-fifo: root.ppu_background_fifo;
-        ppu-sprite-fifo: root.ppu_sprite_fifo;
-        ppu-viewer-toggled(shown) => { root.ppu_viewer_toggled(shown); }
     }
 
     if root.menu_open && root.playing: PauseMenu {

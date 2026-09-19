@@ -1,8 +1,10 @@
 import { ScrollView } from "std-widgets.slint";
-import { SpriteGrid, SpriteCell } from "sprite-grid.slint";
+import { SpriteGrid } from "sprite-grid.slint";
 import { TileMapView } from "tile-map-view.slint";
+import { PpuState, SpriteCell } from "state.slint";
 
-export { SpriteCell }
+// Re-exported so this tab can be previewed on its own with --load-data.
+export { PpuState, SpriteCell }
 
 component SectionLabel inherits Text {
     color: #6f8f6f;
@@ -10,18 +12,6 @@ component SectionLabel inherits Text {
 }
 
 export component PpuViewer inherits Rectangle {
-    in property <image> tiles;
-    in property <image> background-map;
-    in property <image> window-map;
-    in property <[int]> background-tiles;
-    in property <[int]> window-tiles;
-    in property <[SpriteCell]> oam;
-    in property <[SpriteCell]> sprite-buffer;
-    in property <int> sprite-buffer-len;
-    in property <bool> tall-sprites;
-    in property <string> background-fifo-text;
-    in property <string> sprite-fifo-text;
-
     background: #131613;
 
     ScrollView {
@@ -32,7 +22,7 @@ export component PpuViewer inherits Rectangle {
 
             SectionLabel { text: "tiles (384, 16 across)"; }
             TileMapView {
-                source: root.tiles;
+                source: PpuState.tiles;
                 title: "tilemap";
                 cells-x: 16;
                 cells-y: 24;
@@ -41,50 +31,50 @@ export component PpuViewer inherits Rectangle {
 
             SectionLabel { text: "background map"; }
             TileMapView {
-                source: root.background-map;
+                source: PpuState.background-map;
                 title: "background";
                 cells-x: 32;
                 cells-y: 32;
-                tile-numbers: root.background-tiles;
+                tile-numbers: PpuState.background-tiles;
                 scale: 1;
             }
 
             SectionLabel { text: "window map"; }
             TileMapView {
-                source: root.window-map;
+                source: PpuState.window-map;
                 title: "window";
                 cells-x: 32;
                 cells-y: 32;
-                tile-numbers: root.window-tiles;
+                tile-numbers: PpuState.window-tiles;
                 scale: 1;
             }
 
             SectionLabel {
-                text: "OAM (40 sprites" + (root.tall-sprites ? ", 8x16)" : ", 8x8)");
+                text: "OAM (40 sprites" + (PpuState.tall-sprites ? ", 8x16)" : ", 8x8)");
             }
             SpriteGrid {
-                atlas: root.tiles;
-                sprites: root.oam;
-                tall: root.tall-sprites;
+                atlas: PpuState.tiles;
+                sprites: PpuState.oam;
+                tall: PpuState.tall-sprites;
                 columns: 8;
                 scale: 3;
             }
 
             SectionLabel {
-                text: "sprite buffer (" + root.sprite-buffer-len + " active)";
+                text: "sprite buffer (" + PpuState.sprite-buffer-len + " active)";
             }
             SpriteGrid {
-                atlas: root.tiles;
-                sprites: root.sprite-buffer;
-                tall: root.tall-sprites;
+                atlas: PpuState.tiles;
+                sprites: PpuState.sprite-buffer;
+                tall: PpuState.tall-sprites;
                 columns: 5;
-                active-count: root.sprite-buffer-len;
+                active-count: PpuState.sprite-buffer-len;
                 scale: 3;
             }
 
             SectionLabel { text: "pixel FIFOs"; }
             Text {
-                text: root.background-fifo-text + "\n" + root.sprite-fifo-text;
+                text: PpuState.background-fifo-text + "\n" + PpuState.sprite-fifo-text;
                 color: #9fd39f;
                 font-family: "monospace";
                 font-size: 11px;

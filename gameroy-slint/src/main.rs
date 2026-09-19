@@ -140,6 +140,11 @@ fn disasm_state(ui: &AppWindow) -> DisasmState<'_> {
     ui.global::<DisasmState>()
 }
 
+/// The PPU viewer's half of the UI contract.
+fn ppu_state(ui: &AppWindow) -> PpuState<'_> {
+    ui.global::<PpuState>()
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
@@ -783,7 +788,7 @@ fn wire_callbacks(ui: &AppWindow) {
         });
     });
 
-    ui.on_ppu_viewer_toggled(|shown| {
+    ppu_state(ui).on_viewer_toggled(|shown| {
         with_app(|app| {
             app.ppu_viewer = shown;
             // Re-declare the subscription so the server starts or stops paying for
@@ -1138,21 +1143,22 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 debugger_state(ui).set_ppu_text(format_ppu(ppu).into());
             }
             if let Some(view) = update.ppu_viewer.as_ref() {
-                ui.set_ppu_tiles(indexed_to_image(&view.tiles));
-                ui.set_ppu_background(indexed_to_image(&view.background));
-                ui.set_ppu_window(indexed_to_image(&view.window));
-                ui.set_ppu_oam(ModelRc::new(VecModel::from(sprite_cells(&view.oam))));
-                ui.set_ppu_sprite_buffer(ModelRc::new(VecModel::from(sprite_cells(
+                ppu_state(ui).set_tiles(indexed_to_image(&view.tiles));
+                ppu_state(ui).set_background_map(indexed_to_image(&view.background));
+                ppu_state(ui).set_window_map(indexed_to_image(&view.window));
+                ppu_state(ui).set_oam(ModelRc::new(VecModel::from(sprite_cells(&view.oam))));
+                ppu_state(ui).set_sprite_buffer(ModelRc::new(VecModel::from(sprite_cells(
                     &view.sprite_buffer,
                 ))));
-                ui.set_ppu_sprite_buffer_len(view.sprite_buffer_len as i32);
-                ui.set_ppu_tall_sprites(view.tall_sprites);
-                ui.set_ppu_background_tiles(tile_numbers(&view.background_tiles));
-                ui.set_ppu_window_tiles(tile_numbers(&view.window_tiles));
-                ui.set_ppu_background_fifo(
+                ppu_state(ui).set_sprite_buffer_len(view.sprite_buffer_len as i32);
+                ppu_state(ui).set_tall_sprites(view.tall_sprites);
+                ppu_state(ui).set_background_tiles(tile_numbers(&view.background_tiles));
+                ppu_state(ui).set_window_tiles(tile_numbers(&view.window_tiles));
+                ppu_state(ui).set_background_fifo_text(
                     format::format_fifo("bg ", &view.background_fifo).into(),
                 );
-                ui.set_ppu_sprite_fifo(format::format_fifo("obj", &view.sprite_fifo).into());
+                ppu_state(ui)
+                    .set_sprite_fifo_text(format::format_fifo("obj", &view.sprite_fifo).into());
             }
             if let Some(disasm) = update.disassembly.as_ref() {
                 with_app(|app| app.disasm.set_window(disasm));

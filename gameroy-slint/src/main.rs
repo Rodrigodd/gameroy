@@ -8,6 +8,7 @@ mod format;
 mod input;
 mod library;
 mod library_loader;
+mod live;
 mod server_handle;
 mod storage;
 mod thumbs;
@@ -16,6 +17,7 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::ops::Range;
 use std::rc::Rc;
+use std::time::Instant;
 
 use gameroy_server::protocol::{
     Address, Command, DebugViews, DisasmAnchor, EmulatorConfig, Event, OpenRom, RunMode, StopReason,
@@ -34,6 +36,7 @@ use format::{
 use input::{HoldKey, Joypad, Shortcut};
 use library::{RomEntry, Sort, SortColumn};
 use library_loader::{LibraryLoader, LibraryMsg};
+use live::{LiveUpdates, ScreenSource};
 use server_handle::ServerHandle;
 use storage::RomFile;
 
@@ -115,12 +118,24 @@ struct App {
     /// The server announces itself with Ready; a ROM chosen before that (from the
     /// command line) waits in `rom` until then.
     server_ready: bool,
+    /// Pacing for the debug snapshots pulled while the machine runs.
+    live: LiveUpdates,
+    /// Drives `live` when the renderer has no rendering notifier -- the software
+    /// renderer, which winit falls back to when there is no usable GL. Armed
+    /// only while live updating, so an idle app is not woken sixty times a
+    /// second for nothing.
+    live_timer: Option<slint::Timer>,
 }
 
 impl App {
     /// Recomputes the display order from the current entries and sort.
     fn reorder(&mut self) {
         self.order = library::sort_order(&self.entries, self.sort);
+    }
+
+    /// There is a machine to ask about, and a server to ask.
+    fn has_session(&self) -> bool {
+        self.rom.is_some() && self.server.is_some()
     }
 
     fn send(&self, cmd: Command) {
@@ -256,6 +271,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             mode_before_menu: RunMode::Running,
             rom: cli_rom,
             server_ready: false,
+            live: LiveUpdates::default(),
+            live_timer: None,
         })
     });
 
@@ -275,6 +292,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     wire_callbacks(&ui);
     wire_file_drop(&ui);
+    wire_live_updates(&ui);
     refresh_library(&ui);
 
     ui.run()?;
@@ -299,6 +317,77 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
+}
+
+// --- live debug updates ----------------------------------------------------
+
+/// Asks for the next live snapshot, if one is due.
+///
+/// Reachable from the rendering notifier, so it must touch nothing but the
+/// transport. A property write or a model notification from in there lands in
+/// the middle of the redraw tracker's own evaluation, against an item tree that
+/// is being drawn. Taking no `&AppWindow` is what makes that impossible rather
+/// than merely avoided.
+fn pump_live_update() {
+    with_app(|app| {
+        let active = live::wants_live(app.debugging, app.mode, app.has_session());
+        if let Some(id) = app.live.poll(Instant::now(), active) {
+            app.send(Command::RequestDebugUpdate { id });
+        }
+    });
+}
+
+/// Picks what paces the live snapshots.
+///
+/// A rendering notifier fires once per frame the renderer actually presents,
+/// and Slint's winit backend already throttles those to the monitor's refresh
+/// rate -- so asking there makes the debugger track the display for free, with
+/// no interval to pick and none to get wrong.
+fn wire_live_updates(ui: &AppWindow) {
+    let notifier = ui.window().set_rendering_notifier(|state, _api| {
+        // Before rather than after: the request goes out while this frame is
+        // still being drawn, so the answer is usually back in time for the next.
+        if matches!(state, slint::RenderingState::BeforeRendering) {
+            pump_live_update();
+        }
+    });
+    if let Err(e) = notifier {
+        // Pinning the backend to winit does not pin the renderer: Slint's
+        // defaults compile in the software renderer, winit falls back to it
+        // when GL is unavailable, and it has no notifier. Without a fallback
+        // the debugger would simply stop updating there, silently.
+        log::info!("no rendering notifier ({e}); pacing live updates on a timer");
+        with_app(|app| app.live_timer = Some(slint::Timer::default()));
+    }
+}
+
+/// Starts or stops the live pump to match the current state.
+fn sync_live_pump(ui: &AppWindow) {
+    let active = with_app(|app| {
+        let active = live::wants_live(app.debugging, app.mode, app.has_session());
+        if !active {
+            app.live.reset();
+        }
+        if let Some(timer) = app.live_timer.as_ref() {
+            if active {
+                timer.start(
+                    slint::TimerMode::Repeated,
+                    live::FALLBACK_INTERVAL,
+                    pump_live_update,
+                );
+            } else {
+                timer.stop();
+            }
+        }
+        active
+    })
+    .unwrap_or(false);
+
+    // The notifier only fires on a frame, so the first frame of a live run has
+    // to be asked for; after that each answer asks for the next.
+    if active {
+        ui.window().request_redraw();
+    }
 }
 
 /// Accepts a ROM dragged onto the window.
@@ -534,6 +623,7 @@ fn open_pending_rom(ui: &AppWindow) {
             .unwrap_or(false);
             shell(ui).set_playing(true);
             emulator_state(ui).set_debugging(debugging);
+            sync_live_pump(ui);
         }
         Some(Err(message)) => shell(ui).set_status_text(message.into()),
         None => {}
@@ -555,6 +645,7 @@ fn exit_to_library(ui: &AppWindow) {
     shell(ui).set_playing(false);
     emulator_state(ui).set_debugging(false);
     disasm_state(ui).set_total(0);
+    sync_live_pump(ui);
     refresh_library(ui);
 }
 
@@ -1022,6 +1113,7 @@ fn toggle_debugger(ui: &AppWindow) {
     })
     .unwrap_or(false);
     emulator_state(ui).set_debugging(debugging);
+    sync_live_pump(ui);
 }
 
 fn toggle_menu(ui: &AppWindow) {
@@ -1136,6 +1228,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 log::error!("{message}");
                 shell(ui).set_status_text(message.into());
                 with_app(|app| app.server = None);
+                sync_live_pump(ui);
                 return;
             }
             log::info!("server ready, protocol v{protocol_version}");
@@ -1165,17 +1258,25 @@ fn handle_event(ui: &AppWindow, event: Event) {
             );
         }
         Event::Frame(packet) => {
-            let mut buffer =
-                SharedPixelBuffer::<Rgb8Pixel>::new(packet.width as u32, packet.height as u32);
-            for (out, &shade) in buffer
-                .make_mut_slice()
-                .iter_mut()
-                .zip(packet.pixels.0.iter())
-            {
-                let l = PALETTE[(shade & 3) as usize];
-                *out = Rgb8Pixel::new(l, l, l);
+            // While the debugger is up the screen comes from the snapshot
+            // instead, so that it and the panels beside it describe the same
+            // instant. Not converting these is also worth having under
+            // fast-forward, where they arrive by the hundred.
+            let owns_screen = with_app(|app| live::screen_source(app.debugging))
+                .is_none_or(|s| s == ScreenSource::Frames);
+            if owns_screen {
+                let mut buffer =
+                    SharedPixelBuffer::<Rgb8Pixel>::new(packet.width as u32, packet.height as u32);
+                for (out, &shade) in buffer
+                    .make_mut_slice()
+                    .iter_mut()
+                    .zip(packet.pixels.0.iter())
+                {
+                    let l = PALETTE[(shade & 3) as usize];
+                    *out = Rgb8Pixel::new(l, l, l);
+                }
+                emulator_state(ui).set_frame(slint::Image::from_rgb8(buffer));
             }
-            emulator_state(ui).set_frame(slint::Image::from_rgb8(buffer));
             // Hand the allocation back so the server can reuse it.
             with_app(|app| app.send(Command::ReturnFrame(packet.pixels)));
         }
@@ -1197,6 +1298,7 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 app.epoch = epoch;
                 app.mode = mode;
             });
+            sync_live_pump(ui);
             shell(ui).set_status_text(format!("{mode:?} @ {clock_count}").into());
             // A breakpoint hit is worth saying out loud; the user asked for it.
             if let StopReason::Breakpoint { address, flags } = reason {
@@ -1207,16 +1309,22 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
         }
         Event::DebugUpdate(update) => {
+            // Released before anything can decide not to use this snapshot: the
+            // pump is waiting for one answer per request, and an answer too old
+            // to display is still an answer. Clearing it after the epoch check
+            // below would wedge the debugger until the user next paused.
+            let live = with_app(|app| app.live.answered(update.request_id)).unwrap_or(false);
+
             // A snapshot of a machine that has since been reset or reloaded is
             // not stale data to show briefly; it is wrong data.
             if with_app(|app| update.epoch < app.epoch).unwrap_or(false) {
                 return;
             }
-            // Only while stopped. A views change made mid-play also produces an
-            // update, and painting a half-drawn frame over the live one would be
-            // a visible flicker for no reason.
+            // Whichever side owns the image draws all of it; two writers at two
+            // unrelated rates would flicker between them.
             if let Some(screen) = update.screen.as_ref()
-                && with_app(|app| app.mode == RunMode::Paused).unwrap_or(false)
+                && with_app(|app| live::screen_source(app.debugging))
+                    .is_some_and(|s| s == ScreenSource::DebugSnapshot)
             {
                 emulator_state(ui).set_frame(partial_screen_image(screen));
             }
@@ -1257,8 +1365,10 @@ fn handle_event(ui: &AppWindow, event: Event) {
                 // handlers from the event loop, so a scroll report can land
                 // after a step has already asked to be taken back to the PC.
                 let follow = with_app(|app| {
-                    let forced = std::mem::take(&mut app.disasm_force_follow);
-                    forced || disasm::follows_pc(&app.disasm_visible, disasm.pc_index)
+                    // Not consumed while live: a step's request to be taken back
+                    // to the PC must survive the snapshots arriving in between.
+                    let forced = !live && std::mem::take(&mut app.disasm_force_follow);
+                    disasm::should_follow(live, forced, &app.disasm_visible, disasm.pc_index)
                 })
                 .unwrap_or(false);
 
@@ -1283,6 +1393,14 @@ fn handle_event(ui: &AppWindow, event: Event) {
                     })
                     .collect();
                 debugger_state(ui).set_watches(ModelRc::new(VecModel::from(rows)));
+            }
+
+            // Usually redundant -- setting the image installs a fresh
+            // `slint::Image`, which dirties the window on its own -- but the
+            // pump only runs again if a frame is drawn, and "usually" is not an
+            // invariant to hang a loop on.
+            if live {
+                ui.window().request_redraw();
             }
         }
         Event::Disassembly { id, epoch, window } => {

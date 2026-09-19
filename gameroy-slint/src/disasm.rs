@@ -95,6 +95,21 @@ pub fn follows_pc(visible: &Range<u32>, pc_index: Option<u32>) -> bool {
     pc_index.is_some_and(|pc| visible.contains(&pc))
 }
 
+/// Whether an update should re-centre the listing on the PC.
+///
+/// Never while the machine is running. The listing is wherever the user left
+/// it, and dragging it back to the PC on every snapshot -- which arrives at the
+/// display's refresh rate -- would make it unreadable. A step or a pause still
+/// re-centres, which is when the question is actually being asked.
+pub fn should_follow(
+    live: bool,
+    forced: bool,
+    visible: &Range<u32>,
+    pc_index: Option<u32>,
+) -> bool {
+    !live && (forced || follows_pc(visible, pc_index))
+}
+
 /// Whether `a` describes a later trace than `b`.
 ///
 /// Generations wrap -- the server counts with `wrapping_add` -- so this is a
@@ -605,6 +620,26 @@ mod tests {
         assert!(!follows_pc(&(100..140), Some(99)));
         assert!(!follows_pc(&(100..140), Some(140)));
         assert!(!follows_pc(&(0..0), Some(0)));
+    }
+
+    /// The listing must stay where the user put it while the machine runs,
+    /// however the view happens to sit relative to the PC.
+    #[test]
+    fn a_live_update_never_re_centres() {
+        assert!(!should_follow(true, false, &(100..140), Some(120)));
+        assert!(!should_follow(true, true, &(100..140), Some(120)));
+        assert!(!should_follow(true, false, &(100..140), Some(9000)));
+    }
+
+    /// A step or a pause decides exactly as it did before live updates existed.
+    #[test]
+    fn a_stopped_update_follows_as_before() {
+        assert!(should_follow(false, false, &(100..140), Some(120)));
+        assert!(!should_follow(false, false, &(100..140), Some(9000)));
+        // A step asked to be taken back to the PC, wherever the view wandered.
+        assert!(should_follow(false, true, &(100..140), Some(9000)));
+        // ... but there is nowhere to go when the PC is not traced.
+        assert!(!should_follow(false, false, &(100..140), None));
     }
 
     #[test]

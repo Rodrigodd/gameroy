@@ -75,6 +75,16 @@ pub enum Command {
     /// filesystem, so it hands over the text and the front-end writes it.
     RequestDisassemblyDump,
     SetDebugViews(DebugViews),
+    /// Asks for one debug snapshot of the machine as it stands now, answered
+    /// with exactly one [`super::Event::DebugUpdate`] carrying this `id`.
+    ///
+    /// [`DebugViews`] says *what* a snapshot holds; this says *when*. A
+    /// front-end keeping the debugger level with a *running* machine holds one
+    /// of these in flight, which paces the updates to the round trip rather
+    /// than to the emulation rate -- under fast-forward the two are unrelated.
+    RequestDebugUpdate {
+        id: RequestId,
+    },
     /// Asks for an arbitrary window of the disassembly, answered with
     /// [`super::Event::Disassembly`].
     ///

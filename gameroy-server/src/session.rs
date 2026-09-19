@@ -15,7 +15,8 @@ use crate::disasm::DisasmIndex;
 use crate::protocol::{
     AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, DisasmAnchor,
     EmulatorConfig, Event, FrameBuffer, FramePacket, ImeState, IndexedImage, OpenRom,
-    PartialScreen, PpuState, RomOpened, RunMode, ServerError, SessionEpoch, StopReason, WatchValue,
+    PartialScreen, PpuState, RequestId, RomOpened, RunMode, ServerError, SessionEpoch, StopReason,
+    WatchValue,
     transport::{ServerTransport, TransportError},
 };
 use crate::timeline::{Timeline, timestamp};
@@ -412,6 +413,7 @@ impl Session {
                 };
                 let _ = t.send(Event::DisassemblyDump { text });
             }
+            Command::RequestDebugUpdate { id } => self.send_debug_snapshot(Some(id), t),
             Command::RequestDisassembly { id, anchor, count } => {
                 self.send_disassembly(id, anchor, count, t)
             }
@@ -591,17 +593,43 @@ impl Session {
         (clock, frame)
     }
 
+    /// Pushes a snapshot nobody asked for: on pause, and on a subscription change.
     fn send_debug_update(&mut self, t: &mut impl ServerTransport) {
-        if !self.views.cpu
+        self.send_debug_snapshot(None, t)
+    }
+
+    /// Assembles one coherent snapshot of the machine and ships it.
+    ///
+    /// Every field is read at the same instant, between emulation slices, so the
+    /// panels a front-end draws from it cannot disagree with each other.
+    ///
+    /// A *requested* snapshot is answered even when there is nothing to say. A
+    /// front-end pacing itself on one answer per request is waiting for exactly
+    /// one; dropping it silently does not cost an update, it costs every update
+    /// after it.
+    fn send_debug_snapshot(&mut self, request_id: Option<RequestId>, t: &mut impl ServerTransport) {
+        let nothing_subscribed = !self.views.cpu
             && !self.views.ppu
             && !self.views.watches
             && !self.views.ppu_viewer
             && !self.views.screen
-            && self.views.disassembly_lines == 0
-        {
+            && self.views.disassembly_lines == 0;
+        if request_id.is_none() && nothing_subscribed {
             return;
         }
-        let Some(gb) = self.gb.as_ref() else { return };
+        let Some(gb) = self.gb.as_ref() else {
+            if request_id.is_some() {
+                // The session's own epoch, not `Default`'s zero: a client
+                // discards anything older than the session it believes it is
+                // looking at, and would throw this answer away.
+                let _ = t.send(Event::DebugUpdate(Box::new(DebugUpdate {
+                    epoch: self.epoch,
+                    request_id,
+                    ..Default::default()
+                })));
+            }
+            return;
+        };
 
         // The PPU is updated lazily: its fields only catch up when something reads
         // one of its registers. Reading LY forces that, so the panel and any watch
@@ -646,6 +674,7 @@ impl Session {
         let cpu = &gb.cpu;
         let update = DebugUpdate {
             epoch: self.epoch,
+            request_id,
             clock_count: clock,
             frame,
             disassembly,

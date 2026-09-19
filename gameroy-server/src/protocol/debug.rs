@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::SessionEpoch;
+use super::{RequestId, SessionEpoch};
 
 /// Which debug panels the front-end currently has open.
 ///
@@ -35,6 +35,13 @@ pub struct DebugViews {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DebugUpdate {
     pub epoch: SessionEpoch,
+    /// Set when this snapshot answers a [`super::Command::RequestDebugUpdate`].
+    /// `None` on the ones the server pushes unasked: on pause, and on a
+    /// subscription change.
+    ///
+    /// A front-end pacing itself on one answer per request tells the two apart
+    /// by this, so an unsolicited push cannot be mistaken for its reply.
+    pub request_id: Option<RequestId>,
     pub clock_count: u64,
     pub frame: u32,
     pub cpu: Option<CpuState>,

@@ -20,7 +20,7 @@ pub use event::{CartridgeInfo, Event, RomOpened, ServerError, StopReason};
 
 /// Bumped on any breaking change to [`Command`] or [`Event`]. The server reports it
 /// in [`Event::Ready`] so a mismatched peer can be detected rather than misparsed.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Duplicated from `gameroy_core::consts` so this module stays emulator-free.
 /// `session.rs` statically asserts that they still agree.
@@ -53,6 +53,7 @@ mod tests {
             Command::SetJoypad(0b1111_0111),
             Command::Step,
             Command::StepBack,
+            Command::RequestDebugUpdate { id: 7 },
             Command::ReturnFrame(FrameBuffer(vec![3; SCREEN_PIXELS])),
             Command::OpenRom(Box::new(OpenRom {
                 rom: vec![1, 2, 3],

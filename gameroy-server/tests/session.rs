@@ -1332,3 +1332,280 @@ fn a_disassembly_request_is_clamped() {
         window.lines.len()
     );
 }
+
+// --- live debug snapshots ---------------------------------------------------
+
+/// Every `RequestDebugUpdate` in `ids`, answered. Panics if any answer is
+/// missing, duplicated, or carries an id nobody asked for.
+fn collect_snapshots(h: &Harness, ids: &[u64]) -> Vec<gameroy_server::protocol::DebugUpdate> {
+    let mut out = Vec::new();
+    for &id in ids {
+        h.send(Command::RequestDebugUpdate { id });
+    }
+    for &id in ids {
+        let update = h.wait_for("a requested DebugUpdate", |ev| match ev {
+            Event::DebugUpdate(u) if u.request_id.is_some() => Some(u),
+            _ => None,
+        });
+        assert_eq!(
+            update.request_id,
+            Some(id),
+            "answers came back out of order or an id was invented"
+        );
+        out.push(*update);
+    }
+    out
+}
+
+/// The whole point: a snapshot can be had without stopping the machine.
+#[test]
+fn a_debug_update_can_be_requested_while_running() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ppu: true,
+        screen: true,
+        ..Default::default()
+    }));
+    h.send(Command::RequestDebugUpdate { id: 1 });
+
+    let update = h.wait_for("the requested snapshot", |ev| match ev {
+        Event::RunState {
+            mode: RunMode::Paused,
+            ..
+        } => panic!("asking for a snapshot paused the emulator"),
+        Event::DebugUpdate(u) if u.request_id == Some(1) => Some(u),
+        _ => None,
+    });
+    assert!(update.cpu.is_some() && update.ppu.is_some() && update.screen.is_some());
+}
+
+/// The invariant a self-pacing front-end rests on: it holds one request in
+/// flight and waits for its answer, so a lost or duplicated answer either wedges
+/// it for good or lets requests pile up.
+#[test]
+fn every_request_is_answered_exactly_once() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+
+    let ids = [10, 11, 12, 13, 14];
+    collect_snapshots(&h, &ids);
+
+    // Nothing extra trailing behind: give the server a moment, then check.
+    h.send(Command::RequestDebugUpdate { id: 99 });
+    let update = h.wait_for("the last snapshot", |ev| match ev {
+        Event::DebugUpdate(u) if u.request_id.is_some() => Some(u),
+        _ => None,
+    });
+    assert_eq!(
+        update.request_id,
+        Some(99),
+        "an id from the earlier batch was answered twice"
+    );
+}
+
+/// A request with nothing to report is still a request. Answering only when
+/// there is something to say is what stops a pull-paced front-end for good.
+#[test]
+fn a_request_is_answered_with_no_rom_and_with_no_views() {
+    let h = Harness::start(EmulatorConfig::default());
+    h.wait_for("Ready", |ev| {
+        matches!(ev, Event::Ready { .. }).then_some(())
+    });
+
+    h.send(Command::RequestDebugUpdate { id: 1 });
+    let update = h.wait_for("an answer with no ROM open", |ev| match ev {
+        Event::DebugUpdate(u) => Some(u),
+        _ => None,
+    });
+    assert_eq!(update.request_id, Some(1));
+    assert!(update.cpu.is_none());
+
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping the rest: roms/zelda.gb not present");
+        return;
+    };
+    h.send(Command::OpenRom(Box::new(OpenRom {
+        rom,
+        save_ram: None,
+        boot_rom: None,
+        config: EmulatorConfig::default(),
+        start_paused: true,
+    })));
+    // Deliberately no SetDebugViews: the subscription is empty.
+    h.send(Command::RequestDebugUpdate { id: 2 });
+    let update = h.wait_for("an answer with an empty subscription", |ev| match ev {
+        Event::DebugUpdate(u) if u.request_id == Some(2) => Some(u),
+        _ => None,
+    });
+    assert!(update.epoch > 0, "the answer must name the live session");
+}
+
+/// The reason a snapshot is one message: every field describes one instant.
+#[test]
+fn a_live_update_is_internally_coherent() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+
+    h.send(Command::SetDebugViews(DebugViews {
+        ppu: true,
+        watches: true,
+        screen: true,
+        ..Default::default()
+    }));
+    // BGP, as in `watches_report_live_memory`: a register that does not move
+    // every scanline, so this tests coherence rather than update timing.
+    h.send(Command::AddWatch { address: 0xff47 });
+
+    // The watch is in place once the server has echoed the set back; only then
+    // is a snapshot guaranteed to carry it.
+    h.wait_for("the watch set", |ev| match ev {
+        Event::WatchesChanged { watches } if !watches.is_empty() => Some(()),
+        _ => None,
+    });
+    h.send(Command::RequestDebugUpdate { id: 1 });
+
+    let update = h.wait_for("the requested snapshot", |ev| match ev {
+        Event::DebugUpdate(u)
+            if u.request_id.is_some() && u.watches.as_ref().is_some_and(|w| !w.is_empty()) =>
+        {
+            Some(u)
+        }
+        _ => None,
+    });
+
+    let ppu = update.ppu.expect("ppu was subscribed");
+    let screen = update.screen.as_ref().expect("screen was subscribed");
+    let watches = update.watches.as_ref().unwrap();
+
+    let expected = (ppu.ly as usize * 160 + (ppu.screen_x as usize).min(160)).min(SCREEN_PIXELS);
+    assert_eq!(
+        screen.drawn_pixels as usize, expected,
+        "the screen and the PPU panel describe different instants"
+    );
+    assert_eq!(watches[0].address, 0xff47);
+    assert_eq!(
+        watches[0].value, ppu.bgp,
+        "the watch and the PPU panel describe different instants"
+    );
+}
+
+/// It has to be a fresh snapshot, not the one cached at the last pause.
+#[test]
+fn consecutive_live_updates_describe_different_instants() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    open(&h, rom, false);
+    h.wait_for("first frame", |ev| {
+        matches!(ev, Event::Frame(_)).then_some(())
+    });
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+
+    let first = collect_snapshots(&h, &[1]).pop().unwrap();
+    std::thread::sleep(Duration::from_millis(30));
+    let second = collect_snapshots(&h, &[2]).pop().unwrap();
+
+    assert!(
+        second.clock_count > first.clock_count,
+        "the clock did not move between snapshots: {} then {}",
+        first.clock_count,
+        second.clock_count
+    );
+}
+
+/// Taking a snapshot reads the machine -- `read(0xff44)` forces the lazily
+/// updated PPU to catch up -- so it has to be indistinguishable from not taking
+/// one. Two identical runs, one of them pestered with requests throughout.
+#[test]
+fn live_updates_do_not_perturb_emulation() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+
+    /// Runs to a fixed clock and returns the final state. `run until` goes
+    /// through `RunningWithBreakpoints`, which always interprets, so this is
+    /// deterministic; the joypad record is identical in both runs.
+    fn run_to(rom: Vec<u8>, pester: bool) -> (Option<gameroy_server::protocol::CpuState>, Vec<u8>) {
+        let h = Harness::start(EmulatorConfig::default());
+        open(&h, rom, true);
+        h.wait_for("the initial pause", |ev| {
+            matches!(
+                ev,
+                Event::RunState {
+                    mode: RunMode::Paused,
+                    ..
+                }
+            )
+            .then_some(())
+        });
+        h.send(Command::SetDebugViews(DebugViews {
+            cpu: true,
+            ppu: true,
+            screen: true,
+            ..Default::default()
+        }));
+        h.send(Command::ExecuteDebugCommand {
+            line: "run until 2000000".into(),
+        });
+        if pester {
+            for id in 1..=50 {
+                h.send(Command::RequestDebugUpdate { id });
+            }
+        }
+        await_stop(&h, |r| matches!(r, StopReason::TargetClock(_)));
+        // The answer to the pestering may still be in flight; the snapshot that
+        // matters is the unsolicited one the pause emits.
+        let update = h.wait_for("the snapshot after the pause", |ev| match ev {
+            Event::DebugUpdate(u) if u.request_id.is_none() && u.screen.is_some() => Some(u),
+            _ => None,
+        });
+        (
+            update.cpu,
+            update.screen.as_ref().unwrap().pixels.data.clone(),
+        )
+    }
+
+    let (cpu_a, screen_a) = run_to(rom.clone(), false);
+    let (cpu_b, screen_b) = run_to(rom, true);
+
+    assert_eq!(
+        format!("{cpu_a:?}"),
+        format!("{cpu_b:?}"),
+        "requesting snapshots changed the CPU state at the same clock"
+    );
+    assert!(
+        screen_a == screen_b,
+        "requesting snapshots changed the rendered screen at the same clock"
+    );
+}

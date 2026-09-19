@@ -96,6 +96,9 @@ pub struct Session {
     shutting_down: bool,
     /// A stop discovered mid-slice, applied once the borrow on `gb` is released.
     pending_stop: Option<StopReason>,
+    /// A `StepBack` replay is running, so the clock target it is heading for is a
+    /// stepback landing rather than a `run until`.
+    stepping_back: bool,
 
     /// Last cartridge RAM handed to the client, so the periodic write only fires
     /// when something actually changed.
@@ -130,6 +133,7 @@ impl Session {
             last_start_clock: 0,
             shutting_down: false,
             pending_stop: None,
+            stepping_back: false,
             last_persisted_ram: Vec::new(),
             next_ram_check: Instant::now() + RAM_CHECK_INTERVAL,
         }
@@ -227,7 +231,11 @@ impl Session {
                     Schedule::Now
                 }
                 RunResult::ReachTargetClock => {
-                    self.pending_stop = Some(StopReason::TargetClock(gb.clock_count));
+                    self.pending_stop = Some(if std::mem::take(&mut self.stepping_back) {
+                        StopReason::StepBackComplete
+                    } else {
+                        StopReason::TargetClock(gb.clock_count)
+                    });
                     Schedule::Now
                 }
             };
@@ -361,23 +369,27 @@ impl Session {
                 return true;
             }
             Command::OpenRom(open) => self.open_rom(*open, t),
-            Command::SetRunMode(mode) => self.set_mode(mode, StopReason::UserRequest, t),
+            Command::SetRunMode(mode) => {
+                self.cancel_step_back();
+                self.set_mode(mode, StopReason::UserRequest, t);
+            }
             Command::SetFrameLimit(on) => {
                 self.frame_limit = on;
                 self.resync_pacing();
             }
-            Command::Reset => {
-                if let Some(gb) = self.gb.as_mut() {
-                    gb.reset();
-                    self.epoch += 1;
-                    self.resync_pacing();
-                    self.set_mode(self.mode, StopReason::Reset, t);
-                }
-            }
+            Command::Reset => self.reset(t),
             Command::SetJoypad(joypad) => {
                 self.vblank.lock().unwrap().timeline.current_joypad = joypad;
             }
-            Command::Step => self.step_instruction(t),
+            Command::Step => {
+                self.cancel_step_back();
+                self.step_instruction(t);
+            }
+            Command::StepBack => {
+                if let Err(text) = self.step_back() {
+                    let _ = t.send(Event::DebugConsole { ok: false, text });
+                }
+            }
             Command::SetDebugViews(views) => {
                 self.views = views;
                 self.send_debug_update(t);
@@ -491,6 +503,8 @@ impl Session {
         self.frame_limit = self.config.frame_limit;
         self.gb = Some(gb);
         self.epoch += 1;
+        self.cancel_step_back();
+        self.debugger.last_op_clock = None;
         self.resync_pacing();
 
         let _ = t.send(Event::RomOpened(Box::new(RomOpened {
@@ -655,6 +669,96 @@ impl Session {
         self.set_mode(RunMode::Paused, StopReason::StepComplete, t);
     }
 
+    /// Resets the machine, keeping whatever run mode it was in.
+    fn reset(&mut self, t: &mut impl ServerTransport) {
+        self.cancel_step_back();
+        if let Some(gb) = self.gb.as_mut() {
+            gb.reset();
+            self.epoch += 1;
+            // A clock from before the reset cannot be a stepback target.
+            self.debugger.last_op_clock = None;
+            self.resync_pacing();
+            self.set_mode(self.mode, StopReason::Reset, t);
+        }
+    }
+
+    /// Steps one instruction backwards.
+    ///
+    /// Nothing can un-execute an instruction, so this restores the most recent
+    /// rewind snapshot that is old enough to predate the current one and replays
+    /// forward to the clock the previous instruction started at.
+    ///
+    /// The replay is armed here and run by `run_slice`, not here: redoing up to a
+    /// whole frame inside a command handler would blow the slice budget, and
+    /// `Session::step` must never block.
+    ///
+    /// `Err` carries a message for the console; none of these are fatal.
+    fn step_back(&mut self) -> Result<(), String> {
+        if self.gb.is_none() {
+            return Err("no ROM is open".into());
+        }
+        if self.config.rewind_capacity_bytes == 0 {
+            // The ring has zero capacity, so there is nothing to restore. A
+            // different message from an empty ring, because the fix differs:
+            // change the config rather than run for a moment first.
+            return Err("stepback needs the rewind buffer, which is disabled".into());
+        }
+
+        let clock = self.gb.as_ref().map_or(0, |gb| gb.clock_count);
+        let Some(last_op_clock) = self.debugger.last_op_clock.filter(|&c| c < clock) else {
+            return Err("no previous instruction to step back to; step once first".into());
+        };
+
+        let gb = self.gb.as_mut().expect("checked above");
+        let restored = {
+            let vb = &mut *self.vblank.lock().unwrap();
+            loop {
+                let Some(snapshot_clock) = vb.timeline.last_frame_clock_count() else {
+                    break false;
+                };
+                // One instruction is at most 24 clocks, so a snapshot closer than
+                // that to the present may already be past the instruction we mean
+                // to land on. Written as an addition: the old front-end's
+                // `snapshot_clock > clock - 24` underflows in the first 24 clocks
+                // after a reset.
+                if snapshot_clock + 24 > clock {
+                    vb.timeline.pop_last_frame();
+                    continue;
+                }
+                break vb.timeline.load_last_frame(gb);
+            }
+        };
+        if !restored {
+            return Err("no rewind history to step back into".into());
+        }
+
+        self.debugger.target_address = None;
+        self.debugger.target_clock = Some(last_op_clock);
+        // The replay re-executes code that may well contain a breakpoint; stopping
+        // there would strand the user somewhere they did not ask to be.
+        self.debugger.skip_breakpoints_until_target_clock = true;
+        self.stepping_back = true;
+
+        // Enter the replay without announcing it. `set_mode` would emit a
+        // `RunState { Running.. }` that reads to a client exactly like the user
+        // pressing continue; one command in, one `StepBackComplete` out, as `Step`
+        // does.
+        self.mode = RunMode::RunningWithBreakpoints;
+        self.resync_pacing();
+        Ok(())
+    }
+
+    /// Abandons a replay in progress, so an interrupted stepback cannot leave
+    /// breakpoints suppressed for whatever the user does next.
+    fn cancel_step_back(&mut self) {
+        if !self.stepping_back {
+            return;
+        }
+        self.stepping_back = false;
+        self.debugger.target_clock = None;
+        self.debugger.skip_breakpoints_until_target_clock = false;
+    }
+
     fn send_breakpoints(&mut self, t: &mut impl ServerTransport) {
         let breakpoints = self
             .debugger
@@ -696,22 +800,14 @@ impl Session {
             None => {}
             Some(ConsoleAction::Step) => self.step_instruction(t),
             Some(ConsoleAction::StepBack) => {
-                let _ = t.send(Event::DebugConsole {
-                    ok: false,
-                    text: "stepback is not implemented yet".into(),
-                });
+                if let Err(text) = self.step_back() {
+                    let _ = t.send(Event::DebugConsole { ok: false, text });
+                }
             }
             Some(ConsoleAction::Run) => {
                 self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t)
             }
-            Some(ConsoleAction::Reset) => {
-                if let Some(gb) = self.gb.as_mut() {
-                    gb.reset();
-                    self.epoch += 1;
-                    self.resync_pacing();
-                    self.set_mode(self.mode, StopReason::Reset, t);
-                }
-            }
+            Some(ConsoleAction::Reset) => self.reset(t),
             Some(ConsoleAction::RunToAddress(address)) => {
                 self.debugger.target_address = Some(address);
                 self.set_mode(RunMode::RunningWithBreakpoints, StopReason::UserRequest, t);
@@ -769,6 +865,7 @@ impl Session {
     }
 
     fn load_state(&mut self, data: &[u8], t: &mut impl ServerTransport) {
+        self.cancel_step_back();
         let Some(gb) = self.gb.as_mut() else {
             let _ = t.send(Event::Fatal(ServerError::NoRom));
             return;
@@ -785,6 +882,9 @@ impl Session {
         }
 
         self.epoch += 1;
+        // The restored machine has a different history; a clock from the old one
+        // is not a valid stepback target.
+        self.debugger.last_op_clock = None;
         self.resync_pacing();
         let mode = self.mode;
         self.set_mode(mode, StopReason::LoadedState, t);

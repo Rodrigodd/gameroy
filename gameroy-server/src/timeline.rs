@@ -80,9 +80,17 @@ impl Timeline {
         }
     }
 
+    /// Clock count stamped into the most recent snapshot.
+    ///
+    /// Reads the 12-byte header `save_state` writes above, so it does not have to
+    /// decompress the state itself. `stepback` needs this to tell whether the top
+    /// snapshot is old enough to be worth restoring.
+    pub fn last_frame_clock_count(&self) -> Option<u64> {
+        let top = self.save_states.top()?;
+        Some(u64::from_le_bytes(top[0..8].try_into().unwrap()))
+    }
+
     /// Restore the most recent frame without consuming it.
-    // Used by rewind, which is wired up in a later milestone.
-    #[allow(dead_code)]
     pub fn load_last_frame(&mut self, gb: &mut GameBoy) -> bool {
         let Some(last_frame) = self.save_states.top() else {
             return false;
@@ -93,7 +101,6 @@ impl Timeline {
     }
 
     /// Drop the most recent frame.
-    #[allow(dead_code)]
     pub fn pop_last_frame(&mut self) -> bool {
         let Some(last_frame) = self.save_states.top() else {
             return false;

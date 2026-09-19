@@ -805,3 +805,210 @@ fn step_leaves_the_emulator_paused() {
         "expected StepComplete, got {reason:?}"
     );
 }
+
+/// Runs the ROM long enough to fill the rewind ring, then pauses with the CPU
+/// view on and returns the paused state. Every stepback test needs this: a
+/// stepback can only reach as far as there is rewind history.
+fn paused_with_history(h: &Harness, rom: Vec<u8>, config: EmulatorConfig) -> (u64, u16) {
+    h.wait_for("Ready", |ev| {
+        matches!(ev, Event::Ready { .. }).then_some(())
+    });
+    h.send(Command::OpenRom(Box::new(OpenRom {
+        rom,
+        save_ram: None,
+        boot_rom: None,
+        config,
+        start_paused: false,
+    })));
+    // Several frames, so there is more than one snapshot to unwind through.
+    let mut frames = 0;
+    h.wait_for("a few frames", |ev| {
+        if matches!(ev, Event::Frame(_)) {
+            frames += 1;
+        }
+        (frames >= 5).then_some(())
+    });
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+    h.send(Command::SetRunMode(RunMode::Paused));
+    // `SetDebugViews` answers with a snapshot of its own, taken while the machine
+    // was still running. Waiting for the pause first discards it, so what comes
+    // back is the state the machine actually stopped in.
+    await_stop(h, |r| matches!(r, StopReason::UserRequest));
+    await_snapshot(h)
+}
+
+/// Waits for a pause whose reason satisfies `f`, and asserts nothing else
+/// stopped us first.
+fn await_stop(h: &Harness, f: impl Fn(StopReason) -> bool) {
+    let reason = h.wait_for("a pause", |ev| match ev {
+        Event::RunState {
+            mode: RunMode::Paused,
+            reason,
+            ..
+        } => Some(reason),
+        _ => None,
+    });
+    assert!(f(reason), "stopped for the wrong reason: {reason:?}");
+}
+
+/// The `(clock, pc)` of the next CPU snapshot.
+fn await_snapshot(h: &Harness) -> (u64, u16) {
+    h.wait_for("a CPU snapshot", |ev| match ev {
+        Event::DebugUpdate(u) => u.cpu.map(|cpu| (u.clock_count, cpu.pc)),
+        _ => None,
+    })
+}
+
+/// One instruction forward. Each pause emits a `RunState` and then exactly one
+/// `DebugUpdate`, so consuming both keeps the queue balanced for the next call.
+fn step(h: &Harness) -> (u64, u16) {
+    h.send(Command::Step);
+    await_stop(h, |r| matches!(r, StopReason::StepComplete));
+    await_snapshot(h)
+}
+
+#[test]
+fn stepback_returns_to_the_previous_instruction() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    // Two steps, so the landing point is a state actually observed rather than
+    // whatever the pause happened to catch.
+    let landing = step(&h);
+    let departed = step(&h);
+    assert_ne!(landing, departed, "the second Step did not move");
+
+    h.send(Command::StepBack);
+    await_stop(&h, |r| matches!(r, StopReason::StepBackComplete));
+    assert_eq!(
+        await_snapshot(&h),
+        landing,
+        "stepback did not land on the previous instruction"
+    );
+}
+
+/// The console spelling must do what the command does; it was a stub replying
+/// "stepback is not implemented yet".
+#[test]
+fn stepback_from_the_console_matches_the_command() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    let landing = step(&h);
+    step(&h);
+
+    h.send(Command::ExecuteDebugCommand {
+        line: "stepback".into(),
+    });
+    await_stop(&h, |r| matches!(r, StopReason::StepBackComplete));
+    assert_eq!(await_snapshot(&h), landing);
+}
+
+#[test]
+fn stepback_without_a_rewind_buffer_reports_instead_of_moving() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let config = EmulatorConfig {
+        rewind_capacity_bytes: 0,
+        ..EmulatorConfig::default()
+    };
+    let h = Harness::start(config.clone());
+    paused_with_history(&h, rom, config);
+    let before = step(&h);
+
+    h.send(Command::StepBack);
+    let text = h.wait_for("a console complaint", |ev| match ev {
+        Event::DebugConsole { ok: false, text } => Some(text),
+        _ => None,
+    });
+    assert!(
+        text.contains("rewind"),
+        "the message should say why: {text:?}"
+    );
+
+    // Re-declaring the views is the cheap way to ask for a fresh snapshot.
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+    assert_eq!(
+        await_snapshot(&h),
+        before,
+        "a refused stepback moved the machine"
+    );
+}
+
+#[test]
+fn stepback_before_any_step_reports_instead_of_moving() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    let before = paused_with_history(&h, rom, EmulatorConfig::default());
+
+    // Nothing has been stepped, so there is no previous instruction to name.
+    h.send(Command::StepBack);
+    let text = h.wait_for("a console complaint", |ev| match ev {
+        Event::DebugConsole { ok: false, text } => Some(text),
+        _ => None,
+    });
+    assert!(
+        text.contains("previous instruction"),
+        "the message should say why: {text:?}"
+    );
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+    assert_eq!(await_snapshot(&h), before);
+}
+
+/// The replay re-executes code that may contain a breakpoint. Stopping there
+/// would strand the user somewhere they never asked to be, which is the only
+/// thing `skip_breakpoints_until_target_clock` exists for.
+#[test]
+fn stepback_ignores_breakpoints_during_the_replay() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    let landing = step(&h);
+    step(&h);
+
+    // Break on the instruction we are about to step back onto, so the replay is
+    // guaranteed to run straight through it.
+    h.send(Command::AddBreakpoint {
+        address: landing.1,
+        flags: 1 << 2, // break_flags::EXECUTE
+    });
+    h.wait_for("the breakpoint to register", |ev| match ev {
+        Event::BreakpointsChanged { breakpoints } => breakpoints
+            .iter()
+            .any(|&(a, _)| a == landing.1)
+            .then_some(()),
+        _ => None,
+    });
+
+    h.send(Command::StepBack);
+    await_stop(&h, |r| matches!(r, StopReason::StepBackComplete));
+    assert_eq!(await_snapshot(&h), landing);
+}

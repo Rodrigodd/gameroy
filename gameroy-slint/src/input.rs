@@ -126,7 +126,7 @@ mod hold_key_tests {
     /// handler, both would fire for a single press.
     #[test]
     fn shortcut_keys_are_left_to_key_binding() {
-        for key in [Key::F5, Key::F6, Key::F8, Key::F9, Key::F12] {
+        for key in [Key::F5, Key::F6, Key::F7, Key::F8, Key::F9, Key::F12] {
             let text = SharedString::from(key);
             assert!(!is_handled(&text), "{key:?} must be left to KeyBinding");
         }

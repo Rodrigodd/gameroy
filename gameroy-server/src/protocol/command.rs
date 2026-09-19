@@ -40,6 +40,13 @@ pub enum Command {
 
     // --- debugger ---
     Step,
+    /// Undoes one instruction. Needs the rewind ring, so it fails when
+    /// `rewind_capacity_bytes` is 0.
+    ///
+    /// A command of its own rather than only a console action: it is bound to a
+    /// key, and a key press should not have to synthesize the line `"stepback"`
+    /// and then filter the console echo it causes.
+    StepBack,
     /// Run until a breakpoint, as the debugger's "continue".
     RunToBreakpoint,
     AddBreakpoint {

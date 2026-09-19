@@ -59,9 +59,16 @@ pub enum StopReason {
     None,
     UserRequest,
     StepComplete,
+    /// Distinct from `TargetClock`, which is how the replay is actually
+    /// implemented: reporting that would leak the mechanism, and a test could
+    /// not tell a stepback from a lucky forward run.
+    StepBackComplete,
     Reset,
     LoadedState,
-    Breakpoint { address: u16, flags: u8 },
+    Breakpoint {
+        address: u16,
+        flags: u8,
+    },
     TargetAddress(u16),
     TargetClock(u64),
 }

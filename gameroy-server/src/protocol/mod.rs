@@ -20,7 +20,7 @@ pub use event::{CartridgeInfo, Event, RomOpened, ServerError, StopReason};
 
 /// Bumped on any breaking change to [`Command`] or [`Event`]. The server reports it
 /// in [`Event::Ready`] so a mismatched peer can be detected rather than misparsed.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Duplicated from `gameroy_core::consts` so this module stays emulator-free.
 /// `session.rs` statically asserts that they still agree.
@@ -32,6 +32,7 @@ pub const CLOCK_SPEED: u64 = 4_194_304;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::StopReason;
 
     /// Every type crossing the boundary must be plain owned data. If this stops
     /// compiling, something grew a handle, a lifetime or a callback, and the
@@ -51,6 +52,7 @@ mod tests {
             Command::SetFrameLimit(false),
             Command::SetJoypad(0b1111_0111),
             Command::Step,
+            Command::StepBack,
             Command::ReturnFrame(FrameBuffer(vec![3; SCREEN_PIXELS])),
             Command::OpenRom(Box::new(OpenRom {
                 rom: vec![1, 2, 3],
@@ -68,6 +70,31 @@ mod tests {
                 format!("{back:?}"),
                 "round trip changed {cmd:?}"
             );
+        }
+    }
+
+    /// Every stop reason must survive the wire: a new variant that does not is a
+    /// pause the client silently fails to parse.
+    #[test]
+    fn stop_reasons_round_trip() {
+        let cases = [
+            StopReason::None,
+            StopReason::UserRequest,
+            StopReason::StepComplete,
+            StopReason::StepBackComplete,
+            StopReason::Reset,
+            StopReason::LoadedState,
+            StopReason::Breakpoint {
+                address: 0x150,
+                flags: 0b0100,
+            },
+            StopReason::TargetAddress(0x40),
+            StopReason::TargetClock(1234),
+        ];
+        for reason in cases {
+            let json = serde_json::to_string(&reason).unwrap();
+            let back: StopReason = serde_json::from_str(&json).unwrap();
+            assert_eq!(reason, back);
         }
     }
 

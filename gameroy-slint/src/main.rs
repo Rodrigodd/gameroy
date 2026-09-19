@@ -564,6 +564,10 @@ fn wire_callbacks(ui: &AppWindow) {
         with_app(|app| app.send(Command::Step));
     });
 
+    ui.on_debug_step_back(|| {
+        with_app(|app| app.send(Command::StepBack));
+    });
+
     ui.on_toggle_run(|| {
         with_app(|app| {
             let mode = match app.mode {
@@ -737,6 +741,20 @@ fn drain_events(ui: &AppWindow) {
 fn handle_event(ui: &AppWindow, event: Event) {
     match event {
         Event::Ready { protocol_version } => {
+            // A mismatch is not survivable: the two sides would misparse each
+            // other's messages rather than fail, which is the whole reason the
+            // version is announced. Logging it and carrying on, as this used to,
+            // turns a clear error into a puzzling one.
+            if protocol_version != gameroy_server::protocol::PROTOCOL_VERSION {
+                let message = format!(
+                    "server speaks protocol v{protocol_version}, this front-end speaks v{}",
+                    gameroy_server::protocol::PROTOCOL_VERSION
+                );
+                log::error!("{message}");
+                ui.set_status_text(message.into());
+                with_app(|app| app.server = None);
+                return;
+            }
             log::info!("server ready, protocol v{protocol_version}");
             let has_rom = with_app(|app| {
                 app.server_ready = true;

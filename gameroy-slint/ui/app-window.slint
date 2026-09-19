@@ -23,6 +23,7 @@ export component AppWindow inherits Window {
     callback load_state();
     callback toggle_debugger();
     callback debug_step();
+    callback debug_step_back();
     callback toggle_run();
     callback toggle_menu();
 
@@ -117,6 +118,11 @@ export component AppWindow inherits Window {
             keys: @keys(F6);
             enabled: root.playing;
             activated => { root.load_state(); }
+        }
+        KeyBinding {
+            keys: @keys(F7);
+            enabled: root.playing;
+            activated => { root.debug_step_back(); }
         }
         KeyBinding {
             keys: @keys(F8);

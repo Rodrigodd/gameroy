@@ -36,6 +36,12 @@ const DISASM_WINDOW: u16 = 64;
 /// The four Game Boy shades, lightest first, as the old front-end had them.
 const PALETTE: [u8; 4] = [255, 180, 100, 0];
 
+/// The same four shades tinted blue, for the part of a paused screen that the
+/// frame in progress has not reached yet and so still holds the previous frame.
+/// Blue because the Game Boy's own output is grey, so nothing else can be.
+const STALE_PALETTE: [(u8, u8, u8); 4] =
+    [(120, 140, 255), (85, 100, 190), (48, 58, 125), (14, 18, 60)];
+
 /// UI-thread state. The server thread never touches this; it only posts a wake-up
 /// and the draining happens here.
 struct App {
@@ -691,6 +697,9 @@ fn debug_views(app: &App) -> DebugViews {
         cpu: app.debugging,
         ppu: app.debugging,
         watches: app.debugging,
+        // Whoever has the debugger open is the person who wants to watch the
+        // frame come out a scanline at a time; it costs one screen buffer.
+        screen: app.debugging,
         disassembly_lines: if app.debugging { DISASM_WINDOW } else { 0 },
         ppu_viewer: app.debugging && app.ppu_viewer,
     }
@@ -819,6 +828,14 @@ fn handle_event(ui: &AppWindow, event: Event) {
             }
         }
         Event::DebugUpdate(update) => {
+            // Only while stopped. A views change made mid-play also produces an
+            // update, and painting a half-drawn frame over the live one would be
+            // a visible flicker for no reason.
+            if let Some(screen) = update.screen.as_ref()
+                && with_app(|app| app.mode == RunMode::Paused).unwrap_or(false)
+            {
+                ui.set_screen(partial_screen_image(screen));
+            }
             if let Some(cpu) = update.cpu.as_ref() {
                 ui.set_cpu_text(format_cpu(cpu, update.clock_count, update.frame).into());
             }
@@ -1016,6 +1033,33 @@ fn format_ppu(ppu: &PpuState) -> String {
     )
 }
 
+/// The paused screen, with the pixels this frame has not reached yet tinted.
+///
+/// Those hold whatever the previous frame left there, so showing them in the
+/// normal palette would be showing stale output as if it were current -- the
+/// distinction is the entire point of the view.
+fn partial_screen_image(screen: &gameroy_server::protocol::PartialScreen) -> slint::Image {
+    let img = &screen.pixels;
+    let mut buffer = SharedPixelBuffer::<Rgb8Pixel>::new(img.width as u32, img.height as u32);
+    let drawn = screen.drawn_pixels as usize;
+    for (i, (out, &shade)) in buffer
+        .make_mut_slice()
+        .iter_mut()
+        .zip(img.data.iter())
+        .enumerate()
+    {
+        let shade = (shade & 3) as usize;
+        *out = if i < drawn {
+            let l = PALETTE[shade];
+            Rgb8Pixel::new(l, l, l)
+        } else {
+            let (r, g, b) = STALE_PALETTE[shade];
+            Rgb8Pixel::new(r, g, b)
+        };
+    }
+    slint::Image::from_rgb8(buffer)
+}
+
 /// Expands a palette-index image into RGB for display. The server ships indices,
 /// so the palette stays a front-end decision.
 fn indexed_to_image(img: &IndexedImage) -> slint::Image {
@@ -1040,4 +1084,40 @@ fn sprite_cells(sprites: &[SpriteInfo]) -> Vec<SpriteCell> {
             offscreen: s.is_offscreen(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gameroy_server::protocol::{IndexedImage, PartialScreen};
+
+    /// The boundary is the whole point: everything before `drawn_pixels` is this
+    /// frame's output and must read as the Game Boy's grey, everything after is
+    /// the previous frame's and must not.
+    #[test]
+    fn a_partial_screen_tints_only_what_the_frame_has_not_reached() {
+        let screen = PartialScreen {
+            pixels: IndexedImage {
+                width: 4,
+                height: 2,
+                // Same shade throughout, so only the palette can differ.
+                data: vec![0; 8],
+            },
+            drawn_pixels: 5,
+        };
+
+        let image = partial_screen_image(&screen);
+        let buffer = image.to_rgb8().expect("built from rgb8");
+        let pixels: Vec<_> = buffer.as_slice().to_vec();
+        assert_eq!(pixels.len(), 8);
+
+        for (i, p) in pixels.iter().enumerate() {
+            let grey = p.r == p.g && p.g == p.b;
+            if i < 5 {
+                assert!(grey, "pixel {i} is inside the drawn prefix but was tinted");
+            } else {
+                assert!(!grey, "pixel {i} is stale but was left untinted");
+            }
+        }
+    }
 }

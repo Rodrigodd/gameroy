@@ -14,8 +14,8 @@ use crate::debug_console::{self, ConsoleAction};
 use crate::disasm::DisasmIndex;
 use crate::protocol::{
     AudioChunk, CartridgeInfo, Command, CpuState, DebugUpdate, DebugViews, EmulatorConfig, Event,
-    FrameBuffer, FramePacket, ImeState, OpenRom, PpuState, RomOpened, RunMode, ServerError,
-    SessionEpoch, StopReason, WatchValue,
+    FrameBuffer, FramePacket, ImeState, IndexedImage, OpenRom, PartialScreen, PpuState, RomOpened,
+    RunMode, ServerError, SessionEpoch, StopReason, WatchValue,
     transport::{ServerTransport, TransportError},
 };
 use crate::timeline::{Timeline, timestamp};
@@ -556,6 +556,7 @@ impl Session {
             && !self.views.ppu
             && !self.views.watches
             && !self.views.ppu_viewer
+            && !self.views.screen
             && self.views.disassembly_lines == 0
         {
             return;
@@ -576,6 +577,22 @@ impl Session {
         // Cheap when the trace has not grown, which is the usual case.
         let ppu_viewer = self.views.ppu_viewer.then(|| crate::ppu_view::capture(gb));
 
+        // Depends on the `read(0xff44)` above: a stale `ly` puts the boundary
+        // between drawn and leftover pixels in the wrong place.
+        let screen = self.views.screen.then(|| {
+            let ppu = gb.ppu.borrow();
+            PartialScreen {
+                pixels: IndexedImage {
+                    width: SCREEN_WIDTH as u16,
+                    height: SCREEN_HEIGHT as u16,
+                    data: ppu.screen.packed().to_vec(),
+                },
+                drawn_pixels: (ppu.ly as usize * SCREEN_WIDTH
+                    + (ppu.screen_x as usize).min(SCREEN_WIDTH))
+                .min(SCREEN_WIDTH * SCREEN_HEIGHT) as u32,
+            }
+        });
+
         let disassembly = if self.views.disassembly_lines > 0 {
             self.disasm.sync(gb);
             Some(
@@ -592,6 +609,7 @@ impl Session {
             frame,
             disassembly,
             ppu_viewer,
+            screen,
             ppu: self.views.ppu.then(|| {
                 let ppu = gb.ppu.borrow();
                 PpuState {

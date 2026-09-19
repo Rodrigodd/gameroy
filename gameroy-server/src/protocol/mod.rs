@@ -14,7 +14,7 @@ pub use buffer::{AudioChunk, FrameBuffer, FramePacket};
 pub use command::{Command, EmulatorConfig, OpenRom, RequestId, RunMode, SessionEpoch};
 pub use debug::{
     Address, CpuState, DebugUpdate, DebugViews, DisasmLine, DisassemblyWindow, ImeState,
-    IndexedImage, PpuState, PpuViewer, SpriteInfo, WatchValue,
+    IndexedImage, PartialScreen, PpuState, PpuViewer, SpriteInfo, WatchValue,
 };
 pub use event::{CartridgeInfo, Event, RomOpened, ServerError, StopReason};
 

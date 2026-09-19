@@ -19,6 +19,10 @@ pub struct DebugViews {
     /// tab is closed. The old front-end redrew its textures every frame whether
     /// or not the tab was visible.
     pub ppu_viewer: bool,
+    /// Ship the partially-drawn screen. Cheap next to `ppu_viewer`, and it is
+    /// what anyone single-stepping actually wants to see, so it gets its own
+    /// flag rather than riding along with the tilemaps.
+    pub screen: bool,
     /// Number of disassembly lines to push around the PC on each pause. 0 is off.
     ///
     /// A window rather than the whole trace: `Trace::directives` grows into the
@@ -39,6 +43,25 @@ pub struct DebugUpdate {
     pub watches: Option<Vec<WatchValue>>,
     pub disassembly: Option<DisassemblyWindow>,
     pub ppu_viewer: Option<PpuViewer>,
+    pub screen: Option<PartialScreen>,
+}
+
+/// The screen as it stands mid-frame.
+///
+/// While paused part-way through a frame the client's most recent
+/// [`super::Event::Frame`] is the *previous complete* frame, so it holds the
+/// stale tail but not the fresh head -- it cannot assemble this itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartialScreen {
+    /// The PPU's own buffer. Its tail is whatever the previous frame left there,
+    /// which is what `drawn_pixels` is for.
+    pub pixels: IndexedImage,
+    /// How many pixels of `pixels`, in raster order, the frame in progress has
+    /// drawn. The rest is stale; the old viewer tinted it blue.
+    ///
+    /// A count rather than a second image, so which two palettes to use stays a
+    /// front-end decision, as for every other image here.
+    pub drawn_pixels: u32,
 }
 
 /// A mirror of the core's `Cpu`, because `gameroy-core` has no serde and this

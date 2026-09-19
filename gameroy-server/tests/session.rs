@@ -1012,3 +1012,104 @@ fn stepback_ignores_breakpoints_during_the_replay() {
     await_stop(&h, |r| matches!(r, StopReason::StepBackComplete));
     assert_eq!(await_snapshot(&h), landing);
 }
+
+#[test]
+fn partial_screen_is_absent_unless_subscribed() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    // `paused_with_history` subscribes to the CPU view and nothing else.
+    // Re-declaring it is the cheap way to ask for a fresh snapshot.
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        ..Default::default()
+    }));
+    let update = h.wait_for("a DebugUpdate", |ev| match ev {
+        Event::DebugUpdate(u) if u.cpu.is_some() => Some(u),
+        _ => None,
+    });
+    assert!(
+        update.screen.is_none(),
+        "the screen was sent without being asked for"
+    );
+}
+
+/// `drawn_pixels` must be the real boundary between this frame's output and the
+/// previous frame's leftovers. The assertion is that it agrees with `ly` and
+/// `screen_x` from the very same update -- two numbers derived independently.
+#[test]
+fn partial_screen_marks_the_drawn_prefix() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    h.send(Command::SetDebugViews(DebugViews {
+        ppu: true,
+        screen: true,
+        ..Default::default()
+    }));
+    let update = h.wait_for("a DebugUpdate with the screen", |ev| match ev {
+        Event::DebugUpdate(u) if u.screen.is_some() && u.ppu.is_some() => Some(u),
+        _ => None,
+    });
+
+    let screen = update.screen.as_ref().unwrap();
+    let ppu = update.ppu.unwrap();
+
+    assert_eq!(screen.pixels.data.len(), SCREEN_PIXELS);
+    assert_eq!(
+        screen.pixels.width as usize * screen.pixels.height as usize,
+        SCREEN_PIXELS
+    );
+    assert!(
+        screen.pixels.data.iter().all(|&p| p < 4),
+        "the Game Boy has four shades; something other than a palette index got in"
+    );
+
+    let expected = (ppu.ly as usize * 160 + (ppu.screen_x as usize).min(160)).min(SCREEN_PIXELS);
+    assert_eq!(
+        screen.drawn_pixels as usize, expected,
+        "drawn_pixels disagrees with ly={} screen_x={}",
+        ppu.ly, ppu.screen_x
+    );
+}
+
+/// It has to actually track the PPU, not sit at a constant.
+#[test]
+fn partial_screen_advances_while_stepping() {
+    let Some(rom) = test_rom() else {
+        eprintln!("skipping: roms/zelda.gb not present");
+        return;
+    };
+    let h = Harness::start(EmulatorConfig::default());
+    paused_with_history(&h, rom, EmulatorConfig::default());
+
+    h.send(Command::SetDebugViews(DebugViews {
+        cpu: true,
+        screen: true,
+        ..Default::default()
+    }));
+
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..400 {
+        h.send(Command::Step);
+        await_stop(&h, |r| matches!(r, StopReason::StepComplete));
+        let update = h.wait_for("a DebugUpdate with the screen", |ev| match ev {
+            Event::DebugUpdate(u) if u.screen.is_some() => Some(u),
+            _ => None,
+        });
+        seen.insert(update.screen.as_ref().unwrap().drawn_pixels);
+    }
+    // Not "non-decreasing": it wraps to 0 at every frame boundary.
+    assert!(
+        seen.len() > 1,
+        "drawn_pixels never moved across 400 instructions: {seen:?}"
+    );
+}
